@@ -11,6 +11,8 @@ function @spin_flag
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
     slot $flag -> [rbp-4] : i32
 
   block ^entry
@@ -28,6 +30,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
 
   block ^entry
     call @spin_flag [args=(), unwind=no]

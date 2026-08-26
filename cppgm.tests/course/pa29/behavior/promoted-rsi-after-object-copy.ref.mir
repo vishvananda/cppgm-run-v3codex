@@ -17,6 +17,8 @@ function @observe
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.i64 @observed, rsi
@@ -30,6 +32,8 @@ function @copy_then_use
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $copy -> [rbp-16] : obj<16x8>
 
   block ^entry
@@ -47,6 +51,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     slot $source -> [rbp-16] : obj<16x8>
 
   block ^entry

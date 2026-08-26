@@ -24,6 +24,8 @@ function @clobber
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %temp -> [rbp-8] : ptr
     param-slot %a -> [rbp-16] : i64
     param-slot %b -> [rbp-24] : i64
@@ -46,6 +48,8 @@ function @assign
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %rhs -> [rbp-8] : ptr
 
   block ^entry
@@ -62,6 +66,8 @@ function @reset
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     slot $temp -> [rbp-40] : obj<40x8>
 
@@ -85,6 +91,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, @good

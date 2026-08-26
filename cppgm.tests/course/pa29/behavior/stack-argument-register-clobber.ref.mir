@@ -18,6 +18,8 @@ function @take
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %value -> [rbp-8] : i64
 
   block ^entry
@@ -32,6 +34,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     slot $value -> [rbp-8] : i64
 
   block ^entry

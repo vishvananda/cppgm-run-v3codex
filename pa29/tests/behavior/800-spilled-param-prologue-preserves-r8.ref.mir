@@ -20,6 +20,8 @@ function @sink
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, rdi
@@ -39,6 +41,8 @@ function @target
   frame
     stack_size 96
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %a -> [rbp-8] : ptr
     param-slot %c -> [rbp-16] : ptr
     param-slot %d -> [rbp-24] : ptr
@@ -73,6 +77,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry

@@ -1,4 +1,5 @@
 #include "lowir_staged_copy_forwarding.h"
+#include "lowir_scalar_rules.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -110,6 +111,147 @@ struct StagedStore
   std::size_t block = 0;
   std::size_t index = 0;
 };
+
+struct ScalarCopyGroup
+{
+  std::size_t start = 0;
+  long long offset = 0;
+  std::size_t bytes = 0;
+  Operand source_base;
+  Operand destination_base;
+  lowir_model::ValueId source_address;
+  lowir_model::ValueId destination_address;
+  lowir_model::ValueId loaded_value;
+  std::size_t alignment = 1;
+};
+
+bool noalias_parameter_value(const Function & function,
+                             const Operand & operand)
+{
+  if(operand.kind != Operand::OP_TEMP) return false;
+  for(std::size_t i = 0; i < function.params.size(); ++i)
+    if(function.params[i].value == operand.value)
+      return function.params[i].metadata.alias ==
+        lowir_model::PALM_NOALIAS;
+  return false;
+}
+
+bool proven_disjoint_bases(const Function & function,
+                           const Operand & source,
+                           const Operand & destination)
+{
+  if(lowir_opt::same_operand(source, destination)) return true;
+  return noalias_parameter_value(function, source) &&
+    noalias_parameter_value(function, destination);
+}
+
+struct RelativePointer
+{
+  long long offset = 0;
+  bool known = false;
+};
+
+bool overwrite_scan_pure(Instruction::Kind kind)
+{
+  return kind == Instruction::IK_CONST || kind == Instruction::IK_COPY ||
+    kind == Instruction::IK_ADDR || kind == Instruction::IK_INDEX ||
+    kind == Instruction::IK_UNARY || kind == Instruction::IK_BINARY ||
+    kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT ||
+    kind == Instruction::IK_SELECT;
+}
+
+RelativePointer relative_pointer(
+    const Operand & operand, const Operand & base,
+    const std::vector<RelativePointer> & values)
+{
+  if(lowir_opt::same_operand(operand, base)) {
+    RelativePointer result;
+    result.known = true;
+    return result;
+  }
+  if(operand.kind == Operand::OP_TEMP && operand.value < values.size())
+    return values[operand.value];
+  return RelativePointer();
+}
+
+bool parse_scalar_copy_group(const std::vector<Instruction> & instructions,
+                             std::size_t start,
+                             const std::vector<std::size_t> & uses,
+                             ScalarCopyGroup * result)
+{
+  if(start + 4 > instructions.size()) return false;
+  const Instruction & first_index = instructions[start];
+  const Instruction & second_index = instructions[start + 1];
+  const Instruction & load = instructions[start + 2];
+  const Instruction & store = instructions[start + 3];
+  if(first_index.kind != Instruction::IK_INDEX ||
+     second_index.kind != Instruction::IK_INDEX ||
+     first_index.second.kind != Operand::OP_INTEGER ||
+     second_index.second.kind != Operand::OP_INTEGER ||
+     !first_index.second.has_int_value ||
+     !second_index.second.has_int_value ||
+     first_index.second.int_high != 0 ||
+     second_index.second.int_high != 0 ||
+     first_index.second.int_value < 0 ||
+     first_index.second.int_value != second_index.second.int_value ||
+     load.kind != Instruction::IK_LOAD || load.volatile_access ||
+     load.first.kind != Operand::OP_TEMP ||
+     store.kind != Instruction::IK_STORE || store.volatile_access ||
+     store.first.kind != Operand::OP_TEMP ||
+     store.first.value != load.dest ||
+     store.second.kind != Operand::OP_TEMP ||
+     !lowir_model::same_lowir_type(load.type, store.type)) return false;
+  const std::size_t bytes = scalar_store_bytes(load.type);
+  if(bytes == 0 || !first_index.dest.valid() ||
+     !second_index.dest.valid() || !load.dest.valid()) return false;
+  const Instruction * source_index = 0;
+  const Instruction * destination_index = 0;
+  if(load.first.value == first_index.dest &&
+     store.second.value == second_index.dest) {
+    source_index = &first_index;
+    destination_index = &second_index;
+  } else if(load.first.value == second_index.dest &&
+            store.second.value == first_index.dest) {
+    source_index = &second_index;
+    destination_index = &first_index;
+  } else return false;
+  const std::uint32_t ids[] = {
+    static_cast<std::uint32_t>(first_index.dest),
+    static_cast<std::uint32_t>(second_index.dest),
+    static_cast<std::uint32_t>(load.dest)};
+  for(std::size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i)
+    if(ids[i] >= uses.size() || uses[ids[i]] != 1) return false;
+  result->start = start;
+  result->offset = first_index.second.int_value;
+  result->bytes = bytes;
+  result->source_base = source_index->first;
+  result->destination_base = destination_index->first;
+  result->source_address = source_index->dest;
+  result->destination_address = destination_index->dest;
+  result->loaded_value = load.dest;
+  result->alignment = load.type.alignment;
+  return true;
+}
+
+std::vector<std::size_t> instruction_uses(const Function & function)
+{
+  std::vector<std::size_t> result(function.value_names.size(), 0);
+  const auto record = [&result](const Operand & operand) {
+    if(operand.kind == Operand::OP_TEMP && operand.value < result.size())
+      ++result[operand.value];
+  };
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t i = 0; i < function.blocks[block].instructions.size(); ++i) {
+      const Instruction & instruction =
+        function.blocks[block].instructions[i];
+      record(instruction.first);
+      record(instruction.second);
+      record(instruction.third);
+      for(std::size_t arg = 0; arg < instruction.args.size(); ++arg)
+        record(instruction.args[arg]);
+    }
+  return result;
+}
 
 struct SlotPlan
 {
@@ -342,6 +484,154 @@ bool forward_staged_object_copies(
     if(!forwarding_detail::forward_one_staged_copy(function, analysis, stats))
       break;
     changed = true;
+  }
+  return changed;
+}
+
+bool eliminate_fully_overwritten_zero_inits(Function * function, Stats * stats)
+{
+  bool changed = false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block) {
+    std::vector<Instruction> & instructions =
+      function->blocks[block].instructions;
+    std::vector<unsigned char> dead(instructions.size(), 0);
+    for(std::size_t start = 0; start < instructions.size(); ++start) {
+      const Instruction & zero = instructions[start];
+      if(zero.kind != Instruction::IK_ZEROINIT || zero.byte_count == 0 ||
+         zero.byte_count > 64 || zero.volatile_access)
+        continue;
+      std::vector<RelativePointer> values(function->value_names.size());
+      std::vector<unsigned char> covered(zero.byte_count, 0);
+      std::size_t covered_bytes = 0;
+      for(std::size_t scan = start + 1; scan < instructions.size(); ++scan) {
+        const Instruction & instruction = instructions[scan];
+        if(overwrite_scan_pure(instruction.kind)) {
+          if(instruction.dest.valid() && instruction.dest < values.size()) {
+            RelativePointer fact;
+            if(instruction.kind == Instruction::IK_COPY &&
+               instruction.type.kind == lowir_model::LTK_PTR)
+              fact = relative_pointer(instruction.first, zero.first, values);
+            else if(instruction.kind == Instruction::IK_INDEX &&
+                    instruction.index_projection == lowir_model::IPK_FIELD &&
+                    instruction.second.kind == Operand::OP_INTEGER &&
+                    instruction.second.has_int_value &&
+                    instruction.second.int_high == 0) {
+              fact = relative_pointer(instruction.first, zero.first, values);
+              if(fact.known)
+                fact.offset += instruction.second.int_value;
+            }
+            values[instruction.dest] = fact;
+          }
+          continue;
+        }
+        if(instruction.kind != Instruction::IK_STORE ||
+           instruction.volatile_access)
+          break;
+        const RelativePointer destination =
+          relative_pointer(instruction.second, zero.first, values);
+        const std::size_t bytes = scalar_store_bytes(instruction.type);
+        if(!destination.known || destination.offset < 0 || bytes == 0 ||
+           static_cast<std::size_t>(destination.offset) > zero.byte_count ||
+           bytes > zero.byte_count -
+             static_cast<std::size_t>(destination.offset))
+          break;
+        const std::size_t first = static_cast<std::size_t>(destination.offset);
+        for(std::size_t byte = first; byte < first + bytes; ++byte)
+          if(!covered[byte]) {
+            covered[byte] = 1;
+            ++covered_bytes;
+          }
+        if(covered_bytes == zero.byte_count) {
+          dead[start] = 1;
+          changed = true;
+          if(stats) {
+            ++stats->overwritten_zero_inits;
+            stats->overwritten_zero_bytes += zero.byte_count;
+            ++stats->rewrites;
+          }
+          break;
+        }
+      }
+    }
+    if(std::find(dead.begin(), dead.end(), 1) != dead.end()) {
+      std::vector<Instruction> kept;
+      kept.reserve(instructions.size());
+      for(std::size_t i = 0; i < instructions.size(); ++i)
+        if(!dead[i]) kept.push_back(std::move(instructions[i]));
+      instructions.swap(kept);
+    }
+  }
+  return changed;
+}
+
+bool coalesce_adjacent_scalar_copies(Function * function, Stats * stats)
+{
+  const std::vector<std::size_t> uses = instruction_uses(*function);
+  bool changed = false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block) {
+    std::vector<Instruction> & instructions =
+      function->blocks[block].instructions;
+    std::vector<Instruction> rebuilt;
+    rebuilt.reserve(instructions.size());
+    for(std::size_t index = 0; index < instructions.size();) {
+      ScalarCopyGroup first;
+      if(!parse_scalar_copy_group(instructions, index, uses, &first)) {
+        rebuilt.push_back(std::move(instructions[index++]));
+        continue;
+      }
+      if(!proven_disjoint_bases(
+           *function, first.source_base, first.destination_base)) {
+        rebuilt.push_back(std::move(instructions[index++]));
+        continue;
+      }
+      std::size_t end = index + 4;
+      std::size_t bytes = first.bytes;
+      std::size_t alignment = first.alignment;
+      std::size_t groups = 1;
+      while(end < instructions.size()) {
+        ScalarCopyGroup next;
+        if(!parse_scalar_copy_group(instructions, end, uses, &next) ||
+           !lowir_opt::same_operand(
+             first.source_base, next.source_base) ||
+           !lowir_opt::same_operand(
+             first.destination_base, next.destination_base) ||
+           next.offset != first.offset + static_cast<long long>(bytes))
+          break;
+        bytes += next.bytes;
+        alignment = std::min(alignment, next.alignment);
+        ++groups;
+        end += 4;
+      }
+      if(groups < 2) {
+        rebuilt.push_back(std::move(instructions[index++]));
+        continue;
+      }
+      rebuilt.push_back(std::move(instructions[index]));
+      rebuilt.push_back(std::move(instructions[index + 1]));
+      Instruction copy;
+      copy.kind = Instruction::IK_COPYOBJ;
+      copy.byte_count = bytes;
+      copy.byte_alignment = alignment;
+      copy.first.kind = Operand::OP_TEMP;
+      copy.first.value = first.source_address;
+      copy.first.literal_type = lowir_model::builtin_lowir_type(
+        lowir_model::LTK_PTR);
+      copy.second.kind = Operand::OP_TEMP;
+      copy.second.value = first.destination_address;
+      copy.second.literal_type = lowir_model::builtin_lowir_type(
+        lowir_model::LTK_PTR);
+      copy.debug_location = instructions[index + 3].debug_location;
+      rebuilt.push_back(std::move(copy));
+      index = end;
+      changed = true;
+      if(stats) {
+        ++stats->adjacent_scalar_copy_runs;
+        stats->adjacent_scalar_copy_groups += groups;
+        stats->adjacent_scalar_copy_bytes += bytes;
+        stats->rewrites += groups * 4 - 3;
+      }
+    }
+    instructions.swap(rebuilt);
   }
   return changed;
 }

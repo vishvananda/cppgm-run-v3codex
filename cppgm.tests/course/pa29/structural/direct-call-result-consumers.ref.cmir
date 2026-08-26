@@ -16,6 +16,8 @@ function @produce
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret rdi
@@ -27,6 +29,8 @@ function @consume
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret rdi
@@ -37,6 +41,8 @@ function @saved_address
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, @saved
@@ -49,6 +55,8 @@ function @observe_reference
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -60,6 +68,8 @@ function @load_saved
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 rax, [rdi]
@@ -72,6 +82,8 @@ function @store_result
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     call @produce [args=(rdi)]
@@ -84,6 +96,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve <gpr0> <gpr1>
 
   block ^entry

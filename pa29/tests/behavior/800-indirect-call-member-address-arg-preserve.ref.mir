@@ -20,6 +20,8 @@ function @read_value
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -37,6 +39,8 @@ function @invoke
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -56,6 +60,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, @object

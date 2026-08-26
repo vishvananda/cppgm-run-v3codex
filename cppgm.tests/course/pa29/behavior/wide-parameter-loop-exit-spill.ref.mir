@@ -57,6 +57,8 @@ function @probe
   frame
     stack_size 112
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve r13 r14 rbx r12 r15
     param-slot %compare -> [rbp-8] : ptr
     param-slot %constant -> [rbp-16] : i64
@@ -206,6 +208,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, @phimem

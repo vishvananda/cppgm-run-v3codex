@@ -25,6 +25,8 @@ function @write_fields
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.ptr [rdi], rsi
@@ -38,6 +40,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry

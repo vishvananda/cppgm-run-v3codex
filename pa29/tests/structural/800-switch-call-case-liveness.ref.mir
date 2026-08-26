@@ -17,6 +17,8 @@ function @touch
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret rsi
@@ -30,6 +32,8 @@ function @dispatch
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
 
   block ^entry
@@ -60,6 +64,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 1

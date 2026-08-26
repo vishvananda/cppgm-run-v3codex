@@ -11,6 +11,8 @@ function @false_condition
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, 0
@@ -22,6 +24,8 @@ function @clobber_return_register
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, 1
@@ -33,6 +37,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry

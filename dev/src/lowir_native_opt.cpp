@@ -673,7 +673,7 @@ Liveness compute_liveness(const MirFunction & function, const ControlFlow & cfg,
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       const MirInstruction & instruction = function.blocks[i].instructions[j];
       if(stats) ++stats->instruction_visits;
-      uses[i] |= instruction_uses(instruction) & ~defs[i];
+      uses[i] |= instruction_uses(instruction, true) & ~defs[i];
       defs[i] |= instruction_defs(instruction);
     }
   }
@@ -718,6 +718,141 @@ Liveness compute_liveness(const MirFunction & function, const ControlFlow & cfg,
   return live;
 }
 
+RegisterMask explicit_registers(const MirInstruction & instruction)
+{
+  RegisterMask result = 0;
+  for(std::size_t i = 0; i < instruction.operands.size(); ++i)
+    result |= operand_registers(instruction.operands[i]);
+  return result;
+}
+
+bool debug_ranges_use_register(const MirFunction & function,
+                               X64Register reg)
+{
+  for(std::size_t variable = 0;
+      variable < function.debug_variables.size(); ++variable)
+    for(std::size_t range = 0;
+        range < function.debug_variables[variable].ranges.size(); ++range) {
+      const mir_model::MirDebugVariable::Range & location =
+        function.debug_variables[variable].ranges[range];
+      if(location.location == mir_model::MirDebugVariable::Range::LK_REG &&
+         location.reg == reg)
+        return true;
+    }
+  return false;
+}
+
+bool can_recolor_register(const MirFunction & function,
+                          const Liveness & liveness,
+                          X64Register source, X64Register destination)
+{
+  const RegisterMask source_bit = gpr_bit(source);
+  const RegisterMask destination_bit = gpr_bit(destination);
+  if(debug_ranges_use_register(function, source)) return false;
+  bool source_seen = false;
+  for(std::size_t block_index = 0;
+      block_index < function.blocks.size(); ++block_index) {
+    const MirBlock & block = function.blocks[block_index];
+    RegisterMask live = liveness.out[block_index];
+    for(std::size_t i = block.instructions.size(); i != 0; --i) {
+      const MirInstruction & instruction = block.instructions[i - 1];
+      const RegisterMask defs = instruction_defs(instruction);
+      const RegisterMask uses = instruction_uses(instruction, true);
+      const RegisterMask explicit_mask = explicit_registers(instruction);
+      const RegisterMask before = uses | (live & ~defs);
+      const bool mentions_source = ((defs | uses) & source_bit) != 0;
+      source_seen = source_seen || mentions_source;
+      // Every source occurrence must be explicit so the rewrite cannot miss
+      // an ABI or instruction-specific implicit register dependency.
+      if(mentions_source && !(explicit_mask & source_bit)) return false;
+      // The two colors may not hold distinct live values at any boundary.
+      if((before & source_bit) && (before & destination_bit)) return false;
+      if((live & source_bit) && (live & destination_bit)) return false;
+      // A destination clobber cannot be crossed by a value formerly held in
+      // the callee-saved source register.
+      if((live & source_bit) && (defs & destination_bit) &&
+         !(defs & source_bit))
+        return false;
+      // Keep the first implementation conservative around instructions that
+      // mention both colors, even when boundary liveness would permit
+      // coalescing them.
+      if((explicit_mask & source_bit) &&
+         ((defs | uses) & destination_bit))
+        return false;
+      live = before;
+    }
+  }
+  return source_seen;
+}
+
+void rewrite_register(MirOperand * operand, X64Register source,
+                      X64Register destination)
+{
+  if(operand->kind == MirOperand::OP_REG && operand->reg == source)
+    operand->reg = destination;
+  else if(operand->kind == MirOperand::OP_DEREF) {
+    if(operand->reg == source) operand->reg = destination;
+    if(operand->has_index && operand->index == source)
+      operand->index = destination;
+  }
+}
+
+// Lowering allocates physical registers online.  A short call-free range can
+// therefore occupy a callee-saved register merely because the caller-saved
+// choices were busy at its definition, even when a caller-saved register is
+// free for that range in the completed CFG.  Recolor one whole physical color
+// when exact MIR liveness proves that all of its ranges avoid the replacement
+// and every replacement clobber.  Whole-color rewriting keeps the proof small
+// and lets frame finalization remove the now-unused eager save/restore.
+bool recolor_call_free_callee_saved(MirFunction & function,
+                                    const Liveness & liveness,
+                                    Stats * stats)
+{
+  bool has_call = false;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t instruction = 0;
+        instruction < function.blocks[block].instructions.size();
+        ++instruction) {
+      const MirInstruction::Opcode opcode =
+        function.blocks[block].instructions[instruction].opcode;
+      has_call = has_call || opcode == MirInstruction::MI_CALL ||
+        opcode == MirInstruction::MI_CALL_INDIRECT;
+    }
+  // In a frameless SysV call function, an even save count also needs one
+  // padding word.  Recoloring one save then removes both the memory operation
+  // and the padding adjustment in each prologue/epilogue.  Odd-to-even
+  // recoloring merely trades a save for an adjustment and is not a clear hot
+  // path win, while leaf functions have no call-alignment tax at all.
+  if(!has_call || function.callee_saved_regs.size() % 2 != 0) return false;
+  static const X64Register destinations[] = {
+    XR_R8, XR_R9, XR_RDI, XR_RSI
+  };
+  for(std::size_t saved = function.callee_saved_regs.size();
+      saved != 0; --saved) {
+    const X64Register source = function.callee_saved_regs[saved - 1];
+    for(std::size_t candidate = 0;
+        candidate < sizeof(destinations) / sizeof(destinations[0]);
+        ++candidate) {
+      const X64Register destination = destinations[candidate];
+      if(!can_recolor_register(
+           function, liveness, source, destination)) continue;
+      for(std::size_t block = 0; block < function.blocks.size(); ++block)
+        for(std::size_t instruction = 0;
+            instruction < function.blocks[block].instructions.size();
+            ++instruction)
+          for(std::size_t operand = 0;
+              operand < function.blocks[block].instructions[instruction].
+                operands.size(); ++operand)
+            rewrite_register(
+              &function.blocks[block].instructions[instruction].
+                operands[operand], source, destination);
+      if(stats) ++stats->rewrites;
+      return true;
+    }
+  }
+  return false;
+}
+
 bool is_removable_definition(const MirInstruction & instruction,
                               RegisterMask live)
 {
@@ -736,6 +871,105 @@ void retain_debug(const MirInstruction & removed, MirInstruction * survivor)
   if(!survivor->has_source_position && removed.has_source_position) {
     survivor->has_source_position = true;
     survivor->source_position = removed.source_position;
+  }
+}
+
+bool debug_ranges_use_frame_offset(const MirFunction & function,
+                                   long long offset)
+{
+  for(std::size_t variable = 0;
+      variable < function.debug_variables.size(); ++variable)
+    for(std::size_t range = 0;
+        range < function.debug_variables[variable].ranges.size(); ++range) {
+      const mir_model::MirDebugVariable::Range & location =
+        function.debug_variables[variable].ranges[range];
+      if(location.location == mir_model::MirDebugVariable::Range::LK_FRAME &&
+         location.frame_offset == offset)
+        return true;
+    }
+  return false;
+}
+
+// A value selected into a temporary frame home can still be sitting intact in
+// its defining register when its sole consumer immediately follows the store.
+// Forward the register into an integer compare before liveness is built.  The
+// binding identity proves that no other logical use needs the stored value;
+// limiting the first rule to an adjacent consumer avoids any intervening
+// clobber proof and leaves the broader delayed-reload oracle undisturbed.
+void forward_adjacent_single_use_frame_compares(MirFunction & function,
+                                                Stats * stats)
+{
+  if(function.frame_bindings.empty()) return;
+  std::vector<std::size_t> uses(function.frame_bindings.size() + 1, 0);
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t instruction = 0;
+        instruction < function.blocks[block].instructions.size();
+        ++instruction)
+      for(std::size_t operand = 0;
+          operand < function.blocks[block].instructions[instruction].
+            operands.size(); ++operand) {
+        const MirOperand & value =
+          function.blocks[block].instructions[instruction].operands[operand];
+        if(value.kind == MirOperand::OP_FRAME &&
+           value.frame_binding != 0 && value.frame_binding < uses.size())
+          ++uses[value.frame_binding];
+      }
+
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    std::vector<MirInstruction> & instructions =
+      function.blocks[block].instructions;
+    for(std::size_t index = 0; index + 1 < instructions.size();) {
+      MirInstruction & store = instructions[index];
+      MirInstruction & compare = instructions[index + 1];
+      if(store.opcode != MirInstruction::MI_STORE || store.volatile_access ||
+         store.operands.size() != 2 ||
+         store.operands[0].kind != MirOperand::OP_FRAME ||
+         store.operands[0].frame_binding == 0 ||
+         store.operands[1].kind != MirOperand::OP_REG ||
+         compare.opcode != MirInstruction::MI_CMP ||
+         compare.operands.size() != 2 || compare.type != store.type) {
+        ++index;
+        continue;
+      }
+      const std::uint32_t binding = store.operands[0].frame_binding;
+      if(binding > function.frame_bindings.size() || uses[binding] != 2 ||
+         function.frame_bindings[binding - 1].kind !=
+           mir_model::MirFrameBinding::FB_TEMP ||
+         function.frame_bindings[binding - 1].type != store.type ||
+         debug_ranges_use_frame_offset(
+           function, function.frame_bindings[binding - 1].offset)) {
+        ++index;
+        continue;
+      }
+      std::size_t frame_operand = compare.operands.size();
+      for(std::size_t operand = 0; operand < compare.operands.size(); ++operand)
+        if(compare.operands[operand].kind == MirOperand::OP_FRAME &&
+           compare.operands[operand].frame_binding == binding) {
+          if(frame_operand != compare.operands.size()) {
+            frame_operand = compare.operands.size();
+            break;
+          }
+          frame_operand = operand;
+        }
+      if(frame_operand == compare.operands.size() ||
+         (frame_operand == 0 &&
+          compare.operands[1].kind != MirOperand::OP_REG &&
+          compare.operands[1].kind != MirOperand::OP_IMM) ||
+         (frame_operand == 1 &&
+          compare.operands[0].kind != MirOperand::OP_REG)) {
+        ++index;
+        continue;
+      }
+      MirOperand replacement;
+      replacement.kind = MirOperand::OP_REG;
+      replacement.reg = store.operands[1].reg;
+      compare.operands[frame_operand] = replacement;
+      retain_debug(store, &compare);
+      instructions.erase(instructions.begin() + index);
+      if(stats) ++stats->rewrites;
+      // The compare now occupies the erased store's index.  Continue after it.
+      ++index;
+    }
   }
 }
 
@@ -942,6 +1176,41 @@ void finalize_frame(MirFunction & function, Stats * stats)
   if(stats) ++stats->rewrites;
 }
 
+void select_frame_pointer_policy(MirFunction & function, Stats * stats)
+{
+  function.omit_frame_pointer = false;
+  if(function.has_dynamic_stack || function.host_eh_enabled ||
+     function.scratch_bytes != 0 || !function.debug_variables.empty()) return;
+
+  bool has_call = false;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function.blocks[block].instructions.size(); ++index) {
+      const MirInstruction & instruction =
+        function.blocks[block].instructions[index];
+      if(instruction.opcode == MirInstruction::MI_EH_PUSH ||
+         instruction.opcode == MirInstruction::MI_EH_POP ||
+         instruction.opcode == MirInstruction::MI_EH_CATCH ||
+         instruction.opcode == MirInstruction::MI_EH_FILTER ||
+         instruction.opcode == MirInstruction::MI_EH_CLEANUP_CLAUSE ||
+         instruction.opcode == MirInstruction::MI_LOAD_EXCEPTION ||
+         instruction.opcode == MirInstruction::MI_LOAD_EXCEPTION_SELECTOR ||
+         instruction.opcode == MirInstruction::MI_RESUME) return;
+      has_call = has_call || instruction.opcode == MirInstruction::MI_CALL ||
+        instruction.opcode == MirInstruction::MI_CALL_INDIRECT;
+      for(std::size_t operand = 0;
+          operand < instruction.operands.size(); ++operand)
+        if(instruction.operands[operand].kind == MirOperand::OP_FRAME) return;
+    }
+
+  function.omit_frame_pointer = true;
+  if(stats) {
+    ++stats->frameless_functions;
+    if(has_call) ++stats->frameless_call_functions;
+    stats->frameless_saved_registers += function.callee_saved_regs.size();
+  }
+}
+
 std::size_t instruction_count(const MirFunction & function)
 {
   std::size_t count = 0;
@@ -980,6 +1249,7 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
   if(level < 0 || level > 3)
     throw std::logic_error("unsupported machine optimization level");
   if(level == 0) return;
+  function.share_epilogues = false;
   const std::chrono::steady_clock::time_point started =
     std::chrono::steady_clock::now();
   if(stats) {
@@ -993,6 +1263,7 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
   // preserved PA29 representation.
   make_scalar_float_returns_explicit(function, stats);
   if(level >= 2) trace_layout(function, stats);
+  forward_adjacent_single_use_frame_compares(function, stats);
   std::vector<std::vector<bool> > preserve(function.blocks.size());
   for(std::size_t i = 0; i < function.blocks.size(); ++i)
     rewrite_local_operands(function.blocks[i], preserve[i], stats);
@@ -1007,7 +1278,10 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
   remove_dead_definitions(function, preserve, liveness, stats);
   // Removing value shuffles can expose one more natural branch tail.
   clean_branches(function, stats);
-  if(level >= 2) finalize_frame(function, stats);
+  const bool recolored =
+    recolor_call_free_callee_saved(function, liveness, stats);
+  if(level >= 2 || recolored) finalize_frame(function, stats);
+  select_frame_pointer_policy(function, stats);
   if(stats) {
     stats->output_instructions += instruction_count(function);
     stats->elapsed_nanoseconds += static_cast<std::uint64_t>(

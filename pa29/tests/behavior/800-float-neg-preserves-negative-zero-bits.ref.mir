@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     slot $box -> [rbp-8] : f64
 
   block ^entry

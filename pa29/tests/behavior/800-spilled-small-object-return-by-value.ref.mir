@@ -15,6 +15,8 @@ function @make_tag_spilled
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $tmp -> [rbp-8] : obj<8x8>
     slot $force_spill -> [rbp-48] : obj<40x8>
 
@@ -32,6 +34,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     temp %tag -> [rbp-8] : obj<8x8>
 
   block ^entry

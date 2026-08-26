@@ -18,6 +18,8 @@ function @store_dec
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %dec -> [rbp-8] : i64
 
   block ^entry
@@ -34,6 +36,8 @@ function @call_field_with_later_arg
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     slot $this -> [rbp-8] : ptr
 
@@ -55,6 +59,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry

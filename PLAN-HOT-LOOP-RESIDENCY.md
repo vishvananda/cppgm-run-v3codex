@@ -1,0 +1,1320 @@
+# PLAN-HOT-LOOP-RESIDENCY: P32 residual operation-count parity
+
+Status: active; retained-change coverage has been converted to
+student-implementable property/behavior oracles; focused lanes, the full
+through-PA38 gate, file audit, and fresh 32-way inception all pass;
+performance work has resumed
+
+Date: 2026-08-26
+
+## 1. Objective
+
+Continue the self-`-O1` parity program after the guarded-partial-inlining
+experiment in `PLAN-GUARDED-PARTIAL-INLINING.md`.  P31 established that a
+small speculative prefix is not the missing operating point: the tested
+prefixes reduced samples in `Lexer::Run` and `Lexer::Peek`, but increased or
+left flat whole-compiler native time.  The useful P31 survivors instead remove
+ordinary work: adjacent scalar move coalescing, a proved nonzero-underflow
+fold, and potentially fully overwritten aggregate initialization.
+
+P32 attacks the residual in two measured classes:
+
+1. keep loop-carried and loop-invariant values resident in registers inside
+   large, already-inlined hot callers, beginning with the binary-search loops
+   duplicated into `Lexer::Run`; and
+2. remove distributed construction, move, initialization, and helper traffic
+   that remains visible across the frontend and LowIR optimizer.
+
+The exit criterion is an honest same-revision native wall ratio of at most
+**1.50x against both GCC O1 and Clang O1** on the frozen workload.  The host
+references and the self compiler must be built from the same source revision.
+Generated text, data, relocations, section layout, and observable behavior must
+agree; compiler-dependent numeric spelling of otherwise identical local
+symbols is not a semantic difference.  This target is not relaxed if one
+compiler reaches it first.
+
+P32 is not a new global inline-cap sweep, another guarded-prefix grid, or an
+assumption that removing frame prologues alone will close the gap.
+
+## 2. Frozen workload and starting points
+
+The workload remains:
+
+```text
+/home/vishvananda/cppgm-extended-pa39-source-layout/
+  benchmarks/self_compile/stable/semantic_overload.cpp
+```
+
+with:
+
+```sh
+cppgm++ -std=gnu++11 -Wall -O1 \
+  -I/home/vishvananda/cppgm-extended-pa39-source-layout/dev/src \
+  -c -o semantic_overload.o semantic_overload.cpp
+```
+
+### 2.1 Closed P30 baseline
+
+At `37e17155`, six rotating native samples and exact Ir-only Cachegrind gave:
+
+| compiler | wall | user | Ir |
+|---|---:|---:|---:|
+| self O1 | 9.883 s | 9.407 s | 40,046,026,786 |
+| GCC O1 | 5.830 s | 5.362 s | 20,438,817,693 |
+| Clang O1 | 5.640 s | 5.173 s | 20,803,446,126 |
+
+The ratios were 1.695x self/GCC and 1.752x self/Clang in wall time.  All three
+compilers emitted:
+
+```text
+f5f3a11c079a07da2ab4b891828ade8a4332f32ac67c77417e46f25b20ba4753
+```
+
+### 2.2 Provisional P31 survivor point
+
+The adjacent scalar-copy coalescer, including the same-class copy/move
+constructor no-alias proof, reduced the self compiler by about 1.5--1.7%
+relative to the predicate-only build.  A preliminary three-sample
+same-source comparison measured:
+
+| compiler | wall | user |
+|---|---:|---:|
+| self O1 | 9.797 s | 9.317 s |
+| GCC O1 | 5.817 s | 5.373 s |
+| Clang O1 | 5.667 s | 5.200 s |
+
+All three emitted:
+
+```text
+a54d2c816036ee7779f55df842f935631c92521e0186b69e30f54f87cd418f65
+```
+
+This point is provisional until the P31 survivor tree passes the full gates
+in Section 8.  Its preliminary wall ratios are 1.684x against GCC and 1.729x
+against Clang.  With those denominators, 1.50x would require self wall at or
+below 8.726 s and 8.501 s respectively: about 1.30 s, or 13.2%, below the
+provisional self time.  Host denominators must be remeasured after every
+source landing; these numbers size the work but do not freeze the denominator.
+
+### 2.3 Current source-matched P32 checkpoint
+
+After the retained-change audit and the P31/P32 survivor cleanup, the
+pre-landing six-sample medians were 9.470 s self, 5.785 s GCC, and 5.675 s
+Clang.  Native software perf and final MIR then isolated repeated scalar
+merge-edge traffic in the inlined punctuator classifier inside `Lexer::Run`.
+
+The first P32 landing transfers a frame home's ownership through a single-use
+acyclic phi chain.  A chain inside a cycle is admitted only when both
+non-loop-carried phis belong to the same strongly connected component, which
+proves that the source is refreshed before each dynamic use.  Loop-carried
+phis, multi-use sources, type changes, and loop invariants feeding a repeated
+merge retain independent homes.
+
+Six rotating source-matched samples after that landing measured:
+
+| compiler | wall median | user median | wall ratio |
+|---|---:|---:|---:|
+| self O1 | 9.420 s | 8.950 s | 1.000x |
+| GCC O1 | 5.795 s | 5.335 s | 1.626x |
+| Clang O1 | 5.700 s | 5.225 s | 1.653x |
+
+Self and GCC emit the exact object
+`10842620113e31fd83cd76e75335c26227e2e01b9b83b310f2fe9e4ad1080abb`.
+Clang differs only in two compiler-created local-symbol numeric spellings;
+text, data, relocations, sections, disassembly, and object size are otherwise
+identical.
+
+Against a feature-off build, four source-diverse translation units remove 126
+MIR instructions, 63 loads, 63 stores, and 904 text bytes.  `Lexer::Run`
+falls from 3454 to 3444 MIR instructions, loses five load/store pairs, and
+shrinks from 15,261 to 15,188 bytes.  The large LowIR slot-promotion function
+loses 12 MIR instructions and six load/store pairs.  The through-PA38 gate is
+5452/5452, the PA38 file audit passes, and 32-way O1 inception matches.
+
+The second P32 landing protects call-preserved register capacity for a
+frequently reused call result defined and consumed within one cyclic choice
+region.  The definition must dominate every use, every use must be in the same
+cyclic component, and the value must be refreshed on each iteration; loop
+invariants and values without that proof keep the existing placement path.
+This adapts I3's original call-free-region sketch to the measured shape: the
+choice inputs themselves are call results and some paths contain an optional
+later call, so caller-saved-only placement cannot represent their lifetime.
+
+Against an exact-current-source feature-off compiler, six rotating samples
+measure 9.435 s wall / 8.960 s user enabled versus 9.535 s / 9.040 s disabled,
+improvements of 1.05% wall and 0.88% user.  Ir-only Cachegrind measures
+39,022,955,684 versus 39,200,289,897 instructions (-177,334,213, -0.452%).
+`Lexer::Run` falls 2,497,059,077 to 2,332,487,627 instructions (-6.59%) and
+accounts for 92.8% of the whole-process instruction reduction.  All native and
+profiled A/B outputs are byte-identical at
+`56cc21765910967a1bf95138dac2f4144dbb7dc265ce16ae7d5411012fb28250`.
+The last fully source-matched host medians imply provisional ratios near 1.62x
+GCC and 1.65x Clang; rebuild both hosts after the next cumulative landing.
+
+A fresh production checkpoint then rebuilt both host compilers from the same
+source and measured 9.435 s self, 5.830 s GCC, and 5.720 s Clang wall medians
+on six rotating samples.  The honest ratios were 1.618x and 1.650x.  Native
+`task-clock` attribution put the next visible gaps in `Lexer::Run`,
+`std::vector<unsigned>::_M_fill_append`, `PhysicalCursor::Next`, and
+`Program::EnsureEntry`; the vector helper still carried loop phis through
+frame homes despite already preserving the full call-saved pool.
+
+The LowIR pipeline now repeats ordinary scalar-slot promotion after late and
+post-prune definition-removing inlining.  On the current PA11 module the late
+revisit changes 15 additional functions, removes 14 LowIR instructions, and
+reduces final MIR by 26 instructions and 23 frame operands beyond the
+post-prune-only point.  The implementation constructs reusable CFG/dominator
+state only after promotion succeeds.  Six native A/B samples still show a
+small cost (9.535/9.065 s candidate wall/user versus 9.480/8.995 s before the
+cleanup), so this is retained as a genuine PA37 code-quality improvement, not
+claimed as a performance landing.
+
+The third P32 native landing admits loop-carried scalar phis in a bypassable
+fast arm only when the phi dies before the first call, the fast-loop header
+cannot reach any call, and the sibling call-bearing path already has at least
+five values live through that call.  On the frozen PA11 module the final gate
+changes exactly `_M_fill_append`: its frame size and five-register preserve
+set are unchanged, whole-function scalar loads/stores fall 71 to 66, and the
+fast loop loses all six per-iteration frame accesses.  Against the immediately
+preceding compiler, six rotating medians improve 9.595 to 9.525 s wall
+(-0.73%) and 9.120 to 9.050 s user (-0.77%); three balanced native
+`task-clock` samples improve 9529.32 to 9475.71 ms (-0.56%).  All twelve
+native outputs are byte-identical at `13e3c638...7e9ea`.
+
+## 3. What P31 established
+
+### E1. Guarded partial inlining is closed for the measured shape
+
+The disabled census and guarded clone seam were implemented.  Tested
+prefix/budget points included 24/24, loop-ranked 24/128, ranked 24/128, and
+24/512 variants.  They ranged from approximately flat to 1.2% slower in native
+time.  Software `task-clock` samples showed local reductions in `Run` and
+`Peek`, but the total compiler did not improve.  The mechanism therefore does
+not clear its own whole-program keep criterion.
+
+The diagnostic census can remain stats-only.  The production partial-clone
+policy and driver knobs should not remain active merely because the clone is
+correct.
+
+### E2. Predicate collapse is correct but not a major time source
+
+A conservative CFG fold proves that an unsigned `x - 1` underflow branch is
+dead after a dominating, memory-stable `x != 0` edge.  It fires twice on the
+preprocessor, removes the intended branch and cold path, and shrinks the
+object, but native time is within noise.  It is a valid code-quality change;
+it is not evidence for widening the partial inliner.
+
+### E3. Adjacent scalar move coalescing is a real survivor
+
+The staged-copy pass coalesces adjacent scalar `INDEX`/`LOAD`/`STORE` groups
+to `COPYOBJ` only when the bases are the same or mechanically proven disjoint.
+The same-class copy/move constructor boundary marks its two object parameters
+no-alias.  On the representative macro TU this finds 3 runs, 31 groups, and
+146 copied bytes.  `Token::Token(Token&&)` ends in `copyobj 61x1`, and its
+native size falls from 311 to 213 bytes.  PA37 and PA38 focused suites pass.
+
+This is the strongest measured P31 landing candidate.  Its new object hash is
+intentional generated-code improvement, not a correctness rejection.  The
+same-revision host and self outputs agree exactly.
+
+### E4. Blanket loop outlining is not the answer
+
+Rejecting every ordinary loop-bearing inline target reduced frozen text by
+2.5% and made `IsInRanges` visible again.  It reduced `Lexer::Run` samples,
+but newly outlined standard-library loops recovered much of the saved cost.
+The broad point improved wall only about 0.7%; restricting the rule to shared
+loop bodies improved about 0.4% wall and 0.15% user in a noisy three-block
+comparison.
+
+The conclusion is not that all small loop improvements should be discarded.
+It is that `contains a backedge` is too coarse a production classifier.  P32
+must distinguish loops whose inlining exposes useful scalar work from loops
+whose cloned induction state becomes frame traffic.
+
+### E5. Fully overwritten initialization is promising but unmeasured
+
+A conservative pass now recognizes a bounded, nonvolatile `ZEROINIT` whose
+entire byte range is overwritten by scalar stores before any observation.  On
+the inheritance probe it removes four 24-byte zero-initializations and shrinks
+`LookupResult::LookupResult()` from 207 to 175 native bytes.  This candidate
+still requires P31 correctness, same-output, and native timing gates.  P32
+must record it as provisional rather than count its hoped-for gain.
+
+## 4. Where the remaining time is hiding
+
+Native software `perf record -e task-clock -F 199` is the fast attribution
+tool.  It reproduces the Cachegrind hotspot ordering in one ordinary compile
+and avoids waiting for exact simulation on every candidate.  It is not used as
+the timing oracle.
+
+At the current source-matched point, the leading self samples include:
+
+| self symbol | self sample share | interpretation |
+|---|---:|---|
+| `Lexer::Run` | 5.50% | largest single attributable frontend gap |
+| `Lexer::Peek` | 3.23% | high share, but roughly equal absolute Clang time |
+| `PhysicalCursor::Next` | 2.01% | lexer/cursor tower |
+
+Approximate task-clock attribution puts `Lexer::Run` near 0.65 s in self and
+0.18--0.20 s in the host builds, leaving about 0.45 s of excess.  `Peek` is
+near 0.30 s in both self and Clang despite its different percentage.  Thus
+`Peek` is no longer a justified primary target, while `Run` is.
+
+Static code shape supports the same conclusion:
+
+| `Lexer::Run` producer | native bytes |
+|---|---:|
+| self O1 before phi-home landing | 15,261 |
+| self O1 after phi-home landing | 15,188 |
+| GCC O1 | 9,539 |
+| Clang O1 | 5,104 |
+
+Self and Clang both retain 81 static `Run`-to-`Peek` calls.  The `Run` gap is
+therefore in the caller body, not simply a failure to inline `Peek`.  Mapping
+native software samples back to generated blocks corrected the earlier
+ranking: the hottest cluster is the inlined `ScanPunctuator` switch and its
+nested ternary/phi choice web around `Run+0x1600`, not the duplicated
+`IsInRanges` binary searches.  GCC and Clang also inline `ScanPunctuator`, so
+outlining it would not explain host parity.
+
+Before the landing, `Run` contained about 3,108 native instructions versus
+1,983 GCC and 1,283 Clang.  Its census reports 498 planned values, only four
+successful grants, 311 busy-location rejections, and 298 planned values that
+ultimately define in frame homes.  The landing removes five repeated
+load/store pairs but leaves the much larger placement-pressure population.
+
+The largest next plausible individual win is therefore a bounded, call-free
+SCC-local placement probe for the punctuator choice web: temporarily shorten
+or spill conflicting outer live ranges at the region boundary, keep only the
+iteration-local values in caller-saved registers, and account for every
+boundary reload.  This is narrower than the rejected broad merge-phi,
+caller-saved loop-phi, and CMOV experiments.  Even eliminating the full
+measured `Run` excess cannot finish P32 alone; the remaining gap is distributed
+over cursor helpers, semantic tables, construction, and LowIR optimizer work.
+
+## 5. Working model and decision tree
+
+The first P32 question is whether the bad inlined loops can be made cheap in
+place:
+
+```text
+small loop cloned into a large hot caller
+                  |
+          loop values resident?
+             /             \
+           yes              no
+           |                |
+      retain inline    can placement be fixed
+                            /       \
+                          yes        no
+                          |          |
+                    registerize   keep helper outlined
+```
+
+The preferred result is local register residency because Clang demonstrates
+that the inlined form can be compact.  Selective outlining is the fallback,
+not the first assumption.  A production choice must be based on loop shape,
+live-state pressure, and resulting MIR movement; it must not mention lexer
+symbols or benchmark files.
+
+Frame/rbp elision is secondary.  Earlier P28 census found only about 4% of
+functions had zero stack adjustment and no callee-saved pushes because most
+values were frame-homed.  P31's overwritten-initialization cleanup may enlarge
+that population, so P32 will recount it, but no frame-elision implementation
+starts before the new census proves a meaningful dynamic population.
+
+Correct minor MIR/object improvements and performance-policy landings have
+different gates:
+
+- A mechanically correct simplification may remain when it reduces generated
+  work, preserves all reference behavior, and has no reproducible native
+  regression.  Intentional fixture changes are regenerated and documented;
+  their small size is not grounds for rejection.
+- A heuristic that changes inlining, outlining, or allocation policy must show
+  a reproducible whole-compiler benefit or a finalist-level exact Ir benefit.
+  Locally prettier MIR alone does not establish policy profitability.
+
+## 6. Investigations
+
+### I1. Close the P31 survivor matrix
+
+Build isolated self compilers for predicate-only, scalar-copy, shared-loop,
+and overwritten-zero points.  Use five rotating A/B/B/A blocks for adjacent
+points, then rebuild same-revision GCC and Clang references for the retained
+tree.  Record:
+
+- frozen object equality within each revision;
+- PA37 and PA38 focused results;
+- LowIR, final MIR, movement, and object deltas;
+- wall/user means and medians; and
+- one software-perf profile for the survivor.
+
+Retain scalar-copy unless a correctness failure appears.  Retain the
+overwritten-zero fold if it is correct and non-regressing even if its time gain
+is below the native noise floor.  Keep the shared-loop rejection only if a
+longer same-revision comparison confirms a benefit; otherwise remove it and
+use its evidence to seed I3.
+
+### I2. Hot-loop residency census
+
+Add stats-only telemetry after final MIR planning for every natural loop:
+
+- source function and stable loop header identity;
+- block and instruction counts;
+- calls, EH edges, and nested-loop depth;
+- loop-carried phi/value count and scalar width;
+- frame loads/stores inside the loop by value and reason;
+- loop-invariant addresses reloaded in the loop;
+- available, claimed, clobbered, and callee-saved register counts over the
+  loop span;
+- whether the loop came from an inlined source site; and
+- estimated dynamic priority from native software samples, kept outside the
+  production policy.
+
+Inspect `Lexer::Run`, `IsInRanges`, `PhysicalCursor::Next`, one semantic-table
+loop, and one LowIR optimizer loop.  The census must find a source-diverse
+population before a general allocator change is attempted.
+
+Decision:
+
+- If loop values are demoted despite an actually free register, proceed to I3.
+- If registers are exhausted by long outer live ranges, run I4 before changing
+  allocation.
+- If the `Run` loops are exceptional and no source-diverse population exists,
+  skip the general placement slice and use selective outlining only if I4
+  clears its whole-program gate.
+
+Current result: the natural-loop census is implemented with CFG backedges
+whose headers dominate their latches.  It reports final-MIR blocks,
+instructions, calls, EH operations, nesting depth, frame operands, function
+frame bindings, and callee-saved count.  The companion function census reports
+planned-location contention and actual definition locations.  Across
+tokenizer, macro processor, PA11 model, and LowIR optimizer sources it finds
+22, 214, 156, and 297 natural loops respectively.  Large loops contain 1,448
+to 2,775 frame operands, and the representative large functions have 192 to
+691 busy grant failures.  The source-diverse pressure population is therefore
+established; exact values are diagnostic, not test or policy thresholds.
+
+### I3. Bounded loop-local residency probe
+
+The broad loop-phi and invariant probes are closed: caller-saved loop phis,
+all merge-phi register homes, broad segmented residency, and added
+callee-saved homes either regress through save/restore work or remain flat.
+The next diagnostic probe is narrower.  Select one call-free SCC subregion,
+spill or end only the outer live ranges that block it, and keep its
+iteration-local choice values in caller-saved registers until the region
+exit.  Boundary stores/reloads, encoder scratch, EH edges, and every fixed
+register effect are part of the cost.  Reuse P30's location timeline; do not
+add a second allocator.
+
+Probe the inlined `ScanPunctuator` choice web in `Lexer::Run`, then
+structurally equivalent call-free SCC regions in at least two other source
+areas.  Record affected-function MIR, frame movement, boundary movement,
+native bytes, and software-perf attribution.  Do not retest broad CMOV
+if-conversion or blanket register-homed merge phis.
+
+Proceed to production policy only if:
+
+- region frame movement falls by at least 25% after boundary cost;
+- the affected function does not add more save/restore work than it removes;
+- combined affected-symbol task-clock or exact Ir improves; and
+- frozen whole-compiler native time is directionally positive.
+
+Current result: the measured residual was a guarded call-free fast arm rather
+than another broad SCC class.  A first probe that relaxed only the bypass gate
+improved `_M_fill_append`, but also changed four unrelated full-save functions:
+`NamePath::Push` grew by 17 MIR instructions, `LookupGraphCandidate` by 24,
+and `LookupUnqualifiedCandidate` by 6 as phi homes displaced overlapping
+pre-call residents.  Full callee-save use alone is therefore not a sufficient
+profitability proof.  Requiring the loop header to be unable to reach a call
+isolates the path-disjoint class: the PA11 census changes `_M_fill_append`
+only, removes its six hot-loop frame accesses without adding save/restore
+work, and clears the repeated native-user and task-clock gates above.  The
+broad point is rejected; the path-disjoint point is retained.
+
+### I4. Inline-versus-outline placement classifier
+
+For a small loop-bearing callee, collect its cost in both legal states using a
+diagnostic trial:
+
+1. retained as an outlined function and call; and
+2. inlined and fully cleaned through MIR planning.
+
+Compare definition-removal value, call count, cloned loop count, frame
+movement, native bytes, and optimizer cost.  This is a measurement probe, not
+a production compile-time dual code generator.
+
+Use the results to derive a cheap pre-MIR structural classifier.  Candidate
+inputs may include shared versus single-call ownership, nested-loop creation,
+callee loop-carried value count, caller live-state pressure, inline hint, and
+definition removal.  `contains a backedge` by itself is prohibited as the
+retained rule.
+
+Only pursue production selective outlining if I3 cannot recover the resident
+state or the classifier finds a separate source-diverse winning class.
+
+### I5. Construction, move, and initialization residual
+
+After I1, refresh the sample and exact top-function differential.  Investigate
+the following structural classes in order of measured residual, not this
+document's spelling:
+
+1. scalar stores that completely overwrite a preceding `ZEROINIT`;
+2. adjacent disjoint scalar copies not yet represented as `COPYOBJ`;
+3. move constructors that copy a constant byte range plus a small state tail;
+4. adjacent constant stores safely widened to one store; and
+5. vector initialization/growth sequences whose immediately overwritten state
+   survives cleanup.
+
+Each transformation needs a no-alias or exact-range proof and earliest-owner
+reducers.  Do not infer disjointness from parameter position except where the
+typed constructor boundary mechanically proves the language relationship.
+
+### I6. Residual re-baseline against both hosts
+
+After each cumulative 2% self improvement, rebuild same-revision GCC and Clang
+O1 compilers and repeat:
+
+- six rotating native samples per compiler;
+- one `--stats` phase attribution per compiler;
+- software-perf symbol attribution;
+- ELF text/movement census; and
+- exact Ir-only Cachegrind for finalists.
+
+The next slice is chosen from the new absolute self-minus-host time, not the
+old percentage ranking.  In particular, do not keep targeting `Peek` if its
+absolute time remains at host parity.
+
+## 7. Implementation phases
+
+### Phase A. P31 cleanup and honest baseline
+
+Complete I1.  Remove or leave disabled the rejected guarded-partial policy,
+retain useful diagnostic counters, and decide the shared-loop and overwritten-
+zero candidates.  Rebuild all three compilers from the survivor revision.
+
+Exit:
+
+- same-revision object equality;
+- PA37 and PA38 focused suites pass;
+- no O0 transformation;
+- six-sample self/GCC/Clang baseline recorded; and
+- no profiler or build process remains.
+
+### Phase B. Loop census and one-function proof
+
+I2 is complete.  Implement the revised diagnostic part of I3 and prove the
+mechanism on `Lexer::Run` without a production symbol special case.  Inspect
+code and movement before timing.
+
+Exit:
+
+- the two target loops keep selected state in registers safely;
+- `Run` native size and frame movement fall;
+- `Run` plus any outlined/helper cost falls in attribution; and
+- the whole frozen compile is directionally faster.
+
+### Phase C. Source-independent loop policy
+
+Admit one census-proven structural class.  Prefer loop-local residency; use
+I4's selective outlining only for shapes that cannot be placed profitably.
+Add PA37/PA38 reducers for calls, nested loops, register clobbers, phi edges,
+EH rejection, and deterministic ordering.
+
+Landing gate for an allocation/inlining policy:
+
+- at least 0.5% exact frozen Ir improvement or a repeated 0.5% native-user
+  improvement with matching attribution;
+- no increase in whole-object scalar movement unless smaller dynamic work
+  explains and pays for it;
+- no tested workload regresses by more than 1% exact Ir without an explicit
+  tradeoff; and
+- host/self frozen outputs match exactly.
+
+### Phase D. Distributed work removal
+
+Implement I5 one proof class at a time.  Small correct simplifications may
+land below the performance-policy threshold when they reduce LowIR/MIR/object
+work and do not regress native time.  Maintain a separate cumulative timing
+ledger so these improvements are not mistaken for achieving the P32 target.
+
+### Phase E. Re-baseline and repeat
+
+Run I6 whenever the cumulative self numerator improves by about 2%.  Re-rank
+absolute gaps, then return to Phase B or D.  Stop expanding a mechanism when
+its measured population is exhausted.
+
+### Phase F. Exit validation
+
+P32 completes only when the same-revision six-sample means are at most 1.50x
+both hosts and the correctness matrix in Section 8 is clean.  A meaningful
+improvement that remains above either ratio is a landing, not completion.
+
+## 8. Validation and fast measurement protocol
+
+### 8.1 Retained-change test ownership gate
+
+No transformation or code-generation policy is considered retained until it
+has an explicit entry in the parity coverage matrix.  The audit starts with
+every production survivor recorded in `PLAN-O1-PARITY.md`, continues through
+every retained landing in `PLAN-INLINE-PARITY.md`, and then covers the P31/P32
+worktree.  The entry records:
+
+- the student-facing README paragraph that states the high-level feature and
+  its safety boundary strongly enough for an independent implementation;
+- the implementation seam and the earliest assignment that owns its contract;
+- at least one positive reducer that proves the documented relationship or
+  behavior at the earliest observable LowIR, MIR, or native surface, while
+  permitting materially different correct implementations;
+- negative reducers for each material safety guard (for example aliasing,
+  volatility, EH, frame-address, dynamic-stack, or successor-phi rejection);
+- an O0/non-applicable-level reducer when the change is restricted to O1+;
+- any intentionally changed authoritative fixture and why it moved; movement
+  of a whole-output fixture is maintenance evidence only and never substitutes
+  for the focused feature oracle; and
+- the focused command plus the full PA37/PA38 gates that exercise the entry.
+
+Ownership follows the first observable compiler boundary:
+
+- LowIR simplification, inlining, alias facts consumed by LowIR, and CFG shape
+  are owned by PA37.  A real LowIR improvement must be serialized and tested
+  there; it must not be moved into native preparation merely to avoid updating
+  a PA37 expectation.
+- Baseline LowIR-to-MIR selection and native encoding are owned by PA29.  Use
+  its strict or structural lane when the documented MIR shape is the contract,
+  and its behavior lane when several legal register/allocation/encoding shapes
+  satisfy the documented rule.
+- O1+ MIR rewriting, whole-function register/frame policy,
+  prologue/epilogue layout, unwind metadata, and final machine control-flow
+  layout are owned by PA38.
+- A change spanning both boundaries needs an owning reducer in each suite, not
+  only a final generated-program behavior test.
+
+Existing fixtures should be reused when they already isolate the behavior.
+When the general contract intentionally improves their expected shape, update
+the authoritative expectation in place and record the diff in the matrix.  Add
+a new reducer under `cppgm.tests/course/paN/` when no existing fixture states
+the positive case or a material rejection guard.  Do not weaken comparison,
+special-case a test, or count broad suite passage as proof of coverage.
+
+The feature oracle must not compare complete program contents at any compiler
+boundary: not a complete generated executable, object, MIR module, or LowIR
+module, and not a hash or byte-for-byte transcription of the current compiler's
+answer.  Such comparisons freeze one implementation's layout, instruction
+selection, allocation, scheduling, or serialization instead of specifying an
+assignment students can implement from the README.  A student-facing README
+must first describe the high-level capability and its safety boundary.  The
+test then validates only the smallest distinguishing structural relationship
+or observable behavior.  Native selection and encoding normally belong in an
+earlier PA2x structural or behavior fixture: canonical MIR predicates only
+when that particular MIR relationship is normative, and runtime results when
+several legal MIR/allocation/encoding shapes satisfy the rule.  PA38 controls
+are reserved for genuinely O1+ whole-function placement or MIR rewrite policy.
+
+Checked-in complete outputs may still move because the ordinary assignment
+harness records them, but they are compatibility gates, not ownership proof.
+Likewise, exact output identity is useful during performance A/B validation but
+is not a student feature test.  No implementation may recognize a fixture,
+known compiler function, source spelling, or complete instruction sequence in
+order to satisfy either kind of check.
+
+Semantics-neutral compiler-work reductions (scratch reuse, fixed-field
+dispatch, bulk input, and similar changes) cannot normally be distinguished by
+an output fixture.  Their entry instead names the exercised pipeline, the
+state/invariant that prevents semantic drift, an owning regression or
+byte-identity check, and the representative invocation that executes the hot
+path.  A broad suite is still only a gate, not the sole ownership evidence.
+
+Before P32 timing resumes, audit every production survivor recorded by
+`PLAN-O1-PARITY.md`, `PLAN-INLINE-PARITY.md`, and the P31/P32 worktree.
+Uncovered survivors block further performance work until focused coverage is
+backfilled and passes.  Rejected probes and default-disabled telemetry need a
+test only if their code or public control surface remains in production; dead
+probe controls are removed instead.
+
+The earlier audit disposition is reopened wherever it cited only broad suite
+passage, incidental complete-output movement, or an exact fixture.  Such a row
+is not closed until its README contract and focused structural or behavioral
+predicate have been identified and verified.
+
+#### Historical survivor inventory
+
+The tables below record the completed audit.  `owned` means the named
+checked-in test states the relevant positive shape and its important rejection
+cases.  `invariant` is reserved for semantics-neutral compiler-work changes
+whose output is intentionally byte-identical; those rows still name the
+exercised pipeline and identity/invariant check.
+
+`PLAN-O1-PARITY.md` survivors:
+
+| Survivor | Earliest owner and present evidence | Audit disposition |
+|---|---|---|
+| P0a retained deferred-address carriers | PA29 focused pass over `deferred-address-parameter-carrier-reuse` captures the ABI parameter carrier/home, checks direct pre-call address use and post-call restoration, and executes the reducer | owned focused structural/behavioral predicate |
+| P0b extern-template member-template instantiation | PA32 `200-extern-template-member-template-instantiation` | owned |
+| P1 `__OPTIMIZE__` and `-D`/`-U` preprocessing parity | PA15 O0 `510-no-optimize-predefine`; PA37 driver O1 `455-source-optimize-predefine` | owned |
+| P1c edge-live register lifetime across backedges | PA38 survivor-property check over `420-loop-and-eh-placement` compares unavoidable and guarded loop homes and executes both levels | owned focused structural/behavioral predicate |
+| P4a O1 scalar-slot promotion/dead stores | PA37 control `525-historical-lowir-contracts` checks the O0 slot/store baseline, O1 removal/forwarding, and an escaped-slot negative, then executes optimized output | owned focused LowIR/behavioral predicate |
+| P4a-c1 homes for promoted/direct parameters crossing clobbers | PA38 survivor-property check over O2 `400-loop-invariant-call-crossing-placement` requires loss of the O0 frame home and positive call-safe capacity without naming a register | owned focused structural/behavioral predicate |
+| P4d strength reduction, readonly-global folding, and exact pointer-difference shifts | PA15 control `530-pointer-difference-strength-reduction` checks power-of-two shift and non-power-of-two division at source-to-LowIR; PA37 control `525-historical-lowir-contracts` checks readonly folding and loop strength reduction against O0/non-applicable shapes | owned focused structural/behavioral predicates; complete-output fixture movement is compatibility evidence only |
+| P3 boolean-conversion branch forwarding | PA37 survivor-property check over `385` requires removal of redundant Boolean conversions and retention of a value-changing truncation | owned focused structural predicate |
+| P4c O1 edge-register retention | PA38 survivor-property check over `420` requires the unavoidable-loop values to lose O0 homes while the guarded-loop controls retain them; behavior runs | owned focused structural/behavioral predicate |
+| P5a raising-block serialization | PA37 survivor-property check over `390` compares only hot/raising block order in the guarded and chained cases | owned focused structural predicate |
+| noreturn continuation truncation retained during P5 | PA37 survivor-property check over `395` requires the post-noreturn jump to disappear while validating the reachable control's phi predecessors | owned focused structural predicate |
+| constructor early-return EH closure | PA26 `210-constructor-early-return-cleanup-region` | owned |
+| P9a cold-only pure-definition sinking | PA37 survivor-property check over `392-sink-cold-only-definitions` checks cold rematerialization and the hot-use negative | owned focused structural predicate |
+| P9b negated boolean compares | PA37 survivor-property check over `386` requires one inverted integer compare and retains the float pair | owned focused structural predicate |
+| P9c same-block duplicate loads | PA37 survivor-property check over `387` checks the local load-count reduction and store/call barriers | owned focused structural predicate |
+| P9d small direct `copyobj` encoding | PA29 control `905-small-copy-boundary` retains the 32-byte MIR operation, rejects string-operation encoding in the entry body, and executes it | owned focused MIR/native/behavior predicate |
+| P9e small-object promotion and object-valued-address guard | PA37 control `525-historical-lowir-contracts` checks O1 removal of an eligible complete scalar object and retention of a `copyobj` whose opposite operand is an object value; optimized behavior also runs | owned focused LowIR/behavioral predicate |
+| P11 frame-operand small copies and constant-multiply selection | PA29 controls `900`-`902` require shift/indexed-add instruction families and two direct frame operands, then execute each reducer | owned focused MIR/native/behavior predicates |
+| P12 staged object-copy forwarding | PA37 survivor-property check over `388` requires eligible staging/copy removal and retains the conditional-field home | owned focused structural predicate |
+| layout-backedge spill safety | PA29 `wide-parameter-loop-exit-spill` behavior reducer | owned |
+| P10 v7-v10 planned residency, sound interval release, and alias accounting | PA38 survivor-property checks over `420`, `426`, and `428` inspect only local home, release/reuse, and live-address relationships and execute both levels | owned focused structural/behavioral predicates |
+| P10 v11 call-preserved capacity and single-use plan coverage | PA38 control `445-historical-placement-contracts` checks an eligible single-use call-crossing value loses its O0 frame home and receives call-safe capacity | owned focused structural/behavioral predicate; no register name or complete MIR oracle |
+| P13 deferred compare across clobbering calls | PA38 survivor-property check over behavior reducer `405` requires the operand loads before, and compare after, the call with call-safe capacity; behavior runs | owned focused structural/behavioral predicate |
+| P14 bulk source/include reads | all driver and preprocessor inputs exercise the path; frozen host/self objects were byte-identical | invariant |
+| P16 direct local-global access and symbol-address deferral | PA29 control `903-direct-global-storage` checks direct symbol storage operands versus an observed-address materialization and executes the reducer | owned focused structural/behavioral predicate |
+| P17 call-free caller-saved planning | PA38 control `445-historical-placement-contracts` checks a call-free branch adds no frame home or preserved capacity, a call-crossing twin remains protected, and two post-call tails stay frameless under five-value preserved pressure | owned focused structural/behavioral predicate; no caller-register names |
+| P17b call-free planning inside EH functions | PA38 survivor-property check over `420` compares the call-free/call-crossing EH pair's homes and preserved capacity, then executes it | owned focused structural/behavioral predicate |
+| P18a volatile LowIR contract and preservation | PA15 control `541` checks access markers and an ordinary-member negative; PA37 property `540` checks O0/O2 preservation versus ordinary elimination; PA38 property `406` checks all four accesses reach MIR and runs behavior | owned focused cross-boundary structural/behavioral predicates |
+| P18b LowIR `select` plus MIR `cmov` contract | PA37 property `505` retains one live typed choice while removing its unused sibling; PA38 property `407` requires one local conditional choice per function and runs behavior | owned focused cross-boundary structural/behavioral predicates |
+| P18c non-overlapping `copyobj` contract | PA13 specification only; implementation already matched | documentation contract |
+| P19 readonly const-scalar global lowering | PA15 control `540` checks readonly scalar storage plus volatile, TLS, and class-object negatives; PA37 control `525` checks optimizer consumption | owned focused source/optimizer predicates |
+| P20 unchecked lexer lookahead after proven guards | compiler-source-only specialization; tokenizer suites plus inception exercise it | invariant; run PA3 and inception |
+| P22e dead cloned-phi filtering and moved-edge phi repair | PA37 survivor-property check over `511` validates every phi input/predecessor relationship, dead-input removal, and the cross-slot join values | owned focused structural predicate |
+| P25a `--stats-functions` placement census | PA38 driver `440-function-census` requires records for the expected source functions and the documented numeric fields, without fixing values or timing | owned structural diagnostic |
+| P27a aggregate SROA and its escape/overlap guards | PA37 survivor-property checks over `389`/`388` require component/copy collapse and retain escaping/conditional controls | owned focused structural predicates |
+| P27a cold-path-discounted inlining | PA37 survivor-property check over `510` compares call presence only between nonreturning-cold and equivalent hot work | owned focused structural predicate |
+| P27b callee-first collapse convergence | PA37 control `524-post-prune-inline-slot-promotion` checks the retained O1 post-inline cleanup at its distinguishing call/slot/phi boundary; existing `360-inline-after-callee-simplify` and O3 `560` remain compatibility reducers | owned focused O1 structural/behavioral predicate |
+
+`PLAN-INLINE-PARITY.md` survivors:
+
+| Survivor | Earliest owner and present evidence | Audit disposition |
+|---|---|---|
+| L1 `--inline-limit` diagnostic controls | PA37 control `520-inline-limit-once-cap` proves the default/overridden structural call-retention distinction and rejects invalid values through `lowiropt`; `522-driver-inline-limit` exercises all repeatable names and the same rejection rules through `cppgm++` | owned structural diagnostic |
+| L6/L31 default h48-b768 inline operating point | PA37 survivor-property checks over `391`, `475`, `476`, and `490` use only call-presence/count inequalities and policy guards | owned focused structural predicates |
+| L9 trivial-leaf budget exemption | PA37 survivor-property check over `392-inline-trivial-leaf-budget-exempt` distinguishes the exhausted-budget tiny and larger calls | owned focused structural predicate |
+| L12 phi homes/backedge coalescing and L13 direct load into a phi home | PA38 survivor-property check over `420` compares only unavoidable/guarded local frame-home relationships and executes the reducers | owned focused structural/behavioral predicate |
+| L14 unavoidable-loop invariant residency | PA38 survivor-property checks over `420` and O2 `400` cover unavoidable/guarded and call-crossing capacity relationships | owned focused structural/behavioral predicates |
+| L15 nested binary-display semantic-analysis lifetime fix | PA17 control `533-enclosing-temporary-lifetime` checks selected operator use, reverse destruction, unwind cleanup, and generated behavior | owned focused LowIR/behavioral predicate |
+| L17-L19 R10/R11 bounded frame-load carries and float exclusion | PA29 `scratch-carried-frame-reloads` now requires a positive `scratch_carried_reloads` fact and runs integer/float-pressure behavior; the predicate names no register and fixes no count | owned focused diagnostic/behavioral predicate |
+| L22 deserving call-crossing callee-saved placement | PA38 O2 survivor property `400` requires the O0 home to disappear with positive call-safe capacity and retains a floating control | owned focused structural/behavioral predicate |
+| L26 bitset/hoist/epoch optimizer self-cost reduction | PA37 optimizer pipeline is byte-identical | invariant |
+| L30 final-use edge-live release and L33 span-end planned release | PA38 survivor properties `428`/`426` compare dominated-tail reload counts and dead/live address takeover locally | owned focused structural/behavioral predicates |
+| L37 union-safe address deferral and L38 pure-frame constant-index deferral | PA38 survivor property `427` checks direct frame/global/constant-index operands versus variable-index materialization | owned focused structural/behavioral predicate |
+| L40 cross-slot-needed promoted-phi insertion | PA37 survivor property `511` requires destination-slot removal and a join phi containing both edge values, then validates predecessors | owned focused structural predicate |
+| L44 lazy fallback homes | PA38 control `445-historical-placement-contracts` checks that a completely resident loop value loses its O0 eager fallback home while call/pressure behavior remains correct | owned focused structural/behavioral predicate |
+| L46 explicit location timelines | byte-identical representation migration exercised by all planned-placement tests | invariant |
+| L47/L49 frame/global address rematerialization | PA38 survivor property `427` checks only direct-address relationships and the variable-index consumer guard; behavior runs | owned focused structural/behavioral predicate |
+| L50 constant-index address replay and lifetime extension | PA38 survivor property `427` checks the constant/variable-index pair | owned focused structural/behavioral predicate |
+| L53 edge-live identity copies directly into homes | PA38 survivor property `426` captures the ABI parameter location and frame home, then checks their direct transfer without fixing a register | owned focused structural/behavioral predicate |
+| L54 three-operand 64-bit add via LEA | PA38 survivor property `426` requires one indexed two-source add relationship without fixing registers | owned focused structural/behavioral predicate |
+| L55 staged scalar call results directly from RAX | PA38 survivor property `426` checks the ABI result-to-existing-home adjacency and O0 baseline | owned focused structural/behavioral predicate |
+| L56 final-use address-register takeover by loads | PA38 survivor property `426` compares dead/live address pairs and permits any carrier register | owned focused structural/behavioral predicate |
+| L62 precomputed cyclic-block spill queries | native output byte-identical; spill-safety and loop-placement reducers exercise the query | invariant |
+| L63 removal of the transitional record/replay walk | no public surface or semantic change remains | invariant/removal |
+| L66 sparse active-MIR alias facts | final MIR byte-identical; select/copy/native optimization fixtures execute the pass | invariant |
+| L67/L68 dominated post-call use tails and full caller-register pool | PA38 survivor property `428` requires loss of the O0 crossing home, unchanged five-register pressure, and fewer tail reloads | owned focused structural/behavioral predicate |
+| L72 fixed-operand simplifier dispatch | serialized LowIR and final MIR byte-identical; PA37 optimizer corpus executes it | invariant |
+| L73 fixed-use native-analysis dispatch | final MIR byte-identical; PA38 corpus executes it | invariant |
+| L77 reusable simplifier scratch | byte-identical PA37 optimizer output, reentrant public entry remains call-local | invariant |
+| L78 reusable DCE scratch | byte-identical PA37 optimizer output, reentrant public entry remains call-local | invariant |
+| L79 reusable CFG candidate scratch | byte-identical PA37 optimizer output, standalone calls remain call-local | invariant |
+| L81 call-free EH load residency | PA38 survivor property `420` compares call-free and call-crossing EH homes/capacity and executes both levels | owned focused structural/behavioral predicate |
+
+P31/P32 worktree survivors:
+
+| Survivor | Earliest owner and present evidence | Audit disposition |
+|---|---|---|
+| nonzero-underflow predicate fold | PA37 survivor property `506` checks O0 presence, O1 removal, and mutation/volatile guards | owned focused structural predicate |
+| adjacent noalias scalar-copy coalescing | PA37 survivor property `507` checks one contiguous copy plus alias/volatile scalar guards; PA17 control `532` and PA37 driver reducers cover source-fact propagation | owned focused structural/behavioral predicates |
+| same-class copy/move-constructor boundary noalias facts | PA17 control `532-constructor-alias-boundaries` checks both constructor parameters and the conservative assignment negative, then executes; PA37 driver `460`/`461` prove propagation | owned focused LowIR/behavioral predicate |
+| fully overwritten `ZEROINIT` removal | PA37 survivor property `508` checks O0/O1 removal plus partial, observed, volatile, and size guards | owned focused structural predicate |
+| shared ordinary loop-body inline rejection | PA37 survivor property `509` compares call presence for shared, single-use, and explicitly hinted loops | owned focused structural predicate |
+| guarded partial-clone controls/mechanism | production transform and controls removed; PA37 control `521-partial-inline-census` structurally tests the retained observational `--stats` census without enabling cloning | owned diagnostic/removal |
+| O1+ conservative frameless policy and unwind metadata | PA29 control `904` establishes the O0 policy; PA38 survivor property `425` checks eligible leaf/call/return cases and frame, dynamic-stack, float-scratch, and host-EH guards | owned focused policy/behavioral predicates |
+| O1+ direct/unshared epilogues | PA29 control `904` establishes shared O0 epilogues; PA38 survivor property `425` requires direct O1 epilogues including the multiple-return reducer | owned focused policy/behavioral predicates |
+| single-use acyclic phi frame-home ownership transfer | PA38 control `442-acyclic-phi-frame-home` checks a one-shot chain and an iteration-local same-SCC chain; multi-use, loop-carried, and repeated loop-invariant controls retain independent homes, while runtime behavior catches destructive reuse | owned structural/behavioral predicate; no complete MIR or executable snapshot |
+| cyclic choice-region call-result residency | PA38 control `443-cyclic-choice-region-residency` checks that O1 keeps a refreshed, repeatedly compared call result available across an intervening call while O0 retains the frame-home baseline; runtime results exercise per-iteration refresh and a loop-invariant guard | owned focused structural/behavioral predicate; no physical register, complete MIR, or executable snapshot |
+| post-late/post-prune inline scalar-slot promotion | PA37 control `524-post-prune-inline-slot-promotion` checks that O0 retains the call and scalar slot while O1 removes both, forms the required pointer phi, and preserves generated behavior; a helper-call mutation makes the control fail | owned LowIR structural/behavioral predicate; no complete LowIR or executable snapshot |
+| path-disjoint guarded fast-loop phi residency | PA38 control `444-call-free-fast-loop-phi-residency` checks O1 removal of two fast-loop frame homes, the O0 frame-home baseline, unchanged five-register preserved capacity, and a call-reaching negative that must retain both homes; the pre-landing backend fails the control | owned focused structural/behavioral predicate; no physical register, complete MIR, or executable snapshot |
+| exact-liveness callee-save recoloring | PA38 control `446-call-free-callee-save-recoloring` checks a call-free multi-store carrier uses caller-clobbered capacity while a call-crossing twin remains call-safe, and executes the reducer | owned focused structural/behavioral predicate; no complete MIR, object, or compiler-source match |
+| adjacent single-use frame-compare forwarding | PA38 control `447-adjacent-frame-compare-forwarding` checks the direct register comparison, O0 frame baseline, multi-use guard, and generated behavior | owned focused structural/behavioral predicate; no complete MIR or instruction-sequence match |
+| post-inline hinted-definition load reuse | PA37 control `526-late-inline-hint-load-reuse` checks O0/O1 load-count relationships, the ordinary-dose negative, store/writing-call barriers, readonly-call preservation, and behavior | owned focused LowIR/behavioral predicate; no complete module or compiler-source match |
+
+#### Coverage closure map
+
+Every row above is closed with a student-contract test rather than a snapshot
+of the current compiler.  The map records the focused property controls; full
+checked-in outputs remain independent compatibility gates:
+
+| Contract group | Student-facing contract | Focused evidence and oracle |
+|---|---|---|
+| readonly scalar storage | PA15 **Assignment Boundary** | PA15 control `540-readonly-scalar-storage`: LowIR structural positive plus volatile, TLS, and class-object negatives |
+| constructor alias boundaries and nested temporary lifetime | PA17 copy/move boundary and nested operand/full-expression paragraphs | PA17 controls `532`/`533` distinguish constructor versus assignment parameter facts and validate operator-use/destruction/unwind relationships plus behavior; PA37 driver `460`/`461` verifies propagation |
+| pointer-difference lowering | PA15 pointer-arithmetic Assignment Boundary paragraph | PA15 control `530-pointer-difference-strength-reduction`; focused function-body predicates require arithmetic shift for an eight-byte element and signed division for a three-byte element, without comparing the complete generated LowIR |
+| small copy, constant multiply, and scratch-carried reload encoding | PA29 native goals 3, 8, and 15 plus its compact-MIR implementation rules | PA29 controls `900`-`902`/`905` inspect only instruction families and local MIR operands; the historical scratch reducer requires a positive diagnostic fact and integer/float-pressure behavior |
+| local-global and deferred parameter-address selection | PA29 required native behavior item 15 | controls `903` and the focused historical deferred-address pass check direct-storage/materialized-address and pre-/post-call carrier relationships plus behavior |
+| O1 LowIR survivor transforms and guards | PA37 O1 optimization-level bullets for underflow, adjacent noalias copies, full overwrite, shared loops, cold-path pricing, and phi repair | survivor-property pass over `506`-`511` plus O0 baselines and PA17/driver alias-source controls; only local relationships are inspected |
+| historical readonly, strength, and small-object survivors | PA37 O1/O2 readonly, scalar-object, and counted-loop bullets | control `525-historical-lowir-contracts`; focused O0/O1/O2 predicates plus generated behavior, including the object-valued-copy guard and no complete LowIR comparison |
+| diagnostic inliner controls and observational census | PA37 **Command Line** paragraphs for `--inline-limit` and `--stats` | controls `520`-`522`; predicates require only call presence/absence, repeatable-name acceptance, invalid-value rejection, record fields, and a nonzero eligible guarded-prefix contribution—not full output or exact counts |
+| loop/EH placement and lifetime release | PA38 O2 interval paragraphs | survivor-property pass over `400`, `410`, `420`, and `428` checks only documented homes, release/reuse, call, and EH relationships; behavior is additional |
+| staged homes, LEA, call-result stores, and load takeover | PA38 O1 rewrite bullets | survivor-property pass over `426` uses local predicates and its live-address negative |
+| rematerialized storage addresses | PA38 O1 rematerialization bullet | survivor-property pass over `427` checks frame/global/constant-index versus variable materialization and runs behavior |
+| volatile and typed conditional-choice boundaries | PA15 volatile-access bullet; PA37 preservation bullets; PA38 O1 scalar-choice bullet | PA15 `541`, PA37 properties `505`/`540`, and PA38 properties `406`/`407` validate the smallest relationship at each boundary plus behavior |
+| frame-pointer and epilogue policy | PA29 serialized MIR policy plus PA38 O1 frame/epilogue bullets | PA29 `904` and PA38 property `425` inspect only policy fields and documented guards, never complete MIR |
+| per-function native census | PA38 compile-only driver diagnostic paragraph | driver `440-function-census`; structural field/function coverage only, never exact values or timing |
+| merge-phi frame-home ownership | PA38 O1 merge-home bullet | control `442-acyclic-phi-frame-home`; focused frame-home/edge-movement predicates plus runtime results, allowing a register-resident implementation and never comparing complete MIR or executable contents |
+| cyclic choice-region residency | PA38 O1 cyclic choice-region bullet | control `443-cyclic-choice-region-residency`; focused O1-versus-O0 home predicate plus runtime refresh/invariant results, allowing any call-preserved register and never comparing complete MIR or executable contents |
+| post-inline scalar-slot promotion | PA37 O1 late/post-prune cleanup paragraph | control `524-post-prune-inline-slot-promotion`; focused O0-versus-O1 call/slot/phi predicates plus O1 behavior, with no complete LowIR or executable comparison |
+| guarded fast-loop phi residency | PA38 O1 guarded-fast-arm bullet | control `444-call-free-fast-loop-phi-residency`; focused O0-versus-O1 frame-home and preserved-capacity predicates, a call-reaching negative, and runtime behavior, allowing any physical registers |
+| historical planned capacity and fallback ownership | PA38 O2 single-use, call-free, call-safe, and lazy-home bullets | control `445-historical-placement-contracts`; focused home/capacity relationships plus O0/O1 runtime behavior, never naming a physical register or comparing complete MIR |
+
+One focused control may cover several rows when each function has one named
+purpose and each row has its own local property or behavior predicate.  A
+complete expected MIR/LowIR body is never the feature oracle.  The final
+matrix records mutation or historical-parent evidence for correctness bugs
+where practical, so a reducer is not accepted merely because it passes the
+current compiler.
+
+### 8.2 Per-edit loop
+
+1. Build affected development tools with `make -C dev -j32`.
+2. Run the earliest-owner property control plus focused PA37/PA38 tests.
+3. Verify the frozen output hash against a same-revision host build.
+4. Inspect transformation census, affected LowIR/MIR, movement, and object
+   size.
+5. Run three rotating native samples for direction.
+6. Use one native software `task-clock` profile for attribution when needed.
+
+Every accepted increment is an atomic checkpoint.  Before committing it:
+
+1. update its student-facing README contract, focused property/behavior test,
+   and this ledger;
+2. run the owning `make test-paN`, PA37/PA38 when affected, and
+   `git diff --check`;
+3. confirm that only intended source, test, README, fixture, and plan files are
+   staged--never `.tmp`, profiler data, or timing objects; checked-in reference
+   programs are allowed only when produced by the documented `ref-test` path;
+4. commit the increment with its fast-verification result in the message or
+   ledger; and
+5. record the commit id in the next ledger entry.
+
+Do not accumulate more than three retained local commits or end a work session
+with an unpushed retained commit.  Before each push, run
+`make test-report-through-pa38` and the PA38 file audit, then push the current
+`v3opt` checkpoint to `origin`.  Run fresh 32-way inception before that push
+whenever the batch changes a compiler boundary or native policy, reaches about
+2% cumulative native improvement, or is a finalist; otherwise inception may
+be amortized across the next push batch.  Record the through count, audit,
+inception disposition, commit id, remote branch, and push result in the
+ledger.  Rejected experiments leave no production code; their evidence may be
+committed with the next retained checkpoint or as a small plan-only checkpoint.
+
+QEMU software PMU emulation is not used: it is likely slower and less faithful
+for this native x86_64 compiler than the already-working native software-event
+sampler.  Cachegrind is reserved for finalists.
+
+Before starting a profiler, check that no earlier instance remains:
+
+```sh
+pgrep -af 'valgrind|cachegrind|callgrind|perf record'
+```
+
+Do not treat the `pgrep` command itself as a stale profiler.
+
+### 8.3 Exact finalist gate
+
+For a native-positive finalist:
+
+```sh
+valgrind --tool=cachegrind --cache-sim=no --branch-sim=no \
+  --cachegrind-out-file=/tmp/p32-self.cg \
+  <self-compiler> <frozen-compile-arguments>
+```
+
+Run the same-revision GCC and Clang references when denominator or attribution
+may have moved.  Confirm the generated object hash after each profiler run and
+remove no profiler output until its result has been recorded.
+
+### 8.4 Correctness and inception gate
+
+Every retained behavior or code-generation change must pass:
+
+```sh
+make test-pa37
+make test-pa38
+make test-report-through-pa38
+perl scripts/cppgm_file_audit.pl --stage pa38 --paths dev
+```
+
+Final PA39 validation uses isolated roots.  **Every inception invocation uses
+both outer `-j32` and `INCEPTION_BUILD_JOBS=32`:**
+
+```sh
+P32_RUN_ROOT=/tmp/v3codex-p32-COMMIT-j32
+
+/usr/bin/time -v make -C pa39 -j32 cppgm++-self \
+  CXX=../dev/cppgm++ CPPGM_HOST_CXX=g++ \
+  INCEPTION_OBJ_ROOT_BASE="$P32_RUN_ROOT/obj" \
+  INCEPTION_BIN_ROOT_BASE="$P32_RUN_ROOT/bin" \
+  INCEPTION_SELFHOST_OPT_LEVEL=1 \
+  INCEPTION_BUILD_JOBS=32
+
+/usr/bin/time -v make -C pa39 -j32 compare-cppgm++-inception \
+  CXX=../dev/cppgm++ CPPGM_HOST_CXX=g++ \
+  INCEPTION_OBJ_ROOT_BASE="$P32_RUN_ROOT/obj" \
+  INCEPTION_BIN_ROOT_BASE="$P32_RUN_ROOT/bin" \
+  INCEPTION_SELFHOST_OPT_LEVEL=1 \
+  INCEPTION_BUILD_JOBS=32
+```
+
+Repeat restored-self O0 and O3 lanes at final landing.  Do not reuse a partial
+object root for a clean timing or reproducibility claim, and do not start an
+inception lane while another build or profiler is active.
+
+## 9. Risks and fallbacks
+
+- **R1: register residency adds callee-save cost.** Include prologue/epilogue
+  cost in the keep test; a loop-local load/store reduction does not pay if the
+  function adds an equally hot save/restore sequence.
+- **R2: a large caller has no truly free register.** Use I4 to keep the bad
+  loop outlined, or shorten unrelated live ranges using existing P30 facts.
+  Do not silently reserve encoder scratch.
+- **R3: trial dual lowering is too expensive.** Keep it diagnostic-only and
+  derive a cheap structural production classifier from its results.
+- **R4: selective outlining repeats the broad-loop failure.** Require combined
+  caller/helper attribution and whole-compiler improvement.  Reject the class,
+  not all loop work, if cost merely moves between symbols.
+- **R5: no-alias construction rules become too broad.** Admit only exact typed
+  language relationships or same-base proofs.  Uncertain overlap blocks the
+  transformation.
+- **R6: native samples are noisy.** Use rotating blocks, user time, matching
+  attribution, and exact Ir for finalists.  Do not use a single wall result to
+  reject a correct minor simplification or accept a global policy.
+- **R7: `Run` improves but the 1.50x target remains distant.** This is expected
+  from the current bound.  Re-profile the distributed residual and continue
+  Phase D; do not declare the program complete after one hot-function win.
+- **R8: profiler/build overlap corrupts results.** Check processes before each
+  long run, use isolated roots, and record cleanup state in the ledger.
+
+## 10. Ledger seed
+
+- **P32-L0 (RESIDUAL ANALYSIS).** P30 closed at 9.883/5.830/5.640 s
+  self/GCC/Clang wall and 40.046B/20.439B/20.803B Ir.  The provisional P31
+  copy-coalesced point is 9.797/5.817/5.667 s in three samples, with exact
+  same-revision output `a54d2c...f65`.  Guarded partial prefixes are neutral or
+  negative; adjacent scalar copy coalescing improves self by about 1.5--1.7%;
+  broad/shared loop rejection is at most a small provisional win; overwritten
+  zero initialization is structurally positive but not yet timed.  Native
+  software perf puts about 0.45 s of host-relative excess in `Lexer::Run`,
+  whose self body is 15,109 bytes versus 9,539 GCC and 5,104 Clang.  `Peek` is
+  approximately at Clang absolute-time parity.  No stale profiler remained.
+- **P32-L1 (NEXT ACTION).** Complete I1.  Time and validate the overwritten-
+  zero candidate, decide the shared-loop rule with a longer comparison, remove
+  rejected active policy, and establish the six-sample same-revision
+  self/GCC/Clang survivor baseline before changing loop placement.
+- **P32-L2 (COVERAGE AUDIT).** Audited every production survivor in
+  `PLAN-O1-PARITY.md`, `PLAN-INLINE-PARITY.md`, and the P31/P32 tree.  README
+  contracts and earliest-owner reducers now cover the retained LowIR and
+  native features.  Native predicates use focused PA29/PA38 structure or
+  runtime behavior; no test compares a complete executable image.  The
+  pre-landing root gate passed 5452/5452.
+- **P32-L3 (ATTRIBUTION CORRECTION).** Native task-clock samples mapped through
+  temporary block offsets place the hottest `Lexer::Run` cluster in the
+  inlined `ScanPunctuator` switch/ternary phi web, not the previously suspected
+  binary searches.  Function census is 498 planned, four grants, 311 busy
+  rejections, and 298 frame definitions.  GCC and Clang also inline the helper.
+- **P32-L4 (UNSAFE PHI-HOME PROBE).** Unrestricted static-single-use home
+  sharing improved native time but corrupted a loop invariant feeding a
+  repeated acyclic merge.  In self-hosting this changed FDEs from the
+  personality CIE to the basic CIE.  PA38 control `442` reduces the bug: a
+  zero choice in one iteration overwrites the invariant needed by the next.
+  A one-shot-only guard was correct but lost the hot `Run` and LowIR optimizer
+  improvements.
+- **P32-L5 (SCC-LOCAL PHI-HOME LANDING).** Retained ownership transfer for
+  one-shot chains and iteration-local non-loop-carried chains in the same SCC.
+  Feature-off comparison across four source areas is -126 MIR, -63 loads,
+  -63 stores, and -904 text bytes.  Six rotating medians are
+  9.420/5.795/5.700 s self/GCC/Clang, ratios 1.626x/1.653x.  Self/GCC output is
+  exact hash `108426...0abb`; Clang differs only in two local-symbol numeric
+  spellings.  PA29 is 290/290, PA38 is 46/46, through-PA38 is 5452/5452, the
+  file audit passes, and 32-way O1 inception matches.  No stale profiler
+  remained.
+- **P32-L6 (CYCLIC CHOICE-REGION LANDING).** The measured choice inputs are
+  call results and can cross an optional later call, so the probe adapted the
+  call-free/caller-saved sketch to bounded call-preserved capacity.  A call
+  result with at least three uses qualifies only when its definition dominates
+  every use and all uses share its cyclic component; overlapping reactive
+  edge-live lifetimes use the same backedge envelope as planned intervals.
+  On `pp_tokenizer.cpp`, `Lexer::Run` falls 3235 -> 2944 MIR, scalar loads
+  606 -> 480, scalar stores 576 -> 426, call stores 78 -> 34, and text by
+  914 bytes.  A census of all 213 compiler modules finds 111 candidates in 44
+  modules, 79 capacity assignments, and 29 actual residencies in 27 functions
+  across tokenizer, parser, semantic, LowIR optimizer, and object/backend
+  sources.  Six-sample same-source A/B is 9.435/8.960 enabled versus
+  9.535/9.040 disabled wall/user.  Exact Ir is 39.023B versus 39.200B;
+  `Lexer::Run` supplies 164.57M of the 177.33M reduction.  A forward register
+  order did not improve `Run` and slightly worsened `ScanRawLiteral`, so it was
+  reverted.  PA29 is 78/78, PA38 is 46/46 with focused control `443`, 32-way
+  O1 inception matched on the measured mechanism, both A/B outputs match, and
+  no profiler remains.  The final production tree passes 5453/5453 through
+  PA38, the PA38 file audit, and fresh 32-way O1 inception byte-for-byte in
+  52.68 s.
+- **P32-L7 (NEXT ACTION).** Re-rank the distributed residual against freshly
+  rebuilt same-revision GCC and Clang O1 compilers.  The cyclic choice class is exhausted:
+  lowering the use threshold or dropping the direct-branch-source filter adds
+  no population, and the remaining 45 busy candidates are a separate general
+  pressure problem.  Prefer I5 work-removal classes over widening this policy;
+  rebuild both host denominators after the next cumulative landing.
+- **P32-L8 (FRESH HOST RE-BASELINE).** Fresh production binaries under
+  `/dev/shm/v3codex-p32-region-production-*` measured six-sample wall/user
+  medians of 9.435/8.960 s self, 5.830/5.360 s GCC, and 5.720/5.255 s Clang.
+  Ratios are 1.618x and 1.650x.  Self/GCC output is exact hash
+  `56cc2176...8250`; Clang differs only in compiler-local numeric spelling.
+  Native task-clock profiles rank the residual in `Lexer::Run`, vector growth,
+  cursor movement, and entry construction.  No stale Cachegrind or perf
+  process was present before the next measurements.
+- **P32-L9 (POST-INLINE LOWIR CLEANUP).** Late and post-prune inlining can
+  splice scalar slots after the ordinary promotion wave.  Repeating the same
+  conservative promotion on rewritten callers removes 14 additional PA11
+  LowIR instructions and 26 MIR instructions.  Eager analysis construction
+  regressed native time; moving it after the successful-promotion check kept
+  identical optimized LowIR and narrowed the repeated cost to +0.58% wall and
+  +0.78% user.  PA37 control `524` is structural/behavioral and mutation-
+  proven.  This is a retained LowIR quality fix, not a numerator win.
+- **P32-L10 (DESTRUCTIVE-INTERFERENCE PROBE).** Relaxing the guarded-loop phi
+  gate whenever a function already used all five preserved registers improved
+  `_M_fill_append` but perturbed four other functions.  Three grew by 17, 24,
+  and 6 MIR instructions because the new phi claims displaced pre-call
+  residents.  This broad policy is rejected.  Adding the generic proof that
+  the fast-loop header cannot reach a call changes only `_M_fill_append` on
+  PA11, leaves its 160-byte frame and five-register preserve count unchanged,
+  removes all six per-iteration frame accesses, and reduces whole-function
+  scalar loads/stores 71 to 66.  Six-sample A/B improves wall/user by
+  0.73%/0.77%; three-sample task-clock improves 0.56%; output remains exact.
+  PA38 control `444` checks the positive, O0 baseline, preserved-capacity
+  invariant, call-reaching negative, and behavior without naming registers or
+  comparing whole MIR/executables.  The historical parent fails the control.
+- **P32-L11 (NEXT ACTION).** Run the full through-PA38 and 32-way inception
+  gates for the two new retained changes, rebuild same-revision GCC and Clang
+  denominators, and remeasure the cumulative ratio.  If either ratio remains
+  above 1.50x, use fresh task-clock attribution to choose the next distributed
+  work-removal or pressure class; do not widen the rejected guarded-phi rule.
+- **P32-L12 (FINAL GATES AND RE-BASELINE).** The cumulative tree passes PA37
+  187/187, PA38 46/46, the through-PA38 report 5453/5453, the file audit, and
+  fresh O1 inception.  The inception lane used outer `-j32`, both inner
+  32-way build settings, matched byte-for-byte, and finished in 52.02 s.  Six
+  rotating source-matched frozen samples measure 9.530/9.050 s self wall/user,
+  5.900/5.440 s GCC, and 5.805/5.315 s Clang.  Honest wall ratios are 1.615x
+  and 1.642x, so P32 remains active.  Self/GCC output hash is
+  `13e3c638...7e9ea`; Clang's stable compiler-local spelling produces
+  `9792e8e...4406`.  No Cachegrind, Valgrind, or perf recording remained.
+- **P32-L13 (FRESH DISTRIBUTED PROFILE).** Native task-clock profiles put the
+  largest absolute self excess in `Lexer::Run` (about 301 ms versus the slower
+  host), `Token::Token(Token&&)` (about 194 ms, with host inlining changing
+  attribution), `Lexer::Peek` (about 82 ms versus Clang),
+  `PhysicalCursor::Next` (about 74 ms), vector fill/append (about 66 ms), and
+  `strlen`/identifier classification.  The current tokenizer MIR census is
+  2,996 instructions with 643/612 movement loads/stores and only seven planned
+  grants; the outer `Run` loop still contains 1,099 frame operands.
+- **P32-L14 (PRIVATE TABLE HOIST REJECTED).** A diagnostic hoisted the thirteen
+  immutable named-operator pointer stores out of the inlined `Lexer::Run`
+  loop.  It preserved output but grew `Run` from 0x34ca to 0x3606 bytes and
+  regressed six-sample wall/user medians by 0.74%/0.89%.  The source-specific
+  probe is rejected; no table-content recognizer or production change remains.
+- **P32-L15 (SELECTIVE OUTLINE REJECTED).** Marking only
+  `IsNamedOperator` non-inline shrank net text by 147 bytes and preserved exact
+  behavior, but six balanced samples improved wall by only 0.26% with user
+  time flat.  This is below the reproducible keep threshold and is rejected.
+- **P32-L16 (FOCUSED COVERAGE RE-AUDIT).** Reopened every audit row whose
+  evidence was described only as exact fixture movement.  PA15 control `530`
+  now validates power-of-two versus general pointer-difference lowering;
+  PA37 control `525` validates readonly folding, strength reduction, small-
+  object promotion, and the object-valued-copy guard plus behavior; PA38
+  control `445` validates single-use call-safe capacity, call-free tails, and
+  lazy fallback ownership plus O0/O1 behavior.  These controls compare no
+  complete program, LowIR, MIR, object, executable, hash, or physical-register
+  spelling.  The student READMEs state each high-level feature and guard.
+  PA15 is 121/121, PA37 187/187, PA38 46/46, and the required through-PA38
+  report is 5453/5453.
+- **P32-L17 (NEXT ACTION).** Diagnose the 213-byte out-of-line `Token` move
+  constructor.  Its dynamic small-string `memcpy` call makes five derived
+  addresses live across a call and forces five callee saves before a fixed
+  61-byte copy.  First measure a semantics-preserving generic operation, not a
+  `Token` or frozen-input special case: either serialize a dynamic byte-copy
+  MIR operation at PA29 and inline its native implementation, or rematerialize
+  stable constant-field addresses after the call.  Any retained encoding has
+  a PA29 README contract and focused structural/behavioral reducer; any LowIR
+  rewrite is serialized and owned by PA37.
+- **P32-L18 (FIXED-COPY OVERCOPY REJECTED).** A diagnostic native lowering
+  replaced the variable small-string copy in the measured move constructor
+  with a fixed 16-byte copy where the source and destination object extents
+  made the extra reads and writes safe.  Six rotating samples moved wall/user
+  medians by only -0.515%/-0.326%, an optimistic source-specific result below
+  the keep threshold.  The candidate is rejected; no encoding policy or
+  feature test remains.  In particular, no test may recognize `Token`, the
+  frozen input, or a complete MIR/native instruction sequence.
+- **P32-L19 (PARAMETER-ADDRESS REPLAY REJECTED).** A generic probe replayed a
+  constant-index address derived from a call-stable parameter instead of
+  preserving each derived pointer.  It reduced the measured move
+  constructor's preserve set from five registers to three, but grew the body
+  from 213 to 229 bytes.  A source-independent temporary control also reduced
+  its preserve set from four to two.  Two separate 32-way O1 inception builds
+  exposed unsoundness: the first corrupted a local-member address during call
+  staging; after restricting the provenance to parameters and restoring that
+  staging path, the self compiler still corrupted a parameter-derived
+  semantic-table address.  The experiment was removed before timing, and no
+  README or feature test was retained for rejected behavior.  The restored
+  development compiler passes PA38 46/46; no Cachegrind, Valgrind, perf, or
+  inception process remains.
+- **P32-L20 (NEXT ACTION).** Return to the fresh absolute-time ranking rather
+  than widening address replay.  Inspect the source-independent inlining and
+  placement reasons for `Lexer::Run`, `Lexer::Peek`, and
+  `PhysicalCursor::Next`, beginning with small hot helpers that host compilers
+  inline but self leaves out of line.  A candidate must be stated as a general
+  PA37 inlining rule or PA29/PA38 placement rule, documented for students at
+  its earliest owner, and tested with focused structural or behavioral
+  predicates rather than complete program contents.  Use native task-clock
+  for fast attribution, rotating native samples for direction, and reserve
+  Cachegrind for a finalist.
+- **P32-L21 (CONVERTED BOOLEAN-PHI THREADING REJECTED).** A generic PA37
+  probe extended the retained loop-local Boolean-phi rewrite through a
+  Boolean-preserving conversion and a private single-predecessor jump bridge.
+  Truncation required every incoming value to be mechanically proved as a
+  comparison result or integer zero/one.  On `pp_tokenizer`, the probe reduced
+  `Lexer::Run` from 1,612 to 1,600 LowIR instructions, final MIR from 4,435 to
+  4,154 instructions, movement loads/stores from 643/612 to 563/504, and the
+  native body from `0x34ca` to `0x320f` bytes.  PA37 remained 187/187, PA38
+  remained 46/46, and a fresh 32-way O1 inception matched every object and the
+  final compiler.  The required rotating native A/B did not validate a speed
+  win: four-sample medians were 9.500/9.065 s old versus 9.530/9.050 s
+  candidate wall/user.  Each lane was internally deterministic at hashes
+  `13e3c638...7e9ea` and `f67c0b62...e985`, respectively.  The transformation
+  is therefore removed as performance-neutral.  It acquires no README rule or
+  feature test.  Had it survived, PA37 would have owned a high-level CFG rule
+  plus focused positive and safety-guard predicates; neither a complete LowIR
+  program match nor recognition of the tokenizer shape would have been
+  acceptable.  No profiler or inception process remains.
+- **P32-L22 (LATE NONZERO-UNDERFLOW FOLD REJECTED).** Comparing the retained
+  self compiler with Clang showed that `Lexer::Peek` still executed an inlined
+  unsigned `size - 1 >= size` check after a predecessor had proved the same
+  stable load nonzero.  The existing PA37 fold removes the check when run
+  again, so a no-extra-pass probe moved that fold behind the local rewrites
+  that expose it.  This is the documented general predicate rule, not a lexer
+  recognizer.  The standalone tokenizer's `Peek` body fell from 447 to 347
+  bytes and total text fell 177 bytes; the frozen generated object remained
+  byte-identical.  PA37 was 187/187, PA38 was 46/46, and a fresh 32-way O1
+  inception matched every object and compiler in 51.60 s.  Eight rotating
+  samples all emitted hash `13e3c638...7e9ea`, but old and candidate medians
+  were respectively 9.500/9.020 and 9.505/9.010 s wall/user.  The scheduling
+  move is therefore reverted as performance-neutral, with no new README rule
+  or test.  A retained version would extend PA37's existing focused predicate
+  reducer with the exposing rewrite; it would not compare a full LowIR module
+  or identify the tokenizer.  No profiler or inception process remains.
+- **P32-L23 (UNUSED BUILTIN MEMCPY INLINE REJECTED).** A generic PA29 probe
+  recognized the canonical builtin-object metadata for a direct, three-
+  argument `memcpy` whose result had no uses, and lowered it to an explicit
+  dynamic byte-copy MIR operation.  Its native definition/use masks modeled
+  only the SysV string-operation carriers rather than a full call clobber.
+  This removed the external call and one callee save from the hot `Token` move
+  constructor, shrinking that body from 213 to 198 bytes and the macro object
+  text by 78 bytes.  The canonical symbol was indexed once per program, not
+  searched per function.  PA29 remained 291/291, the host-built and freshly
+  rebuilt 32-way O1 self compiler emitted identical candidate objects at hash
+  `8b76ecac...708069`, and the build completed in 17.84 s.  Eight balanced
+  samples rejected the change: retained medians were 9.435/8.940 s versus
+  candidate 9.490/9.020 s wall/user, regressions of 0.58%/0.89%.  The complete
+  probe, including its MIR opcode and narrow clobber analysis, was removed.
+  The restored compiler emits the retained `13e3c638...7e9ea` object and
+  passes PA29 291/291 and PA38 46/46.  No README or feature test remains for
+  rejected behavior; had it survived, PA29 would have described the general
+  unused-result builtin rule and tested bounded dynamic-copy behavior plus a
+  focused operation/call guard, never a complete program or MIR match.  No
+  Cachegrind, Valgrind, perf, or inception process remains.
+- **P32-L24 (MIR FRAME-FORWARDING INTERFERENCE REJECTED).** A generic PA38
+  probe rewrote an adjacent 64-bit or pointer frame store/reload into a direct
+  register move before local machine cleanup.  `Lexer::Run` alone contained
+  217 such pairs; the probe reduced its optimized MIR from 2,996 to 2,812
+  instructions and its loop frame operands from 1,099 to 885.  Native output
+  immediately disproved the MIR-only signal.  The retained encoder's existing
+  single-use frame-reload plan sees the original pair and drops both the store
+  and reload.  The early rewrite hid that relationship, stranded the store,
+  and grew the native body from `0x34ca` to `0x398c` and tokenizer text from
+  32,853 to 34,215 bytes.  This is confirmed destructive interference between
+  two otherwise plausible layout optimizations, so the probe was removed
+  before inception or timing.  PA38 stayed 46/46 during the probe.  Any future
+  movement candidate must compare final native instructions/text as well as
+  MIR movement and must preserve or subsume the encoder's frame-forwarding
+  oracle.  No README or feature test was added for rejected behavior, and no
+  profiler or inception process remains.
+- **P32-L25 (GLOBAL LATE-INLINE DOSE REJECTED).** The retained compiler's
+  diagnostic `hint-late-cap` control was used to test whether the remaining
+  tokenizer gap was principally an inlining-dose problem.  Raising the cap
+  globally from the default to 72 reduced `Lexer::Run` from `0x34ca` to
+  `0x2978` bytes and its calls to `Lexer::Peek` from 81 to 30, but grew the
+  tokenizer object's text from 32,853 to 57,285 bytes.  A fresh isolated
+  32-way O1 inception compiler at
+  `/dev/shm/v3codex-p32-hint72/bin/selfhost/cppgm++-self` still emitted the
+  retained frozen object hash `13e3c638...7e9ea`.  Four rotating samples gave
+  retained medians of 9.435/8.960 s wall/user and candidate medians of
+  9.575/9.100 s, regressions of 1.48%/1.56%.  Normalized software task-clock
+  profiles showed the mechanism: although combined `Run`/`Peek` time fell,
+  the global budget outlined or displaced profitable code including
+  `ScanWhitespaceAndComments`, `AddSourceToken`, `ScanPunctuator`, and
+  `SpellingTable::Intern`.  This agrees with the earlier selective inlining
+  probes in `PLAN-INLINE-PARITY.md`: the 81 `Run` to `Peek` calls are not the
+  dominant remaining cause, and widening the dose creates destructive
+  interference between call sites.  No source change, README rule, or feature
+  test is retained.  The completed profile is
+  `/dev/shm/p32-hint72.perf`; no profiler or inception process remains.
+- **P32-L26 (EXACT-LIVENESS CALLEE-SAVE RECOLOR LANDING).** Completed MIR
+  now uses a call's exact annotated argument set for liveness and may recolor
+  one whole callee-saved physical color to a noninterfering caller-saved color
+  when every occurrence is explicit and the source crosses no replacement
+  clobber.  The O1 profitability gate is a call function with an even save
+  count: removing one save also removes the SysV alignment pad; leaf and
+  odd-save cases are unchanged.  Debug ranges, implicit source uses,
+  call-crossing values, boundary interference, and same-instruction conflicts
+  remain guards.  On the tokenizer, `Lexer::Peek` shrinks 447 -> 417 bytes,
+  `TranslationCursor::PullUCN` 1,977 -> 1,942 bytes, and total text falls
+  32,853 -> 32,765 bytes.  The complete self compiler loses about 30 KiB of
+  text.  Four rotating frozen samples give wall medians of 9.605/9.560 s and
+  user medians of 9.080/9.075 s old/new: a 0.47% wall improvement with user
+  time flat,
+  retained as an unambiguous native code-quality improvement rather than a
+  parity breakthrough.  Host-built and self-built candidate compilers emit
+  the exact object hash `1fb84a23...fa56`; the prior lane remains internally
+  deterministic at `13e3c638...7e9ea`.  PA38 is 46/46.  Its new control `446`
+  validates the general caller-saved multi-store carrier, exact call-argument
+  premise, call-crossing safety negative, and generated behavior through
+  focused predicates; it compares no complete MIR, object, hash, program
+  content, or compiler fixture.  The full through-PA38 report is 5,453/5,453.
+  Fresh 32-way O1 inception matches every object and the final compiler in
+  51.63 s wall (`1,338.83` s aggregate user, 229,588 KiB maximum RSS).  No
+  profiler or inception process remains.
+- **P32-L27 (POST-RECOLOR PROFILE).** A fresh software task-clock profile of
+  the inception-matched recolored compiler records 4,772 samples over about
+  9.56 s of user task-clock.  `Lexer::Run` remains the largest named body at
+  5.51% (about 527 ms), followed by `Lexer::Peek` at 3.77%,
+  `PhysicalCursor::Next` at 1.61%, vector fill/append at 1.38%, `FindChild` at
+  1.38%, and the `Token` move constructor at 1.32%.  The comparable fresh GCC
+  and Clang profiles put only about 176/220 ms in `Run`, so removal of work in
+  that body remains the largest absolute opportunity.  No stale Cachegrind,
+  Valgrind, perf, or inception process was present.
+- **P32-L28 (ADJACENT SINGLE-USE COMPARE FORWARDING LANDING).** The PA38
+  machine cleanup now forwards a scalar call result stored in a temporary
+  frame home into an immediately following integer comparison when that
+  comparison is its only annotated use, both operands have the same machine
+  type, and the other operand remains encodable.  Volatile, debug-visible,
+  unannotated, multi-use, and nonadjacent homes remain unchanged.  Tokenizer
+  text falls 32,765 -> 31,981 bytes, `Lexer::Run` falls `0x34ca` -> `0x31fb`,
+  and complete compiler text falls by 25,164 bytes.  Eight balanced frozen
+  samples give 9.525/9.055 s old versus 9.465/8.975 s new wall/user, gains of
+  0.63%/0.88%; all lanes emit hash `fce4d3d2...c49f`.  Fresh task-clock puts
+  `Run` at 4.62%, about 85 ms below the immediately prior profile.  PA38
+  control `447` validates the pressure-positive case, O0 baseline, multi-use
+  safety negative, and generated behavior with focused predicates.  PA38 is
+  46/46 and the through-PA38 report is 5,453/5,453.  The fresh cumulative
+  32-way inception gate is recorded in P32-L35.
+- **P32-L29 (DELAYED COMPARE FORWARDING REJECTED).** Extending the same
+  machine rule beyond adjacency while proving that the source register stayed
+  unchanged saved only another ten bytes in the measured tokenizer/`Run`
+  output.  That result does not justify the broader intervening-instruction
+  proof, so the extension was removed before the retained tests and timing.
+- **P32-L30 (PRE-INLINER HOT MEMORY-GVN REJECTED).** Admitting PA37's existing
+  dominance-based memory GVN at O1 for `inline_hint=yes` definitions removes
+  38 loads and 1,080 tokenizer text bytes at a measured pass cost of about
+  0.54 ms.  Its normal pipeline position is before late and post-prune
+  inlining, however, so the smaller callee bodies admit extra cloning:
+  complete compiler text grows 31,811 bytes, including +10.6 KiB in
+  `macro_processor.o`.  Balanced medians regress from 9.715/9.135 to
+  9.815/9.255 s wall/user while every generated object remains hash
+  `96036482...7654`.  The early dose is rejected and no contract or test is
+  retained for it.
+- **P32-L31 (POST-INLINE HOT MEMORY-GVN LANDING).** The same conservative GVN
+  now runs at O1 for explicit `inline_hint=yes` definitions only after every
+  inlining and reachability-pruning wave.  This preserves all inliner size
+  decisions while reusing dominating nonvolatile typed loads across blocks;
+  stores, writing calls, atomics, EH boundaries, and debug-visible accesses
+  remain barriers, while nonthrowing `readnone`/`readonly` calls preserve
+  facts.  On the tokenizer it removes 119 loads, shrinks `Run` by 361 bytes
+  and `PhysicalCursor::Next` by 133 bytes, and reduces text 30,934 -> 30,382
+  bytes.  Complete compiler text falls 7,996 bytes with no growing module in
+  the object census.  Eight balanced samples improve 9.665/9.100 ->
+  9.610/9.040 s wall/user (0.57%/0.66%) at identical hash
+  `96036482...7654`.  PA37 control `526` checks the O0 baseline, hot O1
+  positive, ordinary-dose negative, store/writing-call barriers,
+  readonly-call preservation, and behavior; disabling only the late pass
+  fails it.  PA37 is 187/187.  The fresh cumulative through gate and 32-way
+  inception are recorded in P32-L35.
+- **P32-L32 (EXACT-VALUE UNDERFLOW FOLD REJECTED).** Late load reuse exposes
+  an exact SSA value that a predecessor proves nonzero before computing
+  unsigned `x - 1 >= x`.  Extending the existing PA37 fold from stable-load
+  identity to exact SSA identity removes two tokenizer branches and shrinks
+  `Lexer::Peek` by 118 bytes, but the generic implementation grows complete
+  compiler text by 1,244 bytes.  Incremental balanced timing is flat at 9.615
+  s wall and regresses 9.045 -> 9.065 s user.  The extension and its extra
+  scheduling call are removed; it receives no README or feature test.
+- **P32-L33 (SIGN-EXTENDED IMM8 ENCODING REJECTED).** A PA29 encoder probe
+  selected x86 opcode `83` for 16-, 32-, and 64-bit integer ALU operations
+  and memory comparisons exactly when the operation-width immediate equals
+  the sign extension of its low byte.  The rule is semantically exact and
+  shrinks tokenizer text 30,382 -> 29,203 bytes (`Lexer::Run` by 604 bytes)
+  and complete compiler text by 89,752 bytes.  The object census has no
+  generated-code growth; only the encoder implementation grows, by 584
+  bytes.  Nevertheless eight interleaved samples regress 9.430/8.940 ->
+  9.490/9.020 s wall/user (0.64%/0.89%).  This is direct negative evidence
+  that global code-density/layout changes can destructively interfere with
+  the current frameless operating point: smaller native text is not by itself
+  a performance oracle.  The encoder change is removed and receives no PA29
+  contract or test.  PA29 remained 291/291 and PA38 remained 46/46 during the
+  probe; no Cachegrind or Valgrind process was left running.
+- **P32-L34 (COVERAGE-ORACLE CORRECTION).** Reopened every retained survivor
+  from `PLAN-O1-PARITY.md`, `PLAN-INLINE-PARITY.md`, and P31/P32 whose only
+  evidence was broad suite passage, incidental fixture movement, or exact
+  complete-output matching.  The earliest student-visible owners now state
+  high-level contracts in PA15, PA17, PA29, PA37, and PA38.  Their focused
+  controls inspect only distinguishing local relationships--for example
+  access markers, alias boundaries, call/slot/phi relationships, frame-home
+  and capacity inequalities, instruction families, and documented policy
+  guards--and run behavior where it can catch destructive reuse.  The
+  predicates do not match complete source programs, LowIR modules, MIR,
+  objects, executables, hashes, exact physical registers, or exact telemetry
+  counts.  Complete checked-in outputs remain compatibility gates, not the
+  ownership oracle.
+- **P32-L35 (COVERAGE CLOSURE GATE).** Focused assignment suites pass at PA15
+  121/121, PA17 247/247, PA29 291/291, PA37 187/187, and PA38 46/46.  The
+  post-formatting aggregate report passes 5,453/5,453 and the PA38 file audit
+  passes after behavior-neutral compaction brought `lowir_native.cpp` and
+  `lowir_opt.cpp` under their size limits.  A fresh isolated O1 inception used
+  both outer `-j32` and inner `INCEPTION_BUILD_JOBS=32`: self preparation took
+  18.85 s wall (450.86 s user, 228,384 KiB maximum RSS), comparison took
+  35.44 s wall (914.22 s user, 232,000 KiB maximum RSS), and every object plus
+  the final compiler matched.  No profiler or inception process remains, so
+  native performance work may resume.
+- **P32-L36 (SOURCE-MATCHED RESIDUAL REFRESH).** Rebuilt current-source GCC
+  and Clang O1 hosts in isolated trees and compared them with the freshly
+  inception-matched self compiler.  Three rotating native samples give wall
+  medians of 9.45 s self, 5.84 s GCC, and 5.83 s Clang: honest ratios of
+  1.618x and 1.621x.  Self/GCC output is exact at `d70bd5cf...d1a8`; Clang's
+  stable compiler-local spelling yields `c1114edf...e83f`.  `--stats` puts
+  about 2.8 s of the self-minus-host gap in the frontend, including roughly
+  1.6--1.8 s in semantics and 0.8--1.0 s in preprocessing, and another
+  1.7--1.8 s in LowIR optimization; native lowering, machine optimization,
+  and encoding together contribute only about 0.33--0.36 s.  Software
+  task-clock makes `Lexer::Run` the largest isolated excess at about
+  425 ms self versus 209/190 ms GCC/Clang.  `Program::EnsureEntry` is already
+  at absolute parity (118 versus 114/110 ms) and is removed from the target
+  list.  The hottest `Run` cluster is a general refreshed single-use merge:
+  a cursor-call result or ring-buffer load is stored to one frame home and
+  immediately reloaded as `AppendUTF8`'s first call argument.  The next probe
+  is a source-independent PA38 merge-to-call-argument forwarding rule with
+  predecessor coverage, register-clobber, debug, volatility, multi-use, and
+  control-flow guards.  No production probe has been applied yet, and no
+  profiler or inception process remains.
+
+Append one entry for every census, probe, landing, rejection, and re-baseline.
+Each entry records the source tree, self and host binaries, output hash,
+correctness matrix, native protocol, exact Ir when run, affected movement/text,
+and profiler/build cleanup state.

@@ -12,6 +12,8 @@ function @select_local_address
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $value -> [rbp-8] : obj<8x8>
     temp %selected -> [rbp-16] : ptr
 
@@ -48,6 +50,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry

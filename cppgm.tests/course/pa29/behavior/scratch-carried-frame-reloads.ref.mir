@@ -1,0 +1,316 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @v0
+  storage scalar i64
+  init i64 1
+
+global @v1
+  storage scalar i64
+  init i64 2
+
+global @v2
+  storage scalar i64
+  init i64 3
+
+global @v3
+  storage scalar i64
+  init i64 4
+
+global @v4
+  storage scalar i64
+  init i64 5
+
+global @v5
+  storage scalar i64
+  init i64 6
+
+global @v6
+  storage scalar i64
+  init i64 7
+
+global @v7
+  storage scalar i64
+  init i64 8
+
+global @v8
+  storage scalar i64
+  init i64 9
+
+global @v9
+  storage scalar i64
+  init i64 10
+
+global @v10
+  storage scalar i64
+  init i64 11
+
+global @v11
+  storage scalar i64
+  init i64 12
+
+global @v12
+  storage scalar i64
+  init i64 13
+
+global @v13
+  storage scalar i64
+  init i64 14
+
+global @v14
+  storage scalar i64
+  init i64 15
+
+global @v15
+  storage scalar i64
+  init i64 16
+
+function @sum_under_pressure
+  abi
+    return i64 -> rax
+  frame
+    stack_size 160
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
+    preserve rbx r12 r13 r14 r15
+    temp %v8 -> [rbp-8] : i64
+    temp %v9 -> [rbp-16] : i64
+    temp %v10 -> [rbp-24] : i64
+    temp %v11 -> [rbp-32] : i64
+    temp %v12 -> [rbp-40] : i64
+    temp %v13 -> [rbp-48] : i64
+    temp %v14 -> [rbp-56] : i64
+    temp %v15 -> [rbp-64] : i64
+    temp %x0 -> [rbp-72] : i64
+    temp %x1 -> [rbp-80] : i64
+    temp %x2 -> [rbp-88] : i64
+    temp %x3 -> [rbp-96] : i64
+    temp %x4 -> [rbp-104] : i64
+    temp %x5 -> [rbp-112] : i64
+    temp %x6 -> [rbp-120] : i64
+
+  block ^entry
+    load.i64 r8, @v0
+    load.i64 r9, @v1
+    load.i64 rdi, @v2
+    load.i64 rsi, @v3
+    load.i64 rbx, @v4
+    load.i64 r12, @v5
+    load.i64 r13, @v6
+    load.i64 r14, @v7
+    load.i64 r15, @v8
+    store.i64 [rbp-8], r15
+    load.i64 r15, @v9
+    store.i64 [rbp-16], r15
+    load.i64 r15, @v10
+    store.i64 [rbp-24], r15
+    load.i64 r15, @v11
+    store.i64 [rbp-32], r15
+    load.i64 r15, @v12
+    store.i64 [rbp-40], r15
+    load.i64 r15, @v13
+    store.i64 [rbp-48], r15
+    load.i64 r15, @v14
+    store.i64 [rbp-56], r15
+    load.i64 r15, @v15
+    store.i64 [rbp-64], r15
+    mov r15, r8
+    add r15, r9
+    store.i64 [rbp-72], r15
+    mov r15, rdi
+    add r15, rsi
+    store.i64 [rbp-80], r15
+    mov r15, rbx
+    add r15, r12
+    store.i64 [rbp-88], r15
+    mov r15, r13
+    add r15, r14
+    store.i64 [rbp-96], r15
+    load.i64 r15, [rbp-8]
+    add r15, [rbp-16]
+    store.i64 [rbp-104], r15
+    load.i64 r15, [rbp-24]
+    add r15, [rbp-32]
+    store.i64 [rbp-112], r15
+    load.i64 r15, [rbp-40]
+    add r15, [rbp-48]
+    store.i64 [rbp-120], r15
+    load.i64 r15, [rbp-56]
+    add r15, [rbp-64]
+    add r8, r9
+    add rdi, rsi
+    add rbx, r12
+    add r13, r14
+    load.i64 r9, [rbp-8]
+    add r9, [rbp-16]
+    load.i64 rsi, [rbp-24]
+    add rsi, [rbp-32]
+    load.i64 r12, [rbp-40]
+    add r12, [rbp-48]
+    load.i64 r14, [rbp-56]
+    add r14, [rbp-64]
+    add r8, rdi
+    add rbx, r13
+    add r9, rsi
+    add r12, r14
+    add r8, rbx
+    add r9, r12
+    add r8, r9
+    load.i64 r9, [rbp-72]
+    add r9, [rbp-80]
+    load.i64 rdi, [rbp-88]
+    add rdi, [rbp-96]
+    load.i64 rsi, [rbp-104]
+    add rsi, [rbp-112]
+    load.i64 rbx, [rbp-120]
+    add rbx, r15
+    add r9, rdi
+    add rsi, rbx
+    add r9, rsi
+    add r8, r9
+    ret r8
+
+function @sum_under_float_pressure
+  abi
+    return i64 -> rax
+  frame
+    stack_size 208
+    scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
+    preserve rbx r12 r13 r14 r15
+    temp %v8 -> [rbp-8] : i64
+    temp %v9 -> [rbp-16] : i64
+    temp %v10 -> [rbp-24] : i64
+    temp %v11 -> [rbp-32] : i64
+    temp %v12 -> [rbp-40] : i64
+    temp %v13 -> [rbp-48] : i64
+    temp %v14 -> [rbp-56] : i64
+    temp %v15 -> [rbp-64] : i64
+    temp %v7 -> [rbp-72] : i64
+    temp %v6 -> [rbp-80] : i64
+    temp %x2 -> [rbp-88] : i64
+    temp %x3 -> [rbp-96] : i64
+    temp %v5 -> [rbp-104] : i64
+    temp %v4 -> [rbp-112] : i64
+    temp %v3 -> [rbp-120] : i64
+    temp %x11 -> [rbp-120] : i64
+    temp %x10 -> [rbp-112] : i64
+
+  block ^entry
+    load.i64 r8, @v0
+    load.i64 r9, @v1
+    load.i64 rdi, @v2
+    load.i64 rsi, @v3
+    load.i64 rbx, @v4
+    load.i64 r12, @v5
+    load.i64 r13, @v6
+    load.i64 r14, @v7
+    load.i64 r15, @v8
+    store.i64 [rbp-8], r15
+    load.i64 r15, @v9
+    store.i64 [rbp-16], r15
+    load.i64 r15, @v10
+    store.i64 [rbp-24], r15
+    load.i64 r15, @v11
+    store.i64 [rbp-32], r15
+    load.i64 r15, @v12
+    store.i64 [rbp-40], r15
+    load.i64 r15, @v13
+    store.i64 [rbp-48], r15
+    load.i64 r15, @v14
+    store.i64 [rbp-56], r15
+    load.i64 r15, @v15
+    store.i64 [rbp-64], r15
+    mov r15, r8
+    add r15, r9
+    store.i64 [rbp-72], r14
+    mov r14, rdi
+    add r14, rsi
+    store.i64 [rbp-80], r13
+    mov r13, rbx
+    add r13, r12
+    store.i64 [rbp-88], r13
+    load.i64 r13, [rbp-80]
+    add r13, [rbp-72]
+    store.i64 [rbp-96], r13
+    load.i64 r13, [rbp-8]
+    add r13, [rbp-16]
+    store.i64 [rbp-104], r12
+    load.i64 r12, [rbp-24]
+    add r12, [rbp-32]
+    store.i64 [rbp-112], rbx
+    load.i64 rbx, [rbp-40]
+    add rbx, [rbp-48]
+    store.i64 [rbp-120], rsi
+    load.i64 rsi, [rbp-56]
+    add rsi, [rbp-64]
+    add r15, r14
+    add r13, r12
+    add rbx, rsi
+    fadd.f64 xmm0, 1.5, 2.5
+    add r8, r9
+    add rdi, [rbp-120]
+    load.i64 r9, [rbp-112]
+    add r9, [rbp-104]
+    load.i64 rsi, [rbp-80]
+    add rsi, [rbp-72]
+    load.i64 r12, [rbp-8]
+    add r12, [rbp-16]
+    load.i64 r14, [rbp-24]
+    add r14, [rbp-32]
+    store.i64 [rbp-120], rbx
+    load.i64 rbx, [rbp-40]
+    add rbx, [rbp-48]
+    store.i64 [rbp-112], r13
+    load.i64 r13, [rbp-56]
+    add r13, [rbp-64]
+    add r8, rdi
+    add r9, rsi
+    add r12, r14
+    add rbx, r13
+    add r8, r9
+    add r12, rbx
+    add r8, r12
+    load.i64 r9, [rbp-88]
+    add r9, [rbp-96]
+    add r15, r9
+    load.i64 r9, [rbp-112]
+    add r9, [rbp-120]
+    add r15, r9
+    add r8, r15
+    fne.f64 rax, xmm0, 4.0
+    mov r9, rax
+    add r8, r9
+    ret r8
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
+    preserve rbx
+
+  block ^entry
+    call @sum_under_pressure [args=()]
+    mov rbx, rax
+    call @sum_under_float_pressure [args=()]
+    mov r8, rax
+    mov rdx, 272
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, 272
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    or rbx, r8
+    ret rbx

@@ -12,6 +12,8 @@ function @dynamic_four
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r9, rdi
@@ -26,6 +28,8 @@ function @select_smaller
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     slot $left_value -> [rbp-8] : i64
     slot $right_value -> [rbp-16] : i64
@@ -67,6 +71,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 1

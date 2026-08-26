@@ -232,6 +232,8 @@ int run_lowir2native_mode(const vector<string> & args)
          << stats.planned_edge_register_retains;
     lowir_native::report_code_shape_stats(cerr, stats);
     cerr
+		 << " scratch_carried_reloads="
+		 << stats.scratch_carried_reloads
          << " shared_storage_lifetime_extensions="
          << stats.shared_storage_lifetime_extensions
          << " reclaim_attempts=" << stats.reclaim_attempts

@@ -21,6 +21,8 @@ function @f
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve r14
     temp %t2 -> [rbp-8] : i64
     temp %t3 -> [rbp-16] : i64
@@ -70,6 +72,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 1

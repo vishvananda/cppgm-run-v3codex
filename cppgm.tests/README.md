@@ -9,11 +9,18 @@ Most assignments use a flat `course/paN/*.t` layout matching their local
 `tests/` directory. Assignments with multiple harness buckets use matching
 subdirectories:
 
+- `course/pa15/controls` for focused source-to-LowIR property checks
+- `course/pa17/controls` for focused semantic/LowIR and behavior checks
 - `course/pa34/preproc` and `course/pa34/compile`
 - `course/pa36/link`
+- `course/pa29/controls` for focused MIR/native property checks without
+  complete output snapshots
 - `course/pa37/o0`, `course/pa37/o1`, `course/pa37/o2`,
   `course/pa37/driver/o1`, and `course/pa37/driver/o2`
-- `course/pa38/o1` and `course/pa38/o2`
+- `course/pa37/controls` for structural command-line control checks
+- `course/pa38/o1`, `course/pa38/o2`, and `course/pa38/driver`
+- `course/pa38/controls` for property-based native structural checks that do
+  not use complete MIR or executable snapshots
 
 The optional debug-info suites mirror those layouts under
 `course/pa37/debuginfo` and `course/pa38/debuginfo`.

@@ -104,6 +104,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " inline_output_instructions=" << stats.inline_output_instructions
 		 << " inline_reject_recursive=" << stats.inline_reject_recursive
 		 << " inline_reject_no_inline=" << stats.inline_reject_no_inline
+		 << " inline_reject_loop_body=" << stats.inline_reject_loop_body
 		 << " inline_reject_argument_shape=" << stats.inline_reject_argument_shape
 		 << " inline_reject_variadic=" << stats.inline_reject_variadic
 		 << " inline_reject_callee_size=" << stats.inline_reject_callee_size
@@ -196,6 +197,73 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.inline_eh_ambiguous_functions
 		 << " inline_no_unwind_published_after_strip="
 		 << stats.inline_no_unwind_published_after_strip
+		 << " partial_inline_census_direct_calls="
+		 << stats.partial_inline_census_direct_calls
+		 << " partial_inline_census_eligible_calls="
+		 << stats.partial_inline_census_eligible_calls
+		 << " partial_inline_census_eligible_callees="
+		 << stats.partial_inline_census_eligible_callees
+		 << " partial_inline_census_hint_calls="
+		 << stats.partial_inline_census_hint_calls
+		 << " partial_inline_census_constant_calls="
+		 << stats.partial_inline_census_constant_calls
+		 << " partial_inline_census_constant_actuals="
+		 << stats.partial_inline_census_constant_actuals
+		 << " partial_inline_census_loop_calls="
+		 << stats.partial_inline_census_loop_calls
+		 << " partial_inline_census_repeated_callee_calls="
+		 << stats.partial_inline_census_repeated_callee_calls
+		 << " partial_inline_census_prefix_blocks="
+		 << stats.partial_inline_census_prefix_blocks
+		 << " partial_inline_census_prefix_instructions="
+		 << stats.partial_inline_census_prefix_instructions
+		 << " partial_inline_census_bailout_edges="
+		 << stats.partial_inline_census_bailout_edges
+		 << " partial_inline_census_prefix_0_8="
+		 << stats.partial_inline_census_prefix_0_8
+		 << " partial_inline_census_prefix_9_12="
+		 << stats.partial_inline_census_prefix_9_12
+		 << " partial_inline_census_prefix_13_16="
+		 << stats.partial_inline_census_prefix_13_16
+		 << " partial_inline_census_prefix_17_24="
+		 << stats.partial_inline_census_prefix_17_24
+		 << " partial_inline_census_prefix_over_24="
+		 << stats.partial_inline_census_prefix_over_24
+		 << " partial_inline_census_reject_recursive="
+		 << stats.partial_inline_census_reject_recursive
+		 << " partial_inline_census_reject_no_inline="
+		 << stats.partial_inline_census_reject_no_inline
+		 << " partial_inline_census_reject_argument_shape="
+		 << stats.partial_inline_census_reject_argument_shape
+		 << " partial_inline_census_reject_variadic="
+		 << stats.partial_inline_census_reject_variadic
+		 << " partial_inline_census_reject_object_result="
+		 << stats.partial_inline_census_reject_object_result
+		 << " partial_inline_census_reject_no_fast_return="
+		 << stats.partial_inline_census_reject_no_fast_return
+		 << " partial_inline_census_reject_no_bailout="
+		 << stats.partial_inline_census_reject_no_bailout
+		 << " partial_inline_census_call_stops="
+		 << stats.partial_inline_census_call_stops
+		 << " partial_inline_census_store_stops="
+		 << stats.partial_inline_census_store_stops
+		 << " partial_inline_census_eh_stops="
+		 << stats.partial_inline_census_eh_stops
+		 << " partial_inline_census_other_stops="
+		 << stats.partial_inline_census_other_stops
+		 << " partial_inline_census_backedge_stops="
+		 << stats.partial_inline_census_backedge_stops
+		 << " partial_inline_census_join_stops="
+		 << stats.partial_inline_census_join_stops
+		 << " predicate_range_folds=" << stats.predicate_range_folds
+		 << " adjacent_scalar_copy_runs="
+		 << stats.adjacent_scalar_copy_runs
+		 << " adjacent_scalar_copy_groups="
+		 << stats.adjacent_scalar_copy_groups
+		 << " adjacent_scalar_copy_bytes="
+		 << stats.adjacent_scalar_copy_bytes
+		 << " overwritten_zero_inits=" << stats.overwritten_zero_inits
+		 << " overwritten_zero_bytes=" << stats.overwritten_zero_bytes
 		 << " ipa_direct_call_visits=" << stats.ipa_direct_call_visits
 		 << " ipa_instruction_visits=" << stats.ipa_instruction_visits
 		 << " ipa_candidate_functions=" << stats.ipa_candidate_functions
@@ -339,6 +407,8 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " late_inline_ns=" << stats.late_inline_nanoseconds
 		 << " post_prune_inline_ns="
 		 << stats.post_prune_inline_nanoseconds
+		 << " partial_inline_census_ns="
+		 << stats.partial_inline_census_nanoseconds
 		 << " licm_ns=" << stats.licm_nanoseconds
 		 << " elapsed_ns=" << stats.elapsed_nanoseconds;
 	output << " inline_retained_discardable_definition_matrix=";

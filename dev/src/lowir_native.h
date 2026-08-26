@@ -86,6 +86,9 @@ struct Stats
   std::size_t machine_opt_worklist_pushes = 0;
   std::size_t machine_opt_rewrites = 0;
   std::size_t machine_opt_identity_moves = 0;
+  std::size_t machine_opt_frameless_functions = 0;
+  std::size_t machine_opt_frameless_call_functions = 0;
+  std::size_t machine_opt_frameless_saved_registers = 0;
   std::size_t machine_opt_peak_analysis_bytes = 0;
   std::size_t live_location_scans = 0;
   std::size_t live_location_value_visits = 0;
@@ -109,6 +112,11 @@ struct Stats
   std::size_t planned_phi_registers = 0;
   std::size_t phi_register_homes = 0;
   std::size_t planned_invariant_registers = 0;
+  std::size_t planner_cyclic_region_candidates = 0;
+  std::size_t planner_cyclic_region_assignments = 0;
+  std::size_t planned_cyclic_region_grants = 0;
+  std::size_t planned_cyclic_region_residencies = 0;
+  std::size_t planned_cyclic_region_busy_fails = 0;
   std::size_t planned_rematerialized_addresses = 0;
   std::size_t planned_rematerialized_global_addresses = 0;
   std::size_t planned_rematerialized_constant_indexes = 0;

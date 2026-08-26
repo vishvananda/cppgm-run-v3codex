@@ -17,6 +17,8 @@ function @first
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret rdi
@@ -37,6 +39,8 @@ function @pressure
   frame
     stack_size 144
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve r15
     param-slot %g -> [rbp-8] : i64
     param-slot %h -> [rbp-16] : i64
@@ -127,6 +131,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     temp %result -> [rbp-8] : i64
 
   block ^entry

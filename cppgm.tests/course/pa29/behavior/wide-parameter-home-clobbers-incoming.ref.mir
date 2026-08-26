@@ -17,6 +17,8 @@ function @combine_after_copy
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %b -> [rbp-8] : i64
     slot $source -> [rbp-16] : obj<8x8>
     slot $destination -> [rbp-24] : obj<8x8>
@@ -35,6 +37,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 1

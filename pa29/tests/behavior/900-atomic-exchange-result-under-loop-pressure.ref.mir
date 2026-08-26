@@ -16,6 +16,8 @@ function @pressure
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     temp %address -> [rbp-8] : ptr
     temp %old -> [rbp-16] : i64
@@ -64,6 +66,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 10

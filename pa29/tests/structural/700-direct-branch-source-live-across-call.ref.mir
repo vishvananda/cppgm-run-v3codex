@@ -11,6 +11,8 @@ function @one
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, 1
@@ -28,6 +30,8 @@ function @clobber
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, 0
@@ -39,6 +43,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry

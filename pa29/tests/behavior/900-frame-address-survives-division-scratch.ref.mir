@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     slot $bytes -> [rbp-8] : obj<8x1>
 

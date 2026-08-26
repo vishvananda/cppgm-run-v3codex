@@ -14,6 +14,8 @@ function @target
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
     param-slot %pair -> [rbp-16] : obj<16x8>
 
@@ -45,6 +47,8 @@ function @mid
   frame
     stack_size 128
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %a -> [rbp-8] : i64
     param-slot %b -> [rbp-16] : i64
     param-slot %c -> [rbp-24] : i64
@@ -88,6 +92,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, @target

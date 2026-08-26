@@ -18,6 +18,8 @@ function @__cppgm_init
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.i64 @g, 5
@@ -29,6 +31,8 @@ function @__cppgm_fini
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.i64 @g, 9
@@ -40,6 +44,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 rax, @g

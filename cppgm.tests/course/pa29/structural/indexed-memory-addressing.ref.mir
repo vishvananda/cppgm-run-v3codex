@@ -20,6 +20,8 @@ function @load_at
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 rax, [rdi+rsi*8]
@@ -34,6 +36,8 @@ function @store_at
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.i64 [rdi+rsi*8], rdx
@@ -45,6 +49,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry

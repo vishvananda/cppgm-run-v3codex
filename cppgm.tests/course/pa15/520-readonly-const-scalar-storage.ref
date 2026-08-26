@@ -1,0 +1,23 @@
+declare function @__cppgm_tls_wrapper___GLOBAL__N_1__thread_scalar() -> ptr [binding=internal, object=_ZTWN12_GLOBAL__N_113thread_scalarE, tls_for=@_GLOBAL__N_1__thread_scalar]
+
+global @_GLOBAL__N_1__readonly_scalar : u32 [storage=readonly, binding=internal, object=_ZN12_GLOBAL__N_115readonly_scalarE] = 9
+global @_GLOBAL__N_1__volatile_scalar : u32 [binding=internal, object=_ZN12_GLOBAL__N_115volatile_scalarE] = 7
+global @_GLOBAL__N_1__thread_scalar : u32 [storage=thread_local, binding=internal, object=_ZN12_GLOBAL__N_113thread_scalarE] = 5
+global @_GLOBAL__N_1__class_object [binding=internal, object=_ZN12_GLOBAL__N_112class_objectE] = {
+  u32 3
+}
+
+function @read_values() -> u32 [binding=strong, object=_Z11read_valuesv] {
+  block ^entry:
+    %t1 = load u32 @_GLOBAL__N_1__readonly_scalar
+    %t2 = load volatile u32 @_GLOBAL__N_1__volatile_scalar
+    %t3 = binary add u32 %t1, %t2
+    %t4 = call ptr @__cppgm_tls_wrapper___GLOBAL__N_1__thread_scalar()
+    %t5 = load u32 %t4
+    %t6 = binary add u32 %t3, %t5
+    %t7 = addr @_GLOBAL__N_1__class_object
+    %t8 = index i8 [projection=field] %t7, 0
+    %t9 = load u32 %t8
+    %t10 = binary add u32 %t6, %t9
+    return u32 %t10
+}

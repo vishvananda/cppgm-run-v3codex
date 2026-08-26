@@ -20,6 +20,8 @@ function @variable_address
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     lea rax, [rdi+rsi*8]
@@ -32,6 +34,8 @@ function @constant_address
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     lea rax, [rdi+<off0>]
@@ -43,6 +47,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve <gpr0> <gpr1>
 
   block ^entry

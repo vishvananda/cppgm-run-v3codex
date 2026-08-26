@@ -160,6 +160,24 @@ protected:
 				hosted_builtin::MEMORY_INTRINSIC_NONE :
 				derived.program_.bindings[record.binding].
 					hosted_memory_intrinsic;
+		const pa11::TypeId* source_parameters =
+			derived.program_.types.Parameters(record.type);
+		bool copy_or_move_constructor = false;
+		if (record.binding != pa12_semantic_detail::kNoBinding &&
+			function_type.parameter_count == 2)
+		{
+			const pa11::BindingRecord& binding =
+				derived.program_.bindings[record.binding];
+			if (binding.constructor && binding.member_owner != pa11::kNoEntity &&
+				derived.IsReferenceType(source_parameters[1]))
+			{
+				const pa11::TypeRecord& source_object = derived.program_.types.Get(
+					derived.ExpressionObjectType(source_parameters[1]));
+				copy_or_move_constructor =
+					source_object.kind == pa11::TYPE_NAMED &&
+					source_object.entity == binding.member_owner;
+			}
+		}
 		const pa15_lowering_support::NodeChildren children =
 			derived.Children(node);
 		std::size_t parameter_index = 0;
@@ -179,8 +197,6 @@ protected:
 				parameter.name = pa15_lowir_detail::InternLocalName(
 					derived.output_, name);
 			}
-			const pa11::TypeId* source_parameters =
-				derived.program_.types.Parameters(record.type);
 			const bool by_address =
 				parameter_index < function_type.parameter_count &&
 				UsesIndirectClassParameter(source_parameters[parameter_index]);
@@ -191,11 +207,11 @@ protected:
 			parameter.by_address = by_address;
 			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
 				&parameter, builtin, memory_builtin, parameter_index);
+			if (copy_or_move_constructor && parameter_index < 2)
+				parameter.alias = pa15_lowir_detail::Parameter::ALIAS_NOALIAS;
 			parameters->push_back(parameter);
 			++parameter_index;
 		}
-		const pa11::TypeId* source_parameters =
-			derived.program_.types.Parameters(record.type);
 		while (parameter_index < function_type.parameter_count)
 		{
 			pa15_lowir_detail::Parameter parameter;
@@ -217,6 +233,8 @@ protected:
 			parameter.by_address = by_address;
 			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
 				&parameter, builtin, memory_builtin, parameter_index);
+			if (copy_or_move_constructor && parameter_index < 2)
+				parameter.alias = pa15_lowir_detail::Parameter::ALIAS_NOALIAS;
 			parameters->push_back(parameter);
 			++parameter_index;
 		}

@@ -13,6 +13,8 @@ function @accept
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %value -> [rbp-16] : i128
 
   block ^entry
@@ -44,6 +46,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 0

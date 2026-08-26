@@ -155,30 +155,6 @@ bool is_debug_info_flag(const string & arg)
       starts_with(arg, "-g");
 }
 
-// --inline-limit name=value overrides one O1 inline policy limit.  Values
-// must be positive; a limit left unset keeps the shipped default.
-void apply_inline_limit_option(lowir_opt::InlinePolicyOverrides * limits,
-                               const string & spec)
-{
-  const size_t equals = spec.find('=');
-  if(equals == string::npos || equals == 0 || equals + 1 == spec.size())
-    throw logic_error("invalid --inline-limit argument: " + spec);
-  const string name = spec.substr(0, equals);
-  const string text = spec.substr(equals + 1);
-  char * end = 0;
-  const unsigned long long value = strtoull(text.c_str(), &end, 10);
-  if(end == text.c_str() || *end != '\0' || value == 0 ||
-     value > static_cast<unsigned long long>(SIZE_MAX))
-    throw logic_error("invalid --inline-limit value: " + spec);
-  const size_t limit = static_cast<size_t>(value);
-  if(name == "caller-budget") limits->caller_budget = limit;
-  else if(name == "once-cap") limits->single_call_limit = limit;
-  else if(name == "once-caller-budget")
-    limits->single_call_caller_budget = limit;
-  else if(name == "hint-late-cap") limits->hint_late_cap = limit;
-  else throw logic_error("unknown --inline-limit name: " + spec);
-}
-
 bool is_benign_driver_flag(const string & arg)
 {
   return arg == "-Wall" ||
@@ -305,7 +281,7 @@ SourceOutputInvocation parse_source_output_invocation(
     if(allow_lowir_options && args[i] == "--inline-limit") {
       consume_required_option_argument(args, i, "--inline-limit",
         "name=value");
-      apply_inline_limit_option(&invocation.inline_limits, args[i]);
+      lowir_opt::apply_inline_limit_option(&invocation.inline_limits, args[i]);
       continue;
     }
     if(allow_lowir_options && is_optimization_flag(args[i])) {
@@ -427,7 +403,7 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
     if(args[i] == "--inline-limit") {
       consume_required_option_argument(args, i, "--inline-limit",
         "name=value");
-      apply_inline_limit_option(&invocation.inline_limits, args[i]);
+      lowir_opt::apply_inline_limit_option(&invocation.inline_limits, args[i]);
       continue;
     }
     if(args[i] == "-nostdinc") {
@@ -1606,6 +1582,12 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
          << " machine_opt_identity_moves="
          << native_stats.machine_opt_identity_moves
+         << " machine_opt_frameless_functions="
+         << native_stats.machine_opt_frameless_functions
+         << " machine_opt_frameless_call_functions="
+         << native_stats.machine_opt_frameless_call_functions
+         << " machine_opt_frameless_saved_registers="
+         << native_stats.machine_opt_frameless_saved_registers
          << " machine_opt_peak_bytes="
          << native_stats.machine_opt_peak_analysis_bytes
          << " live_location_scans=" << native_stats.live_location_scans
@@ -1863,6 +1845,12 @@ int run_link_driver(const DriverInvocation & invocation,
 		 << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
 		 << " machine_opt_identity_moves="
 		 << native_stats.machine_opt_identity_moves
+		 << " machine_opt_frameless_functions="
+		 << native_stats.machine_opt_frameless_functions
+		 << " machine_opt_frameless_call_functions="
+		 << native_stats.machine_opt_frameless_call_functions
+		 << " machine_opt_frameless_saved_registers="
+		 << native_stats.machine_opt_frameless_saved_registers
 		 << " machine_opt_peak_bytes="
 		 << native_stats.machine_opt_peak_analysis_bytes
 			 << " live_location_scans=" << native_stats.live_location_scans

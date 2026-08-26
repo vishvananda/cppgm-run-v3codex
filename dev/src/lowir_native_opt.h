@@ -22,6 +22,9 @@ struct Stats
   std::size_t identity_moves = 0;
   std::size_t frame_rewrites = 0;
   std::size_t implicit_return_rewrites = 0;
+  std::size_t frameless_functions = 0;
+  std::size_t frameless_call_functions = 0;
+  std::size_t frameless_saved_registers = 0;
   std::size_t peak_analysis_bytes = 0;
   std::uint64_t elapsed_nanoseconds = 0;
 };

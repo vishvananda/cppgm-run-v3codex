@@ -1,0 +1,203 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @identity
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    ret rdi
+
+function @frameless_leaf
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    add rdi, 1
+    ret rdi
+
+function @frameless_call
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    call @identity [args=(rdi), unwind=no]
+    ret rax
+
+function @frame_operand
+  abi
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    slot $value -> [rbp-8] : i64
+
+  block ^entry
+    store.i64 [rbp-8], 31
+    load.i64 rax, [rbp-8]
+    ret rax
+
+function @dynamic_stack
+  abi
+    param %bytes -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+
+  block ^entry
+    mov rax, rdi
+    add rax, 15
+    and rax, -16
+    sub rsp, rax
+    store.i64 [rsp], 37
+    load.i64 rax, [rsp]
+    ret rax
+
+function @floating_scratch
+  abi
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+    frame_pointer keep
+    epilogues direct
+
+  block ^entry
+    fadd.f64 xmm0, 1.25, 2.5
+    fne.f64 rax, xmm0, 3.75
+    ret rax
+
+function @host_eh
+  abi
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    temp %host-eh-exception -> [rbp-8] : ptr
+    temp %host-eh-selector -> [rbp-16] : i64
+
+  block ^entry
+    eh_push ^handler, 0
+    mov rdi, 41
+    call @identity [args=(rdi), unwind=no]
+    mov r8, rax
+    eh_pop
+    ret r8
+
+  block ^handler
+    mov rax, 99
+    ret rax
+
+function @direct_returns
+  abi
+    param %condition -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    test.i64 rdi, rdi
+    je ^no
+
+  block ^yes
+    mov rax, 43
+    ret rax
+
+  block ^no
+    mov rax, 47
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    preserve rbx r12 r13 r14 r15
+    temp %floating_bad -> [rbp-8] : i64
+
+  block ^entry
+    mov rdi, 28
+    call @frameless_leaf [args=(rdi), unwind=no]
+    mov rbx, rax
+    mov rdi, 30
+    call @frameless_call [args=(rdi), unwind=no]
+    mov r12, rax
+    call @frame_operand [args=(), unwind=no]
+    mov r13, rax
+    mov rdi, 16
+    call @dynamic_stack [args=(rdi), unwind=no]
+    mov r14, rax
+    call @floating_scratch [args=(), unwind=no]
+    mov r15, rax
+    call @host_eh [args=()]
+    store.i64 [rbp-8], r15
+    mov r15, rax
+    mov rdi, 1
+    call @direct_returns [args=(rdi), unwind=no]
+    mov rdx, 29
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, 30
+    cmp.i64 r12, rdx
+    setne r12
+    movzx r12, r12
+    mov rdx, 31
+    cmp.i64 r13, rdx
+    setne r13
+    movzx r13, r13
+    mov rdx, 37
+    cmp.i64 r14, rdx
+    setne r14
+    movzx r14, r14
+    mov rdx, 41
+    cmp.i64 r15, rdx
+    setne r15
+    movzx r15, r15
+    mov rdx, 43
+    cmp.i64 rax, rdx
+    setne r8
+    movzx r8, r8
+    or rbx, r12
+    or r13, r14
+    load.i64 r9, [rbp-8]
+    or r9, r15
+    or rbx, r13
+    or r9, r8
+    or rbx, r9
+    ret rbx

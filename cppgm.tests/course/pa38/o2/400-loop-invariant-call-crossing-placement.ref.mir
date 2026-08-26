@@ -12,6 +12,8 @@ function @identity
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
 
   block ^entry
     ret rdi
@@ -22,6 +24,8 @@ function @float_loop
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues direct
 
   block ^entry
     fmov.f64 xmm0, 3.5
@@ -41,6 +45,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
     preserve r15 r13
 
   block ^entry

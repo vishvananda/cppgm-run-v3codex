@@ -15,6 +15,8 @@ function @mix
   frame
     stack_size 80
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve <gpr0> <gpr1>
     param-slot %b -> [rbp-<off0>] : f64
     param-slot %d -> [rbp-<off1>] : f64
@@ -36,6 +38,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, 4

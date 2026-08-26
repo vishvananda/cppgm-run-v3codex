@@ -118,6 +118,16 @@ void report_edge_staging_stats(std::ostream & output, const Stats & stats)
          << stats.planned_use_tail_promotions
          << " planned_use_tail_busy_fails="
          << stats.planned_use_tail_busy_fails
+         << " planner_cyclic_region_candidates="
+         << stats.planner_cyclic_region_candidates
+         << " planner_cyclic_region_assignments="
+         << stats.planner_cyclic_region_assignments
+         << " planned_cyclic_region_grants="
+         << stats.planned_cyclic_region_grants
+         << " planned_cyclic_region_residencies="
+         << stats.planned_cyclic_region_residencies
+         << " planned_cyclic_region_busy_fails="
+         << stats.planned_cyclic_region_busy_fails
          << " edge_staging_by_kind=";
   for(std::size_t i = 0; i < stats.edge_staging_by_kind.size(); ++i) {
     if(i) output << ',';

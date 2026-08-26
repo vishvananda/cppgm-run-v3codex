@@ -33,6 +33,8 @@ function @mark_two
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, rdi
@@ -50,6 +52,8 @@ function @copy_then_mark_two
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve r12 r13
 
   block ^entry
@@ -72,6 +76,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry

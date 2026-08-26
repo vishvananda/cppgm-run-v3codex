@@ -21,6 +21,8 @@ function @target
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %x -> [rbp-8] : ptr
     param-slot %y -> [rbp-16] : ptr
 
@@ -37,6 +39,8 @@ function @run
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     slot $tiny -> [rbp-1] : i8
 
@@ -58,6 +62,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
 
   block ^entry

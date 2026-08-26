@@ -1,0 +1,54 @@
+declare function @observe(%address : ptr) -> void [effects=readonly]
+
+function @remove_fully_overwritten(%destination : ptr) -> void {
+  block ^entry:
+    %high = index i8 [projection=field] %destination, 8
+    store i64 11, %destination
+    store i64 22, %high
+    return void
+}
+function @retain_partial_overwrite(%destination : ptr) -> void {
+  block ^entry:
+    zeroinit 16x8 %destination
+    store i64 11, %destination
+    return void
+}
+function @retain_observed_zero(%destination : ptr) -> void {
+  block ^entry:
+    zeroinit 16x8 %destination
+    call void @observe(%destination)
+    %high = index i8 [projection=field] %destination, 8
+    store i64 11, %destination
+    store i64 22, %high
+    return void
+}
+function @retain_volatile_store(%destination : ptr) -> void {
+  block ^entry:
+    zeroinit 16x8 %destination
+    %high = index i8 [projection=field] %destination, 8
+    store volatile i64 11, %destination
+    store i64 22, %high
+    return void
+}
+function @retain_large_zero(%destination : ptr) -> void {
+  block ^entry:
+    zeroinit 72x8 %destination
+    %p8 = index i8 [projection=field] %destination, 8
+    %p16 = index i8 [projection=field] %destination, 16
+    %p24 = index i8 [projection=field] %destination, 24
+    %p32 = index i8 [projection=field] %destination, 32
+    %p40 = index i8 [projection=field] %destination, 40
+    %p48 = index i8 [projection=field] %destination, 48
+    %p56 = index i8 [projection=field] %destination, 56
+    %p64 = index i8 [projection=field] %destination, 64
+    store i64 0, %destination
+    store i64 1, %p8
+    store i64 2, %p16
+    store i64 3, %p24
+    store i64 4, %p32
+    store i64 5, %p40
+    store i64 6, %p48
+    store i64 7, %p56
+    store i64 8, %p64
+    return void
+}

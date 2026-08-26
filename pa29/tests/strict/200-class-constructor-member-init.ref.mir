@@ -12,6 +12,8 @@ function @YP__YP
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.i32 [rdi], 3
@@ -24,6 +26,8 @@ function @YP___YP
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -34,6 +38,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     slot $p__0 -> [rbp-8] : i64
 

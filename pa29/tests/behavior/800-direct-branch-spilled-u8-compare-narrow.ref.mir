@@ -15,6 +15,8 @@ function @probe
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %a -> [rbp-8] : ptr
     param-slot %b -> [rbp-16] : ptr
     param-slot %c -> [rbp-24] : ptr
@@ -34,6 +36,8 @@ function @clobber
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -44,6 +48,8 @@ function @main
   frame
     stack_size 144
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     slot $value -> [rbp-24] : obj<24x8>
     slot $ud_suffix -> [rbp-48] : obj<24x8>

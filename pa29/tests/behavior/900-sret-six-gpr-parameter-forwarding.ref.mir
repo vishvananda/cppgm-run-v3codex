@@ -34,6 +34,8 @@ function @target
   frame
     stack_size 112
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve r12 r14
     param-slot %vector -> [rbp-8] : ptr
     temp %second -> [rbp-16] : ptr
@@ -119,6 +121,8 @@ function @forward
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     param-slot %arg6 -> [rbp-8] : ptr
 
@@ -152,6 +156,8 @@ function @main
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
     slot $result -> [rbp-8] : i64
 

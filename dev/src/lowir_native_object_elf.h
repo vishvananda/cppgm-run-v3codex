@@ -135,6 +135,8 @@ struct HostFunctionLayout
   std::size_t text_section = 0;
   std::size_t offset = 0;
   std::size_t size = 0;
+  bool omit_frame_pointer = false;
+  std::size_t stack_adjustment = 0;
   std::vector<X64Register> callee_saved_regs;
   std::vector<std::vector<mir_model::MirHostEhClause> > clauses;
   std::vector<lowir_model::BlockId> clause_order;

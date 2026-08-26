@@ -17,6 +17,8 @@ function @touch
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret rsi
@@ -28,6 +30,8 @@ function @load_value
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 rax, [rdi]
@@ -41,6 +45,8 @@ function @read_after_call
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve <gpr0>
 
   block ^entry
@@ -56,6 +62,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, @cell

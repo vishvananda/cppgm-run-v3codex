@@ -97,8 +97,10 @@ std::vector<unsigned char> ordinary_host_block_entries(
 
 void emit_function_prologue(CodeBuffer & out, const mir_model::MirFunction & function)
 {
-  emit_push(out, XR_RBP);
-  emit_register_move(out, XR_RBP, XR_RSP);
+  if(!function.omit_frame_pointer) {
+    emit_push(out, XR_RBP);
+    emit_register_move(out, XR_RBP, XR_RSP);
+  }
   for(std::size_t i = 0; i < function.callee_saved_regs.size(); ++i)
     emit_push(out, function.callee_saved_regs[i]);
   emit_stack_adjust(out, true,
@@ -108,7 +110,11 @@ void emit_function_prologue(CodeBuffer & out, const mir_model::MirFunction & fun
 
 void emit_function_return(CodeBuffer & out, const mir_model::MirFunction & function)
 {
-  if(function.has_dynamic_stack) {
+  if(function.omit_frame_pointer) {
+    emit_stack_adjust(out, false,
+      static_cast<unsigned>(
+        epilogue_detail::function_stack_adjustment(function)));
+  } else if(function.has_dynamic_stack) {
     emit_register_move(out, XR_RSP, XR_RBP);
     emit_stack_adjust(out, true,
       static_cast<unsigned>(function.callee_saved_regs.size() * 8));
@@ -118,7 +124,7 @@ void emit_function_return(CodeBuffer & out, const mir_model::MirFunction & funct
                         epilogue_detail::function_stack_adjustment(function)));
   for(std::size_t i = function.callee_saved_regs.size(); i != 0; --i)
     emit_pop(out, function.callee_saved_regs[i - 1]);
-  emit_pop(out, XR_RBP);
+  if(!function.omit_frame_pointer) emit_pop(out, XR_RBP);
   out.byte(0xc3);
 }
 
@@ -2466,6 +2472,9 @@ HostFunctionLayout emit_prepared_host_function(
   if(function.object_symbol.valid())
     layout.object_symbol = function.object_symbol;
   layout.offset = out.size();
+  layout.omit_frame_pointer = function.omit_frame_pointer;
+  layout.stack_adjustment =
+    epilogue_detail::function_stack_adjustment(function);
   layout.callee_saved_regs = function.callee_saved_regs;
   layout.clauses = function.host_eh_clauses;
   for(std::size_t block = 0; block < function.host_eh_clauses.size(); ++block)

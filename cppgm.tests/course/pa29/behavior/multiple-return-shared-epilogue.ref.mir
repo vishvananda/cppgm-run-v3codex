@@ -15,6 +15,8 @@ function @clobber
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -26,6 +28,8 @@ function @choose
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -68,6 +72,8 @@ function @choose_float
   frame
     stack_size 80
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -101,6 +107,8 @@ function @choose_extended
   frame
     stack_size 80
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -123,6 +131,8 @@ function @choose_void
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -155,6 +165,8 @@ function @main
   frame
     stack_size 144
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     temp %f0 -> [rbp-8] : f64
     temp %f1 -> [rbp-16] : f64

@@ -23,6 +23,7 @@ struct LowIROptInvocation
   int optimization_level = 0;
   string outfile;
   vector<string> inputs;
+  lowir_opt::InlinePolicyOverrides inline_limits;
 };
 
 vector<string> collect_args(int argc, char ** argv)
@@ -100,6 +101,13 @@ LowIROptInvocation parse_lowiropt_invocation(const vector<string> & args)
       invocation.report_stats = true;
       continue;
     }
+    if(args[i] == "--inline-limit") {
+      if(i + 1 >= args.size())
+        throw logic_error("missing value after --inline-limit");
+      lowir_opt::apply_inline_limit_option(
+        &invocation.inline_limits, args[++i]);
+      continue;
+    }
     if(is_optimization_level(args[i], optimization_level)) {
       if(invocation.has_optimization_level) {
         throw logic_error("multiple optimization levels provided");
@@ -149,7 +157,8 @@ int run_lowiropt_mode(const vector<string> & args)
       invocation.inputs, lowir_model::LEP_ALLOW_HELPERS_ONLY);
   lowir_opt::Stats stats;
   lowir_opt::optimize(program, invocation.optimization_level,
-                      invocation.report_stats ? &stats : 0);
+                      invocation.report_stats ? &stats : 0,
+                      &invocation.inline_limits);
   lowir_model::write_lowir_program_file(invocation.outfile, program);
   if(invocation.report_stats)
     lowir_driver_stats_report::ReportOptimizer(cerr, string(), stats);

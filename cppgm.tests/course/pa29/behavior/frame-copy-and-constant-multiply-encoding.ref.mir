@@ -1,0 +1,105 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @copy_frame_object
+  abi
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
+    slot $source -> [rbp-24] : obj<24x8>
+    slot $destination -> [rbp-48] : obj<24x8>
+
+  block ^entry
+    store.i64 [rbp-24], 11
+    store.i64 [rbp-16], 22
+    store.i64 [rbp-8], 33
+    copy_bytes 24x8, [rbp-48], [rbp-24]
+    load.i64 r8, [rbp-48]
+    load.i64 r9, [rbp-40]
+    load.i64 rdi, [rbp-32]
+    add r8, r9
+    add r8, rdi
+    ret r8
+
+function @multiply_struct_strides
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
+    preserve rbx r12
+
+  block ^entry
+    mov r8, rdi
+    imul r8, 8
+    mov r9, rdi
+    imul r9, 24
+    mov rsi, rdi
+    imul rsi, 40
+    mov rbx, rdi
+    imul rbx, 72
+    mov r12, rdi
+    imul r12, 10
+    add r8, r9
+    add rsi, rbx
+    add r8, rsi
+    add r8, r12
+    ret r8
+
+function @multiply_wraps
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
+
+  block ^entry
+    mov r8, 2305843009213693953
+    imul r8, 8
+    ret r8
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
+    preserve rbx r12
+
+  block ^entry
+    call @copy_frame_object [args=()]
+    mov rbx, rax
+    mov rdi, -3
+    call @multiply_struct_strides [args=(rdi)]
+    mov r12, rax
+    call @multiply_wraps [args=()]
+    mov r8, rax
+    mov rdx, 66
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, -462
+    cmp.i64 r12, rdx
+    setne r12
+    movzx r12, r12
+    mov rdx, 8
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    or rbx, r12
+    or rbx, r8
+    ret rbx

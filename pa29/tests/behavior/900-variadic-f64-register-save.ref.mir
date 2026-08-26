@@ -12,6 +12,8 @@ function @read_f64
   frame
     stack_size 272
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     param-slot %tag -> [rbp-8] : i64
     slot $arguments -> [rbp-32] : obj<24x8>
@@ -63,6 +65,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 0

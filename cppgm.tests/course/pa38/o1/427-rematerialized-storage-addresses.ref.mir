@@ -1,0 +1,135 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @global_value
+  storage scalar i64
+  init i64 11
+
+function @identity
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    ret rdi
+
+function @frame_storage_after_call
+  abi
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    slot $value -> [rbp-8] : i64
+
+  block ^entry
+    store.i64 [rbp-8], 19
+    mov rdi, 3
+    call @identity [args=(rdi), unwind=no]
+    load.i64 rax, [rbp-8]
+    ret rax
+
+function @global_storage_after_call
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    mov rdi, 5
+    call @identity [args=(rdi), unwind=no]
+    load.i64 rax, @global_value
+    ret rax
+
+function @constant_field_after_call
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    slot $object -> [rbp-24] : obj<24x8>
+
+  block ^entry
+    store.i64 [rbp-16], 23
+    mov rdi, 7
+    call @identity [args=(rdi), unwind=no]
+    load.i64 rax, [rbp-16]
+    ret rax
+
+function @variable_index_after_call
+  abi
+    param %index -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    preserve rbx
+    slot $object -> [rbp-24] : obj<24x8>
+
+  block ^entry
+    lea rbx, [rbp-24]
+    mov rdx, rdi
+    imul rdx, 8
+    add rbx, rdx
+    store.i64 [rbx], 29
+    mov rdi, 9
+    call @identity [args=(rdi), unwind=no]
+    load.i64 rax, [rbx]
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+    preserve rbx r12 r13
+
+  block ^entry
+    call @frame_storage_after_call [args=(), unwind=no]
+    mov rbx, rax
+    call @global_storage_after_call [args=(), unwind=no]
+    mov r12, rax
+    call @constant_field_after_call [args=(), unwind=no]
+    mov r13, rax
+    mov rdi, 1
+    call @variable_index_after_call [args=(rdi), unwind=no]
+    mov rdx, 19
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, 11
+    cmp.i64 r12, rdx
+    setne r12
+    movzx r12, r12
+    mov rdx, 23
+    cmp.i64 r13, rdx
+    setne r13
+    movzx r13, r13
+    mov rdx, 29
+    cmp.i64 rax, rdx
+    setne r8
+    movzx r8, r8
+    or rbx, r12
+    or r13, r8
+    or rbx, r13
+    ret rbx

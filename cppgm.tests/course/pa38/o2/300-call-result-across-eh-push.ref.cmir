@@ -15,6 +15,8 @@ function @address
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
 
   block ^entry
     mov rax, @value
@@ -27,6 +29,8 @@ function @read
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
 
   block ^entry
     load.i64 rax, [rdi]
@@ -38,6 +42,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
     temp %host-eh-exception -> [rbp-<off0>] : ptr
     temp %host-eh-selector -> [rbp-<off1>] : i64
 

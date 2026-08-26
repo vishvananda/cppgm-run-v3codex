@@ -20,6 +20,10 @@ bool fold_edge_known_branches(
 bool fold_edge_known_branches(
   lowir_model::Function * function, Stats * stats,
   CleanupCfgScratch * scratch);
+// Fold the unsigned x-1 underflow test on an edge where a preceding branch
+// has established that an unchanged scalar load is nonzero.
+bool fold_nonzero_underflow_branches(
+  lowir_model::Function * function, Stats * stats);
 // Terminal folding, unreachable-block removal with dead-edge value
 // rematerialization, jump bypassing, and forward block merging.  Functions
 // containing phis stop after the two folds above; their CFG stays stable

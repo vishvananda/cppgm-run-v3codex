@@ -1,0 +1,147 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @identity
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    ret rdi
+
+function @post_call_tails
+  abi
+    return i64 -> rax
+  frame
+    stack_size 128
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    preserve <gpr0> <gpr1> <gpr2> <gpr3> <gpr4>
+    temp %host-eh-exception -> [rbp-<off0>] : ptr
+    temp %host-eh-selector -> [rbp-<off1>] : i64
+    temp %a -> [rbp-<off2>] : i64
+    temp %b -> [rbp-<off3>] : i64
+    temp %d -> [rbp-<off4>] : i64
+    temp %e -> [rbp-<off5>] : i64
+    temp %v -> [rbp-<off6>] : i64
+    temp %w -> [rbp-<off7>] : i64
+    temp %x -> [rbp-<off8>] : i64
+    temp %y -> [rbp-<off9>] : i64
+    temp %y0 -> [rbp-<off2>] : i64
+    temp %x0 -> [rbp-<off3>] : i64
+    temp %w1 -> [rbp-<off4>] : i64
+    temp %x1 -> [rbp-<off5>] : i64
+
+  block ^entry
+    eh_push ^handler, 0
+    mov rdi, 1
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-<off2>], rax
+    mov rdi, 2
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-<off3>], rax
+    mov rdi, 3
+    call @identity [args=(rdi), unwind=no]
+    mov <gpr0>, rax
+    mov rdi, 4
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-<off4>], rax
+    mov rdi, 5
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-<off5>], rax
+    mov rdi, 40
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-<off6>], rax
+    mov rdi, 50
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-<off7>], rax
+    mov rdi, 60
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-<off8>], rax
+    mov rdi, 70
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-<off9>], rax
+    mov rdi, 9
+    call @identity [args=(rdi), unwind=no]
+    eh_pop
+
+  block ^tail
+    load.i64 rdi, [rbp-<off2>]
+    lea r9, [rdi+rdi]
+    add r9, rdi
+    load.i64 rdi, [rbp-<off3>]
+    lea r8, [rdi+rdi]
+    add r8, rdi
+    lea rdi, [<gpr0>+<gpr0>]
+    add rdi, <gpr0>
+    load.i64 rsi, [rbp-<off4>]
+    add rsi, [rbp-<off4>]
+    add rsi, [rbp-<off4>]
+    load.i64 <gpr0>, [rbp-<off5>]
+    add <gpr0>, [rbp-<off5>]
+    add <gpr0>, [rbp-<off5>]
+    load.i64 <gpr1>, [rbp-<off6>]
+    add <gpr1>, 1
+    load.i64 <gpr2>, [rbp-<off7>]
+    add <gpr2>, 1
+    load.i64 <gpr3>, [rbp-<off8>]
+    add <gpr3>, 1
+    load.i64 <gpr4>, [rbp-<off9>]
+    add <gpr4>, 1
+    store.i64 [rbp-<off2>], <gpr4>
+    load.i64 <gpr4>, [rbp-<off6>]
+    add <gpr4>, 2
+    store.i64 [rbp-<off3>], <gpr3>
+    load.i64 <gpr3>, [rbp-<off7>]
+    add <gpr3>, 2
+    store.i64 [rbp-<off4>], <gpr3>
+    load.i64 <gpr3>, [rbp-<off8>]
+    add <gpr3>, 2
+    store.i64 [rbp-<off5>], <gpr3>
+    load.i64 <gpr3>, [rbp-<off9>]
+    add <gpr3>, 2
+    add r9, r8
+    add rdi, rsi
+    add r9, rdi
+    add r9, <gpr0>
+    add <gpr1>, <gpr4>
+    add <gpr2>, [rbp-<off4>]
+    load.i64 r8, [rbp-<off3>]
+    add r8, [rbp-<off5>]
+    load.i64 rdi, [rbp-<off2>]
+    add rdi, <gpr3>
+    add <gpr1>, <gpr2>
+    add r8, rdi
+    add <gpr1>, r8
+    add r9, <gpr1>
+    ret r9
+
+  block ^handler
+    mov rax, 99
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    call @post_call_tails [args=()]
+    cmp.i64 rax, 497
+    setne rax
+    movzx rax, rax
+    ret rax

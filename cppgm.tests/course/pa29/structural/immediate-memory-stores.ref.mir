@@ -31,6 +31,8 @@ function @store_dereference
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.u16 [rdi], 4660
@@ -44,6 +46,8 @@ function @store_indexed
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.u32 [rdi+rsi*4], 305419896
@@ -55,6 +59,8 @@ function @main
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
     slot $inside_i32 -> [rbp-8] : i64
     slot $outside_i32 -> [rbp-16] : i64

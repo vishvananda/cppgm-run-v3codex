@@ -26,6 +26,8 @@ function @grow
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, rsi
@@ -45,6 +47,8 @@ function @seed
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
 
   block ^entry
@@ -73,6 +77,8 @@ function @probe
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13
     param-slot %this -> [rbp-8] : ptr
     param-slot %variable -> [rbp-12] : u32
@@ -184,6 +190,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     temp %recs -> [rbp-8] : ptr
 

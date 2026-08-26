@@ -1,0 +1,79 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $source : obj<24x8>
+  slot $destination : obj<24x8>
+
+  block ^entry:
+    %t1 = addr $source
+    call void @Pair__Pair(%t1, 5, 17, 20)
+    %t2 = addr $destination
+    %t3 = addr $source
+    call void @Pair__Pair__ov2(%t2, %t3)
+    %t4 = addr $destination
+    %t5 = index i8 [projection=field] %t4, 0
+    %t6 = load i64 %t5
+    %t7 = addr $destination
+    %t8 = index i8 [projection=field] %t7, 8
+    %t9 = load i64 %t8
+    %t10 = binary add i64 %t6, %t9
+    %t11 = addr $destination
+    %t12 = index i8 [projection=field] %t11, 16
+    %t13 = load i64 %t12
+    %t14 = binary add i64 %t10, %t13
+    %t15 = binary sub i64 %t14, 42
+    %t16 = convert trunc i32 i64 %t15
+    return i32 %t16
+}
+function @Pair__Pair(%this : ptr, %left : i64, %middle : i64, %right : i64) -> void [binding=weak, object=_ZN4PairC1Elll, inline_hint=yes] {
+  slot $this : ptr
+  slot $left : i64
+  slot $middle : i64
+  slot $right : i64
+
+  block ^entry:
+    store ptr %this, $this
+    store i64 %left, $left
+    store i64 %middle, $middle
+    store i64 %right, $right
+    %t1 = load i64 $left
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    store i64 %t1, %t3
+    %t4 = load i64 $middle
+    %t5 = load ptr $this
+    %t6 = index i8 [projection=field] %t5, 8
+    store i64 %t4, %t6
+    %t7 = load i64 $right
+    %t8 = load ptr $this
+    %t9 = index i8 [projection=field] %t8, 16
+    store i64 %t7, %t9
+    return void
+}
+function @Pair__Pair__ov2(%this : ptr [alias=noalias], %other : ptr [pass=reference, alias=noalias]) -> void [binding=weak, object=_ZN4PairC1ERKS_, inline_hint=yes, no_inline=yes] {
+  slot $this : ptr
+  slot $other : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %other, $other
+    %t1 = load ptr $other
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load i64 %t2
+    %t4 = load ptr $this
+    %t5 = index i8 [projection=field] %t4, 0
+    store i64 %t3, %t5
+    %t6 = load ptr $other
+    %t7 = index i8 [projection=field] %t6, 8
+    %t8 = load i64 %t7
+    %t9 = load ptr $this
+    %t10 = index i8 [projection=field] %t9, 8
+    store i64 %t8, %t10
+    %t11 = load ptr $other
+    %t12 = index i8 [projection=field] %t11, 16
+    %t13 = load i64 %t12
+    %t14 = load ptr $this
+    %t15 = index i8 [projection=field] %t14, 16
+    store i64 %t13, %t15
+    return void
+}
+alias object _ZN4PairC2Elll = @Pair__Pair
+alias object _ZN4PairC2ERKS_ = @Pair__Pair__ov2

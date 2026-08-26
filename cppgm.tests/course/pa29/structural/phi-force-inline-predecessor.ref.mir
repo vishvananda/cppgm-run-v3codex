@@ -11,6 +11,8 @@ function @touch
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -21,6 +23,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     temp %result -> [rbp-8] : i64
 
   block ^entry

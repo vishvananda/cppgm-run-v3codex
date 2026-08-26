@@ -18,6 +18,8 @@ function @read_fifth
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %unused6 -> [rbp-8] : i64
     slot $scratch1 -> [rbp-16] : i64
     slot $scratch2 -> [rbp-24] : i64
@@ -36,6 +38,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     slot $value -> [rbp-8] : i64
 
   block ^entry

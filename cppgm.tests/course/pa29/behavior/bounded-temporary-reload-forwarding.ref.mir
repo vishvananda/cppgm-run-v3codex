@@ -42,6 +42,8 @@ function @distance_two
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
 
   block ^entry
@@ -77,6 +79,8 @@ function @distance_five
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
 
   block ^entry
@@ -112,6 +116,8 @@ function @distance_six
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
 
   block ^entry
@@ -147,6 +153,8 @@ function @source_redefinition_barrier
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
 
   block ^entry
@@ -177,6 +185,8 @@ function @main
   frame
     stack_size 80
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14
 
   block ^entry

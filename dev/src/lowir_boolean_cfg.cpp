@@ -3,6 +3,7 @@
 #include "lowir_function_analysis.h"
 #include "lowir_opt.h"
 #include "lowir_phi_edges.h"
+#include "lowir_scalar_rules.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -22,6 +23,8 @@ using lowir_model::Instruction;
 using lowir_model::LowOperation;
 using lowir_model::Operand;
 
+bool cleanup_is_eh_instruction(Instruction::Kind kind);
+
 bool has_candidate_merge(const Function & function)
 {
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
@@ -31,6 +34,19 @@ bool has_candidate_merge(const Function & function)
        instructions[0].kind == Instruction::IK_PHI &&
        instructions[1].kind == Instruction::IK_CMP &&
        instructions[2].kind == Instruction::IK_BRANCH)
+      return true;
+  }
+  return false;
+}
+
+bool has_direct_boolean_phi_branch(const Function & function)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    if(instructions.size() == 2 &&
+       instructions[0].kind == Instruction::IK_PHI &&
+       instructions[1].kind == Instruction::IK_BRANCH)
       return true;
   }
   return false;
@@ -66,6 +82,108 @@ bool block_has_phi(const Function & function, const Graph & graph,
   for(std::size_t i = 0; i < instructions.size(); ++i)
     if(instructions[i].kind == Instruction::IK_PHI) return true;
   return false;
+}
+
+bool same_load_address(const Operand & left, const Operand & right)
+{
+  if(left.kind != right.kind) return false;
+  if(left.kind == Operand::OP_TEMP) return left.value == right.value;
+  if(left.kind == Operand::OP_SLOT) return left.slot == right.slot;
+  if(left.kind == Operand::OP_GLOBAL)
+    return left.symbol == right.symbol &&
+      left.address_binding == right.address_binding;
+  return false;
+}
+
+bool predicate_keeps_memory(const Instruction & instruction)
+{
+  switch(instruction.kind) {
+  case Instruction::IK_CONST:
+  case Instruction::IK_COPY:
+  case Instruction::IK_ADDR:
+  case Instruction::IK_INDEX:
+  case Instruction::IK_UNARY:
+  case Instruction::IK_BINARY:
+  case Instruction::IK_CMP:
+  case Instruction::IK_CONVERT:
+  case Instruction::IK_PHI:
+  case Instruction::IK_JUMP:
+  case Instruction::IK_BRANCH:
+  case Instruction::IK_SWITCH:
+  case Instruction::IK_RETURN:
+    return true;
+  case Instruction::IK_LOAD:
+    return !instruction.volatile_access;
+  default:
+    return false;
+  }
+}
+
+const Instruction * local_definition(const Block & block,
+                                     lowir_model::ValueId value)
+{
+  for(std::size_t i = block.instructions.size(); i-- > 0;)
+    if(block.instructions[i].dest.valid() &&
+       block.instructions[i].dest == value)
+      return &block.instructions[i];
+  return 0;
+}
+
+bool block_memory_stable_from(const Block & block,
+                              const Instruction * first)
+{
+  bool found = false;
+  for(std::size_t i = 0; i < block.instructions.size(); ++i) {
+    if(&block.instructions[i] == first) found = true;
+    if(found && !predicate_keeps_memory(block.instructions[i])) return false;
+  }
+  return found;
+}
+
+bool block_memory_stable(const Block & block)
+{
+  for(std::size_t i = 0; i < block.instructions.size(); ++i)
+    if(!predicate_keeps_memory(block.instructions[i])) return false;
+  return true;
+}
+
+bool edge_establishes_nonzero(const Function & function,
+                              std::size_t predecessor,
+                              std::size_t successor,
+                              const Operand & address,
+                              const lowir_model::LowType & type)
+{
+  const Block & incoming_block = function.blocks[predecessor];
+  if(incoming_block.instructions.empty()) return false;
+  const Instruction & incoming = incoming_block.instructions.back();
+  if(incoming.kind != Instruction::IK_BRANCH ||
+     incoming.first.kind != Operand::OP_TEMP) return false;
+  const bool true_edge = incoming.second.kind == Operand::OP_LABEL &&
+    incoming.second.block == function.blocks[successor].id;
+  const bool false_edge = incoming.third.kind == Operand::OP_LABEL &&
+    incoming.third.block == function.blocks[successor].id;
+  if(true_edge == false_edge) return false;
+  const Instruction * predicate =
+    local_definition(incoming_block, incoming.first.value);
+  if(!predicate || predicate->kind != Instruction::IK_CMP ||
+     (predicate->op.kind != LowOperation::LOP_EQ &&
+      predicate->op.kind != LowOperation::LOP_NE)) return false;
+  Operand tested;
+  if(predicate->first.kind == Operand::OP_TEMP &&
+     lowir_opt::is_zero(predicate->second)) tested = predicate->first;
+  else if(predicate->second.kind == Operand::OP_TEMP &&
+          lowir_opt::is_zero(predicate->first)) tested = predicate->second;
+  else return false;
+  const bool nonzero_edge = predicate->op.kind == LowOperation::LOP_NE ?
+    true_edge : false_edge;
+  if(!nonzero_edge) return false;
+  const Instruction * original_load =
+    local_definition(incoming_block, tested.value);
+  return original_load && original_load->kind == Instruction::IK_LOAD &&
+    !original_load->volatile_access &&
+    same_load_address(original_load->first, address) &&
+    lowir_model::same_lowir_type(original_load->type, type) &&
+    block_memory_stable_from(incoming_block, original_load);
 }
 
 std::vector<std::size_t> value_uses(const Function & function)
@@ -136,6 +254,138 @@ void remove_unreachable_blocks(Function * function, Stats * stats)
   if(stats) stats->rewrites += removed + 1;
 }
 
+bool direct_phi_incoming(const Instruction & phi,
+                         lowir_model::BlockId predecessor,
+                         Operand * value)
+{
+  bool found = false;
+  for(std::size_t incoming = 0;
+      incoming + 1 < phi.args.size(); incoming += 2) {
+    if(phi.args[incoming].kind != Operand::OP_LABEL ||
+       phi.args[incoming].block != predecessor)
+      continue;
+    if(found) return false;
+    *value = phi.args[incoming + 1];
+    found = true;
+  }
+  return found;
+}
+
+bool fold_direct_boolean_phi_branches(Function * function, Stats * stats)
+{
+  if(!has_direct_boolean_phi_branch(*function)) return false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t instruction = 0;
+        instruction < function->blocks[block].instructions.size();
+        ++instruction)
+      if(cleanup_is_eh_instruction(
+           function->blocks[block].instructions[instruction].kind))
+        return false;
+  const std::vector<std::size_t> uses = value_uses(*function);
+  const Graph graph = build_graph(*function, stats);
+  const lowir_analysis::DominatorTree dom =
+    lowir_analysis::dominators(graph, stats);
+  const lowir_analysis::LoopForest loops =
+    lowir_analysis::discover_loops(*function, graph, dom, stats);
+  bool changed = false;
+  for(std::size_t merge = 0; merge < function->blocks.size(); ++merge) {
+    const Block & merge_block = function->blocks[merge];
+    if(merge_block.instructions.empty() ||
+       merge_block.instructions[0].kind != Instruction::IK_PHI ||
+       graph.eh_targets[static_cast<std::uint32_t>(merge_block.id)])
+      continue;
+    if(merge_block.instructions.size() != 2 ||
+       merge_block.instructions[1].kind != Instruction::IK_BRANCH)
+      continue;
+    const Instruction phi = merge_block.instructions[0];
+    const Instruction branch = merge_block.instructions[1];
+    if(!phi.dest.valid() || phi.type.kind != lowir_model::LTK_I64 ||
+       phi.args.size() < 4 || phi.args.size() % 2 != 0 ||
+       phi.dest >= uses.size() || uses[phi.dest] != 1 ||
+       branch.first.kind != Operand::OP_TEMP ||
+       branch.first.value != phi.dest ||
+       branch.second.kind != Operand::OP_LABEL ||
+       branch.third.kind != Operand::OP_LABEL ||
+       branch.second.block == merge_block.id ||
+       branch.third.block == merge_block.id ||
+       merge >= loops.innermost_loop.size() ||
+       loops.innermost_loop[merge] >= loops.loops.size() ||
+       graph.predecessors[merge].size() != phi.args.size() / 2 ||
+       block_has_phi(*function, graph, branch.second) ||
+       block_has_phi(*function, graph, branch.third))
+      continue;
+
+    struct IncomingRewrite
+    {
+      std::size_t predecessor;
+      Operand value;
+    };
+    std::vector<IncomingRewrite> rewrites;
+    rewrites.reserve(graph.predecessors[merge].size());
+    bool safe = true;
+    for(std::size_t incoming = 0;
+        incoming < graph.predecessors[merge].size(); ++incoming) {
+      const std::size_t predecessor = graph.predecessors[merge][incoming];
+      const Block & predecessor_block = function->blocks[predecessor];
+      Operand value;
+      if(predecessor_block.instructions.empty() ||
+         graph.predecessors[predecessor].size() != 1 ||
+         dom.dominates(merge, predecessor) ||
+         graph.eh_targets[static_cast<std::uint32_t>(predecessor_block.id)] ||
+         !direct_phi_incoming(phi, predecessor_block.id, &value) ||
+         (value.kind != Operand::OP_TEMP &&
+          !(value.kind == Operand::OP_INTEGER && value.has_int_value))) {
+        safe = false;
+        break;
+      }
+      for(std::size_t instruction = 0;
+          instruction < predecessor_block.instructions.size();
+          ++instruction)
+        if(predecessor_block.instructions[instruction].kind ==
+             Instruction::IK_PHI ||
+           predecessor_block.instructions[instruction].kind ==
+             Instruction::IK_CALL) {
+          safe = false;
+          break;
+        }
+      if(!safe) break;
+      const Instruction & terminal = predecessor_block.instructions.back();
+      if(terminal.kind != Instruction::IK_JUMP ||
+         terminal.first.kind != Operand::OP_LABEL ||
+         terminal.first.block != merge_block.id) {
+        safe = false;
+        break;
+      }
+      rewrites.push_back(IncomingRewrite{predecessor, value});
+    }
+    if(!safe) continue;
+
+    for(std::size_t rewrite = 0; rewrite < rewrites.size(); ++rewrite) {
+      Instruction & terminal =
+        function->blocks[rewrites[rewrite].predecessor].instructions.back();
+      const lowir_model::InstructionDebugLocation old_debug =
+        terminal.debug_location;
+      const Operand & value = rewrites[rewrite].value;
+      terminal = Instruction();
+      if(value.kind == Operand::OP_INTEGER) {
+        terminal.kind = Instruction::IK_JUMP;
+        terminal.first = value.int_value ? branch.second : branch.third;
+        terminal.debug_location = old_debug;
+      } else {
+        terminal.kind = Instruction::IK_BRANCH;
+        terminal.first = value;
+        terminal.second = branch.second;
+        terminal.third = branch.third;
+        terminal.debug_location = branch.debug_location;
+      }
+      if(stats) ++stats->rewrites;
+    }
+    changed = true;
+  }
+  if(changed) remove_unreachable_blocks(function, stats);
+  return changed;
+}
+
 bool fold_edge_known_branches_with_scratch(
     Function * function, Stats * stats,
     std::vector<unsigned char> * branch_values)
@@ -188,6 +438,77 @@ bool fold_edge_known_branches_with_scratch(
 }
 
 }  // namespace
+
+bool fold_nonzero_underflow_branches(Function * function, Stats * stats)
+{
+  const Graph graph = build_graph(*function, stats);
+  bool changed = false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block) {
+    Block & current = function->blocks[block];
+    if(current.instructions.empty() ||
+       graph.predecessors[block].size() != 1) continue;
+    Instruction & branch = current.instructions.back();
+    if(branch.kind != Instruction::IK_BRANCH ||
+       branch.first.kind != Operand::OP_TEMP ||
+       branch.second.kind != Operand::OP_LABEL ||
+       branch.third.kind != Operand::OP_LABEL) continue;
+
+    const Instruction * underflow =
+      local_definition(current, branch.first.value);
+    if(!underflow || underflow->kind != Instruction::IK_CMP ||
+       (underflow->op.kind != LowOperation::LOP_UGE &&
+        underflow->op.kind != LowOperation::LOP_ULT) ||
+       underflow->first.kind != Operand::OP_TEMP ||
+       underflow->second.kind != Operand::OP_TEMP) continue;
+    const Instruction * subtract =
+      local_definition(current, underflow->first.value);
+    if(!subtract || subtract->kind != Instruction::IK_BINARY ||
+       subtract->op.kind != LowOperation::LOP_SUB ||
+       subtract->first.kind != Operand::OP_TEMP ||
+       !lowir_opt::is_one(subtract->second) ||
+       subtract->first.value != underflow->second.value) continue;
+    const Instruction * reload =
+      local_definition(current, subtract->first.value);
+    if(!reload || reload->kind != Instruction::IK_LOAD ||
+       reload->volatile_access ||
+       !block_memory_stable_from(current, reload)) continue;
+
+    if(!block_memory_stable(current)) continue;
+    bool established = false;
+    std::size_t successor = block;
+    std::vector<unsigned char> seen(function->blocks.size(), 0);
+    seen[successor] = 1;
+    for(std::size_t depth = 0; depth < 8 && !established; ++depth) {
+      if(graph.predecessors[successor].size() != 1) break;
+      const std::size_t predecessor = graph.predecessors[successor][0];
+      if(seen[predecessor]) break;
+      seen[predecessor] = 1;
+      established = edge_establishes_nonzero(
+        *function, predecessor, successor, reload->first, reload->type);
+      if(established || !block_memory_stable(function->blocks[predecessor]))
+        break;
+      successor = predecessor;
+    }
+    if(!established) continue;
+
+    const Operand selected = underflow->op.kind == LowOperation::LOP_ULT ?
+      branch.second : branch.third;
+    const Operand removed = underflow->op.kind == LowOperation::LOP_ULT ?
+      branch.third : branch.second;
+    if(block_has_phi(*function, graph, removed)) continue;
+    const lowir_model::InstructionDebugLocation debug = branch.debug_location;
+    branch = Instruction();
+    branch.kind = Instruction::IK_JUMP;
+    branch.first = selected;
+    branch.debug_location = debug;
+    changed = true;
+    if(stats) {
+      ++stats->predicate_range_folds;
+      ++stats->rewrites;
+    }
+  }
+  return changed;
+}
 
 bool fold_edge_known_branches(Function * function, Stats * stats)
 {
@@ -434,6 +755,7 @@ bool cleanup_cfg(Function * function, Stats * stats, CleanupCfgScratch * scratch
   CleanupCfgScratch & active_scratch = scratch ? *scratch : owned_scratch;
   bool changed = fold_edge_known_branches_with_scratch(
     function, stats, &active_scratch.branch_values);
+  changed = fold_direct_boolean_phi_branches(function, stats) || changed;
   changed = fold_boolean_phi_branch(function, stats) || changed;
   // Phi predecessor identities are part of the instruction contract.  Phi
   // construction runs after CFG cleanup; a later optimizer round trip keeps

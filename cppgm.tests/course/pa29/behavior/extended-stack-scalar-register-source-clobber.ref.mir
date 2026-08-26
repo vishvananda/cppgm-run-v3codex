@@ -19,6 +19,8 @@ function @observe
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %a -> [rbp-8] : i64
     param-slot %b -> [rbp-16] : i64
     param-slot %c -> [rbp-24] : i64
@@ -49,6 +51,8 @@ function @forward
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $payload -> [rbp-1] : obj<1x1>
     temp %value -> [rbp-16] : i64
 
@@ -76,6 +80,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 42

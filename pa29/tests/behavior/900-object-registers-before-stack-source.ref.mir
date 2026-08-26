@@ -18,6 +18,8 @@ function @sum_object_and_scalars
   frame
     stack_size 80
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     param-slot %pair -> [rbp-16] : obj<16x8>
     param-slot %tail -> [rbp-24] : i64
@@ -52,6 +54,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14
     slot $pair -> [rbp-16] : obj<16x8>
 

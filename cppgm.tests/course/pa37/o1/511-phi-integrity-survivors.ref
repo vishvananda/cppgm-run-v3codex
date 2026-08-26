@@ -1,0 +1,36 @@
+declare function @undefined_path() -> void [effects=readnone, unwind=no, return=noreturn, role=unreachable]
+declare function @observe(%value : i64) -> void [effects=readwrite]
+
+function @repair_fold_target_phi(%choose : i64) -> i64 [no_inline=yes] {
+  block ^entry:
+    branch %choose, ^join, ^alternate
+
+  block ^alternate:
+    jump ^join
+
+  block ^join:
+    %result = phi i64 [^entry: 11, ^alternate: 22]
+    return i64 %result
+}
+function @inline_after_dead_predecessor(%choose : i64) -> i64 [binding=strong] {
+  block ^entry:
+    return i64 47
+}
+function @cross_slot_needed_phi(%choose : i64) -> i64 [no_inline=yes] {
+  slot $source : i64
+
+  block ^entry:
+    %unresolved = load i64 $source
+    call void @observe(%unresolved)
+    branch %choose, ^left, ^right
+
+  block ^left:
+    jump ^join
+
+  block ^right:
+    jump ^join
+
+  block ^join:
+    %t0 = phi i64 [^left: 5, ^right: 9]
+    return i64 %t0
+}

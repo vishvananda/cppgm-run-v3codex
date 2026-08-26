@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $x -> [rbp-<off0>] : i64
 
   block ^entry

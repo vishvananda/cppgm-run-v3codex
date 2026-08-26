@@ -1,8 +1,10 @@
 #include "lowir_inline_analysis.h"
 
+#include "lowir_function_analysis.h"
 #include "lowir_opt.h"
 
 #include <algorithm>
+#include <deque>
 #include <limits>
 #include <stdexcept>
 #include <vector>
@@ -184,7 +186,176 @@ std::size_t retained_size_bucket(std::size_t instructions)
   return sizeof(limits) / sizeof(limits[0]);
 }
 
+bool partial_prefix_instruction(const Instruction & instruction,
+                                unsigned * stop)
+{
+  switch(instruction.kind) {
+  case Instruction::IK_CONST:
+  case Instruction::IK_COPY:
+  case Instruction::IK_ADDR:
+  case Instruction::IK_INDEX:
+  case Instruction::IK_UNARY:
+  case Instruction::IK_BINARY:
+  case Instruction::IK_CMP:
+  case Instruction::IK_CONVERT:
+  case Instruction::IK_JUMP:
+  case Instruction::IK_BRANCH:
+  case Instruction::IK_SWITCH:
+  case Instruction::IK_RETURN:
+  case Instruction::IK_PHI:
+  case Instruction::IK_SELECT:
+    return true;
+  case Instruction::IK_LOAD:
+    if(!instruction.volatile_access) return true;
+    *stop |= PIPS_OTHER;
+    return false;
+  case Instruction::IK_CALL:
+    *stop |= PIPS_CALL;
+    return false;
+  case Instruction::IK_STORE:
+  case Instruction::IK_ATOMIC_STORE:
+  case Instruction::IK_ATOMIC_EXCHANGE:
+  case Instruction::IK_ATOMIC_ADD_FETCH:
+  case Instruction::IK_ATOMIC_COMPARE_EXCHANGE:
+  case Instruction::IK_COPYOBJ:
+  case Instruction::IK_ZEROINIT:
+    *stop |= PIPS_STORE;
+    return false;
+  case Instruction::IK_EH_TRY:
+  case Instruction::IK_EH_CLEANUP:
+  case Instruction::IK_EH_CLEANUP_CLAUSE:
+  case Instruction::IK_EH_CATCH:
+  case Instruction::IK_EH_FILTER:
+  case Instruction::IK_EH_CATCH_ALL:
+  case Instruction::IK_EH_END:
+  case Instruction::IK_THROW:
+  case Instruction::IK_EXCEPTION:
+  case Instruction::IK_EXCEPTION_SELECTOR:
+  case Instruction::IK_RESUME:
+    *stop |= PIPS_EH;
+    return false;
+  case Instruction::IK_ATOMIC_LOAD:
+  case Instruction::IK_ATOMIC_THREAD_FENCE:
+  case Instruction::IK_ATOMIC_SIGNAL_FENCE:
+  case Instruction::IK_VA_START:
+  case Instruction::IK_VA_ARG:
+  case Instruction::IK_STACK_ALLOC:
+    *stop |= PIPS_OTHER;
+    return false;
+  }
+  *stop |= PIPS_OTHER;
+  return false;
+}
+
+PartialInlinePrefix analyze_partial_prefix_impl(const Function & function)
+{
+  PartialInlinePrefix result;
+  if(function.blocks.empty()) return result;
+  lowir_analysis::FunctionAnalysis analysis(function, 0);
+  const lowir_analysis::Graph & graph = analysis.graph();
+  const lowir_analysis::DominatorTree & dominators =
+    analysis.dominator_tree();
+  const std::size_t count = function.blocks.size();
+  const std::size_t no_block = std::numeric_limits<std::size_t>::max();
+  std::vector<unsigned char> safe(count, 1), returns(count, 0), seen(count, 0),
+    has_phi(count, 0);
+  std::vector<unsigned> block_stops(count, 0);
+  std::vector<std::size_t> predecessor(count, no_block);
+  for(std::size_t block = 0; block < count; ++block) {
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    for(std::size_t i = 0; i < instructions.size(); ++i) {
+      safe[block] = partial_prefix_instruction(
+        instructions[i], &block_stops[block]) ? safe[block] : 0;
+      if(instructions[i].kind == Instruction::IK_RETURN)
+        returns[block] = 1;
+      if(instructions[i].kind == Instruction::IK_PHI) has_phi[block] = 1;
+    }
+  }
+  if(!safe[0]) {
+    result.stops |= block_stops[0];
+    return result;
+  }
+
+  std::deque<std::size_t> work;
+  work.push_back(0);
+  seen[0] = 1;
+  std::size_t terminal = no_block;
+  while(!work.empty()) {
+    const std::size_t block = work.front();
+    work.pop_front();
+    if(terminal == no_block && returns[block]) terminal = block;
+    const lowir_analysis::EdgeList & successors = graph.successors[block];
+    for(std::size_t edge = 0; edge < successors.size(); ++edge) {
+      const std::size_t successor = successors[edge];
+      if(dominators.dominates(successor, block)) {
+        result.stops |= PIPS_BACKEDGE;
+        continue;
+      }
+      // Multiple original predecessors are harmless after cloning unless the
+      // block has a phi that would need an operand from an uncloned edge.
+      if(graph.predecessors[successor].size() > 1 && has_phi[successor]) {
+        result.stops |= PIPS_JOIN;
+        continue;
+      }
+      if(!safe[successor]) {
+        result.stops |= block_stops[successor];
+        continue;
+      }
+      if(seen[successor]) continue;
+      seen[successor] = 1;
+      predecessor[successor] = block;
+      work.push_back(successor);
+    }
+  }
+  if(terminal == no_block) return result;
+
+  std::vector<unsigned char> path(count, 0);
+  for(std::size_t block = terminal; block != no_block;
+      block = predecessor[block]) {
+    path[block] = 1;
+    result.blocks.push_back(block);
+    result.instructions += function.blocks[block].instructions.size();
+  }
+  std::reverse(result.blocks.begin(), result.blocks.end());
+  for(std::size_t block = 0; block < count; ++block) {
+    if(!path[block]) continue;
+    const lowir_analysis::EdgeList & successors = graph.successors[block];
+    for(std::size_t edge = 0; edge < successors.size(); ++edge)
+      if(!path[successors[edge]]) ++result.bailout_edges;
+  }
+  result.has_fast_return = true;
+  return result;
+}
+
+bool constant_partial_actual_impl(const Operand & operand)
+{
+  return operand.kind == Operand::OP_INTEGER ||
+    operand.kind == Operand::OP_FLOAT || operand.kind == Operand::OP_GLOBAL;
+}
+
+void record_partial_stops(const PartialInlinePrefix & prefix, Stats * stats)
+{
+  if(prefix.stops & PIPS_CALL) ++stats->partial_inline_census_call_stops;
+  if(prefix.stops & PIPS_STORE) ++stats->partial_inline_census_store_stops;
+  if(prefix.stops & PIPS_EH) ++stats->partial_inline_census_eh_stops;
+  if(prefix.stops & PIPS_OTHER) ++stats->partial_inline_census_other_stops;
+  if(prefix.stops & PIPS_BACKEDGE)
+    ++stats->partial_inline_census_backedge_stops;
+  if(prefix.stops & PIPS_JOIN) ++stats->partial_inline_census_join_stops;
+}
+
 }  // namespace
+
+PartialInlinePrefix analyze_partial_inline_prefix(const Function & function)
+{
+  return analyze_partial_prefix_impl(function);
+}
+
+bool partial_inline_actual_is_constant(const Operand & operand)
+{
+  return constant_partial_actual_impl(operand);
+}
 
 InlineCallGraph analyze_inline_call_graph(
   const LowirProgram & program, Stats * stats)
@@ -287,6 +458,110 @@ void collect_retained_inline_census(
     stats->inline_retained_nonpositive_leaf_instructions += instructions;
     stats->inline_retained_nonpositive_leaf_estimated_savings +=
       savings - growth;
+  }
+}
+
+void collect_partial_inline_census(
+  const LowirProgram & program, const InlineCallGraph & graph, Stats * stats)
+{
+  if(!stats) return;
+  const std::size_t count = program.functions.size();
+  std::vector<PartialInlinePrefix> prefixes(count);
+  std::vector<unsigned char> prefix_known(count, 0), eligible_callee(count, 0);
+  std::vector<std::size_t> caller_counts(count, 0), touched;
+  touched.reserve(32);
+  const std::size_t no_function = InlineCallGraph::no_function();
+
+  for(std::size_t caller = 0; caller < count; ++caller) {
+    if(graph.edge_offsets[caller] == graph.edge_offsets[caller + 1]) continue;
+    for(std::size_t edge = graph.edge_offsets[caller];
+        edge < graph.edge_offsets[caller + 1]; ++edge) {
+      const std::size_t target = graph.edges[edge];
+      if(caller_counts[target]++ == 0) touched.push_back(target);
+    }
+    lowir_analysis::FunctionAnalysis analysis(program.functions[caller], 0);
+    const lowir_analysis::LoopForest & loops = analysis.loop_forest();
+    const Function & caller_function = program.functions[caller];
+    for(std::size_t block = 0; block < caller_function.blocks.size(); ++block)
+      for(std::size_t i = 0;
+          i < caller_function.blocks[block].instructions.size(); ++i) {
+        const Instruction & call =
+          caller_function.blocks[block].instructions[i];
+        const std::size_t target = direct_callee(
+          call, graph.definition_by_symbol);
+        if(target == no_function) continue;
+        ++stats->partial_inline_census_direct_calls;
+        const Function & callee = program.functions[target];
+        if(graph.recursive[target] || target == caller) {
+          ++stats->partial_inline_census_reject_recursive;
+          continue;
+        }
+        if(callee.metadata.no_inline) {
+          ++stats->partial_inline_census_reject_no_inline;
+          continue;
+        }
+        if(callee.params.size() != call.args.size()) {
+          ++stats->partial_inline_census_reject_argument_shape;
+          continue;
+        }
+        if(callee.boundary.arity == lowir_model::CAM_VARIADIC) {
+          ++stats->partial_inline_census_reject_variadic;
+          continue;
+        }
+        if((!call.call_returns_void &&
+            (callee.return_type.kind == lowir_model::LTK_OBJECT ||
+             call.type.kind == lowir_model::LTK_OBJECT))) {
+          ++stats->partial_inline_census_reject_object_result;
+          continue;
+        }
+        if(!prefix_known[target]) {
+          prefixes[target] = analyze_partial_inline_prefix(callee);
+          prefix_known[target] = 1;
+        }
+        const PartialInlinePrefix & prefix = prefixes[target];
+        record_partial_stops(prefix, stats);
+        if(!prefix.has_fast_return) {
+          ++stats->partial_inline_census_reject_no_fast_return;
+          continue;
+        }
+        if(prefix.bailout_edges == 0) {
+          ++stats->partial_inline_census_reject_no_bailout;
+          continue;
+        }
+        ++stats->partial_inline_census_eligible_calls;
+        if(!eligible_callee[target]) {
+          eligible_callee[target] = 1;
+          ++stats->partial_inline_census_eligible_callees;
+        }
+        if(callee.metadata.inline_hint)
+          ++stats->partial_inline_census_hint_calls;
+        std::size_t constants = 0;
+        for(std::size_t arg = 0; arg < call.args.size(); ++arg)
+          if(partial_inline_actual_is_constant(call.args[arg])) ++constants;
+        if(constants) ++stats->partial_inline_census_constant_calls;
+        stats->partial_inline_census_constant_actuals += constants;
+        if(block < loops.innermost_loop.size() &&
+           loops.innermost_loop[block] != no_function)
+          ++stats->partial_inline_census_loop_calls;
+        if(caller_counts[target] > 1)
+          ++stats->partial_inline_census_repeated_callee_calls;
+        stats->partial_inline_census_prefix_blocks += prefix.blocks.size();
+        stats->partial_inline_census_prefix_instructions +=
+          prefix.instructions;
+        stats->partial_inline_census_bailout_edges += prefix.bailout_edges;
+        if(prefix.instructions <= 8)
+          ++stats->partial_inline_census_prefix_0_8;
+        else if(prefix.instructions <= 12)
+          ++stats->partial_inline_census_prefix_9_12;
+        else if(prefix.instructions <= 16)
+          ++stats->partial_inline_census_prefix_13_16;
+        else if(prefix.instructions <= 24)
+          ++stats->partial_inline_census_prefix_17_24;
+        else ++stats->partial_inline_census_prefix_over_24;
+      }
+    for(std::size_t i = 0; i < touched.size(); ++i)
+      caller_counts[touched[i]] = 0;
+    touched.clear();
   }
 }
 

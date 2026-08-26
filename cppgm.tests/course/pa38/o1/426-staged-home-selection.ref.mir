@@ -1,0 +1,273 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @keep1
+  storage scalar i64
+  init i64 1
+
+global @keep2
+  storage scalar i64
+  init i64 2
+
+global @keep3
+  storage scalar i64
+  init i64 3
+
+global @keep4
+  storage scalar i64
+  init i64 4
+
+global @keep5
+  storage scalar i64
+  init i64 5
+
+global @number
+  storage scalar i64
+  init i64 40
+
+global @number_pointer
+  storage data
+  item ptr addr @number
+
+function @identity
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    ret rdi
+
+function @copy_to_edge_home
+  abi
+    param %value -> rdi : i64
+    param %condition -> rsi : i64
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    preserve rbx
+    temp %host-eh-exception -> [rbp-8] : ptr
+    temp %host-eh-selector -> [rbp-16] : i64
+    temp %result -> [rbp-24] : i64
+    temp %copied -> [rbp-32] : i64
+
+  block ^entry
+    mov rbx, rsi
+    eh_push ^handler, 0
+    store.i64 [rbp-32], rdi
+    mov rdi, 7
+    call @identity [args=(rdi), unwind=no]
+    eh_pop
+    test.i64 rbx, rbx
+    je ^right
+
+  block ^left
+    load.i64 r9, [rbp-32]
+    add r9, 1
+    store.i64 [rbp-24], r9
+    jmp ^done
+
+  block ^right
+    load.i64 r9, [rbp-32]
+    sub r9, 1
+    store.i64 [rbp-24], r9
+
+  block ^done
+    load.i64 rax, [rbp-24]
+    ret rax
+
+  block ^handler
+    mov rax, 99
+    ret rax
+
+function @call_result_to_edge_home
+  abi
+    param %condition -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    preserve rbx r12
+    temp %host-eh-exception -> [rbp-8] : ptr
+    temp %host-eh-selector -> [rbp-16] : i64
+    temp %result -> [rbp-24] : i64
+    temp %value -> [rbp-32] : i64
+
+  block ^entry
+    mov rbx, rdi
+    eh_push ^handler, 0
+    mov rdi, 40
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-32], rax
+    mov rdi, 9
+    call @identity [args=(rdi), unwind=no]
+    eh_pop
+    test.i64 rbx, rbx
+    je ^right
+
+  block ^left
+    load.i64 r9, [rbp-32]
+    add r9, 2
+    store.i64 [rbp-24], r9
+    jmp ^done
+
+  block ^right
+    load.i64 r9, [rbp-32]
+    sub r9, 2
+    store.i64 [rbp-24], r9
+
+  block ^done
+    load.i64 rax, [rbp-24]
+    ret rax
+
+  block ^handler
+    mov rax, 99
+    ret rax
+
+function @load_with_dead_address
+  abi
+    param %condition -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 80
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    preserve rbx r13 r12 r14 r15
+    temp %host-eh-exception -> [rbp-8] : ptr
+    temp %host-eh-selector -> [rbp-16] : i64
+    temp %result -> [rbp-24] : i64
+    temp %c -> [rbp-32] : i64
+    temp %value -> [rbp-40] : i64
+
+  block ^entry
+    mov rbx, rdi
+    eh_push ^handler, 0
+    load.i64 r13, @keep1
+    load.i64 r12, @keep2
+    load.i64 r14, @keep3
+    store.i64 [rbp-32], r14
+    load.i64 r14, @keep4
+    load.i64 r15, @keep5
+    load.ptr r8, @number_pointer
+    load.i64 r8, [r8]
+    store.i64 [rbp-40], r8
+    mov rdi, 11
+    call @identity [args=(rdi), unwind=no]
+    eh_pop
+    test.i64 rbx, rbx
+    je ^right
+
+  block ^left
+    lea r9, [r13+r12]
+    load.i64 r8, [rbp-32]
+    add r8, r14
+    add r9, r8
+    add r9, r15
+    add r9, 3
+    store.i64 [rbp-24], r9
+    jmp ^done
+
+  block ^right
+    lea r9, [r13+r12]
+    load.i64 r8, [rbp-32]
+    add r8, r14
+    add r9, r8
+    add r9, r15
+    sub r9, 3
+    store.i64 [rbp-24], r9
+
+  block ^done
+    load.i64 r9, [rbp-24]
+    add r9, [rbp-40]
+    ret r9
+
+  block ^handler
+    mov rax, 99
+    ret rax
+
+function @load_with_live_address
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    preserve r13 r12
+    temp %host-eh-exception -> [rbp-8] : ptr
+    temp %host-eh-selector -> [rbp-16] : i64
+
+  block ^entry
+    eh_push ^handler, 0
+    load.ptr r13, @number_pointer
+    load.i64 r12, [r13]
+    mov rdi, 13
+    call @identity [args=(rdi), unwind=no]
+    eh_pop
+    mov rdx, 0
+    cmp.ptr r13, rdx
+    sete r13
+    movzx r13, r13
+    mov rdx, 40
+    cmp.i64 r12, rdx
+    setne r12
+    movzx r12, r12
+    or r13, r12
+    ret r13
+
+  block ^handler
+    mov rax, 99
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+    preserve rbx r12 r13
+
+  block ^entry
+    mov rdi, 40
+    mov rsi, 1
+    call @copy_to_edge_home [args=(rsi,rdi)]
+    mov rbx, rax
+    mov rdi, 1
+    call @call_result_to_edge_home [args=(rdi)]
+    mov r12, rax
+    mov rdi, 1
+    call @load_with_dead_address [args=(rdi)]
+    mov r13, rax
+    call @load_with_live_address [args=()]
+    mov rdx, 41
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, 42
+    cmp.i64 r12, rdx
+    setne r12
+    movzx r12, r12
+    mov rdx, 58
+    cmp.i64 r13, rdx
+    setne r13
+    movzx r13, r13
+    or rbx, r12
+    or r13, rax
+    or rbx, r13
+    ret rbx

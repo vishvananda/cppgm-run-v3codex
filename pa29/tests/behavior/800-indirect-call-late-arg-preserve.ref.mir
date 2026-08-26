@@ -36,6 +36,8 @@ function @data
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, rdi
@@ -48,6 +50,8 @@ function @size
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %this -> [rbp-8] : ptr
 
   block ^entry
@@ -67,6 +71,8 @@ function @sink
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     param-slot %this -> [rbp-8] : ptr
     param-slot %src -> [rbp-16] : ptr
@@ -88,6 +94,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
 
   block ^entry

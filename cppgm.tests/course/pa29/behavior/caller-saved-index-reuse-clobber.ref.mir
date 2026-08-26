@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $source -> [rbp-8] : obj<8x8>
     slot $destination -> [rbp-16] : obj<8x8>
 

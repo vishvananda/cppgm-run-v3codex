@@ -11,6 +11,8 @@ function @one
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, 1
@@ -28,6 +30,8 @@ function @foo
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     param-slot %b -> [rbp-8] : i64
     param-slot %c -> [rbp-16] : i64
@@ -51,6 +55,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     call @one

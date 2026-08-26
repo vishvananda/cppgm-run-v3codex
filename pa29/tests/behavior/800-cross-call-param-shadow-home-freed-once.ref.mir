@@ -16,6 +16,8 @@ function @touch
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %p -> [rbp-8] : ptr
 
   block ^entry
@@ -28,6 +30,8 @@ function @cell_ptr
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, @cell
@@ -41,6 +45,8 @@ function @victim
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -62,6 +68,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, @cell

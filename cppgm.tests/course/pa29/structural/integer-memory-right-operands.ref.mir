@@ -30,6 +30,8 @@ function @add_global
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     add rdi, @global_rhs
@@ -48,6 +50,8 @@ function @sub_frame
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %right -> [rbp-8] : i64
 
   block ^entry
@@ -64,6 +68,8 @@ function @and_dereference
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     and rsi, [rdi]
@@ -78,6 +84,8 @@ function @or_indexed
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     or rdx, [rdi+rsi*8]
@@ -90,6 +98,8 @@ function @xor_global
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     xor rdi, @xor_rhs
@@ -108,6 +118,8 @@ function @multiply_frame
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %right -> [rbp-4] : i32
 
   block ^entry
@@ -126,6 +138,8 @@ function @compare_indexed
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     cmp.i64 rdx, [rdi+rsi*8]
@@ -141,6 +155,8 @@ function @divide_dereference
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 r8, [rdi]
@@ -163,6 +179,8 @@ function @shift_frame
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %count -> [rbp-8] : i64
 
   block ^entry
@@ -181,6 +199,8 @@ function @multiply_byte
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i8 r8, [rdi]
@@ -197,6 +217,8 @@ function @add_byte_indexed
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     add rdx, [rdi+rsi]
@@ -209,6 +231,8 @@ function @main
   frame
     stack_size 96
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     temp %sub -> [rbp-8] : i64
     temp %and -> [rbp-16] : i64

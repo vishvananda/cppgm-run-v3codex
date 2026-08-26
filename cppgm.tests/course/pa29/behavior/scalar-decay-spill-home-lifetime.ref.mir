@@ -16,6 +16,8 @@ function @length_of
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, 3
@@ -45,6 +47,8 @@ function @observe
   frame
     stack_size 144
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
     param-slot %p7 -> [rbp-8] : ptr
     param-slot %p8 -> [rbp-16] : ptr
@@ -124,6 +128,8 @@ function @exercise
   frame
     stack_size 112
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     temp %p5 -> [rbp-8] : ptr
     temp %p6 -> [rbp-16] : ptr
@@ -205,6 +211,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, @bytes

@@ -19,6 +19,8 @@ function @check
   frame
     stack_size 80
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     param-slot %a0 -> [rbp-4] : f32
     param-slot %a1 -> [rbp-8] : f32
     param-slot %a2 -> [rbp-12] : f32
@@ -56,6 +58,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     fmov.f32 xmm0, 1.0f

@@ -20,6 +20,8 @@ function @sink
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -33,6 +35,8 @@ function @write_and_clobber
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.i64 [rdi], rsi
@@ -49,6 +53,8 @@ function @loop_store
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14
     slot $iteration -> [rbp-8] : i64
     temp %current -> [rbp-16] : i64
@@ -86,6 +92,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
 
   block ^entry

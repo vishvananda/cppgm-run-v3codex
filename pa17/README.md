@@ -112,6 +112,17 @@ temporary-materialization support are part of the PA17 semantic model, but `cppg
 needs to emit the helper definitions that the lowered program actually requires. Unused
 copy/move/value helpers do not need to appear just because they are synthesizable.
 
+The indirect destination and source parameters of a same-class copy or move
+constructor denote distinct live objects during construction. Their emitted
+LowIR boundary metadata may therefore mark both parameters `alias=noalias`.
+Assignment operators do not have that property and must remain conservative.
+
+Focused course controls validate these boundary facts and temporary-lifetime
+relationships without comparing a complete LowIR module. They inspect only
+the two constructor parameters versus the assignment-operator control, or the
+ordering and identity of construction, selected use, and destruction within
+one full expression. The lifetime reducer is also compiled and executed.
+
 For supported indirect return-by-value cases, PA17 may also lower an eligible top-level
 named local directly in `%ret` instead of building a separate local object and then
 copying or moving it into the return destination. That direct return-slot form is part of
@@ -120,6 +131,11 @@ the accepted PA17 output contract.
 Ref-qualified member functions extend the PA16 member-call model: overload resolution still
 uses the implicit object argument, and the object expression's value category participates in
 viability and ranking for supported `&` and `&&` qualified members.
+
+Nested operand and overload analysis must preserve the identity of the
+enclosing binary operator and the lifetime of its full expression. Interning
+additional candidate or conversion spellings while resolving an overloaded
+operator must not change the enclosing operator or its result.
 
 For supported synthesized copy/move special members, PA17 may lower a leading trivially
 copyable storage prefix directly as `copyobj <span> <src>, <dst>` instead of spelling that

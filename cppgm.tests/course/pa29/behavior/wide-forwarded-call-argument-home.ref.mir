@@ -51,6 +51,8 @@ function @cppgm_priv_exc_unhandled
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -68,6 +70,8 @@ function @target
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %g -> [rbp-8] : ptr
 
   block ^entry
@@ -84,6 +88,8 @@ function @consume
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -101,6 +107,8 @@ function @forward
   frame
     stack_size 80
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %a -> [rbp-8] : ptr
     param-slot %b -> [rbp-16] : ptr
     param-slot %c -> [rbp-24] : ptr
@@ -145,6 +153,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     sub rsp, 16

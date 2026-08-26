@@ -28,6 +28,8 @@ function @read_first
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %a -> [rbp-8] : i64
     param-slot %b -> [rbp-16] : i64
     param-slot %c -> [rbp-24] : i64
@@ -53,6 +55,8 @@ function @run
   frame
     stack_size 80
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %q -> [rbp-8] : i64
     param-slot %r -> [rbp-16] : i64
     param-slot %s -> [rbp-24] : i64
@@ -96,6 +100,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
 
   block ^entry

@@ -24,6 +24,8 @@ function @capture
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %addr -> [rbp-8] : ptr
     param-slot %b -> [rbp-16] : i64
     param-slot %c -> [rbp-24] : i64
@@ -49,6 +51,8 @@ function @run
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %q -> [rbp-8] : i64
     param-slot %r -> [rbp-16] : i64
     param-slot %s -> [rbp-24] : i64
@@ -85,6 +89,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, @good

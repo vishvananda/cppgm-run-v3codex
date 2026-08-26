@@ -1,0 +1,61 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @check
+  abi
+    return i32 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    slot $attempt -> [rbp-8] : i64
+    slot $byte -> [rbp-9] : u8
+
+  block ^entry
+    mov rax, 256
+    store.i64 [rbp-8], rax
+    mov rax, 0
+    store.u8 [rbp-9], rax
+    mov r8, rax
+    zext.i8 r8
+    jmp ^test
+
+  block ^test
+    cmp.i64 r8, 0
+    je ^good
+    jmp ^retry
+
+  block ^retry
+    cmp.i64 [rbp-8], 256
+    je ^again
+    jmp ^bad
+
+  block ^again
+    mov rax, 257
+    store.i64 [rbp-8], rax
+    jmp ^test
+
+  block ^good
+    mov rax, 0
+    ret rax
+
+  block ^bad
+    mov rax, 1
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    call @check
+    mov r8, rax
+    sext.i32 r8
+    mov rax, r8
+    ret rax

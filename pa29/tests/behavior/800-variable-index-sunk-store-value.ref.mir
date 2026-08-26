@@ -27,6 +27,8 @@ function @touch
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %scratch -> [rbp-8] : ptr
 
   block ^entry
@@ -39,6 +41,8 @@ function @run
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $scratch -> [rbp-40] : obj<40x8>
 
   block ^entry
@@ -57,6 +61,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry

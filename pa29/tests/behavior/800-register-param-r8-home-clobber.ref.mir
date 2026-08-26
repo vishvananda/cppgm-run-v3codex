@@ -16,6 +16,8 @@ function @consume
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %p -> [rbp-8] : ptr
 
   block ^entry
@@ -30,6 +32,8 @@ function @load_value
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, rdi
@@ -47,6 +51,8 @@ function @target
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
     param-slot %a -> [rbp-8] : ptr
     param-slot %c -> [rbp-16] : ptr
@@ -73,6 +79,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, @value

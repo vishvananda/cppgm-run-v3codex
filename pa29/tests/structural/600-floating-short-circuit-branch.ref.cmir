@@ -21,6 +21,8 @@ function @check
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     fmov.f64 xmm0, [rdi]
@@ -48,6 +50,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, @pair

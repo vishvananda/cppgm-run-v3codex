@@ -13,6 +13,8 @@ function @copy_ref
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 rax, [rsi]
@@ -25,6 +27,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $src -> [rbp-<off0>] : i64
     slot $dst -> [rbp-<off1>] : i64
 

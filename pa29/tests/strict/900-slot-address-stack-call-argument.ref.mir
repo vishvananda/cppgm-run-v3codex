@@ -18,6 +18,8 @@ function @write_seventh
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %created -> [rbp-8] : ptr
 
   block ^entry
@@ -33,6 +35,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $created -> [rbp-1] : u8
 
   block ^entry

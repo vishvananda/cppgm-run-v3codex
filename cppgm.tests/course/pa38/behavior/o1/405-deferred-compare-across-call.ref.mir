@@ -16,6 +16,8 @@ function @sink
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
 
   block ^entry
     ret
@@ -28,6 +30,8 @@ function @probe
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
     preserve r13 r12
 
   block ^entry
@@ -56,6 +60,8 @@ function @main
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
     preserve rbx
     slot $left -> [rbp-16] : obj<16x8>
     slot $right -> [rbp-24] : i64

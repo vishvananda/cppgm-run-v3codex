@@ -51,12 +51,39 @@ void plan_transfers(
 {
   transfers->clear();
   transfers->resize(function.next_block_id);
+  const std::size_t no_block = static_cast<std::size_t>(-1);
+  std::vector<std::size_t> block_by_id(function.next_block_id, no_block);
+  std::vector<std::size_t> phi_blocks(
+    function.value_names.size(), no_block);
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    block_by_id[function.blocks[block].id] = block;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t i = 0;
+        i < function.blocks[block].instructions.size(); ++i) {
+      const lowir_model::Instruction & phi =
+        function.blocks[block].instructions[i];
+      if(phi.kind != lowir_model::Instruction::IK_PHI) break;
+      phi_blocks[phi.dest] = block;
+    }
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
     const lowir_model::LowirBlock & target = function.blocks[block];
+    const bool target_is_cyclic = emitter->PhiBlockIsCyclic(block);
     for(std::size_t i = 0; i < target.instructions.size(); ++i) {
       const lowir_model::Instruction & phi = target.instructions[i];
       if(phi.kind != lowir_model::Instruction::IK_PHI) break;
-      emitter->DefinePhi(phi.dest, phi.type);
+      bool loop_carried = false;
+      for(std::size_t incoming = 0;
+          incoming + 1 < phi.args.size(); incoming += 2) {
+        const std::uint32_t predecessor = phi.args[incoming].block;
+        if(predecessor < block_by_id.size() &&
+           block_by_id[predecessor] != no_block &&
+           block_by_id[predecessor] >= block) {
+          loop_carried = true;
+          break;
+        }
+      }
+      emitter->DefinePhi(phi, loop_carried, block, target_is_cyclic,
+                         phi_blocks);
       for(std::size_t incoming = 0;
           incoming + 1 < phi.args.size(); incoming += 2) {
         const std::uint32_t predecessor = phi.args[incoming].block;

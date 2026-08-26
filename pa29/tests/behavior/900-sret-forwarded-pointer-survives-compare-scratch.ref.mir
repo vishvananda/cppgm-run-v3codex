@@ -32,6 +32,8 @@ function @check_forwarded
   frame
     stack_size 112
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve r14 r15
     temp %want_scope -> [rbp-8] : ptr
     temp %want_specifiers -> [rbp-16] : ptr
@@ -95,6 +97,8 @@ function @forward_after_compare
   frame
     stack_size 80
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     param-slot %syntax -> [rbp-8] : ptr
     slot $selected -> [rbp-16] : i64
@@ -150,6 +154,8 @@ function @main
   frame
     stack_size 176
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $result -> [rbp-4] : obj<4x4>
     slot $object -> [rbp-152] : obj<144x8>
     slot $syntax -> [rbp-160] : obj<8x8>

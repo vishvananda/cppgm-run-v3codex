@@ -16,6 +16,8 @@ function @read
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 rax, [rdi]
@@ -27,6 +29,8 @@ function @main
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13
 
   block ^entry

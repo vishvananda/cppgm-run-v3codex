@@ -245,6 +245,14 @@ This PA15 milestone supports the following:
 - up to four parameters in the supported PA12 procedural type subset
 - global integral/pointer/function-pointer objects with constant initializers or zero-init,
   including object addresses and constant array-element addresses
+- internal namespace-scope `const` scalar objects represented as
+  `storage=readonly` in LowIR when they are neither volatile nor
+  `thread_local`; volatile scalars, class objects, and thread-local objects
+  retain their respective conservative storage contracts
+- volatile scalar lvalue-to-rvalue conversions and stores represented by
+  `load volatile` and `store volatile` at the LowIR boundary, including local,
+  pointer-indirect, and class-member access; the marker belongs to the access,
+  while an adjacent nonvolatile member access remains ordinary
 - local scalar objects, scalar/function references, function pointers/references, and bounded
   arrays in the supported PA12 procedural type subset; an omitted array bound is inferred
   from its initializer, missing elements are zero-initialized, and excess elements are
@@ -266,7 +274,11 @@ This PA15 milestone supports the following:
 - lvalue references, including reference parameters, reference locals, reference
   returns, and aliasing through supported calls
 - array-to-pointer decay, subscript expressions, pointer arithmetic, one-past
-  pointer values, and pointer compound assignment with element-size scaling
+  pointer values, pointer compound assignment with element-size scaling, and
+  pointer differences measured in elements; because the byte difference of
+  two pointers into the same array is exactly divisible by the element size,
+  a positive power-of-two size may be lowered as an arithmetic right shift,
+  while other element sizes retain signed division
 - scoped and unscoped enums, enum constants, enum promotion/comparison, and
   enum lowering
 - built-in casts over the supported scalar, function, reference, and pointer

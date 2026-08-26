@@ -1,0 +1,241 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @node1
+  storage data
+  item ptr addr @node2
+
+global @node2
+  storage data
+  item ptr 0
+
+global @number
+  storage scalar i64
+  init i64 42
+
+function @identity
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    ret rdi
+
+function @walk_unavoidable
+  abi
+    param %head -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+    preserve <gpr0> <gpr1> <gpr2>
+
+  block ^entry
+    load.i64 <gpr2>, @number
+    mov <gpr0>, rdi
+    mov <gpr1>, 0
+
+  block ^loop
+    test.ptr <gpr0>, <gpr0>
+    je ^exit
+
+  block ^body
+    cmp.i64 <gpr2>, 42
+    jne ^failure
+
+  block ^advance
+    load.ptr <gpr0>, [<gpr0>]
+    lea r8, [<gpr1>+<off0>]
+    mov <gpr1>, r8
+    jmp ^loop
+
+  block ^exit
+    ret <gpr1>
+
+  block ^failure
+    mov rax, 99
+    ret rax
+
+function @walk_guarded
+  abi
+    param %head -> rdi : ptr
+    param %run -> rsi : i64
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    temp %cursor -> [rbp-<off0>] : ptr
+    temp %count -> [rbp-<off1>] : i64
+    temp %result -> [rbp-<off2>] : i64
+
+  block ^entry
+    test.i64 rsi, rsi
+    jne ^__phi_edge_4
+    jmp ^__phi_edge_5
+
+  block ^loop
+    cmp.ptr [rbp-<off0>], 0
+    je ^__phi_edge_6
+
+  block ^body
+    load.ptr rcx, [rbp-<off0>]
+    load.ptr r9, [rcx]
+    load.i64 r8, [rbp-<off1>]
+    add r8, 1
+    store.ptr [rbp-<off0>], r9
+    store.i64 [rbp-<off1>], r8
+    jmp ^loop
+
+  block ^exit
+    load.i64 rax, [rbp-<off2>]
+    ret rax
+
+  block ^__phi_edge_4
+    store.ptr [rbp-<off0>], rdi
+    mov <gpr3>, 0
+    store.i64 [rbp-<off1>], <gpr3>
+    jmp ^loop
+
+  block ^__phi_edge_5
+    mov <gpr3>, 0
+    store.i64 [rbp-<off2>], <gpr3>
+    jmp ^exit
+
+  block ^__phi_edge_6
+    load.i64 <gpr3>, [rbp-<off1>]
+    store.i64 [rbp-<off2>], <gpr3>
+    jmp ^exit
+
+function @call_free_eh_load
+  abi
+    param %address -> rdi : ptr
+    param %choose -> rsi : i64
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    temp %host-eh-exception -> [rbp-<off0>] : ptr
+    temp %host-eh-selector -> [rbp-<off1>] : i64
+    temp %result -> [rbp-<off2>] : i64
+
+  block ^entry
+    eh_push ^handler, 0
+    eh_pop
+    load.i64 rdi, [rdi]
+    test.i64 rsi, rsi
+    je ^right
+
+  block ^left
+    lea rsi, [rdi+<off0>]
+    store.i64 [rbp-<off2>], rsi
+    jmp ^done
+
+  block ^right
+    mov rsi, rdi
+    sub rsi, 1
+    store.i64 [rbp-<off2>], rsi
+
+  block ^done
+    load.i64 rax, [rbp-<off2>]
+    ret rax
+
+  block ^handler
+    mov rax, 99
+    ret rax
+
+function @call_crossing_eh_value
+  abi
+    param %address -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    preserve <gpr4>
+    temp %host-eh-exception -> [rbp-<off0>] : ptr
+    temp %host-eh-selector -> [rbp-<off1>] : i64
+
+  block ^entry
+    eh_push ^handler, 0
+    load.i64 <gpr4>, [rdi]
+    mov rdi, 7
+    call @identity [args=(rdi), unwind=no]
+    eh_pop
+
+  block ^done
+    lea r9, [<gpr4>+<off0>]
+    ret r9
+
+  block ^handler
+    mov rax, 99
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+    preserve <gpr2> <gpr5> <gpr4> <gpr1>
+
+  block ^entry
+    mov rdi, @node1
+    call @walk_unavoidable [args=(rdi), unwind=no]
+    mov <gpr2>, rax
+    mov rdi, @node1
+    mov rsi, 0
+    call @walk_guarded [args=(rsi,rdi), unwind=no]
+    mov <gpr5>, rax
+    mov rdi, @number
+    mov rsi, 1
+    call @call_free_eh_load [args=(rsi,rdi)]
+    mov <gpr4>, rax
+    mov rdi, @number
+    mov rsi, 0
+    call @call_free_eh_load [args=(rsi,rdi)]
+    mov <gpr1>, rax
+    mov rdi, @number
+    call @call_crossing_eh_value [args=(rdi)]
+    mov rdx, 2
+    cmp.i64 <gpr2>, rdx
+    setne <gpr2>
+    movzx <gpr2>, <gpr2>
+    mov rdx, 0
+    cmp.i64 <gpr5>, rdx
+    setne <gpr5>
+    movzx <gpr5>, <gpr5>
+    mov rdx, 43
+    cmp.i64 <gpr4>, rdx
+    setne <gpr4>
+    movzx <gpr4>, <gpr4>
+    mov rdx, 41
+    cmp.i64 <gpr1>, rdx
+    setne <gpr1>
+    movzx <gpr1>, <gpr1>
+    mov rdx, 43
+    cmp.i64 rax, rdx
+    setne r8
+    movzx r8, r8
+    or <gpr2>, <gpr5>
+    or <gpr4>, <gpr1>
+    or <gpr2>, <gpr4>
+    or <gpr2>, r8
+    ret <gpr2>

@@ -2213,3 +2213,8 @@ source reshaping remains out of scope per the standing directive).
   forwarder integrated with a different global allocation geometry.  L81's
   full PA38, through-PA38, audit, and three 32-way inception lanes remain the
   final correctness matrix; no fixture changed and no profiler remains.
+
+Forward operation-count work continues in
+`PLAN-GUARDED-PARTIAL-INLINING.md` as the P31 guarded hot-path cloning program.
+Its measured residual and P32 successor are documented in
+`PLAN-HOT-LOOP-RESIDENCY.md`.

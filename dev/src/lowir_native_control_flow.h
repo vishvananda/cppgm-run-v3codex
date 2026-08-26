@@ -17,9 +17,13 @@ public:
 	explicit ControlFlowQueries(const lowir_model::LowirFunction& function);
 	void SelectBlock(std::size_t block);
 	bool CurrentBlockIsCyclic() const;
+	bool BlocksShareCyclicComponent(std::size_t left,
+		std::size_t right) const;
 	bool SpillIsSafe(lowir_model::ValueId value, std::size_t position) const;
 	bool FindDominatedUseTail(lowir_model::ValueId value,
 		std::size_t after_position, std::size_t* begin, std::size_t* end);
+	bool CyclicDefinitionDominatesUses(lowir_model::ValueId value,
+		std::size_t definition_position, std::size_t definition_block);
 
 private:
 	struct ValueUseSite
@@ -44,6 +48,7 @@ private:
 	// Exact membership in a nontrivial strongly-connected component or a
 	// singleton component with a self-edge.
 	std::vector<unsigned char> cyclic_;
+	std::vector<std::size_t> component_;
 	// Blocks lying inside any layout-backward edge span [target, source]:
 	// such a block can be re-entered by blocks the walk has not emitted yet.
 	std::vector<unsigned char> backedge_covered_;

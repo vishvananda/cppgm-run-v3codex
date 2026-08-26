@@ -21,6 +21,8 @@ function @sum6
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     add rdi, rsi
@@ -36,6 +38,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     temp %r -> [rbp-8] : i64
 
   block ^entry

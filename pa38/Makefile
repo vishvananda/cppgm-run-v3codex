@@ -1,5 +1,6 @@
 TARGET = lowir2native
 LOWIR2NATIVE_APP ?= ../dev/$(TARGET)
+CPPGM_DRIVER_APP ?= ../dev/cppgm++
 LOWIR2NATIVE_REF_APP ?= $(LOWIR2NATIVE_APP)-ref
 TEST_DEPS ?= dev-shared-target
 HOST_UNAME_S = $(shell uname -s)
@@ -43,6 +44,8 @@ COURSE_BEHAVIOR_TEST_ROOT ?= course/pa38/behavior
 COURSE_BEHAVIOR_O1_TEST_ROOT ?= $(COURSE_BEHAVIOR_TEST_ROOT)/o1
 COURSE_BEHAVIOR_O2_TEST_ROOT ?= $(COURSE_BEHAVIOR_TEST_ROOT)/o2
 COURSE_BEHAVIOR_O3_TEST_ROOT ?= $(COURSE_BEHAVIOR_TEST_ROOT)/o3
+COURSE_DRIVER_CENSUS_TEST_ROOT ?= course/pa38/driver
+COURSE_STRUCTURAL_CONTROL_TEST_ROOT ?= course/pa38/controls
 
 $(shell mkdir -p $(RDEPDIR) $(DDEPDIR) >/dev/null)
 
@@ -84,6 +87,31 @@ define run_native_bucket_ref
 	fi
 endef
 
+define run_driver_census_bucket
+	@if [ -d "$(1)" ] && find "$(1)" -type f -name '*.t' | grep -q .; then \
+		perl ../scripts/check_cppgm_function_census.pl $(CPPGM_DRIVER_APP) "$(1)"; \
+	else \
+		if [ "$(REPORT_EMPTY_OPTIONAL_TEST_ROOTS)" = "1" ]; then echo "$(TARGET) $(1): no tests"; fi; \
+	fi
+endef
+
+define run_structural_control_bucket
+	@if [ -d "$(1)" ] && find "$(1)" -type f -name '*.t' | grep -q .; then \
+		perl ../scripts/check_lowir_native_structural_controls.pl $(LOWIR2NATIVE_APP) "$(1)"; \
+	else \
+		if [ "$(REPORT_EMPTY_OPTIONAL_TEST_ROOTS)" = "1" ]; then echo "$(TARGET) $(1): no tests"; fi; \
+	fi
+endef
+
+define run_survivor_property_bucket
+	@if [ -d "$(1)" ] && find "$(1)" -type f -name '*.t' | grep -q .; then \
+		perl ../scripts/check_lowir_native_survivor_properties.pl \
+			$(LOWIR2NATIVE_APP) "$(1)"; \
+	else \
+		if [ "$(REPORT_EMPTY_OPTIONAL_TEST_ROOTS)" = "1" ]; then echo "$(TARGET) $(1): no tests"; fi; \
+	fi
+endef
+
 test: $(TEST_DEPS)
 	$(call run_native_bucket,$(O1_TEST_ROOT),-O1)
 	$(call run_native_bucket,$(COURSE_O1_TEST_ROOT),-O1)
@@ -97,6 +125,11 @@ test: $(TEST_DEPS)
 	$(call run_native_bucket,$(COURSE_BEHAVIOR_O2_TEST_ROOT),-O2)
 	$(call run_native_bucket,$(BEHAVIOR_O3_TEST_ROOT),-O3)
 	$(call run_native_bucket,$(COURSE_BEHAVIOR_O3_TEST_ROOT),-O3)
+	$(call run_driver_census_bucket,$(COURSE_DRIVER_CENSUS_TEST_ROOT))
+	$(call run_structural_control_bucket,$(COURSE_STRUCTURAL_CONTROL_TEST_ROOT))
+	$(call run_survivor_property_bucket,$(COURSE_O1_TEST_ROOT))
+	$(call run_survivor_property_bucket,$(COURSE_O2_TEST_ROOT))
+	$(call run_survivor_property_bucket,$(COURSE_BEHAVIOR_O1_TEST_ROOT))
 
 test-debuginfo: $(TEST_DEPS)
 	$(call run_native_bucket,$(DEBUGINFO_O1_TEST_ROOT),-O1)
@@ -121,16 +154,25 @@ ref-test-debuginfo:
 	$(call run_native_bucket_ref,$(DEBUGINFO_O3_TEST_ROOT),-O3)
 
 REF_TEST_RUN = case "$(TEST)" in \
+	$(COURSE_DRIVER_CENSUS_TEST_ROOT)/*) echo "$(TEST): structural function-census predicate has no reference sidecar" ;; \
+	$(COURSE_STRUCTURAL_CONTROL_TEST_ROOT)/*) echo "$(TEST): structural native predicate has no reference sidecar" ;; \
 	$(O1_TEST_ROOT)/*|$(COURSE_O1_TEST_ROOT)/*|$(DEBUGINFO_O1_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O1_TEST_ROOT)/*|$(BEHAVIOR_O1_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O1_TEST_ROOT)/*) CPPGM_APP_ARGS='-O1' perl ../scripts/run_lowir_native_tests_worker.pl $(LOWIR2NATIVE_REF_APP) ref "$(TEST)" && perl ../scripts/canonicalize_lowir_native_refs.pl "$(TEST)" ;; \
 	$(O2_TEST_ROOT)/*|$(COURSE_O2_TEST_ROOT)/*|$(DEBUGINFO_O2_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O2_TEST_ROOT)/*|$(BEHAVIOR_O2_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O2_TEST_ROOT)/*) CPPGM_APP_ARGS='-O2' perl ../scripts/run_lowir_native_tests_worker.pl $(LOWIR2NATIVE_REF_APP) ref "$(TEST)" && perl ../scripts/canonicalize_lowir_native_refs.pl "$(TEST)" ;; \
 	$(O3_TEST_ROOT)/*|$(COURSE_O3_TEST_ROOT)/*|$(DEBUGINFO_O3_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O3_TEST_ROOT)/*|$(BEHAVIOR_O3_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O3_TEST_ROOT)/*) CPPGM_APP_ARGS='-O3' perl ../scripts/run_lowir_native_tests_worker.pl $(LOWIR2NATIVE_REF_APP) ref "$(TEST)" && perl ../scripts/canonicalize_lowir_native_refs.pl "$(TEST)" ;; \
 	*) echo "Usage: make ref-test TEST=$(O1_TEST_ROOT)/<file>.t | $(O2_TEST_ROOT)/<file>.t | $(O3_TEST_ROOT)/<file>.t"; exit 1 ;; \
 esac
 
+
 CHECK_RUN = perl ../scripts/run_routed_test_spec.pl "$(TEST)" \
+	'$(COURSE_DRIVER_CENSUS_TEST_ROOT)/*::perl ../scripts/check_cppgm_function_census.pl $(CPPGM_DRIVER_APP) {tests}' \
+	'$(COURSE_STRUCTURAL_CONTROL_TEST_ROOT)/*::perl ../scripts/check_lowir_native_structural_controls.pl $(LOWIR2NATIVE_APP) {tests}' \
 	'$(O1_TEST_ROOT)/*|$(COURSE_O1_TEST_ROOT)/*|$(DEBUGINFO_O1_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O1_TEST_ROOT)/*|$(BEHAVIOR_O1_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O1_TEST_ROOT)/*::CPPGM_APP_ARGS=-O1 scripts/run_all_tests.pl $(LOWIR2NATIVE_APP) check {tests}' \
 	'$(O2_TEST_ROOT)/*|$(COURSE_O2_TEST_ROOT)/*|$(DEBUGINFO_O2_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O2_TEST_ROOT)/*|$(BEHAVIOR_O2_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O2_TEST_ROOT)/*::CPPGM_APP_ARGS=-O2 scripts/run_all_tests.pl $(LOWIR2NATIVE_APP) check {tests}' \
 	'$(O3_TEST_ROOT)/*|$(COURSE_O3_TEST_ROOT)/*|$(DEBUGINFO_O3_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O3_TEST_ROOT)/*|$(BEHAVIOR_O3_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O3_TEST_ROOT)/*::CPPGM_APP_ARGS=-O3 scripts/run_all_tests.pl $(LOWIR2NATIVE_APP) check {tests}'
+CHECK_COMPARE = perl ../scripts/run_routed_test_spec.pl "$(TEST)" \
+	'$(COURSE_DRIVER_CENSUS_TEST_ROOT)/*::true' \
+	'$(COURSE_STRUCTURAL_CONTROL_TEST_ROOT)/*::true' \
+	'$(O1_TEST_ROOT)/*|$(COURSE_O1_TEST_ROOT)/*|$(DEBUGINFO_O1_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O1_TEST_ROOT)/*|$(BEHAVIOR_O1_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O1_TEST_ROOT)/*|$(O2_TEST_ROOT)/*|$(COURSE_O2_TEST_ROOT)/*|$(DEBUGINFO_O2_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O2_TEST_ROOT)/*|$(BEHAVIOR_O2_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O2_TEST_ROOT)/*|$(O3_TEST_ROOT)/*|$(COURSE_O3_TEST_ROOT)/*|$(DEBUGINFO_O3_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O3_TEST_ROOT)/*|$(BEHAVIOR_O3_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O3_TEST_ROOT)/*::scripts/compare_results.pl ref check {tests}'
 include ../scripts/pa_run_check_targets.mk
 
 .PHONY: dev-shared-target ref-test ref-test-debuginfo test-debuginfo
@@ -138,7 +180,7 @@ include ../scripts/pa_run_check_targets.mk
 	$(MAKE) -C ../dev $(TARGET) CXX=$(CXX) CPPGM_HOST_CXX=$(CPPGM_HOST_CXX)
 
 dev-shared-target:
-	@if [ "$(CPPGM_SKIP_DEV_REBUILD)" = "1" ]; then true; else $(MAKE) -C ../dev $(TARGET) CXX=$(CXX) CPPGM_HOST_CXX=$(CPPGM_HOST_CXX); fi
+	@if [ "$(CPPGM_SKIP_DEV_REBUILD)" = "1" ]; then true; else $(MAKE) -C ../dev $(TARGET) cppgm++ CXX=$(CXX) CPPGM_HOST_CXX=$(CPPGM_HOST_CXX); fi
 
 clean:
 	-rm -f $(TARGET) $(TARGET)-debug $(OBJ)/release/*.o $(OBJ)/debug/*.o

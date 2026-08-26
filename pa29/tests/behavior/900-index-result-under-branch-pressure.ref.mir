@@ -15,6 +15,8 @@ function @touch
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -26,6 +28,8 @@ function @source
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, rdi
@@ -43,6 +47,8 @@ function @pressure
   frame
     stack_size 144
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     temp %sib_bc -> [rbp-8] : i64
     temp %address -> [rbp-16] : ptr
@@ -149,6 +155,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 0

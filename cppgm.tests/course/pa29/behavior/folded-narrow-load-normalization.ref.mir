@@ -16,6 +16,8 @@ function @accept
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, rdi
@@ -44,6 +46,8 @@ function @get_record
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret r9
@@ -55,6 +59,8 @@ function @reduced
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     temp %host-eh-exception -> [rbp-8] : ptr
     temp %host-eh-selector -> [rbp-16] : i64
     temp %entity -> [rbp-24] : ptr
@@ -91,6 +97,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     slot $record -> [rbp-16] : obj<16x8>
 
   block ^entry

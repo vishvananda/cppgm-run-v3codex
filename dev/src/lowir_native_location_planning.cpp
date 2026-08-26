@@ -1,6 +1,7 @@
 #include "lowir_native_location_planning.h"
 
 #include "lowir_native.h"
+#include "lowir_native_control_flow.h"
 
 #include <algorithm>
 #include <limits>
@@ -130,6 +131,7 @@ struct Candidate
   bool crossing;
   bool is_phi;
   bool is_invariant;
+  bool is_cyclic_region;
   bool is_call_argument;
 };
 
@@ -209,7 +211,8 @@ void assign_candidate_location(const Candidate & candidate, X64Register reg,
   // function entry.  Ordinary segments begin at their definition.
   const std::size_t begin = candidate.is_phi ? 0 : candidate.definition;
   (*timeline)[value].push_back(PlannedLocationSegment(
-    begin, candidate.end, PLK_GPR, static_cast<unsigned>(reg)));
+    begin, candidate.end, candidate.is_cyclic_region ?
+      PLK_CYCLIC_REGION_GPR : PLK_GPR, static_cast<unsigned>(reg)));
 }
 
 // The reactive pool prefers RBX, R12, R13 in that order, so the planner
@@ -234,6 +237,8 @@ void assign_candidate_registers(
     const analysis::FunctionFacts & facts,
     FunctionLocationTimeline * timeline,
     std::vector<std::pair<std::size_t, std::size_t> > * register_spans,
+    std::vector<std::pair<std::size_t, std::size_t> > *
+      cyclic_region_register_spans,
     Stats * stats)
 {
   static const X64Register kPool[] =
@@ -269,13 +274,54 @@ void assign_candidate_registers(
       break;
     }
   }
+  // Iteration-local branch inputs claim next.  Their definition dominates
+  // every use in one cyclic component, so the value is refreshed before
+  // every dynamic use and needs the register only through its local choice
+  // region.  Reserving these spans before outer values lets the ordinary
+  // planner choose different homes instead of making the later grant fail.
+  std::vector<std::size_t> region_order;
+  for(std::size_t i = 0; i < candidates.size(); ++i)
+    if(candidates[i].is_cyclic_region) region_order.push_back(i);
+  std::sort(region_order.begin(), region_order.end(),
+            [&candidates, &facts](std::size_t left, std::size_t right) {
+              const Candidate & a = candidates[left];
+              const Candidate & b = candidates[right];
+              const std::size_t a_uses =
+                facts.uses[static_cast<std::uint32_t>(a.value)];
+              const std::size_t b_uses =
+                facts.uses[static_cast<std::uint32_t>(b.value)];
+              if(a_uses != b_uses) return a_uses > b_uses;
+              return a.definition < b.definition;
+            });
+  for(std::size_t i = 0; i < region_order.size(); ++i) {
+    const Candidate & candidate = candidates[region_order[i]];
+    for(std::size_t reg = sizeof(kPool) / sizeof(kPool[0]); reg-- > 0;) {
+      if(facts.has_i128_atomic && kPool[reg] == XR_RBX) continue;
+      if(!span_is_free(claimed[reg], candidate.definition, candidate.end))
+        continue;
+      if(clobbered_in_interval(facts, kPool[reg],
+                               candidate.definition, candidate.end))
+        continue;
+      const std::pair<std::size_t, std::size_t> span =
+        std::make_pair(candidate.definition, candidate.end);
+      claimed[reg].push_back(span);
+      cyclic_region_register_spans[
+        static_cast<unsigned>(kPool[reg])].push_back(span);
+      assign_candidate_location(candidate, kPool[reg], timeline);
+      if(stats) {
+        ++stats->planned_value_registers;
+        ++stats->planner_cyclic_region_assignments;
+      }
+      break;
+    }
+  }
   // Loop-invariant candidates claim next, also from the far end: their
   // grants happen at definition through the ordinary planned machinery, so
   // they share registers by interval like any candidate, but far-end
   // claiming keeps them off the ordinary pass's R13-first choices.
   for(std::size_t i = 0; i < candidates.size(); ++i) {
     const Candidate & candidate = candidates[i];
-    if(!candidate.is_invariant) continue;
+    if(!candidate.is_invariant || candidate.is_cyclic_region) continue;
     for(std::size_t reg = sizeof(kPool) / sizeof(kPool[0]); reg-- > 0;) {
       if(facts.has_i128_atomic && kPool[reg] == XR_RBX) continue;
       if(!span_is_free(claimed[reg], candidate.definition, candidate.end))
@@ -296,7 +342,8 @@ void assign_candidate_registers(
   std::vector<std::size_t> crossing_order;
   for(std::size_t i = 0; i < candidates.size(); ++i) {
     const Candidate & candidate = candidates[i];
-    if(candidate.is_phi || candidate.is_invariant) continue;
+    if(candidate.is_phi || candidate.is_invariant ||
+       candidate.is_cyclic_region) continue;
     if(candidate.crossing) {
       crossing_order.push_back(i);
       continue;
@@ -496,6 +543,62 @@ LayoutScan scan_function_layout(
   return scan;
 }
 
+// True when ordinary control flow from a block can execute a call before
+// returning.  Guarded fast loops whose exits cannot reach the call-bearing
+// arm are path-disjoint from the later preserved-register pressure, even
+// though a linear interval model makes the ranges appear to overlap.
+bool block_reaches_call(
+    const lowir_model::LowirFunction & function, std::size_t start,
+    const std::vector<std::size_t> & block_by_id)
+{
+  if(start >= function.blocks.size()) return true;
+  std::vector<unsigned char> visited(function.blocks.size(), 0);
+  std::vector<std::size_t> work(1, start);
+  while(!work.empty()) {
+    const std::size_t block = work.back();
+    work.pop_back();
+    if(visited[block]) continue;
+    visited[block] = 1;
+    const std::vector<lowir_model::Instruction> & instructions =
+      function.blocks[block].instructions;
+    for(std::size_t i = 0; i < instructions.size(); ++i)
+      if(instructions[i].kind == lowir_model::Instruction::IK_CALL)
+        return true;
+    if(instructions.empty()) {
+      if(block + 1 < function.blocks.size()) work.push_back(block + 1);
+      continue;
+    }
+    const lowir_model::Instruction & terminal = instructions.back();
+    const lowir_model::Operand * fixed[] =
+      {&terminal.first, &terminal.second, &terminal.third};
+    bool has_label_successor = false;
+    if(terminal.kind == lowir_model::Instruction::IK_JUMP ||
+       terminal.kind == lowir_model::Instruction::IK_BRANCH ||
+       terminal.kind == lowir_model::Instruction::IK_SWITCH) {
+      for(std::size_t operand = 0;
+          operand < sizeof(fixed) / sizeof(fixed[0]) + terminal.args.size();
+          ++operand) {
+        const lowir_model::Operand & target =
+          operand < sizeof(fixed) / sizeof(fixed[0]) ? *fixed[operand] :
+          terminal.args[operand - sizeof(fixed) / sizeof(fixed[0])];
+        if(target.kind != lowir_model::Operand::OP_LABEL) continue;
+        has_label_successor = true;
+        const std::uint32_t id = target.block;
+        if(id < block_by_id.size() &&
+           block_by_id[id] < function.blocks.size())
+          work.push_back(block_by_id[id]);
+      }
+    }
+    if(!has_label_successor &&
+       terminal.kind != lowir_model::Instruction::IK_RETURN &&
+       terminal.kind != lowir_model::Instruction::IK_RESUME &&
+       terminal.kind != lowir_model::Instruction::IK_THROW &&
+       block + 1 < function.blocks.size())
+      work.push_back(block + 1);
+  }
+  return false;
+}
+
 }  // namespace
 
 // Layout backedge spans mirror `ControlFlowQueries` spill safety: a
@@ -510,21 +613,32 @@ FunctionLocationTimeline plan_value_locations(
     const analysis::FunctionFacts & facts,
     int optimization_level,
     std::vector<std::pair<std::size_t, std::size_t> > * register_spans,
+    std::vector<std::pair<std::size_t, std::size_t> > *
+      cyclic_region_register_spans,
     std::vector<std::pair<std::size_t, std::size_t> > * extension_spans,
     Stats * stats)
 {
   using analysis::FunctionFacts;
   FunctionLocationTimeline timeline(function.value_names.size());
-  for(std::size_t reg = 0; reg < 16; ++reg) register_spans[reg].clear();
+  for(std::size_t reg = 0; reg < 16; ++reg) {
+    register_spans[reg].clear();
+    cyclic_region_register_spans[reg].clear();
+  }
   extension_spans->clear();
   if(optimization_level < 1 || facts.has_va_start || facts.has_dynamic_stack)
     return timeline;
 
   std::vector<std::size_t> block_start(function.blocks.size(), 0);
+  std::vector<std::size_t> definition_block(
+    function.value_names.size(), FunctionFacts::missing_position());
   std::vector<std::size_t> block_by_id;
   std::size_t position = 0;
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
     block_start[block] = position;
+    for(std::size_t i = 0;
+        i < function.blocks[block].instructions.size(); ++i)
+      if(function.blocks[block].instructions[i].dest.valid())
+        definition_block[function.blocks[block].instructions[i].dest] = block;
     position += function.blocks[block].instructions.size();
     const std::uint32_t id = function.blocks[block].id;
     if(block_by_id.size() <= id)
@@ -544,7 +658,19 @@ FunctionLocationTimeline plan_value_locations(
     scan.forward_edges;
   const std::vector<unsigned char> span_unavoidable =
     mark_unavoidable_spans(spans, scan.span_is_backedge, forward_edges);
-
+  const std::size_t first_call = facts.calls.empty() ?
+    FunctionFacts::missing_position() : facts.calls.front();
+  std::size_t first_call_preserved_pressure = 0;
+  if(first_call != FunctionFacts::missing_position())
+    for(std::size_t raw = 0; raw < function.value_names.size(); ++raw)
+      if(facts.definition[raw] != FunctionFacts::missing_position() &&
+         facts.last_use[raw] != FunctionFacts::missing_position() &&
+         facts.definition[raw] <= first_call &&
+         first_call < facts.last_use[raw] &&
+         facts.has(lowir_model::ValueId(static_cast<std::uint32_t>(raw)),
+                   FunctionFacts::VF_LIVE_ACROSS_CALL))
+        ++first_call_preserved_pressure;
+  analysis::ControlFlowQueries control_flow(function);
   std::vector<Candidate> candidates;
   for(std::size_t raw = 0; raw < function.value_names.size(); ++raw) {
     const lowir_model::ValueId value(static_cast<std::uint32_t>(raw));
@@ -570,7 +696,17 @@ FunctionLocationTimeline plan_value_locations(
           edge < forward_edges.size(); ++edge)
         if(forward_edges[edge].first < header &&
            forward_edges[edge].second > header) {
-          is_phi = false;
+          // A call-free fast arm may reuse the full preserved pool only when
+          // later code already saturates that pool.  Requiring the phi's
+          // header to be unable to reach a call prevents the phi claim from
+          // displacing residents needed by the call-bearing path.
+          const bool reuses_saturated_preserved_pool =
+            first_call_preserved_pressure >= 5 &&
+            facts.last_use[raw] < first_call &&
+            definition_block[raw] != FunctionFacts::missing_position() &&
+            !block_reaches_call(
+              function, definition_block[raw], block_by_id);
+          if(!reuses_saturated_preserved_pool) is_phi = false;
           break;
         }
     }
@@ -590,6 +726,20 @@ FunctionLocationTimeline plan_value_locations(
       uses_overlap_unavoidable_span(spans, span_unavoidable,
                                     facts.first_use[raw],
                                     facts.last_use[raw]);
+    const std::size_t defining_block = definition_block[raw];
+    const bool is_cyclic_region = !is_phi &&
+      !is_invariant && facts.uses[raw] >= 3 &&
+      facts.has(value, FunctionFacts::VF_EDGE_LIVE) &&
+      facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL) &&
+      facts.has(value, FunctionFacts::VF_DIRECT_BRANCH_SOURCE) &&
+      defining_block != FunctionFacts::missing_position() &&
+      function.blocks[defining_block].instructions[
+        facts.definition[raw] - block_start[defining_block]].kind ==
+          lowir_model::Instruction::IK_CALL &&
+      control_flow.CyclicDefinitionDominatesUses(
+        value, facts.definition[raw], defining_block);
+    if(is_cyclic_region && stats)
+      ++stats->planner_cyclic_region_candidates;
     // A register-resident phi or invariant base turns every
     // storage-address use into a direct [reg] operand, so the
     // storage-address exclusion does not apply to them.  A call-crossing
@@ -632,13 +782,15 @@ FunctionLocationTimeline plan_value_locations(
     candidate.crossing = facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
     candidate.is_phi = is_phi;
     candidate.is_invariant = is_invariant;
+    candidate.is_cyclic_region = is_cyclic_region;
     candidate.is_call_argument =
       facts.has(value, FunctionFacts::VF_ONLY_CALL_ARGUMENT);
     if(stats && candidate.is_call_argument)
       ++stats->planner_candidate_call_arguments;
     // Phis are edge-live by construction (written at predecessor
     // terminators), whether or not any read crosses a block boundary.
-    if(is_phi || facts.has(value, FunctionFacts::VF_EDGE_LIVE)) {
+    if(!is_cyclic_region &&
+       (is_phi || facts.has(value, FunctionFacts::VF_EDGE_LIVE))) {
       bool grew = true;
       while(grew) {
         grew = false;
@@ -671,7 +823,8 @@ FunctionLocationTimeline plan_value_locations(
                    static_cast<std::uint32_t>(right.value));
             });
   assign_candidate_registers(candidates, facts, &timeline,
-                             register_spans, stats);
+                             register_spans, cyclic_region_register_spans,
+                             stats);
   return timeline;
 }
 

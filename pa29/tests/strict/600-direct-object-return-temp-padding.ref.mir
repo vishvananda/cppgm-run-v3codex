@@ -11,6 +11,8 @@ function @f
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $x -> [rbp-4] : obj<3x1>
 
   block ^entry
@@ -26,6 +28,8 @@ function @__cppgm_406d61696e
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $out -> [rbp-4] : obj<3x1>
 
   block ^entry

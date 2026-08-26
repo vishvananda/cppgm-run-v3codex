@@ -19,6 +19,8 @@ function @sum8
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %g -> [rbp-<off0>] : i64
     param-slot %h -> [rbp-<off1>] : i64
 
@@ -42,6 +44,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     temp %r -> [rbp-<off0>] : i64
 
   block ^entry

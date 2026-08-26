@@ -31,6 +31,8 @@ function @store_dereference
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.u16 [rdi], 4660
@@ -44,6 +46,8 @@ function @store_indexed
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.u32 [rdi+rsi*4], 305419896
@@ -55,6 +59,8 @@ function @main
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve <gpr0> <gpr1>
     slot $inside_i32 -> [rbp-<off0>] : i64
     slot $outside_i32 -> [rbp-<off1>] : i64

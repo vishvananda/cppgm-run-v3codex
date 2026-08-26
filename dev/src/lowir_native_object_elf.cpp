@@ -542,6 +542,13 @@ void append_cfi_advance(std::vector<unsigned char> & out, std::size_t amount)
   }
 }
 
+void append_cfi_cfa_offset(std::vector<unsigned char> & out,
+                           std::size_t offset)
+{
+  out.push_back(0x0e);  // DW_CFA_def_cfa_offset
+  append_uleb128(out, offset);
+}
+
 std::string host_symbol_spelling(const std::string & raw);
 
 HostSection make_host_lsda(
@@ -770,20 +777,40 @@ HostSection make_host_eh_frame(
       relocations.push_back(lsda);
       append_little(section.bytes, 0, 4);
     }
-    append_cfi_advance(section.bytes, 1);
-    section.bytes.push_back(0x0e);
-    append_uleb128(section.bytes, 16);
-    section.bytes.push_back(0x80 | dwarf_register(XR_RBP));
-    append_uleb128(section.bytes, 2);
-    append_cfi_advance(section.bytes, 3);
-    section.bytes.push_back(0x0d);
-    append_uleb128(section.bytes, dwarf_register(XR_RBP));
-    for(std::size_t saved = 0; saved < function.callee_saved_regs.size(); ++saved) {
-      const X64Register reg = function.callee_saved_regs[saved];
-      append_cfi_advance(section.bytes, reg >= XR_R8 ? 2 : 1);
-      section.bytes.push_back(static_cast<unsigned char>(
-        0x80 | dwarf_register(reg)));
-      append_uleb128(section.bytes, 3 + saved);
+    if(function.omit_frame_pointer) {
+      std::size_t cfa_offset = 8;
+      for(std::size_t saved = 0;
+          saved < function.callee_saved_regs.size(); ++saved) {
+        const X64Register reg = function.callee_saved_regs[saved];
+        append_cfi_advance(section.bytes, reg >= XR_R8 ? 2 : 1);
+        cfa_offset += 8;
+        append_cfi_cfa_offset(section.bytes, cfa_offset);
+        section.bytes.push_back(static_cast<unsigned char>(
+          0x80 | dwarf_register(reg)));
+        append_uleb128(section.bytes, 2 + saved);
+      }
+      if(function.stack_adjustment) {
+        // Frameless call alignment is one imm8 stack adjustment (four bytes).
+        append_cfi_advance(section.bytes, 4);
+        cfa_offset += function.stack_adjustment;
+        append_cfi_cfa_offset(section.bytes, cfa_offset);
+      }
+    } else {
+      append_cfi_advance(section.bytes, 1);
+      append_cfi_cfa_offset(section.bytes, 16);
+      section.bytes.push_back(0x80 | dwarf_register(XR_RBP));
+      append_uleb128(section.bytes, 2);
+      append_cfi_advance(section.bytes, 3);
+      section.bytes.push_back(0x0d);
+      append_uleb128(section.bytes, dwarf_register(XR_RBP));
+      for(std::size_t saved = 0;
+          saved < function.callee_saved_regs.size(); ++saved) {
+        const X64Register reg = function.callee_saved_regs[saved];
+        append_cfi_advance(section.bytes, reg >= XR_R8 ? 2 : 1);
+        section.bytes.push_back(static_cast<unsigned char>(
+          0x80 | dwarf_register(reg)));
+        append_uleb128(section.bytes, 3 + saved);
+      }
     }
     while((section.bytes.size() - fde_start) % 4) section.bytes.push_back(0);
     put_little(section.bytes, fde_start,

@@ -18,6 +18,8 @@ function @pressure
   frame
     stack_size 128
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     param-slot %gate -> [rbp-8] : i64
     slot $selected -> [rbp-16] : i64
@@ -91,6 +93,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     sub rsp, 16

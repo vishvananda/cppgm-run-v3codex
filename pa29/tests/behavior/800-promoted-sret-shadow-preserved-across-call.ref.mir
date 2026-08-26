@@ -21,6 +21,8 @@ function @clobber
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %a -> [rbp-8] : i64
     param-slot %b -> [rbp-16] : i64
     param-slot %c -> [rbp-24] : i64
@@ -44,6 +46,8 @@ function @make_pair
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -71,6 +75,8 @@ function @main
   frame
     stack_size 80
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
     slot $out -> [rbp-16] : obj<16x8>
 

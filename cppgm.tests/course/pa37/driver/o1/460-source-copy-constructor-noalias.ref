@@ -1,0 +1,42 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $source : obj<24x8>
+  slot $destination : obj<24x8>
+
+  block ^entry:
+    %t1 = addr $source
+    %__o1inl0__t2 = copy ptr %t1
+    store i64 5, %__o1inl0__t2
+    %__o1inl0__t6 = index i8 [projection=field] %t1, 8
+    store i64 17, %__o1inl0__t6
+    %__o1inl0__t9 = index i8 [projection=field] %t1, 16
+    store i64 20, %__o1inl0__t9
+    %t2 = addr $destination
+    call void @Pair__Pair__ov2(%t2, %t1)
+    %t6 = load i64 %t2
+    %t8 = index i8 [projection=field] %t2, 8
+    %t9 = load i64 %t8
+    %t10 = binary add i64 %t6, %t9
+    %t12 = index i8 [projection=field] %t2, 16
+    %t13 = load i64 %t12
+    %t14 = binary add i64 %t10, %t13
+    %t15 = binary sub i64 %t14, 42
+    %t16 = convert trunc i32 i64 %t15
+    return i32 %t16
+}
+function @Pair__Pair__ov2(%this : ptr [alias=noalias], %other : ptr [pass=reference, alias=noalias]) -> void [binding=weak, object=_ZN4PairC1ERKS_, inline_hint=yes, no_inline=yes] {
+  block ^entry:
+    %t1 = copy ptr %other
+    %t3 = load i64 %t1
+    %t4 = copy ptr %this
+    store i64 %t3, %t4
+    %t7 = index i8 [projection=field] %other, 8
+    %t8 = load i64 %t7
+    %t10 = index i8 [projection=field] %this, 8
+    store i64 %t8, %t10
+    %t12 = index i8 [projection=field] %other, 16
+    %t13 = load i64 %t12
+    %t15 = index i8 [projection=field] %this, 16
+    store i64 %t13, %t15
+    return void
+}
+alias object _ZN4PairC2ERKS_ = @Pair__Pair__ov2

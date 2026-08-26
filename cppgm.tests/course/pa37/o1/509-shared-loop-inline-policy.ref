@@ -1,0 +1,108 @@
+function @shared_loop(%limit : i64) -> i64 [binding=strong] {
+  block ^entry:
+    jump ^loop
+
+  block ^loop:
+    %index = phi i64 [^entry: 0, ^body: %next]
+    %more = cmp ult i64 %index, %limit
+    branch %more, ^body, ^done
+
+  block ^body:
+    %next = binary add i64 %index, 1
+    jump ^loop
+
+  block ^done:
+    return i64 %index
+}
+function @shared_a(%limit : i64) -> i64 [binding=strong] {
+  block ^entry:
+    %result = call i64 @shared_loop(%limit)
+    return i64 %result
+}
+function @shared_b(%limit : i64) -> i64 [binding=strong] {
+  block ^entry:
+    %result = call i64 @shared_loop(%limit)
+    return i64 %result
+}
+function @single_caller(%limit : i64) -> i64 [binding=strong] {
+  block ^entry:
+    jump ^__o1inl0__entry
+
+  block ^__o1inl0__entry:
+    jump ^__o1inl0__loop
+
+  block ^__o1inl0__loop:
+    %__o1inl0__index = phi i64 [^__o1inl0__entry: 0, ^__o1inl0__body: %__o1inl0__next]
+    %__o1inl0__more = cmp ult i64 %__o1inl0__index, %limit
+    branch %__o1inl0__more, ^__o1inl0__body, ^__o1inl0__done
+
+  block ^__o1inl0__body:
+    %__o1inl0__next = binary add i64 %__o1inl0__index, 1
+    jump ^__o1inl0__loop
+
+  block ^__o1inl0__done:
+    jump ^__o1inl0__cont
+
+  block ^__o1inl0__cont:
+    return i64 %__o1inl0__index
+}
+function @hinted_loop(%limit : i64) -> i64 [binding=strong, inline_hint=yes] {
+  block ^entry:
+    jump ^loop
+
+  block ^loop:
+    %index = phi i64 [^entry: 0, ^body: %next]
+    %more = cmp ult i64 %index, %limit
+    branch %more, ^body, ^done
+
+  block ^body:
+    %next = binary add i64 %index, 1
+    jump ^loop
+
+  block ^done:
+    return i64 %index
+}
+function @hinted_a(%limit : i64) -> i64 [binding=strong] {
+  block ^entry:
+    jump ^__o1inl0__entry
+
+  block ^__o1inl0__entry:
+    jump ^__o1inl0__loop
+
+  block ^__o1inl0__loop:
+    %__o1inl0__index = phi i64 [^__o1inl0__entry: 0, ^__o1inl0__body: %__o1inl0__next]
+    %__o1inl0__more = cmp ult i64 %__o1inl0__index, %limit
+    branch %__o1inl0__more, ^__o1inl0__body, ^__o1inl0__done
+
+  block ^__o1inl0__body:
+    %__o1inl0__next = binary add i64 %__o1inl0__index, 1
+    jump ^__o1inl0__loop
+
+  block ^__o1inl0__done:
+    jump ^__o1inl0__cont
+
+  block ^__o1inl0__cont:
+    return i64 %__o1inl0__index
+}
+function @hinted_b(%limit : i64) -> i64 [binding=strong] {
+  block ^entry:
+    jump ^__o1inl0__entry
+
+  block ^__o1inl0__entry:
+    jump ^__o1inl0__loop
+
+  block ^__o1inl0__loop:
+    %__o1inl0__index = phi i64 [^__o1inl0__entry: 0, ^__o1inl0__body: %__o1inl0__next]
+    %__o1inl0__more = cmp ult i64 %__o1inl0__index, %limit
+    branch %__o1inl0__more, ^__o1inl0__body, ^__o1inl0__done
+
+  block ^__o1inl0__body:
+    %__o1inl0__next = binary add i64 %__o1inl0__index, 1
+    jump ^__o1inl0__loop
+
+  block ^__o1inl0__done:
+    jump ^__o1inl0__cont
+
+  block ^__o1inl0__cont:
+    return i64 %__o1inl0__index
+}

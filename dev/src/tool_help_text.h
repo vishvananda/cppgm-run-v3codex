@@ -32,6 +32,8 @@ inline const char * cppgm_help_text()
       "  -L <dir> / -L<dir>\n"
       "  -l <name> / -l<name>\n"
       "  -O0 / -O1 / -O2 / -O3\n"
+      "  --inline-limit <name>=<positive-integer>\n"
+      "  --stats-functions  compile-only per-function native census\n"
       "  -stdlib <name> / -stdlib=<name>\n"
       "  --witness <logfile>\n"
       "  --witness-debug <logfile>\n"
@@ -68,6 +70,7 @@ inline const char * lowir2native_help_text()
       "  -O0 / -O1 / -O2 / -O3\n"
       "  -o <outfile>\n"
       "  --target <target>\n"
+	  "  --stats\n"
       "  --dump-machine-ir <mirfile>\n"
       "  --dump-native-plan <mirfile>\n";
 }
@@ -85,5 +88,9 @@ inline const char * lowiropt_help_text()
       "\n"
       "required flags:\n"
       "  -O0 / -O1 / -O2 / -O3\n"
-      "  -o <outfile>\n";
+      "  -o <outfile>\n"
+      "\n"
+      "diagnostic flags:\n"
+      "  --inline-limit <name>=<positive-integer>\n"
+      "  --stats\n";
 }

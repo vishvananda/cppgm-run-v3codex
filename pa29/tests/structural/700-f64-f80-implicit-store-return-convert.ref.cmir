@@ -12,6 +12,8 @@ function @roundtrip
   frame
     stack_size 96
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     param-slot %x -> [rbp-<off0>] : f64
     slot $y -> [rbp-<off1>] : f80
     temp %t -> [rbp-<off2>] : f80
@@ -29,6 +31,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     fmov.f64 xmm0, 2.0

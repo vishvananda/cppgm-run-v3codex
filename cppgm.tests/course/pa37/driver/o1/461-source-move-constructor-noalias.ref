@@ -1,0 +1,50 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $source : obj<32x8>
+  slot $destination : obj<32x8>
+
+  block ^entry:
+    %t1 = addr $source
+    %__o1inl0____o1inl0__t2 = copy ptr %t1
+    store i64 1, %__o1inl0____o1inl0__t2
+    %__o1inl0__t6 = index i8 [projection=field] %t1, 8
+    store i64 4, %__o1inl0__t6
+    %__o1inl0__t9 = index i8 [projection=field] %t1, 16
+    store i64 16, %__o1inl0__t9
+    %__o1inl0__t12 = index i8 [projection=field] %t1, 24
+    store i64 21, %__o1inl0__t12
+    %t2 = addr $destination
+    call void @Bundle__Bundle__ov2(%t2, %t1)
+    %t7 = load i64 %t2
+    %t9 = index i8 [projection=field] %t2, 8
+    %t10 = load i64 %t9
+    %t11 = binary add i64 %t7, %t10
+    %t13 = index i8 [projection=field] %t2, 16
+    %t14 = load i64 %t13
+    %t15 = binary add i64 %t11, %t14
+    %t17 = index i8 [projection=field] %t2, 24
+    %t18 = load i64 %t17
+    %t19 = binary add i64 %t15, %t18
+    %t20 = binary sub i64 %t19, 42
+    %t21 = convert trunc i32 i64 %t20
+    return i32 %t21
+}
+function @Bundle__Bundle__ov2(%this : ptr [alias=noalias], %__param1 : ptr [pass=reference, alias=noalias]) -> void [binding=weak, object=_ZN6BundleC1EOS_, inline_hint=yes, no_inline=yes] {
+  block ^entry:
+    call void @Head__Head__ov2(%this, %__param1)
+    %t6 = index i8 [projection=field] %this, 8
+    %t8 = index i8 [projection=field] %__param1, 8
+    copyobj 24x8 %t8, %t6
+    return void
+}
+function @Head__Head__ov2(%this : ptr [alias=noalias], %other : ptr [pass=reference, alias=noalias]) -> void [binding=weak, object=_ZN4HeadC1EOS_, inline_hint=yes, no_inline=yes] {
+  block ^entry:
+    %t1 = copy ptr %other
+    %t3 = load i64 %t1
+    %t4 = copy ptr %this
+    store i64 %t3, %t4
+    %t7 = copy ptr %other
+    store i64 0, %t7
+    return void
+}
+alias object _ZN6BundleC2EOS_ = @Bundle__Bundle__ov2
+alias object _ZN4HeadC2EOS_ = @Head__Head__ov2

@@ -12,6 +12,8 @@ function @make_value
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $value -> [rbp-8] : obj<8x8>
 
   block ^entry
@@ -30,6 +32,8 @@ function @combine
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %left -> [rbp-8] : obj<8x8>
     param-slot %right -> [rbp-16] : obj<8x8>
 
@@ -49,6 +53,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     temp %left -> [rbp-8] : obj<8x8>
     temp %right -> [rbp-16] : obj<8x8>
 

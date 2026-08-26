@@ -1,0 +1,147 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @identity
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    ret rdi
+
+function @post_call_tails
+  abi
+    return i64 -> rax
+  frame
+    stack_size 128
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
+    preserve rbx r12 r13 r14 r15
+    temp %host-eh-exception -> [rbp-8] : ptr
+    temp %host-eh-selector -> [rbp-16] : i64
+    temp %a -> [rbp-24] : i64
+    temp %b -> [rbp-32] : i64
+    temp %d -> [rbp-40] : i64
+    temp %e -> [rbp-48] : i64
+    temp %v -> [rbp-56] : i64
+    temp %w -> [rbp-64] : i64
+    temp %x -> [rbp-72] : i64
+    temp %y -> [rbp-80] : i64
+    temp %y0 -> [rbp-24] : i64
+    temp %x0 -> [rbp-32] : i64
+    temp %w1 -> [rbp-40] : i64
+    temp %x1 -> [rbp-48] : i64
+
+  block ^entry
+    eh_push ^handler, 0
+    mov rdi, 1
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-24], rax
+    mov rdi, 2
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-32], rax
+    mov rdi, 3
+    call @identity [args=(rdi), unwind=no]
+    mov rbx, rax
+    mov rdi, 4
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-40], rax
+    mov rdi, 5
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-48], rax
+    mov rdi, 40
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-56], rax
+    mov rdi, 50
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-64], rax
+    mov rdi, 60
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-72], rax
+    mov rdi, 70
+    call @identity [args=(rdi), unwind=no]
+    store.i64 [rbp-80], rax
+    mov rdi, 9
+    call @identity [args=(rdi), unwind=no]
+    eh_pop
+
+  block ^tail
+    load.i64 rdi, [rbp-24]
+    lea r9, [rdi+rdi]
+    add r9, rdi
+    load.i64 rdi, [rbp-32]
+    lea r8, [rdi+rdi]
+    add r8, rdi
+    lea rdi, [rbx+rbx]
+    add rdi, rbx
+    load.i64 rsi, [rbp-40]
+    add rsi, [rbp-40]
+    add rsi, [rbp-40]
+    load.i64 rbx, [rbp-48]
+    add rbx, [rbp-48]
+    add rbx, [rbp-48]
+    load.i64 r12, [rbp-56]
+    add r12, 1
+    load.i64 r13, [rbp-64]
+    add r13, 1
+    load.i64 r14, [rbp-72]
+    add r14, 1
+    load.i64 r15, [rbp-80]
+    add r15, 1
+    store.i64 [rbp-24], r15
+    load.i64 r15, [rbp-56]
+    add r15, 2
+    store.i64 [rbp-32], r14
+    load.i64 r14, [rbp-64]
+    add r14, 2
+    store.i64 [rbp-40], r14
+    load.i64 r14, [rbp-72]
+    add r14, 2
+    store.i64 [rbp-48], r14
+    load.i64 r14, [rbp-80]
+    add r14, 2
+    add r9, r8
+    add rdi, rsi
+    add r9, rdi
+    add r9, rbx
+    add r12, r15
+    add r13, [rbp-40]
+    load.i64 r8, [rbp-32]
+    add r8, [rbp-48]
+    load.i64 rdi, [rbp-24]
+    add rdi, r14
+    add r12, r13
+    add r8, rdi
+    add r12, r8
+    add r9, r12
+    ret r9
+
+  block ^handler
+    mov rax, 99
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
+
+  block ^entry
+    call @post_call_tails [args=()]
+    cmp.i64 rax, 497
+    setne rax
+    movzx rax, rax
+    ret rax

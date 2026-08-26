@@ -11,6 +11,8 @@ function @make_value
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, 7
@@ -24,6 +26,8 @@ function @copy_ref
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 rax, [rsi]
@@ -36,6 +40,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $dst -> [rbp-8] : i64
     temp %v -> [rbp-16] : i64
 

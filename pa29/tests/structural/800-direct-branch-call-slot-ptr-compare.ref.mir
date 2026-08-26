@@ -22,6 +22,8 @@ function @clobber
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -32,6 +34,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $first -> [rbp-8] : ptr
     slot $last -> [rbp-16] : ptr
 

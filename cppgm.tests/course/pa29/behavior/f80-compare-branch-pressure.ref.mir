@@ -53,6 +53,8 @@ function @reduced
   frame
     stack_size 128
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     temp %left -> [rbp-16] : f80
     temp %right -> [rbp-32] : f80
@@ -100,6 +102,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov r8, @g1

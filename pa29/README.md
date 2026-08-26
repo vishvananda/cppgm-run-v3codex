@@ -53,6 +53,9 @@ The starter kit contains:
 - `tests/strict/` for raw-MIR oracle tests
 - `tests/structural/` for canonical-MIR oracle tests
 - `tests/behavior/` for generated-program behavior tests without a machine-IR oracle
+- `course/pa29/controls/` for focused property checks that inspect only the
+  documented MIR or native relationship and generated behavior, never a
+  complete MIR dump or executable image
 
 Students should implement the assignment in `dev/lowir2native.cpp` and any reusable
 student-owned helpers they add under `dev/src/`. The assignment directory, grammar files,
@@ -123,6 +126,19 @@ Frame metadata is part of that final MIR contract. In particular, the
 callee-saved `preserve` list should name the callee-saved registers that the
 final instruction body actually uses after local setup/copy cleanup, and the
 stack size should match that final frame layout.
+
+The frame section also records the final native layout policy.  It contains
+`frame_pointer keep|omit` and `epilogues shared|direct`; these are the exact
+facts consumed by prologue/epilogue and unwind emission, not optimization
+hints.
+
+`--stats` writes one diagnostic record to standard error after successful
+lowering and encoding. Among its structural counters,
+`scratch_carried_reloads` reports bounded frame-reload windows whose native
+loads were satisfied from a carried scalar value. Counter values are
+diagnostic rather than canonical output; a focused test may require a positive
+reducer to exercise the relationship, but must not require an exact count from
+an unrelated program.
 
 That MIR dump path must work even for helper-only LowIR inputs that have no
 entry function. In that case the dumped MIR should simply omit the optional
@@ -495,6 +511,14 @@ To complete PA29, implement these goals:
    `i64` value outside the sign-extended 32-bit encoding range; native emission
    may materialize that value in a scratch register when encoding the store.
 
+   Multiplication by a positive power of two uses a shift in native encoding.
+   Multiplication by 3, 5, or 9 times a power of two uses one indexed-address
+   calculation followed by that shift. These substitutions retain full-width
+   wrapping integer behavior. Focused native controls check only those
+   instruction families inside a tiny entry function; they do not compare an
+   executable image or prescribe physical registers, prologue layout, or
+   instruction bytes.
+
    The right operand of integer `add`, `sub`, `and`, `or`, and `xor` remains a
    frame, global, dereference, or indexed memory operand when that location is
    already selected.  Two-operand `imul` follows the same rule at 16, 32, and
@@ -564,6 +588,19 @@ To complete PA29, implement these goals:
    register must retain its value until its register or stack argument is
    written, including when the scalar follows the object on the call stack.
 
+   A small bulk copy with a frame-resident source or destination may encode
+   its scalar chunks directly from that frame operand; it need not materialize
+   a temporary base address. The encoder must still preserve both logical
+   addresses and any live scalar values that overlap its scratch registers.
+
+   Native emission may carry a compiler-created scalar temporary from its one
+   defining frame store to later typed reloads in the same block when the
+   complete bounded window is safe. A carried window must not cross a call,
+   bulk-memory or EH operation, floating/XMM operation, symbol/global access,
+   large-immediate scratch use, or any explicit or implicit definition of the
+   chosen carry register. Overlapping windows require distinct carry registers
+   or retain their frame traffic. The conservative frame form is always valid.
+
    Direct object returns follow the same rule in both directions: returning a
    frame-resident object loads its chunks directly into the ABI result
    registers, and storing a direct object call result writes those registers
@@ -617,6 +654,12 @@ To complete PA29, implement these goals:
    boundary.  An immediately following explicit integer extension or
    truncation also performs the required normalization itself.
 
+   The same rule applies when a narrow temporary is resident in memory and a
+   wider comparison consumes it.  Load and extend the temporary according to
+   its own logical type before the comparison; a direct compare-fed branch must
+   not read the wider comparison width from the narrow frame home, because
+   adjacent frame bytes are not part of the value.
+
    A canonical typed integer immediate, a materialized Boolean, or an
    identical preceding integer extension already establishes the complete
    narrow value and should not be followed by a duplicate normalization.
@@ -661,6 +704,12 @@ To complete PA29, implement these goals:
    intervening instructions and control-flow edges when its register carriers
    remain valid for the complete interval. It must be materialized when the
    pointer value itself is observed or a required carrier is clobbered.
+
+   A scalar load or store of a locally bound global may keep the global symbol
+   as its MIR memory operand and encode a direct PC-relative access. A
+   preemptible or imported symbol must retain the indirect address path
+   required by the object ABI. Taking or otherwise observing the address still
+   produces a pointer value.
 
 16. Preserve mixed integer/floating call ABI classification.
    Calls that mix GPR and XMM arguments should keep that classification visible in MIR so

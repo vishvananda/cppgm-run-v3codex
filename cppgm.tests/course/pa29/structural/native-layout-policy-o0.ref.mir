@@ -1,0 +1,47 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @choose
+  abi
+    param %condition -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
+
+  block ^entry
+    mov rax, rdi
+    cmp.i64 rax, 0
+    jne ^yes
+    jmp ^no
+
+  block ^yes
+    mov rax, 11
+    ret rax
+
+  block ^no
+    mov rax, 22
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
+
+  block ^entry
+    mov rdi, 1
+    call @choose [args=(rdi), unwind=no]
+    cmp.i64 rax, 11
+    setne rax
+    movzx rax, rax
+    ret rax

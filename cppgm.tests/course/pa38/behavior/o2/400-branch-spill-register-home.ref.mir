@@ -11,6 +11,8 @@ function @fallback
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
 
   block ^entry
     mov rax, 3
@@ -23,6 +25,8 @@ function @accumulate
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues direct
     preserve r13
     slot $digit -> [rbp-1] : i8
 
@@ -53,6 +57,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
     preserve rbx
 
   block ^entry

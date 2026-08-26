@@ -15,6 +15,8 @@ function @produce
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, @value
@@ -27,6 +29,8 @@ function @read
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 rax, [rdi]
@@ -43,6 +47,8 @@ function @exercise
   frame
     stack_size 96
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     slot $other -> [rbp-8] : i64
     temp %saved -> [rbp-16] : ptr
@@ -90,6 +96,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 1

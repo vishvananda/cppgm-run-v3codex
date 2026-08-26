@@ -19,10 +19,25 @@ std::size_t pop_size(X64Register reg)
   return reg >= XR_R8 ? 2 : 1;
 }
 
+bool has_call(const mir_model::MirFunction & function)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function.blocks[block].instructions.size(); ++index) {
+      const mir_model::MirInstruction::Opcode opcode =
+        function.blocks[block].instructions[index].opcode;
+      if(opcode == mir_model::MirInstruction::MI_CALL ||
+         opcode == mir_model::MirInstruction::MI_CALL_INDIRECT) return true;
+    }
+  return false;
+}
+
 std::size_t encoded_size(const mir_model::MirFunction & function)
 {
   std::size_t result = 0;
-  if(function.has_dynamic_stack) {
+  if(function.omit_frame_pointer) {
+    result += stack_adjust_size(function_stack_adjustment(function));
+  } else if(function.has_dynamic_stack) {
     result += 3;  // mov rsp, rbp
     result += stack_adjust_size(function.callee_saved_regs.size() * 8);
   } else {
@@ -30,7 +45,7 @@ std::size_t encoded_size(const mir_model::MirFunction & function)
   }
   for(std::size_t i = 0; i < function.callee_saved_regs.size(); ++i)
     result += pop_size(function.callee_saved_regs[i]);
-  return result + 2;  // pop rbp; ret
+  return result + (function.omit_frame_pointer ? 1 : 2);
 }
 
 }  // namespace
@@ -44,6 +59,15 @@ bool is_return(const mir_model::MirInstruction & instruction)
 std::size_t function_stack_adjustment(
     const mir_model::MirFunction & function)
 {
+  if(function.omit_frame_pointer) {
+    if(function.has_dynamic_stack)
+      throw std::logic_error("dynamic stack cannot omit the frame pointer");
+    // SysV enters with rsp == 8 (mod 16). An odd number of eight-byte saves
+    // aligns a call naturally; an even number needs one padding word. Leaves
+    // need no padding because they make no aligned-call promise of their own.
+    return has_call(function) && function.callee_saved_regs.size() % 2 == 0 ?
+      8 : 0;
+  }
   const std::size_t preserved = function.callee_saved_regs.size() * 8;
   if(function.stack_size < preserved)
     throw std::logic_error("MIR stack reservation is smaller than its saves");
@@ -60,7 +84,8 @@ Plan make_plan(const mir_model::MirFunction & function)
       if(is_return(instructions[j])) ++result.return_count;
   }
   result.physical_epilogue_count = result.return_count;
-  if(result.return_count < 2) return result;
+  if(result.return_count < 2 || !function.share_epilogues)
+    return result;
 
   if(!function.blocks.empty() &&
      !function.blocks.back().instructions.empty() &&

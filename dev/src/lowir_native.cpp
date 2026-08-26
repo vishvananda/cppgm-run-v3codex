@@ -109,7 +109,7 @@ public:
     values_.resize(source_.value_names.size());
     value_known_.assign(source_.value_names.size(), 0);
     cyclic_register_assumed_.assign(source_.value_names.size(), 0);
-    phi_planned_home_.assign(source_.value_names.size(), 0);
+    phi_planned_home_.assign(source_.value_names.size(), 0); merge_phi_frame_home_.assign(source_.value_names.size(), 0);
     incoming_parameter_registers_.resize(source_.value_names.size(), XR_RSP);
     incoming_parameter_register_known_.assign(source_.value_names.size(), 0);
     target_.symbol = source.symbol;
@@ -243,9 +243,8 @@ private:
   std::vector<ValueFact> values_;
   std::vector<unsigned char> value_known_;
   std::vector<unsigned char> cyclic_register_assumed_;
-  // A phi holding its planned register outlives its counted uses:
-  // predecessor terminators keep writing it until the interval end.
-  std::vector<unsigned char> phi_planned_home_;
+  // Phi home facts whose lifetime extends through edge transfer lowering.
+  std::vector<unsigned char> phi_planned_home_, merge_phi_frame_home_;
   unsigned char phi_home_registers_[16] = {};
   std::vector<long long> slot_offsets_;
   std::vector<unsigned char> slot_offset_known_;
@@ -1092,7 +1091,10 @@ private:
     }
     // The planner proved the register free for the whole interval.
     if(value_holds_planned_register(instruction.dest)) {
-      if(stats_) ++stats_->planned_edge_residencies;
+      if(stats_) {
+        ++stats_->planned_edge_residencies;
+        if(value_has_cyclic_region_plan(instruction.dest)) ++stats_->planned_cyclic_region_residencies;
+      }
       return;
     }
     const bool crosses = result_crosses_call(instruction.dest);
@@ -1109,7 +1111,10 @@ private:
       if(location.kind == MirOperand::OP_REG &&
          selection::is_narrow_integer(value.type))
         append_integer_normalization(out, value.type, location);
-      if(stats_) ++stats_->planned_edge_register_retains;
+      if(stats_) {
+        ++stats_->planned_edge_register_retains;
+        if(value_has_cyclic_region_plan(instruction.dest)) ++stats_->planned_cyclic_region_residencies;
+      }
       return;
     }
     location_planning::record_edge_staging(stats_, instruction.kind, instruction.first.kind,
@@ -1651,22 +1656,13 @@ private:
     }
     throw std::runtime_error("conversion categories are not implemented");
   }
-  MirOperand direct_compare_left(const Operand & operand,
-                                 std::vector<MirInstruction> & out)
-  {
-    const MirOperand source = resolve(operand);
-    if(source.kind == MirOperand::OP_REG || source.kind == MirOperand::OP_FRAME ||
-       source.kind == MirOperand::OP_GLOBAL || source.kind == MirOperand::OP_DEREF)
-      return source;
-    append_move(out, reg_operand(XR_RAX), source);
-    return reg_operand(XR_RAX);
-  }
   void emit_direct_compare_branch(const Instruction & comparison,
                                   const Instruction & branch,
                                   std::vector<MirInstruction> & out,
                                   bool skip_branch = true)
   {
-    MirOperand left = direct_compare_left(comparison.first, out);
+    MirOperand left = direct_compare_left(
+      comparison.first, comparison.type, out);
     const MirOperand unresolved_right = resolve(comparison.second);
     if(unresolved_right.kind == MirOperand::OP_IMM &&
        lowir_model::lowir_type_bit_width(comparison.type) == 64 &&
@@ -1881,7 +1877,8 @@ private:
                                     const Instruction & branch,
                                     std::vector<MirInstruction> & out)
   {
-    const MirOperand value = direct_compare_left(instruction.first, out);
+    const MirOperand value = direct_compare_left(
+      instruction.first, instruction.type, out);
     MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
                                                  instruction.type);
     append_operand(compare, value);
@@ -2923,7 +2920,8 @@ private:
     else if(instruction.kind == Instruction::IK_BINARY)
       emit_binary(instruction, block, instruction_index, out);
     else if(instruction.kind == Instruction::IK_CMP) {
-      if(facts_.deferred_branch_comparisons[instruction.dest]) return;
+      if(facts_.deferred_branch_comparisons[instruction.dest] &&
+         direct_compare_width_safe(instruction)) return;
       if(wide::is_integer(instruction.type) &&
          selection::result_is_immediate_branch(
            block, instruction_index, instruction.dest, facts_))
@@ -2938,7 +2936,8 @@ private:
       else if(is_floating(instruction.type))
         emit_float_compare_value(instruction, block, instruction_index, out);
       else if(selection::result_is_immediate_branch(
-                block, instruction_index, instruction.dest, facts_))
+                block, instruction_index, instruction.dest, facts_) &&
+              direct_compare_width_safe(instruction))
         emit_direct_compare_branch(instruction, block.instructions[instruction_index + 1], out);
       else emit_compare_value(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_UNARY) {
@@ -2960,6 +2959,7 @@ private:
       const Instruction * deferred =
         instruction.first.kind == Operand::OP_TEMP ?
         facts_.deferred_branch_comparisons[instruction.first.value] : 0;
+      if(deferred && !direct_compare_width_safe(*deferred)) deferred = 0;
       if(!deferred) emit_branch(instruction, out);
       else if(wide::is_integer(deferred->type))
         emit_wide_direct_compare_branch(*deferred, instruction, out, false);

@@ -11,6 +11,8 @@ function @read_local_address
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $value -> [rbp-4] : i32
     slot $pointer -> [rbp-16] : ptr
 
@@ -28,6 +30,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     call @read_local_address [args=()]

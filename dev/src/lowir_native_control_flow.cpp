@@ -16,6 +16,7 @@ ControlFlowQueries::ControlFlowQueries(
 	const lowir_model::LowirFunction& function)
 	: successors_(function.blocks.size()), use_sites_(function.value_names.size()),
 	  cyclic_(function.blocks.size(), 0),
+	  component_(function.blocks.size(), kNoBlock),
 	  reachable_(function.blocks.size(), 0),
 	  dominated_(function.blocks.size(), 0),
 	  reachable_epoch_(0), dominated_epoch_(0), current_block_(0),
@@ -144,6 +145,7 @@ void ControlFlowQueries::VisitComponent(std::size_t block,
 		const std::size_t member = stack.back();
 		stack.pop_back();
 		stacked[member] = 0;
+		component_[member] = block;
 		if (component_size == 0)
 			first_member = member;
 		else
@@ -244,6 +246,13 @@ bool ControlFlowQueries::CurrentBlockIsCyclic() const
 	return cyclic_[current_block_] != 0;
 }
 
+bool ControlFlowQueries::BlocksShareCyclicComponent(
+	std::size_t left, std::size_t right) const
+{
+	return left < component_.size() && right < component_.size() &&
+		cyclic_[left] && cyclic_[right] && component_[left] == component_[right];
+}
+
 bool ControlFlowQueries::SpillIsSafe(
 	lowir_model::ValueId value, std::size_t position) const
 {
@@ -300,6 +309,28 @@ bool ControlFlowQueries::FindDominatedUseTail(
 	*begin = first;
 	*end = last;
 	return true;
+}
+
+bool ControlFlowQueries::CyclicDefinitionDominatesUses(
+	lowir_model::ValueId value, std::size_t definition_position,
+	std::size_t definition_block)
+{
+	if (definition_block >= component_.size() || !cyclic_[definition_block])
+		return false;
+	const std::size_t selected_block = current_block_;
+	SelectBlock(definition_block);
+	bool valid = true;
+	const std::vector<ValueUseSite>& uses = use_sites_[value];
+	for (std::size_t i = 0; i < uses.size(); ++i)
+		if (uses[i].position <= definition_position ||
+			!BlocksShareCyclicComponent(definition_block, uses[i].block) ||
+			!CurrentBlockDominates(uses[i].block))
+		{
+			valid = false;
+			break;
+		}
+	SelectBlock(selected_block);
+	return valid && !uses.empty();
 }
 
 }

@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     uitofp.i32.f64 xmm0, 7

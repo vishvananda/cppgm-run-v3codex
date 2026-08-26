@@ -14,6 +14,8 @@ function @preserve_third
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     temp %first_wide -> [rbp-16] : i128
     temp %second_wide -> [rbp-16] : i128
     temp %third_wide -> [rbp-16] : i128
@@ -42,6 +44,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 1

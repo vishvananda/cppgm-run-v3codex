@@ -24,6 +24,8 @@ function @loop_shift
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
 
   block ^entry
@@ -59,6 +61,8 @@ function @main
   frame
     stack_size 80
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
     temp %stable -> [rbp-8] : ptr
     temp %counter -> [rbp-16] : ptr

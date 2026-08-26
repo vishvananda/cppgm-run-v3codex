@@ -83,6 +83,28 @@ level, it should use this same backend optimization pipeline after PA37 LowIR
 optimization has produced the LowIR program to lower. Do not implement PA38 as
 a display-only `lowir2native` transform that the compiler driver cannot reuse.
 
+For backend investigation, the compile-only driver accepts
+`--stats-functions` together with an optimization level.  It writes one
+`function_census symbol=...` record per lowered function to standard error.
+Each record includes MIR size, movement load/store/copy counts, planned
+location grants/releases, planned grants blocked by live parameter or ordinary
+value holders, the actual location class of planned definitions, spills, and
+frame-home counts.  These contention fields let backend work distinguish a
+value that was never planned from a plan that could not claim its selected
+register.  The records are diagnostic data: tests validate their structure
+and function coverage, not timings or exact counter values.
+
+For every final-MIR natural loop, the same option also writes a
+`loop_census symbol=...` record.  A natural loop is identified by a CFG
+backedge whose header dominates its latch; arbitrary backward branches are
+not loops.  The record identifies the stable header block and reports the
+loop's member-block and MIR counts, calls, exception operations, nesting
+depth, frame operands, function frame bindings, and callee-saved register
+count.  A compiler-created block without a presentation label uses `block_`
+followed by its numeric identity.  This is a structural view of loop pressure:
+consumers may compare shapes or select a reducer, but must not depend on exact
+counter values from an unrelated program.
+
 ### Output Format
 
 With `--dump-machine-ir <mirfile>`, `lowir2native` writes the optimized machine
@@ -155,6 +177,68 @@ semantic-preserving rewrites where safe:
   the backend supports that shape
 - fold frame-address temporaries back into direct frame operands or direct
   `lea` call-argument setup where safe
+- use one three-operand `lea` for an O1+ 64-bit integer or pointer addition
+  when the result cannot overwrite its still-live left input and the right
+  input is a register or signed 32-bit displacement
+- keep safe frame, local-global, and constant-index storage addresses as
+  rematerializable MIR operands across their complete use interval; observing
+  the pointer value, clobbering a carrier, variable indexing, or arithmetic on
+  the pointer requires materialization
+- place an unplanned edge-live integer or pointer identity copy directly into
+  its required frame home, and likewise allow an eligible scalar call result
+  to be stored from its ABI return register; planned and exact-forward values
+  retain their selected locations
+- let a single-use scalar value from an acyclic merge `phi` share its frame
+  home with a later acyclic merge `phi` that consumes it on one incoming edge.
+  The shared home removes an identity edge transfer.  Inside a cyclic region,
+  this is safe only when both non-loop-carried merges belong to the same cycle,
+  so the source is refreshed before each dynamic use.  A loop-carried merge,
+  a loop invariant feeding a repeated merge, a value with another use, or a
+  representation change must retain an independent home unless a different
+  register-resident implementation makes the transfer unnecessary
+- keep a frequently reused, iteration-local scalar call result available to
+  branch comparisons throughout one cyclic choice region.  The defining call
+  must execute before every dynamic use, dominate every use, and have all of
+  those uses in the same cyclic component; a loop invariant or a value used
+  outside that component does not satisfy the proof.  When later comparisons
+  cross another call, reserve enough call-preserved register capacity for the
+  bounded region and keep overlapping cyclic allocations from consuming it.
+  If the proof or capacity is unavailable, retain the ordinary frame-home
+  path; no particular physical register is required
+- permit loop-carried integer or pointer `phi` values in a guarded fast arm
+  to reuse call-preserved register capacity when the fast arm cannot reach a
+  call, the values die before the function's first call, and the sibling
+  call-bearing arm already creates full preserved-register pressure.  This
+  exception must not add save/restore capacity.  A loop whose header can
+  reach a call, a function without the existing preserved pressure, or an
+  otherwise unproved path relationship retains the ordinary frame homes; no
+  particular physical registers are required
+- forward a scalar compiler temporary from its defining register into an
+  immediately following integer comparison when that comparison is the
+  temporary's only use, both operations have the same machine type, and the
+  other comparison operand is encodable with a register.  The final MIR drops
+  the now-unneeded frame store and compares the register directly.  Volatile,
+  debug-visible, multi-use, unannotated, non-adjacent, or otherwise unproved
+  frame values retain their stable homes
+- after complete MIR liveness is available, recolor a callee-saved physical
+  register to an otherwise noninterfering caller-saved register when every
+  occurrence is explicit, none of its live ranges crosses a clobber of the
+  replacement, and debug or implicit-register state does not depend on the
+  original register.  Call liveness should use the call's exact annotated
+  argument set when present.  At O1 this is required for the profitable
+  even-save call-function case, where removing one save also removes the
+  SysV call-alignment padding adjustment; leaf functions, odd save counts,
+  call-crossing ranges, and unproved interference retain their original
+  placement.  No particular caller-saved register is required
+- reuse a final-use pointer register as the destination of an eligible scalar
+  load only when the effective address is consumed before the destination is
+  overwritten, the pointer has no surviving aliases or edge use, and the load
+  result needs the ordinary stable edge home
+- omit the frame pointer only when the final MIR has no dynamic stack, host EH,
+  scratch area, debug variable location, or frame operand; functions rejected
+  by any of those guards keep it
+- keep semantic returns distinct in MIR while using direct, unshared physical
+  epilogues at O1+; O0 retains the shared-epilogue policy
 
 `-O2` is the whole-function machine-improvement level. It must include all
 `-O1` work and additionally:
@@ -165,13 +249,37 @@ semantic-preserving rewrites where safe:
   when its complete interval conflicts with no fixed-register use; a value
   that crosses a call may remain in a callee-saved GPR, while an XMM value may
   remain register-resident only when it crosses no call
+- consider single-use values as well as repeatedly used values for planned
+  residency, and make the target ABI's otherwise available call-preserved GPR
+  capacity eligible for bounded call-crossing intervals; no particular
+  physical register is required
+- plan call-free integer or pointer intervals in otherwise available
+  caller-saved registers, including inside an exception-bearing function when
+  the complete interval reaches no call; a call-reaching interval must instead
+  be recomputed, stored, or placed in call-safe capacity
 - use a frame home when exception flow or register pressure prevents a stable
   whole-function register placement; cyclic placement must leave register
   capacity for values first produced inside the cycle and must not evict a
   location that an already-emitted backedge will use on its next iteration
+- allocate and initialize a planned edge value's fallback frame home only when
+  an actual eviction or home-reading consumer requires it; a value that stays
+  resident for its complete interval must not acquire an unused eager home
 - remove callee-saved register preservation that is no longer needed after
   optimization
 - recompute final stack reservation from the surviving frame state
+
+The same interval machinery is available at every optimizing level for the
+bounded O1 placement classes used by the checked fixtures. Loop-carried phis
+may claim stable callee-saved homes for unavoidable loops and for the bounded
+path-disjoint guarded-fast-arm case above; a cursor load may then take over
+its dead phi-home address register. Loop invariants and
+ordinary call-free values may remain in conflict-free registers, including in
+an exception-bearing function when their interval crosses no call. Values
+that require a frame fallback may acquire a second caller-saved register
+segment only after their final call when one acyclic block dominates every
+remaining use. Interval-end and final-use release must respect backedge and
+backward-EH spans, cached address carriers, aliases, parameters, and fixed
+register effects.
 
 `-O3` must accept the LowIR produced by PA37's maximum optimization level and
 apply all `-O2` machine improvements. PA38 does not require an additional
@@ -206,6 +314,8 @@ make test
 - `tests/behavior/o1`
 - `tests/behavior/o2`
 - `tests/behavior/o3`
+- `course/pa38/driver` for the `cppgm++ --stats-functions -c` diagnostic
+- `course/pa38/controls` for focused structural and behavioral predicates
 
 Run the debug metadata preservation lanes with:
 
@@ -232,6 +342,18 @@ N3485 source-language clauses.
   successful lowering and generated-program behavior where several valid
   machine-IR layouts are possible. These tests do not compare a machine-IR
   oracle.
+- `course/pa38/controls` checks only documented focused relationships: selected
+  frame homes and edge movement, residency of a repeatedly compared
+  iteration-local call result across an intervening call, and guarded
+  fast-loop `phi` residency without extra preserved-register capacity.  It
+  then runs the generated program, permits equivalent physical-register
+  choices, and does not compare a complete MIR dump or executable image.
+- A survivor-property pass also reuses selected small `course/pa38/o1`
+  reducers at `-O0` and `-O1`. It checks only local relationships such as a
+  frame home disappearing while its guarded twin remains, a call result being
+  stored directly to an existing home, or a constant address remaining a
+  memory operand. The complete canonical MIR sidecars remain compatibility
+  fixtures and are not the feature oracle for those checks.
 - `tests/debuginfo/o1`, `tests/debuginfo/o2`, and `tests/debuginfo/o3` run
   equivalent machine-IR rewrite cases carrying `!dbg(...)` metadata.
 

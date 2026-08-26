@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 160
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14
     slot $object -> [rbp-24] : obj<24x8>
     slot $first -> [rbp-32] : i64
@@ -56,6 +58,8 @@ function @initialize
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     temp %host-eh-exception -> [rbp-8] : ptr
     temp %host-eh-selector -> [rbp-16] : i64
@@ -89,6 +93,8 @@ function @initialize_atomic
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     temp %host-eh-exception -> [rbp-8] : ptr
     temp %host-eh-selector -> [rbp-16] : i64
@@ -118,6 +124,8 @@ function @touch
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret

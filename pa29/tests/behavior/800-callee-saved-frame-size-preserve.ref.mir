@@ -16,6 +16,8 @@ function @identity
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, rdi
@@ -30,6 +32,8 @@ function @probe
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     param-slot %tag -> [rbp-1] : obj<1x1>
 
@@ -52,6 +56,8 @@ function @main
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
     slot $tag -> [rbp-1] : obj<1x1>
 

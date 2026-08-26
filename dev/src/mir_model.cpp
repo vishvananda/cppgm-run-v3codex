@@ -433,7 +433,11 @@ void render_function(std::ostringstream & out, const Program & program,
   else if(function.return_type.kind == lowir_model::LTK_F80) out << "st0\n";
   else out << "rax\n";
   out << "  frame\n    stack_size " << function.stack_size
-      << "\n    scratch_bytes " << function.scratch_bytes << '\n';
+      << "\n    scratch_bytes " << function.scratch_bytes
+      << "\n    frame_pointer "
+      << (function.omit_frame_pointer ? "omit" : "keep")
+      << "\n    epilogues "
+      << (function.share_epilogues ? "shared" : "direct") << '\n';
   if(!function.callee_saved_regs.empty()) {
     out << "    preserve";
     for(std::size_t i = 0; i < function.callee_saved_regs.size(); ++i)

@@ -19,6 +19,7 @@ VPATH = $(SRC)
 RDEPDIR = $(OBJ)/release/.d
 DDEPDIR = $(OBJ)/debug/.d
 COURSE_TEST_ROOT = $(wildcard course/pa17)
+COURSE_CONTROL_TEST_ROOT ?= course/pa17/controls
 
 $(shell mkdir -p $(RDEPDIR) $(DDEPDIR) >/dev/null)
 
@@ -72,10 +73,28 @@ test: $(TEST_DEPS)
 	@scripts/compare_results.pl ref my tests
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my $(COURSE_TEST_ROOT)
 	@scripts/compare_results.pl ref my $(COURSE_TEST_ROOT)
+	@if [ -d "$(COURSE_CONTROL_TEST_ROOT)" ]; then \
+		perl ../scripts/check_pa17_survivor_properties.pl \
+			$(CPPGM_TEST_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
+	fi
 endif
 
 ref-test:
 	@$(REF_TEST_RUN)
+
+REF_TEST_RUN = case "$(TEST)" in \
+	$(COURSE_CONTROL_TEST_ROOT)/*) echo "$(TEST): focused LowIR/behavior predicate has no reference sidecar" ;; \
+	*) scripts/run_all_tests.pl $(REF_TEST_APP) ref "$(if $(strip $(TEST)),$(TEST),tests)" ;; \
+esac
+
+CHECK_RUN = case "$(TEST)" in \
+	$(COURSE_CONTROL_TEST_ROOT)/*) perl ../scripts/check_pa17_survivor_properties.pl $(CPPGM_TEST_APP) "$(TEST)" ;; \
+	*) scripts/run_all_tests.pl $(CPPGM_TEST_APP) check "$(TEST)" ;; \
+esac
+CHECK_COMPARE = case "$(TEST)" in \
+	$(COURSE_CONTROL_TEST_ROOT)/*) true ;; \
+	*) scripts/compare_results.pl ref check "$(TEST)" ;; \
+esac
 
 include ../scripts/pa_run_check_targets.mk
 

@@ -12,6 +12,8 @@ function @div3
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rcx, 3
@@ -27,6 +29,8 @@ function @div7
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rcx, 7
@@ -42,6 +46,8 @@ function @div_large
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rcx, 2147483647
@@ -57,6 +63,8 @@ function @div_negative3
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rcx, -3
@@ -72,6 +80,8 @@ function @div_negative5
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rcx, -5
@@ -87,6 +97,8 @@ function @div_narrow3
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rcx, 3
@@ -103,6 +115,8 @@ function @div_narrow_negative3
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rcx, -3
@@ -118,6 +132,8 @@ function @main
   frame
     stack_size 96
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     temp %bad_q_negative5 -> [rbp-8] : i64
 

@@ -12,6 +12,8 @@ function @div2
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rcx, 2
@@ -27,6 +29,8 @@ function @mod8
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rcx, 8
@@ -41,6 +45,8 @@ function @main
   frame
     stack_size 144
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     temp %bad_r8_narrow -> [rbp-8] : i64
     temp %bad_q16 -> [rbp-16] : i64

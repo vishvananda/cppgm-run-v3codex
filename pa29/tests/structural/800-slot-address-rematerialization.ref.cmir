@@ -11,6 +11,8 @@ function @mark
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -23,6 +25,8 @@ function @sink
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.i64 [rdi], 1
@@ -35,6 +39,8 @@ function @f
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $x -> [rbp-<off0>] : i64
     slot $y -> [rbp-<off1>] : i64
 
@@ -53,6 +59,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     call @f [args=()]

@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     slot $box__0 -> [rbp-8] : i64
 
@@ -32,6 +34,8 @@ function @Box_int___Box
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -43,6 +47,8 @@ function @Box_int____Box
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret

@@ -11,6 +11,8 @@ function @touch
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -27,6 +29,8 @@ function @select_width
   frame
     stack_size 64
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     param-slot %width -> [rbp-8] : i64
     temp %destination_scratch -> [rbp-16] : i64
@@ -67,6 +71,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 0

@@ -11,6 +11,8 @@ function @noop
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, 0
@@ -22,6 +24,8 @@ function @main
   frame
     stack_size 96
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     temp %narrow -> [rbp-1] : i8
     temp %floating -> [rbp-32] : f80

@@ -11,6 +11,8 @@ function @make_value
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $tmp -> [rbp-8] : obj<8x8>
 
   block ^entry
@@ -25,6 +27,8 @@ function @unwrap
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %x -> [rbp-8] : obj<8x8>
 
   block ^entry
@@ -38,6 +42,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     temp %v -> [rbp-8] : obj<8x8>
 
   block ^entry

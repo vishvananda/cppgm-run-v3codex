@@ -33,6 +33,8 @@ function @noop
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, 0
@@ -46,6 +48,8 @@ function @probe
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -77,6 +81,8 @@ function @probe_temporary
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 r8, [rdi]
@@ -106,6 +112,8 @@ function @probe_forwarded_alias
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13
 
   block ^entry
@@ -145,6 +153,8 @@ function @clobber_first_argument
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     load.i64 rax, [rdi]
@@ -158,6 +168,8 @@ function @write_after_call
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -181,6 +193,8 @@ function @dead_parameter_pressure
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
 
   block ^entry
@@ -198,6 +212,8 @@ function @main
   frame
     stack_size 96
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     temp %alias_ok -> [rbp-8] : i64
 

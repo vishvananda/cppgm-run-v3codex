@@ -21,6 +21,8 @@ function @sink
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     store.u32 @observed, r8
@@ -40,6 +42,8 @@ function @wide
   frame
     stack_size 80
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     param-slot %scope -> [rbp-4] : u32
     param-slot %require -> [rbp-5] : u8
@@ -63,6 +67,8 @@ function @main
   frame
     stack_size 80
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     slot $object -> [rbp-16] : obj<16x8>
 

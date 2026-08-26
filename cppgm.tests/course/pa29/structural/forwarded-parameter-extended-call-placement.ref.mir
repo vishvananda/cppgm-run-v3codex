@@ -21,6 +21,8 @@ function @observe
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     param-slot %base -> [rbp-8] : ptr
     param-slot %tag -> [rbp-9] : obj<1x1>
 
@@ -38,6 +40,8 @@ function @forward
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $tag -> [rbp-1] : obj<1x1>
 
   block ^entry
@@ -56,6 +60,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, @cell

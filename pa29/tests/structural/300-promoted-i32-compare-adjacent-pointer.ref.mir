@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $a -> [rbp-4] : i32
     slot $b -> [rbp-8] : i32
 

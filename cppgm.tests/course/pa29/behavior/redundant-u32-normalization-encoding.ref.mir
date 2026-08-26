@@ -15,6 +15,8 @@ function @barrier
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -25,6 +27,8 @@ function @return_u32
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rax, 4294967295
@@ -36,6 +40,8 @@ function @load_frame
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $home -> [rbp-4] : u32
 
   block ^entry
@@ -50,6 +56,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12
 
   block ^entry

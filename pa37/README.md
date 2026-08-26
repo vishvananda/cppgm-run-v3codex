@@ -55,6 +55,22 @@ lowiropt -O2 -o <outfile> <lowirfile>...
 lowiropt -O3 -o <outfile> <lowirfile>...
 ```
 
+For controlled inliner experiments, `lowiropt` and the source driver also
+accept repeatable `--inline-limit <name>=<positive-integer>` options at O1+.
+The supported names are `caller-budget`, `once-cap`, `once-caller-budget`, and
+`hint-late-cap`; an omitted name keeps the documented default policy, while a
+zero, malformed, or unknown value is rejected.  These controls change only
+the corresponding eligibility limit and do not bypass recursion, EH,
+signature, `no_inline`, or growth-safety checks.
+
+`lowiropt --stats` writes one `pa37_opt_stats` diagnostic record to standard
+error.  In addition to the ordinary optimizer work counts, the record includes
+an entry-prefix census for direct calls whose callee has a side-effect-free
+path to an early return and at least one bailout edge.  The census is
+observational only: it does not enable partial inlining or otherwise change
+the optimized LowIR.  Tests may require the documented census fields and
+exercise a positive shape, but must not require exact counter or timing values.
+
 `--help` and `-h` print usage information and exit successfully.
 
 PA37 also requires the source driver to route these options through the same
@@ -120,18 +136,26 @@ and cleanup bodies.
 For successful runs:
 
 - `-O0` performs a deterministic parse/dump round trip.
-- `-O1` applies local and control-flow-aware LowIR simplifications, then one
-  bounded late inlining wave for small acyclic functions made compact by
-  those transforms.
-- `-O2` applies all `-O1` work and additional conservative slot-promotion
-  optimizations, with its late inlining wave following the additional scalar
-  and control-flow work.
+- `-O1` applies local and control-flow-aware LowIR simplifications, including
+  conservative scalar-slot promotion, then one bounded late inlining wave for
+  small acyclic functions made compact by those transforms.
+- `-O2` applies all `-O1` work and additional memory, loop, and
+  interprocedural optimizations, with its late inlining wave following that
+  additional work.
 - `-O3` applies all `-O2` work and bounded full unrolling of eligible small
   constant-trip loops before its bounded late inlining wave.
 
 The assignment grades the optimized LowIR shape as well as behavior
 preservation. The goal is a deterministic optimization stage, not elapsed-time
 benchmark wins.
+
+Focused course property checks compile small reducers at both the applicable
+optimizing level and, where useful, at `-O0`.  They inspect only the documented
+relationship inside the named reducer function: for example whether an
+eligible slot or call disappears, whether a guarded twin remains, or whether
+every `phi` input still names an actual predecessor.  Complete checked-in
+LowIR outputs remain compatibility fixtures, but are not the definition of an
+optimization feature and are not used by these property checks.
 
 ### Error Handling
 
@@ -182,6 +206,13 @@ running optimizing transforms.
   values have no other uses; a block with one ordinary predecessor may also
   replace a branch on the predecessor's unchanged selector with the edge-known
   successor, provided the removed edge does not require `phi` repair;
+  inside a natural loop without exceptional control, a non-loop-carried
+  integer `phi` used only by its block's terminating `branch` may instead
+  place that decision on each unconditional incoming edge; a constant incoming
+  choice becomes a direct edge, while an incoming predicate becomes the edge's
+  branch selector; retain the merge when its value is shared, when the `phi`
+  carries state around the loop, or when successor `phi` inputs or exceptional
+  control would need repair;
   straight-line merging must preserve the
   serialized LowIR rule that every temporary definition precedes every use
 - removal of a conditional edge whose target begins with a call to the PA13
@@ -216,6 +247,15 @@ running optimizing transforms.
   exhausted, because the call sequence it replaces is at least as large;
   the definition-removing waves keep their own accounting and do not use
   the exemption
+- retaining an ordinary loop-bearing callee when it still has more than one
+  direct caller, so one shared loop is not cloned into several callers merely
+  because each call is individually small; an eligible single-use callee and
+  an explicitly `inline_hint=yes` callee retain their documented preference
+- pricing a block that is reachable only through the non-returning side of a
+  conditional as cold when deciding whether an otherwise eligible callee fits
+  the inline limits; the cold instructions and their effects are still cloned
+  when the call is inlined, and equivalent work on a returning path is charged
+  normally
 - a separate definition-removing path for a weak or internal function that
   has exactly one direct call and no address, relocation, structured-data,
   alias, lifecycle, object-root, or other non-call use; this path may admit a
@@ -265,38 +305,63 @@ running optimizing transforms.
 - creation of a loop preheader by splitting a single critical entry edge only
   when a small explicit block budget and sufficient invariant work justify it
 - dead-code elimination for unused pure temp-producing instructions
+- preservation of a live, typed `select` as a scalar conditional choice when
+  its selector is not constant, while an unused sibling choice may be removed;
+  later native lowering may choose any behaviorally equivalent branchless or
+  control-flow implementation allowed by PA38
+- preservation of every volatile load and store, including an unused volatile
+  load; ordinary nonvolatile slot traffic remains eligible for propagation,
+  dead-store removal, duplicate-load reuse, and promotion
+- folding an unsigned `x - 1 >= x` underflow test to false on a path already
+  proving the same stable loaded value is nonzero; a volatile access, an
+  intervening memory-writing call, or any other loss of load identity keeps
+  the comparison and both edges
+- replacing adjacent same-width scalar load/store copy groups with one
+  `copyobj` only when they cover a contiguous constant byte range, are
+  nonvolatile, and their source and destination bases are identical or carry
+  a mechanical no-alias proof; potentially overlapping or volatile groups
+  remain scalar operations
+- removing a bounded nonvolatile `zeroinit` when scalar stores overwrite its
+  complete byte range before any read, call, escape, or other observation;
+  partial, observed, volatile, and oversized initializations remain
 - removal of unused calls only when the callee is explicitly `readnone` or
   `readonly`, cannot unwind, and is not `noreturn`; source GNU `const` and
   `pure` attributes supply those respective effect facts
+- folding a direct load from an initialized internal `storage=readonly`
+  scalar global to its typed initializer; mutable, volatile, thread-local,
+  externally replaceable, aggregate, and indirectly addressed storage keeps
+  the ordinary memory operation
 - removal of dead local-slot traffic for unused direct slot loads and for
   stores to direct local slots that have no remaining loads, escaping uses, or
   other non-store uses
 - removal of slot declarations that become unused after simplification
+- conservative promotion of eligible non-escaping scalar slots, including
+  eligible `ptr` slots, when every access is a direct typed `store` or `load`
+  and the current value is defined on every executable path; differing
+  predecessor values use a typed PA13 `phi` at an ordinary join, never at an
+  exceptional-handler target, and any required type-changing predecessor
+  `copy` remains explicit
+- scalar replacement of a local `obj<1>`, `obj<2>`, `obj<4>`, or `obj<8>`
+  slot whose complete storage is consistently accessed as one same-sized
+  scalar value; escaping, partial, nonzero-projection, type-disagreeing,
+  atomic, and otherwise observable objects remain unchanged; a `copyobj`
+  whose opposite operand is an object value rather than a pointer also keeps
+  the object slot, because scalar load/store rewriting requires an address
+- removal of dead stores to promoted slots when no observable load can see
+  the stored value
 - removal, after inlining, of unreachable weak or internal function
   definitions, while retaining externally visible strong definitions,
   `object_root=yes` definitions, lifecycle roots, and definitions referenced
   by calls, addresses, relocations, or structured object data
+- after all O1 inlining and pruning decisions are complete, reuse of a
+  dominating nonvolatile scalar load in an explicitly `inline_hint=yes`
+  definition when it reads the same typed location and no intervening store,
+  writing call, atomic operation, exceptional transfer, or other memory
+  barrier can change it; ordinary definitions keep the cheaper local O1 dose,
+  while `readnone` and `readonly` nonthrowing calls preserve valid load facts
 
-`-O2` must include all `-O1` work and then conservatively promote eligible
-non-escaping scalar slots, including eligible `ptr` slots. Promotion must be
-limited to slots accessed through direct `store` and `load` operations whose
-current value is defined on every executable path. When predecessor paths
-carry different values, promotion uses the PA13 `phi` instruction at an
-ordinary join. A phi must not be introduced at an exceptional-handler target.
-Each incoming value must have the phi result type. A type-changing `copy` that
-feeds a promoted slot must therefore remain, and promotion must insert an
-ordinary typed `copy` on a predecessor edge when another value needs the slot
-type before it can become a phi input.
-`-O2` must also scalar-replace a local `obj<1>`, `obj<2>`, `obj<4>`, or
-`obj<8>` slot when its complete storage is consistently accessed as one
-same-sized scalar value. Complete `copyobj` and `zeroinit` operations may then
-be expressed as scalar loads, stores, and zero values before ordinary slot
-promotion. The object must remain unchanged if its address escapes, an access
-uses a nonzero or partial projection, its scalar access types disagree, or an
-atomic or otherwise unmodelled operation can observe its storage.
-Beyond the direct slot cleanup already allowed at `-O1`, `-O2` also removes
-dead stores to promoted slots when no observable load can see the stored
-value. It must additionally support these conservative loop transforms:
+`-O2` must include all `-O1` scalar cleanup and additionally support these
+conservative memory, loop, and interprocedural transforms:
 
 - hoisting a direct global or nonescaping direct-slot load only when no store,
   call, atomic operation, or other memory effect in the loop can change the
@@ -377,9 +442,18 @@ wave must continue to preserve variadic,
 exception-region, unwind, and externally visible call-site restrictions from
 ordinary inlining.
 
-Slot-value forwarding and promotion remain an `-O2` responsibility. At `-O1`,
-a live load whose value is consumed along multiple successor paths must remain
-unless an ordinary non-slot propagation rule independently proves each use.
+When either the late wave or the post-reachability definition-removing wave
+rewrites a caller, repeat the ordinary local scalar-slot promotion on that
+changed caller. This includes a slot whose last address use was a call operand
+and becomes direct typed load/store traffic after the callee is inlined. The
+ordinary escape, type, definition, exceptional-handler, and phi-budget guards
+still apply; this cleanup does not make an otherwise ineligible slot
+promotable, and `-O0` performs neither the inlining nor the promotion.
+
+General slot-value forwarding beyond complete eligible-slot promotion remains
+an `-O2` responsibility. At `-O1`, a live load whose value is consumed along
+multiple successor paths must remain unless the slot is fully promotable or an
+ordinary non-slot propagation rule independently proves each use.
 
 ### Validation Modes
 
@@ -495,10 +569,12 @@ fixed-point retries; only a later policy that changes incoming-use eligibility
 needs a deduplicated reverse-caller worklist.
 
 Before constructing CFG and use-count state for Boolean-diamond cleanup, scan
-for the exact three-instruction `phi`/`cmp`/`branch` merge shape. Dense use
-counts then prove that the two intermediate values are private to the shape;
-typed block IDs and predecessor arrays are sufficient to retarget the
-original branch without rendered labels or repeated graph searches.
+for either the three-instruction `phi`/`cmp`/`branch` merge or the loop-local
+`phi`/`branch` shape. Dense use counts prove that intermediate values are
+private to the shape. The loop forest distinguishes an iteration-local choice
+from a loop-carried state value, and typed block IDs and predecessor arrays are
+sufficient to retarget branches without rendered labels or repeated graph
+searches.
 
 The direct-call graph can record non-call observation in one byte per function
 while it scans instruction operands and structured global data. Reverse-edge

@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     temp %2 -> [rbp-<off0>] : f80
 
   block ^entry

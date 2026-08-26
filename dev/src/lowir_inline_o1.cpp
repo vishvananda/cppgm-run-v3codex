@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <deque>
 #include <iterator>
 #include <limits>
@@ -18,6 +19,34 @@
 #include <vector>
 
 namespace lowir_opt {
+
+void apply_inline_limit_option(InlinePolicyOverrides * limits,
+                               const std::string & spec)
+{
+  const std::size_t equals = spec.find('=');
+  if(!limits || equals == std::string::npos || equals == 0 ||
+     equals + 1 == spec.size())
+    throw std::logic_error("invalid --inline-limit argument: " + spec);
+  const std::string name = spec.substr(0, equals);
+  const std::string text = spec.substr(equals + 1);
+  for(std::size_t i = 0; i < text.size(); ++i)
+    if(text[i] < '0' || text[i] > '9')
+      throw std::logic_error("invalid --inline-limit value: " + spec);
+  char * end = 0;
+  const unsigned long long value = std::strtoull(text.c_str(), &end, 10);
+  if(end == text.c_str() || *end != '\0' || value == 0 ||
+     value > static_cast<unsigned long long>(
+       std::numeric_limits<std::size_t>::max()))
+    throw std::logic_error("invalid --inline-limit value: " + spec);
+  const std::size_t limit = static_cast<std::size_t>(value);
+  if(name == "caller-budget") limits->caller_budget = limit;
+  else if(name == "once-cap") limits->single_call_limit = limit;
+  else if(name == "once-caller-budget")
+    limits->single_call_caller_budget = limit;
+  else if(name == "hint-late-cap") limits->hint_late_cap = limit;
+  else throw std::logic_error("unknown --inline-limit name: " + spec);
+}
+
 namespace {
 
 using lowir_model::Block;
@@ -353,6 +382,21 @@ std::vector<std::size_t> normal_successors(const Function & function,
   return result;
 }
 
+bool contains_backward_edge(const Function & function)
+{
+  const std::size_t no_block = static_cast<std::size_t>(-1);
+  std::vector<std::size_t> index(function.next_block_id, no_block);
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    index[function.blocks[block].id] = block;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::vector<std::size_t> successors =
+      normal_successors(function, block, index);
+    for(std::size_t i = 0; i < successors.size(); ++i)
+      if(successors[i] <= block) return true;
+  }
+  return false;
+}
+
 void remove_unreachable_blocks(Function * function)
 {
   if(function->blocks.empty()) return;
@@ -477,6 +521,7 @@ public:
     if(original_instruction_counts_.size() != program_.functions.size())
       throw std::logic_error("inline cost summary count mismatch");
     contains_eh_.resize(program_.functions.size(), 0);
+    loop_inline_shapes_.resize(program_.functions.size(), 0);
     leaf_inline_shapes_.resize(program_.functions.size(), 0);
     instruction_counts_.resize(program_.functions.size(), 0);
     single_call_discardable_.resize(program_.functions.size(), 0);
@@ -487,6 +532,7 @@ public:
     effective_leaf_shapes_.resize(program_.functions.size(), 0);
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       contains_eh_[i] = contains_eh(program_.functions[i]);
+      loop_inline_shapes_[i] = contains_backward_edge(program_.functions[i]);
       leaf_inline_shapes_[i] = leaf_inline_shape(program_.functions[i]);
       instruction_counts_[i] = instruction_count(program_.functions[i]);
       refresh_cold_discounted_shape(i);
@@ -607,7 +653,8 @@ private:
   std::vector<unsigned char> no_unwind_;
   const std::vector<unsigned char> & prepared_oversized_symbols_;
   const std::vector<std::size_t> & original_instruction_counts_;
-  std::vector<unsigned char> state_, contains_eh_, leaf_inline_shapes_;
+  std::vector<unsigned char> state_, contains_eh_, loop_inline_shapes_,
+    leaf_inline_shapes_;
   std::vector<std::size_t> cold_discounted_counts_;
   std::vector<unsigned char> effective_leaf_shapes_;
   std::vector<unsigned char> noreturn_symbols_;
@@ -722,6 +769,16 @@ private:
       if(record_stats && stats_ && definition_removing_only_ &&
          single_call_discardable_[target])
         ++stats_->post_prune_inline_reject_no_inline;
+      return false;
+    }
+    // Pulling a shared ordinary loop body into its callers duplicates its
+    // control-flow state and, on this backend, commonly turns the loop's
+    // induction values into frame traffic. A single-use body still removes a
+    // definition, while an explicit source inline preference remains honored.
+    if(loop_inline_shapes_[target] && !single_call_discardable_[target] &&
+       !callee_function.metadata.inline_hint &&
+       !callee_function.metadata.force_inline) {
+      if(record_stats && stats_) ++stats_->inline_reject_loop_body;
       return false;
     }
     // Some pre-PA37 virtual-base ABI wrappers intentionally leave hidden
@@ -1597,6 +1654,7 @@ private:
     return changed;
   }
 };
+
 
 }  // namespace
 

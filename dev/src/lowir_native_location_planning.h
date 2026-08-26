@@ -71,6 +71,7 @@ bool managed_register(X64Register reg);
 enum PlannedLocationKind
 {
   PLK_GPR,
+  PLK_CYCLIC_REGION_GPR,
   PLK_XMM,
   PLK_FRAME,
   PLK_REMATERIALIZE
@@ -119,6 +120,8 @@ FunctionLocationTimeline plan_value_locations(
     const analysis::FunctionFacts & facts,
     int optimization_level,
     std::vector<std::pair<std::size_t, std::size_t> > * register_spans,
+    std::vector<std::pair<std::size_t, std::size_t> > *
+      cyclic_region_register_spans,
     std::vector<std::pair<std::size_t, std::size_t> > * extension_spans,
     Stats * stats);
 
@@ -136,7 +139,7 @@ protected:
   {
     location_timeline_ = plan_value_locations(
       function, facts, optimization_level, planned_register_spans_,
-      &extension_spans_, stats);
+      cyclic_region_register_spans_, &extension_spans_, stats);
   }
   // True when no layout backedge or backward exception span contains the
   // position: a final counted use here can never be re-executed, so an
@@ -155,7 +158,9 @@ protected:
        static_cast<std::size_t>(value) >= location_timeline_.size()) return 0;
     const ValueLocationTimeline & timeline = location_timeline_[value];
     for(std::size_t i = 0; i < timeline.size(); ++i)
-      if(timeline[i].kind == PLK_GPR && timeline[i].begin <= position &&
+      if((timeline[i].kind == PLK_GPR ||
+          timeline[i].kind == PLK_CYCLIC_REGION_GPR) &&
+         timeline[i].begin <= position &&
          position <= timeline[i].end) return &timeline[i];
     return 0;
   }
@@ -191,7 +196,8 @@ protected:
       return false;
     const ValueLocationTimeline & timeline = location_timeline_[value];
     for(std::size_t i = 0; i < timeline.size(); ++i)
-      if(timeline[i].kind == PLK_GPR &&
+      if((timeline[i].kind == PLK_GPR ||
+          timeline[i].kind == PLK_CYCLIC_REGION_GPR) &&
          timeline[i].begin <= lowerer.position_ &&
          lowerer.position_ <= timeline[i].end &&
          timeline[i].index == static_cast<unsigned>(
@@ -199,10 +205,17 @@ protected:
         return true;
     return false;
   }
+  bool value_has_cyclic_region_plan(lowir_model::ValueId value) const
+  {
+    const PlannedLocationSegment * segment = planned_register_segment(value);
+    return segment && segment->kind == PLK_CYCLIC_REGION_GPR;
+  }
   bool try_planned_grant(lowir_model::ValueId value, X64Register * result)
   {
     Derived & lowerer = static_cast<Derived &>(*this);
-    const unsigned char entry = planned_register_entry(value);
+    const PlannedLocationSegment * segment =
+      planned_register_segment(value);
+    const unsigned char entry = segment ? segment->index + 1 : 0;
     const X64Register planned = static_cast<X64Register>(entry - 1);
     if(entry == 0) return false;
     if(lowerer.crosses_register_clobber(value, planned)) {
@@ -212,6 +225,8 @@ protected:
     if(!lowerer.registers_.try_reserve(planned)) {
       if(lowerer.stats_) {
         ++lowerer.stats_->planned_grant_busy_fails;
+        if(segment->kind == PLK_CYCLIC_REGION_GPR)
+          ++lowerer.stats_->planned_cyclic_region_busy_fails;
         if(allocation::is_callee_saved(planned))
           ++lowerer.stats_->planned_grant_busy_fails_callee;
         const std::vector<lowir_model::ValueId> & holders =
@@ -236,7 +251,11 @@ protected:
       return false;
     }
     *result = planned;
-    if(lowerer.stats_) ++lowerer.stats_->planned_register_grants;
+    if(lowerer.stats_) {
+      ++lowerer.stats_->planned_register_grants;
+      if(segment->kind == PLK_CYCLIC_REGION_GPR)
+        ++lowerer.stats_->planned_cyclic_region_grants;
+    }
     return true;
   }
   // The extended interval end lies past every layout backedge span and
@@ -254,7 +273,8 @@ protected:
       return false;
     const ValueLocationTimeline & timeline = location_timeline_[value];
     for(std::size_t i = 0; i < timeline.size(); ++i)
-      if(timeline[i].kind == PLK_GPR &&
+      if((timeline[i].kind == PLK_GPR ||
+          timeline[i].kind == PLK_CYCLIC_REGION_GPR) &&
          timeline[i].index == static_cast<unsigned>(
            lowerer.values_[value].location.reg) &&
          timeline[i].begin <= lowerer.position_ &&
@@ -283,7 +303,8 @@ protected:
     for(std::size_t v = 0; v < location_timeline_.size(); ++v) {
       for(std::size_t i = 0; i < location_timeline_[v].size(); ++i) {
         const PlannedLocationSegment & segment = location_timeline_[v][i];
-        if(segment.kind != PLK_GPR) continue;
+        if(segment.kind != PLK_GPR &&
+           segment.kind != PLK_CYCLIC_REGION_GPR) continue;
         planned_release_schedule_.push_back(
           std::make_pair(segment.end,
                          lowir_model::ValueId(
@@ -317,7 +338,8 @@ protected:
       const PlannedLocationSegment * segment = 0;
       const ValueLocationTimeline & timeline = location_timeline_[value];
       for(std::size_t i = 0; i < timeline.size(); ++i)
-        if(timeline[i].kind == PLK_GPR &&
+        if((timeline[i].kind == PLK_GPR ||
+            timeline[i].kind == PLK_CYCLIC_REGION_GPR) &&
            timeline[i].begin == lowerer.position_ &&
            timeline[i].begin > lowerer.facts_.definition[value]) {
           segment = &timeline[i];
@@ -417,7 +439,8 @@ protected:
       for(std::size_t i = 0; i < location_timeline_[value].size(); ++i) {
         const PlannedLocationSegment & segment =
           location_timeline_[value][i];
-        if(segment.kind != PLK_GPR) continue;
+        if(segment.kind != PLK_GPR &&
+           segment.kind != PLK_CYCLIC_REGION_GPR) continue;
         static const X64Register pool[] = {XR_R9, XR_R8, XR_RDI, XR_RSI};
         for(std::size_t reg = 0; reg < sizeof(pool) / sizeof(pool[0]); ++reg)
           if(segment.index == static_cast<unsigned>(pool[reg])) {
@@ -544,6 +567,15 @@ protected:
       if(spans[i].first <= end && start <= spans[i].second) return true;
     return false;
   }
+  bool cyclic_region_span_conflicts(X64Register reg, std::size_t start,
+                                    std::size_t end) const
+  {
+    const std::vector<std::pair<std::size_t, std::size_t> > & spans =
+      cyclic_region_register_spans_[static_cast<unsigned>(reg)];
+    for(std::size_t i = 0; i < spans.size(); ++i)
+      if(spans[i].first <= end && start <= spans[i].second) return true;
+    return false;
+  }
   // Reactive callee-saved allocation prefers registers with no planned
   // interval overlapping the requester's remaining lifetime, so scratch
   // stops occupying the registers planned call-crossing values need.  The
@@ -560,6 +592,8 @@ protected:
     for(std::size_t pass = 0; pass < 3; ++pass)
       for(std::size_t i = 0;
           i < sizeof(preserved) / sizeof(preserved[0]); ++i) {
+        if(cyclic_region_span_conflicts(preserved[i], start, end))
+          continue;
         if(pass == 0 && planned_span_conflicts(preserved[i], start, end))
           continue;
         if(pass < 2 && lowerer.registers_.plan_held(preserved[i]))
@@ -574,10 +608,29 @@ protected:
   std::size_t reactive_lifetime_end(lowir_model::ValueId value) const
   {
     const Derived & lowerer = static_cast<const Derived &>(*this);
-    return lowerer.facts_.uses[value] != 0 &&
+    std::size_t end = lowerer.facts_.uses[value] != 0 &&
       lowerer.facts_.last_use[value] !=
         analysis::FunctionFacts::missing_position() ?
       lowerer.facts_.last_use[value] : lowerer.position_;
+    // An edge-live value whose final textual use is inside a backedge or
+    // backward exception span may be read again after later layout
+    // positions execute.  Advertise that same envelope to reactive
+    // allocation; otherwise a short-looking value can occupy a register
+    // reserved for a later definition in the cycle and cannot safely be
+    // evicted when the reservation begins.
+    if(lowerer.facts_.has(value, analysis::FunctionFacts::VF_EDGE_LIVE)) {
+      bool grew = true;
+      while(grew) {
+        grew = false;
+        for(std::size_t i = 0; i < extension_spans_.size(); ++i)
+          if(extension_spans_[i].first <= end &&
+             end < extension_spans_[i].second) {
+            end = extension_spans_[i].second;
+            grew = true;
+          }
+      }
+    }
+    return end;
   }
   // Eager parameter homes occupy their register from function entry.
   X64Register allocate_preserved_for_parameter(lowir_model::ValueId value)
@@ -652,6 +705,8 @@ protected:
   FunctionLocationTimeline location_timeline_;
   std::vector<std::pair<std::size_t, std::size_t> >
     planned_register_spans_[16];
+  std::vector<std::pair<std::size_t, std::size_t> >
+    cyclic_region_register_spans_[16];
   std::vector<std::pair<std::size_t, std::size_t> > extension_spans_;
   std::vector<std::pair<std::size_t, lowir_model::ValueId> >
     planned_release_schedule_;

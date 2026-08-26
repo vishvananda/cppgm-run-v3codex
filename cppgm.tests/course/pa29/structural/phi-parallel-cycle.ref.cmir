@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     temp %left -> [rbp-<off0>] : i64
     temp %right -> [rbp-<off1>] : i64
     temp %iteration -> [rbp-<off2>] : i64

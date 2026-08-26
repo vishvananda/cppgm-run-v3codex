@@ -11,6 +11,8 @@ function @make_pair
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     slot $value -> [rbp-16] : obj<16x8>
 
   block ^entry
@@ -33,6 +35,8 @@ function @forward_pair
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     temp %value -> [rbp-16] : obj<16x8>
 
   block ^entry
@@ -52,6 +56,8 @@ function @main
   frame
     stack_size 32
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx
     slot $result -> [rbp-16] : obj<16x8>
 

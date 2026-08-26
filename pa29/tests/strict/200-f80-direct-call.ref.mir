@@ -13,6 +13,8 @@ function @addl
   frame
     stack_size 96
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     param-slot %a -> [rbp-16] : f80
     param-slot %b -> [rbp-32] : f80
     temp %sum -> [rbp-48] : f80
@@ -29,6 +31,8 @@ function @main
   frame
     stack_size 96
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     temp %a -> [rbp-16] : f80
     temp %b -> [rbp-32] : f80
     temp %r -> [rbp-48] : f80

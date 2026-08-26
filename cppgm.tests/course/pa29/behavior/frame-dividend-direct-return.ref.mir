@@ -19,6 +19,8 @@ function @may_unwind
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -34,6 +36,8 @@ function @observe_values
   frame
     stack_size 48
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     ret
@@ -49,6 +53,8 @@ function @divide_frame_value
   frame
     stack_size 128
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
     preserve rbx r12 r13 r14 r15
     temp %host-eh-exception -> [rbp-8] : ptr
     temp %host-eh-selector -> [rbp-16] : i64
@@ -136,6 +142,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 10

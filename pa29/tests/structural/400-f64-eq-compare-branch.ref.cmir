@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     fcmp.f64 3.0, 3.0

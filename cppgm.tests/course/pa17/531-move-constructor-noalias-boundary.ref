@@ -1,0 +1,129 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $source : obj<32x8>
+  slot $destination : obj<32x8>
+
+  block ^entry:
+    %t1 = addr $source
+    call void @Bundle__Bundle(%t1, 1, 4, 16, 21)
+    %t2 = addr $destination
+    %t3 = addr $source
+    call void @Bundle__Bundle__ov2(%t2, %t3)
+    %t4 = addr $destination
+    %t5 = index i8 [projection=field] %t4, 0
+    %t6 = index i8 [projection=field] %t5, 0
+    %t7 = load i64 %t6
+    %t8 = addr $destination
+    %t9 = index i8 [projection=field] %t8, 8
+    %t10 = load i64 %t9
+    %t11 = binary add i64 %t7, %t10
+    %t12 = addr $destination
+    %t13 = index i8 [projection=field] %t12, 16
+    %t14 = load i64 %t13
+    %t15 = binary add i64 %t11, %t14
+    %t16 = addr $destination
+    %t17 = index i8 [projection=field] %t16, 24
+    %t18 = load i64 %t17
+    %t19 = binary add i64 %t15, %t18
+    %t20 = binary sub i64 %t19, 42
+    %t21 = convert trunc i32 i64 %t20
+    return i32 %t21
+}
+function @Bundle__Bundle(%this : ptr, %h : i64, %a : i64, %b : i64, %c : i64) -> void [binding=weak, object=_ZN6BundleC1Ellll, inline_hint=yes] {
+  slot $this : ptr
+  slot $h : i64
+  slot $a : i64
+  slot $b : i64
+  slot $c : i64
+
+  block ^entry:
+    store ptr %this, $this
+    store i64 %h, $h
+    store i64 %a, $a
+    store i64 %b, $b
+    store i64 %c, $c
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load i64 $h
+    call void @Head__Head(%t2, %t3)
+    %t4 = load i64 $a
+    %t5 = load ptr $this
+    %t6 = index i8 [projection=field] %t5, 8
+    store i64 %t4, %t6
+    %t7 = load i64 $b
+    %t8 = load ptr $this
+    %t9 = index i8 [projection=field] %t8, 16
+    store i64 %t7, %t9
+    %t10 = load i64 $c
+    %t11 = load ptr $this
+    %t12 = index i8 [projection=field] %t11, 24
+    store i64 %t10, %t12
+    return void
+}
+function @Bundle__Bundle__ov2(%this : ptr [alias=noalias], %__param1 : ptr [pass=reference, alias=noalias]) -> void [binding=weak, object=_ZN6BundleC1EOS_, inline_hint=yes, no_inline=yes] {
+  slot $this : ptr
+  slot $__param1 : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %__param1, $__param1
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr $__param1
+    %t4 = index i8 [projection=field] %t3, 0
+    call void @Head__Head__ov2(%t2, %t4)
+    %t5 = load ptr $this
+    %t6 = index i8 [projection=field] %t5, 8
+    %t7 = load ptr $__param1
+    %t8 = index i8 [projection=field] %t7, 8
+    %t9 = load i64 %t8
+    store i64 %t9, %t6
+    %t10 = load ptr $this
+    %t11 = index i8 [projection=field] %t10, 16
+    %t12 = load ptr $__param1
+    %t13 = index i8 [projection=field] %t12, 16
+    %t14 = load i64 %t13
+    store i64 %t14, %t11
+    %t15 = load ptr $this
+    %t16 = index i8 [projection=field] %t15, 24
+    %t17 = load ptr $__param1
+    %t18 = index i8 [projection=field] %t17, 24
+    %t19 = load i64 %t18
+    store i64 %t19, %t16
+    return void
+}
+function @Head__Head(%this : ptr, %initial : i64) -> void [binding=weak, object=_ZN4HeadC1El, inline_hint=yes] {
+  slot $this : ptr
+  slot $initial : i64
+
+  block ^entry:
+    store ptr %this, $this
+    store i64 %initial, $initial
+    %t1 = load i64 $initial
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    store i64 %t1, %t3
+    return void
+}
+function @Head__Head__ov2(%this : ptr [alias=noalias], %other : ptr [pass=reference, alias=noalias]) -> void [binding=weak, object=_ZN4HeadC1EOS_, inline_hint=yes, no_inline=yes] {
+  slot $this : ptr
+  slot $other : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %other, $other
+    %t1 = load ptr $other
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load i64 %t2
+    %t4 = load ptr $this
+    %t5 = index i8 [projection=field] %t4, 0
+    store i64 %t3, %t5
+    %t6 = convert sext i64 i32 0
+    %t7 = load ptr $other
+    %t8 = index i8 [projection=field] %t7, 0
+    store i64 %t6, %t8
+    return void
+}
+alias object _ZN6BundleC2Ellll = @Bundle__Bundle
+alias object _ZN6BundleC2EOS_ = @Bundle__Bundle__ov2
+alias object _ZN4HeadC2El = @Head__Head
+alias object _ZN4HeadC2EOS_ = @Head__Head__ov2

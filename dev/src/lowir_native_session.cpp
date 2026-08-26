@@ -193,6 +193,10 @@ struct ProgramLoweringSession::Impl
     std::size_t call_loads, call_stores, call_copies;
     std::size_t planned, grants, releases, spills, frame_homes;
     std::size_t phi_planned, phi_homes;
+    std::size_t grant_busy, grant_busy_parameters, grant_busy_values;
+    std::size_t defined_in_plan, defined_frame, defined_other_register;
+    std::size_t region_candidates, region_assignments;
+    std::size_t region_grants, region_residencies, region_busy;
     std::size_t edge_staging, edge_copy, edge_load, edge_index;
     std::size_t edge_binary, edge_call;
   };
@@ -221,6 +225,20 @@ struct ProgramLoweringSession::Impl
     snapshot.frame_homes = stats->temporary_frame_homes_created;
     snapshot.phi_planned = stats->planned_phi_registers;
     snapshot.phi_homes = stats->phi_register_homes;
+    snapshot.grant_busy = stats->planned_grant_busy_fails;
+    snapshot.grant_busy_parameters =
+      stats->planned_grant_busy_parameter_holder;
+    snapshot.grant_busy_values = stats->planned_grant_busy_value_holder;
+    snapshot.defined_in_plan = stats->planned_defined_in_plan;
+    snapshot.defined_frame = stats->planned_defined_frame;
+    snapshot.defined_other_register =
+      stats->planned_defined_other_register;
+    snapshot.region_candidates = stats->planner_cyclic_region_candidates;
+    snapshot.region_assignments = stats->planner_cyclic_region_assignments;
+    snapshot.region_grants = stats->planned_cyclic_region_grants;
+    snapshot.region_residencies =
+      stats->planned_cyclic_region_residencies;
+    snapshot.region_busy = stats->planned_cyclic_region_busy_fails;
     snapshot.edge_staging = stats->edge_staging_total;
     snapshot.edge_copy =
       stats->edge_staging_by_kind[lowir_model::Instruction::IK_COPY];
@@ -263,6 +281,24 @@ struct ProgramLoweringSession::Impl
     field("frame_homes", after.frame_homes - before.frame_homes);
     field("phi_planned", after.phi_planned - before.phi_planned);
     field("phi_homes", after.phi_homes - before.phi_homes);
+    field("grant_busy", after.grant_busy - before.grant_busy);
+    field("grant_busy_parameters",
+          after.grant_busy_parameters - before.grant_busy_parameters);
+    field("grant_busy_values",
+          after.grant_busy_values - before.grant_busy_values);
+    field("defined_in_plan",
+          after.defined_in_plan - before.defined_in_plan);
+    field("defined_frame", after.defined_frame - before.defined_frame);
+    field("defined_other_register",
+          after.defined_other_register - before.defined_other_register);
+    field("region_candidates",
+          after.region_candidates - before.region_candidates);
+    field("region_assignments",
+          after.region_assignments - before.region_assignments);
+    field("region_grants", after.region_grants - before.region_grants);
+    field("region_residencies",
+          after.region_residencies - before.region_residencies);
+    field("region_busy", after.region_busy - before.region_busy);
     field("edge_staging", after.edge_staging - before.edge_staging);
     field("edge_copy", after.edge_copy - before.edge_copy);
     field("edge_load", after.edge_load - before.edge_load);
@@ -270,6 +306,229 @@ struct ProgramLoweringSession::Impl
     field("edge_binary", after.edge_binary - before.edge_binary);
     field("edge_call", after.edge_call - before.edge_call);
     stats->function_census_lines.push_back(std::move(line));
+  }
+
+  struct LoopCensusRegion
+  {
+    std::size_t header;
+    std::vector<bool> members;
+  };
+
+  static void AppendLoopSuccessor(
+      std::vector<std::size_t> * successors, std::size_t target)
+  {
+    if(std::find(successors->begin(), successors->end(), target) ==
+       successors->end())
+      successors->push_back(target);
+  }
+
+  static bool LoopCensusExit(
+      mir_model::MirInstruction::Opcode opcode)
+  {
+    return opcode == mir_model::MirInstruction::MI_JMP ||
+      opcode == mir_model::MirInstruction::MI_JMP_INDIRECT ||
+      opcode == mir_model::MirInstruction::MI_RET ||
+      opcode == mir_model::MirInstruction::MI_FRET ||
+      opcode == mir_model::MirInstruction::MI_RESUME ||
+      opcode == mir_model::MirInstruction::MI_THROW ||
+      opcode == mir_model::MirInstruction::MI_EXIT;
+  }
+
+  static bool ReachesWithoutBlock(
+      const std::vector<std::vector<std::size_t> > & successors,
+      std::size_t target, std::size_t omitted)
+  {
+    if(successors.empty() || omitted == 0) return false;
+    std::vector<bool> seen(successors.size(), false);
+    std::vector<std::size_t> work(1, 0);
+    seen[0] = true;
+    while(!work.empty()) {
+      const std::size_t block = work.back();
+      work.pop_back();
+      if(block == target) return true;
+      for(std::size_t edge = 0; edge < successors[block].size(); ++edge) {
+        const std::size_t next = successors[block][edge];
+        if(next == omitted || seen[next]) continue;
+        seen[next] = true;
+        work.push_back(next);
+      }
+    }
+    return false;
+  }
+
+  void AppendLoopCensusLines(std::size_t index,
+                             const mir_model::MirFunction & function)
+  {
+    const std::size_t no_block = static_cast<std::size_t>(-1);
+    std::vector<std::size_t> block_by_id;
+    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+      const std::uint32_t id = function.blocks[block].id;
+      if(block_by_id.size() <= id)
+        block_by_id.resize(static_cast<std::size_t>(id) + 1, no_block);
+      block_by_id[id] = block;
+    }
+
+    std::vector<std::vector<std::size_t> > successors(
+      function.blocks.size());
+    std::vector<std::vector<std::size_t> > predecessors(
+      function.blocks.size());
+    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+      const std::vector<mir_model::MirInstruction> & instructions =
+        function.blocks[block].instructions;
+      bool falls_through = true;
+      for(std::size_t ins = 0; ins < instructions.size(); ++ins) {
+        const mir_model::MirInstruction & instruction = instructions[ins];
+        if(instruction.opcode == mir_model::MirInstruction::MI_JCC ||
+           instruction.opcode == mir_model::MirInstruction::MI_JMP ||
+           instruction.opcode == mir_model::MirInstruction::MI_JNE ||
+           instruction.opcode == mir_model::MirInstruction::MI_EH_PUSH) {
+          for(std::size_t operand = 0;
+              operand < instruction.operands.size(); ++operand) {
+            const mir_model::MirOperand & target_operand =
+              instruction.operands[operand];
+            if(target_operand.kind != mir_model::MirOperand::OP_LABEL)
+              continue;
+            const std::uint32_t id = target_operand.block;
+            const std::size_t target = id < block_by_id.size() ?
+              block_by_id[id] : no_block;
+            if(target != no_block)
+              AppendLoopSuccessor(&successors[block], target);
+          }
+        }
+        if(LoopCensusExit(instruction.opcode)) falls_through = false;
+      }
+      if(falls_through && block + 1 < function.blocks.size())
+        AppendLoopSuccessor(&successors[block], block + 1);
+      for(std::size_t edge = 0; edge < successors[block].size(); ++edge)
+        predecessors[successors[block][edge]].push_back(block);
+    }
+
+    std::vector<bool> reachable(function.blocks.size(), false);
+    std::vector<std::size_t> reach_work;
+    if(!function.blocks.empty()) {
+      reachable[0] = true;
+      reach_work.push_back(0);
+    }
+    while(!reach_work.empty()) {
+      const std::size_t block = reach_work.back();
+      reach_work.pop_back();
+      for(std::size_t edge = 0; edge < successors[block].size(); ++edge) {
+        const std::size_t next = successors[block][edge];
+        if(reachable[next]) continue;
+        reachable[next] = true;
+        reach_work.push_back(next);
+      }
+    }
+
+    std::vector<LoopCensusRegion> loops;
+    for(std::size_t latch = 0; latch < successors.size(); ++latch) {
+      if(!reachable[latch]) continue;
+      for(std::size_t edge = 0; edge < successors[latch].size(); ++edge) {
+        const std::size_t header = successors[latch][edge];
+        if(!reachable[header]) continue;
+        if(header != latch &&
+           ReachesWithoutBlock(successors, latch, header)) continue;
+        std::size_t loop = 0;
+        while(loop < loops.size() && loops[loop].header != header) ++loop;
+        if(loop == loops.size()) {
+          LoopCensusRegion region;
+          region.header = header;
+          region.members.assign(function.blocks.size(), false);
+          loops.push_back(region);
+        }
+        std::vector<bool> natural(function.blocks.size(), false);
+        natural[header] = true;
+        natural[latch] = true;
+        std::vector<std::size_t> work(1, latch);
+        while(!work.empty()) {
+          const std::size_t block = work.back();
+          work.pop_back();
+          for(std::size_t pred = 0;
+            pred < predecessors[block].size(); ++pred) {
+            const std::size_t previous = predecessors[block][pred];
+            if(natural[previous]) continue;
+            natural[previous] = true;
+            if(previous != header) work.push_back(previous);
+          }
+        }
+        for(std::size_t block = 0; block < natural.size(); ++block)
+          loops[loop].members[block] =
+            loops[loop].members[block] || natural[block];
+      }
+    }
+
+    std::sort(loops.begin(), loops.end(),
+      [](const LoopCensusRegion & left, const LoopCensusRegion & right) {
+        return left.header < right.header;
+      });
+    const std::string symbol = lowir_model::lowir_symbol_name(
+      source, source.functions[index].symbol);
+    for(std::size_t loop = 0; loop < loops.size(); ++loop) {
+      std::size_t blocks = 0, mir = 0, calls = 0, eh = 0;
+      std::size_t frame_operands = 0;
+      for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+        if(!loops[loop].members[block]) continue;
+        ++blocks;
+        const std::vector<mir_model::MirInstruction> & instructions =
+          function.blocks[block].instructions;
+        mir += instructions.size();
+        for(std::size_t ins = 0; ins < instructions.size(); ++ins) {
+          const mir_model::MirInstruction & instruction = instructions[ins];
+          if(instruction.opcode == mir_model::MirInstruction::MI_CALL ||
+             instruction.opcode ==
+               mir_model::MirInstruction::MI_CALL_INDIRECT)
+            ++calls;
+          if(instruction.opcode >= mir_model::MirInstruction::MI_EH_PUSH &&
+             instruction.opcode <= mir_model::MirInstruction::MI_RESUME)
+            ++eh;
+          for(std::size_t operand = 0;
+              operand < instruction.operands.size(); ++operand)
+            if(instruction.operands[operand].kind ==
+                 mir_model::MirOperand::OP_FRAME)
+              ++frame_operands;
+        }
+      }
+      std::size_t depth = 0;
+      for(std::size_t outer = 0; outer < loops.size(); ++outer) {
+        if(outer == loop) continue;
+        bool contains = true, strict = false;
+        for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+          if(loops[loop].members[block] &&
+             !loops[outer].members[block]) contains = false;
+          if(loops[outer].members[block] &&
+             !loops[loop].members[block]) strict = true;
+        }
+        if(contains && strict)
+          ++depth;
+      }
+      const lowir_model::BlockId header =
+        function.blocks[loops[loop].header].id;
+      const std::uint32_t header_index = header;
+      std::string header_label = "block_" +
+        std::to_string(header_index);
+      if(header_index < source.functions[index].block_labels.size() &&
+         source.functions[index].block_labels[header_index].valid())
+        header_label = lowir_model::lowir_block_label(
+          source.strings, source.functions[index], header);
+      std::string line = "loop_census symbol=" + symbol +
+        " header_label=" + header_label;
+      const auto field = [&line](const char * name, std::size_t value) {
+        line += ' ';
+        line += name;
+        line += '=';
+        line += std::to_string(value);
+      };
+      field("header", static_cast<std::uint32_t>(header));
+      field("blocks", blocks);
+      field("mir", mir);
+      field("calls", calls);
+      field("eh", eh);
+      field("depth", depth);
+      field("frame_operands", frame_operands);
+      field("frame_bindings", function.frame_bindings.size());
+      field("callee_saved", function.callee_saved_regs.size());
+      stats->function_census_lines.push_back(std::move(line));
+    }
   }
 
   mir_model::MirFunction LowerFunction(std::size_t index)
@@ -299,6 +558,11 @@ struct ProgramLoweringSession::Impl
       stats->machine_opt_worklist_pushes += opt_stats.worklist_pushes;
       stats->machine_opt_rewrites += opt_stats.rewrites;
       stats->machine_opt_identity_moves += opt_stats.identity_moves;
+      stats->machine_opt_frameless_functions += opt_stats.frameless_functions;
+      stats->machine_opt_frameless_call_functions +=
+        opt_stats.frameless_call_functions;
+      stats->machine_opt_frameless_saved_registers +=
+        opt_stats.frameless_saved_registers;
       stats->machine_opt_peak_analysis_bytes = std::max(
         stats->machine_opt_peak_analysis_bytes,
         opt_stats.peak_analysis_bytes);
@@ -309,8 +573,10 @@ struct ProgramLoweringSession::Impl
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - started).count());
     }
-    if(census) AppendCensusLine(index, opt_stats.output_instructions,
-                                census_before);
+    if(census) {
+      AppendCensusLine(index, opt_stats.output_instructions, census_before);
+      AppendLoopCensusLines(index, result);
+    }
     return result;
   }
 

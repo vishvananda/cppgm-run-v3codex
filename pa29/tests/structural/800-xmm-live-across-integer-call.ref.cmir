@@ -16,6 +16,8 @@ function @clobber_xmm_from_integer
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     sitofp.i32.f64 xmm0, rdi
@@ -34,6 +36,8 @@ function @preserve_across_integer_call
   frame
     stack_size 64
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
     param-slot %value -> [rbp-<off0>] : f64
     temp %live -> [rbp-<off1>] : f64
 
@@ -54,6 +58,8 @@ function @main
   frame
     stack_size 48
     scratch_bytes 48
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     fmov.f64 xmm0, 4.0

@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace lowir_opt {
 
@@ -19,6 +20,12 @@ struct InlinePolicyOverrides
   std::size_t single_call_caller_budget = 0;
   std::size_t hint_late_cap = 0;
 };
+
+// Parse one student-facing --inline-limit name=value argument and update the
+// matching policy field.  Both lowiropt and cppgm++ use this parser so the
+// accepted names and rejection rules stay identical.
+void apply_inline_limit_option(InlinePolicyOverrides * limits,
+			       const std::string & spec);
 
 struct Stats
 {
@@ -93,6 +100,7 @@ struct Stats
   std::size_t inline_output_instructions = 0;
   std::size_t inline_reject_recursive = 0;
   std::size_t inline_reject_no_inline = 0;
+  std::size_t inline_reject_loop_body = 0;
   std::size_t inline_reject_argument_shape = 0;
   std::size_t inline_reject_variadic = 0;
   std::size_t inline_reject_callee_size = 0;
@@ -154,6 +162,44 @@ struct Stats
   std::size_t inline_eh_regions_removed = 0;
   std::size_t inline_eh_ambiguous_functions = 0;
   std::size_t inline_no_unwind_published_after_strip = 0;
+  // P31 diagnostic-only entry-prefix census.  These counters describe
+  // retained direct calls after the ordinary late-inline wave; collecting
+  // them never changes LowIR or production inlining policy.
+  std::size_t partial_inline_census_direct_calls = 0;
+  std::size_t partial_inline_census_eligible_calls = 0;
+  std::size_t partial_inline_census_eligible_callees = 0;
+  std::size_t partial_inline_census_hint_calls = 0;
+  std::size_t partial_inline_census_constant_calls = 0;
+  std::size_t partial_inline_census_constant_actuals = 0;
+  std::size_t partial_inline_census_loop_calls = 0;
+  std::size_t partial_inline_census_repeated_callee_calls = 0;
+  std::size_t partial_inline_census_prefix_blocks = 0;
+  std::size_t partial_inline_census_prefix_instructions = 0;
+  std::size_t partial_inline_census_bailout_edges = 0;
+  std::size_t partial_inline_census_prefix_0_8 = 0;
+  std::size_t partial_inline_census_prefix_9_12 = 0;
+  std::size_t partial_inline_census_prefix_13_16 = 0;
+  std::size_t partial_inline_census_prefix_17_24 = 0;
+  std::size_t partial_inline_census_prefix_over_24 = 0;
+  std::size_t partial_inline_census_reject_recursive = 0;
+  std::size_t partial_inline_census_reject_no_inline = 0;
+  std::size_t partial_inline_census_reject_argument_shape = 0;
+  std::size_t partial_inline_census_reject_variadic = 0;
+  std::size_t partial_inline_census_reject_object_result = 0;
+  std::size_t partial_inline_census_reject_no_fast_return = 0;
+  std::size_t partial_inline_census_reject_no_bailout = 0;
+  std::size_t partial_inline_census_call_stops = 0;
+  std::size_t partial_inline_census_store_stops = 0;
+  std::size_t partial_inline_census_eh_stops = 0;
+  std::size_t partial_inline_census_other_stops = 0;
+  std::size_t partial_inline_census_backedge_stops = 0;
+  std::size_t partial_inline_census_join_stops = 0;
+  std::size_t predicate_range_folds = 0;
+  std::size_t adjacent_scalar_copy_runs = 0;
+  std::size_t adjacent_scalar_copy_groups = 0;
+  std::size_t adjacent_scalar_copy_bytes = 0;
+  std::size_t overwritten_zero_inits = 0;
+  std::size_t overwritten_zero_bytes = 0;
   std::size_t ipa_direct_call_visits = 0;
   std::size_t ipa_instruction_visits = 0;
   std::size_t ipa_candidate_functions = 0;
@@ -277,6 +323,7 @@ struct Stats
   std::uint64_t o3_unroll_nanoseconds = 0;
   std::uint64_t late_inline_nanoseconds = 0;
   std::uint64_t post_prune_inline_nanoseconds = 0;
+  std::uint64_t partial_inline_census_nanoseconds = 0;
   std::uint64_t licm_nanoseconds = 0;
   std::uint64_t elapsed_nanoseconds = 0;
 };

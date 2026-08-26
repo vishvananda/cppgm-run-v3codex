@@ -13,6 +13,8 @@ function @f
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     cmp.i64 rdi, 0
@@ -32,6 +34,8 @@ function @__cppgm_406d61696e
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer keep
+    epilogues shared
 
   block ^entry
     mov rdi, 1

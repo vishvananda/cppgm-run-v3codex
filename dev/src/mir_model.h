@@ -423,6 +423,12 @@ struct Function
   std::size_t stack_size = 0;
   std::size_t scratch_bytes = 0;
   bool has_dynamic_stack = false;
+  // O1+ may omit rbp when final MIR contains no frame operand or implicit
+  // frame consumer. Callee-save pushes and call alignment remain explicit.
+  bool omit_frame_pointer = false;
+  // O0 favors compact native layout; optimized code favors direct returns
+  // over a size-only shared-epilogue branch.
+  bool share_epilogues = true;
   bool host_eh_enabled = false;
   long long host_eh_exception_offset = 0;
   long long host_eh_selector_offset = 0;
