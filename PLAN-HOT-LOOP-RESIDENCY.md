@@ -810,6 +810,9 @@ be amortized across the next push batch.  Record the through count, audit,
 inception disposition, commit id, remote branch, and push result in the
 ledger.  Rejected experiments leave no production code; their evidence may be
 committed with the next retained checkpoint or as a small plan-only checkpoint.
+A documentation-only ledger follow-up may cite the immediately preceding gate
+and push; it does not trigger another compiler gate solely to record that
+already-completed checkpoint.
 
 QEMU software PMU emulation is not used: it is likely slower and less faithful
 for this native x86_64 compiler than the already-working native software-event
@@ -1313,6 +1316,16 @@ inception lane while another build or profiler is active.
   predecessor coverage, register-clobber, debug, volatility, multi-use, and
   control-flow guards.  No production probe has been applied yet, and no
   profiler or inception process remains.
+- **P32-L37 (RECOVERY CHECKPOINT AND PUSH).** The plan previously specified
+  fast and full verification but omitted commit/push cadence, leaving P31/P32
+  dirty and the local `v3opt` branch 167 commits ahead of `origin/v3opt`.
+  Added the atomic-checkpoint and maximum-three-commit push rules above,
+  fetched the remote tip to prove zero remote-only divergence, and staged no
+  `.tmp`, perf, or timing artifacts.  Recovery commit `2b218e8e` contains the
+  retained P31/P32 implementation, earliest-owner property/behavior coverage,
+  fixture updates, and plans.  It cites the clean 5,453/5,453 through report,
+  PA38 file audit, and fresh outer/inner-32-way inception recorded in P32-L35,
+  and pushed successfully to `origin/v3opt` (`f5bfd68e..2b218e8e`).
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
