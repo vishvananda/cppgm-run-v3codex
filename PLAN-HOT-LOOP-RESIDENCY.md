@@ -2542,7 +2542,7 @@ inception lane while another build or profiler is active.
   call.  It is selected only at O1 or higher for a direct one-pointer,
   i64-result operation carrying the existing `cppgm_builtin_strlen` object
   identity.  It does not recognize a source function, string contents, or
-  workload.  Final complete compiler text is 8,583,779 bytes (+5,853), with 78
+  workload.  Landing compiler text is 8,584,371 bytes (+6,445), with 78
   vector prefixes and 78 retained fallback calls; frozen text is 620,223
   versus 619,732 bytes (+491).  The same-revision GCC-built compiler and the
   experimental self compiler both produce frozen hash
@@ -2566,12 +2566,26 @@ inception lane while another build or profiler is active.
   9,174.54 and 9,125.47 ms, -49.07 ms or -0.53%; the opposing individual
   sets demonstrate why both rotation and the broad oracle matter.
 
-  The final safety-guard build prepared in 17.78 s at explicit O1/all-32-way
-  settings.  A fresh clean full-source run measured 32.71 s wall and 933.13 s
-  aggregate CPU, versus the immediately preceding production lane's
-  33.03/944.15, -0.97% wall and -1.17% CPU.  Thus the final representation
-  retains the distributed broad-workload win as well as narrowly clearing the
-  combined frozen screen.
+  The final source split gives the prefix selection/encoding its own
+  responsibility-named `lowir_native_strlen` module; both backend tool source
+  sets include it, `lowir_native.cpp` is exactly 3,000 lines, and
+  `lowir_native_elf.cpp` is 2,994.  Its O1/all-32-way self compiler prepared
+  in 18.34 s.  Two current-source reverse full-build pairs measured production
+  33.55 s wall/956.78 s aggregate CPU and 34.99/955.64; the candidate measured
+  34.20/944.48 and 34.02/950.69.  Mean wall improves 34.27 -> 34.11 s
+  (-0.47%) and mean aggregate CPU improves 956.21 -> 947.59 s (-0.90%).  Thus
+  the landing representation retains the distributed broad-workload win as
+  well as narrowly clearing the combined frozen screen.
+
+  The finalist Cachegrind lane used cache and branch simulation disabled and
+  preserved both expected hashes.  Production executed 38,289,648,113 Ir in
+  368.63 s wall; the candidate executed 38,242,973,679 in 367.07 s, a
+  46,674,434 or 0.12% exact-Ir reduction.  Libc `strlen` falls from about
+  284.5 million to 9.3 million Ir.  The inline work attributed to
+  `Lexer::Run` rises about 184.4 million Ir, so the whole-program reduction is
+  materially smaller than the removed library work but remains positive.
+  Profiler files are under
+  `/dev/shm/v3codex-p34-prefix-cachegrind.quHCzo/`; no profiler remains.
 
   The retained form is not a native-only preparation flag.  PA29 MIR
   serializes the selected call fact as `strlen_prefix=16`, while preserving
@@ -2583,9 +2597,12 @@ inception lane while another build or profiler is active.
   compare a complete MIR, LowIR program, executable, hash, register choice, or
   source spelling.  Three focused PA29 controls pass 3/3: the third rejects an
   object-marked but non-pointer signature.  Full PA29 passes 291/291 with
-  14/14 native controls, and PA38 passes 46/46.  Through-PA38, audit, inception
-  comparison, commit, and push remain the candidate landing gate.  No
-  Cachegrind was started and no stale profiler remains.
+  14/14 native controls, and PA38 passes 46/46.  Root through-PA38 is clean at
+  5,453/5,453.  The PA38 file audit has zero fatal findings and the established
+  36 advisories.  Fresh O1 inception at explicit outer, inner, and object
+  32-way settings matched every object and the final compiler in 34.57 s
+  wall.  The retained implementation commit is `de969f83`; push is pending.
+  No profiler, inception, or build process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
