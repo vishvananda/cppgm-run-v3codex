@@ -619,6 +619,20 @@ To complete PA29, implement these goals:
    destination bytes, and declared scratch effects; vector chunks may not
    consume an XMM register available to ordinary value placement.
 
+   At `-O1` or higher, a direct one-pointer call returning `i64` whose LowIR
+   declaration or definition carries `object=cppgm_builtin_strlen` may select
+   a bounded native prefix operation. MIR records that selected machine fact
+   on the call as `strlen_prefix=16`; `-O0`, ordinary functions, indirect
+   calls, and incompatible signatures retain the ordinary call form.
+
+   The x86-64 encoding may inspect one 16-byte SSE2 word only when that load
+   remains within the current 4 KiB page. If the word contains a zero byte, it
+   returns the first zero's byte offset. A page-edge address or a prefix
+   without a zero retains the original direct call as its fallback. The MIR
+   operation keeps the conservative call argument, clobber, unwind, and result
+   facts because the fallback is still a real call; its vector temporaries are
+   caller-saved encoding scratch rather than allocator-visible values.
+
    Native emission may carry a compiler-created scalar temporary from its one
    defining frame store to later typed reloads in the same block when the
    complete bounded window is safe. A carried window must not cross a call,

@@ -15,6 +15,7 @@
 #include "lowir_native_global_encoding.h"
 #include "lowir_native_object_elf.h"
 #include "lowir_native_scalar_memory.h"
+#include "lowir_native_strlen.h"
 #include "lowir_native_zero_encoding.h"
 #include <algorithm>
 #include <cerrno>
@@ -1640,6 +1641,7 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     require_operands(instruction, 1);
     if(instruction.operands[0].kind != mir_model::MirOperand::OP_SYMBOL)
       throw std::logic_error("direct call target is not a symbol");
+    if(strlen_detail::emit_prefix16_call(out, instruction)) return;
     out.byte(0xe8);
     out.relative32(instruction.operands[0].symbol);
     return;

@@ -190,6 +190,14 @@ struct InstructionDebugLocation
 
 struct Instruction
 {
+  enum CallEncoding
+  {
+    MCE_DEFAULT,
+    // A direct strlen call may test one page-contained 16-byte prefix before
+    // retaining the ordinary call target as its fallback.
+    MCE_STRLEN_PREFIX16
+  };
+
   enum Opcode
   {
     MI_MOV,
@@ -348,6 +356,10 @@ struct Instruction
   bool call_unwind_no = false;
   bool call_returns_noreturn = false;
   bool call_variadic = false;
+  // The selected encoding is serialized with a call because it changes the
+  // machine operation consumed by native emission.  All call liveness and
+  // unwind facts remain conservative for the fallback call.
+  CallEncoding call_encoding = MCE_DEFAULT;
   // Calls name their selected target location in operands; an indirect target
   // need not be copied to a dedicated scratch register when it remains intact
   // through argument setup.  The fixed-size mask records the

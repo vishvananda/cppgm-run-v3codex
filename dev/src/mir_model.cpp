@@ -226,7 +226,8 @@ void render_call_facts(std::ostringstream & out,
      instruction.opcode != Instruction::MI_CALL_INDIRECT) return;
   const bool has_facts = instruction.call_argument_registers_known ||
     instruction.call_stack_bytes != 0 || instruction.call_variadic ||
-    instruction.call_unwind_no || instruction.call_returns_noreturn;
+    instruction.call_unwind_no || instruction.call_returns_noreturn ||
+    instruction.call_encoding != Instruction::MCE_DEFAULT;
   if(!has_facts) return;
 
   out << " [";
@@ -267,6 +268,11 @@ void render_call_facts(std::ostringstream & out,
   if(instruction.call_returns_noreturn) {
     if(needs_separator) out << ", ";
     out << "returns=noreturn";
+    needs_separator = true;
+  }
+  if(instruction.call_encoding == Instruction::MCE_STRLEN_PREFIX16) {
+    if(needs_separator) out << ", ";
+    out << "strlen_prefix=16";
   }
   out << ']';
 }

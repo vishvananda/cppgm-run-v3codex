@@ -536,7 +536,10 @@ EH rejection, and deterministic ordering.
 Landing gate for an allocation/inlining policy:
 
 - at least 0.5% exact frozen Ir improvement or a repeated 0.5% native-user
-  improvement with matching attribution;
+  improvement with matching attribution; a source-independent compiler-wide
+  transform may instead use a repeated 0.5% full-source aggregate-CPU
+  improvement when mean 32-way wall time also improves and the frozen median
+  regresses by less than 0.5%;
 - no increase in whole-object scalar movement unless smaller dynamic work
   explains and pays for it;
 - no tested workload regresses by more than 1% exact Ir without an explicit
@@ -825,8 +828,11 @@ sub-percent wall-only result changes a frozen-fixture decision.  An archived
 candidate may be compared only with its source-matched archived production
 compiler; regenerating current source once does not transplant a removed
 code-generation policy or a later optimization into the archived executable.
-Use this broad oracle to reveal translation-unit or critical-path wins, not as
-a replacement for the frozen task-clock gate.
+Use this broad oracle to reveal translation-unit or critical-path wins.  The
+frozen task-clock gate remains the fast screen and regression guard, but it is
+not a veto for a source-independent transform exercised across the complete
+compiler: the repeated full-source alternative in Phase C may decide a close
+case when frozen movement is below its 0.5% resolution threshold.
 
 Every accepted increment is an atomic checkpoint.  Before committing it:
 
@@ -2513,6 +2519,73 @@ inception lane while another build or profiler is active.
   `/dev/shm/v3codex-p34-fullprofile-{self,gcc,clang}.data`.  A bounded offline
   annotate attempt was terminated by its timeout, and no profiler or build
   process remains.
+
+- **P32-L81 (DYNAMIC STRLEN CENSUS AND PREFIX-CALL CANDIDATE).** An
+  `LD_PRELOAD` diagnostic outside the repository counted 20,242,111 dynamic
+  `strlen` calls and 108,881,939 input bytes during one frozen compile.  The
+  distribution is unusually short: 668,860 calls have length one, 1,620,677
+  length two, 5,187,266 length three, 129,745 length four, 3,946,337 length
+  five, and 6,564,733 length six; about 92% are at most six bytes.  The
+  retained L78 fold leaves 78 static direct calls in the complete compiler,
+  so this is a generic dynamic-call opportunity rather than another literal
+  provenance special case.
+
+  The first source-independent probe replaced eligible direct builtin calls
+  with `repne scasb`.  Its O1/all-32-way self compiler had 78 scan sites and
+  grew complete text 8,577,926 -> 8,580,305 bytes.  Balanced frozen
+  task-clock medians were 9,140.22 ms for production and 9,899.70 ms for the
+  probe, +759.48 ms or +8.31%; it is removed.  The string instruction is a
+  poor short-string strategy even though it removes the external calls.
+
+  The second probe tests one page-contained 16-byte SSE2 word, returns the
+  first zero offset when present, and otherwise executes the original direct
+  call.  It is selected only at O1 or higher for a direct one-pointer,
+  i64-result operation carrying the existing `cppgm_builtin_strlen` object
+  identity.  It does not recognize a source function, string contents, or
+  workload.  Final complete compiler text is 8,583,779 bytes (+5,853), with 78
+  vector prefixes and 78 retained fallback calls; frozen text is 620,223
+  versus 619,732 bytes (+491).  The same-revision GCC-built compiler and the
+  experimental self compiler both produce frozen hash
+  `6239606846a506f9eaef6ea94f92f5db54e77a7be944caa85390862ea7589d47`.
+
+  The exploratory frozen screen was slightly negative: production measured
+  9,230.69/9,131.37/9,182.64 ms (median 9,182.64) and the candidate
+  9,218.99/9,219.32/9,189.80 ms (median 9,218.99), +36.35 ms or +0.40%.
+  Two recorded full-source reverse pairs give a different and repeated
+  result.  Production measured 33.74 s wall with 946.27 s aggregate CPU and
+  32.91/943.51; the candidate measured 32.69/935.08 and 33.14/936.03.  Mean
+  wall improves 33.325 -> 32.915 s (-1.23%) and mean aggregate CPU improves
+  944.89 -> 935.56 s (-0.99%).  This is the first concrete case where the
+  full-source oracle resolves a distributed win hidden by the frozen unit;
+  Phase C now permits that repeated broad result when the frozen change stays
+  below 0.5%.  After converting the probe to its final serialized form, two
+  additional balanced sets measured production
+  9,179.83/9,217.33/9,230.87 and 9,113.66/9,099.18/9,169.25 ms, and the
+  candidate 9,173.81/9,099.47/9,118.40 and
+  9,151.24/9,125.02/9,125.91.  The combined six-position medians are
+  9,174.54 and 9,125.47 ms, -49.07 ms or -0.53%; the opposing individual
+  sets demonstrate why both rotation and the broad oracle matter.
+
+  The final safety-guard build prepared in 17.78 s at explicit O1/all-32-way
+  settings.  A fresh clean full-source run measured 32.71 s wall and 933.13 s
+  aggregate CPU, versus the immediately preceding production lane's
+  33.03/944.15, -0.97% wall and -1.17% CPU.  Thus the final representation
+  retains the distributed broad-workload win as well as narrowly clearing the
+  combined frozen screen.
+
+  The retained form is not a native-only preparation flag.  PA29 MIR
+  serializes the selected call fact as `strlen_prefix=16`, while preserving
+  ordinary call arguments, clobbers, unwind behavior, result placement, and
+  the fallback target.  The PA29 README describes the O1 selection and safe
+  page-boundary rule.  Focused controls independently cover a marked external
+  declaration versus an ordinary call and O0, plus short-prefix and long-
+  fallback behavior and the vector byte-zero instruction family; they never
+  compare a complete MIR, LowIR program, executable, hash, register choice, or
+  source spelling.  Three focused PA29 controls pass 3/3: the third rejects an
+  object-marked but non-pointer signature.  Full PA29 passes 291/291 with
+  14/14 native controls, and PA38 passes 46/46.  Through-PA38, audit, inception
+  comparison, commit, and push remain the candidate landing gate.  No
+  Cachegrind was started and no stale profiler remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

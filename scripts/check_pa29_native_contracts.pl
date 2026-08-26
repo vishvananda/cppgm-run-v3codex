@@ -204,6 +204,14 @@ sub has_vector_zero_store
 	return $clear && $store;
 }
 
+sub has_vector_byte_zero_probe
+{
+	my ($code) = @_;
+	my $compares_bytes = index($code, "\x66\x0f\x74") >= 0;
+	my $extracts_mask = index($code, "\x66\x0f\xd7") >= 0;
+	return $compares_bytes && $extracts_mask;
+}
+
 if(scalar(@ARGV) != 2)
 {
 	die "Usage: check_pa29_native_contracts.pl " .
@@ -220,15 +228,52 @@ for my $test (@tests)
 		TMPDIR => 1, CLEANUP => 1);
 	my $mir_path = "$directory/test.mir";
 	my $program = "$directory/test.program";
+	my @compile_command = ($app, '--stats');
+	push @compile_command, '-O1' if $test =~ /strlen-prefix-/;
+	push @compile_command, '--dump-machine-ir', $mir_path;
+	push @compile_command, '-o', $program
+		if $test !~ /strlen-prefix-(?:declaration|incompatible)/;
+	push @compile_command, $test;
 	my $status = run_command_capture(
-		cmd => [$app, '--stats', '--dump-machine-ir', $mir_path,
-			'-o', $program, $test],
+		cmd => \@compile_command,
 		stdout => "$directory/compile.stdout",
 		stderr => "$directory/compile.stderr",
 		timeout => 30,
 	);
 	die "$test: native compile failed\n" .
 		read_file("$directory/compile.stderr", 0) if $status != 0;
+	my $mir = read_file($mir_path, 0);
+	if($test =~ /strlen-prefix-incompatible/) {
+		my $control = function_body(
+			$test, $mir, 'incompatible_signature_control');
+		die "$test: incompatible marked call received a strlen prefix fact\n"
+			if $control =~ /\bstrlen_prefix=16\b/;
+		next;
+	}
+
+	if($test =~ /strlen-prefix-declaration/) {
+		my $probe = function_body($test, $mir, 'declared_builtin_probe');
+		die "$test: declared builtin call lost its serialized prefix fact\n"
+			if $probe !~
+			/^\s+call\s+\@measure_bytes\s+\[[^\]]*\bstrlen_prefix=16\b[^\]]*\]$/m;
+		my $control = function_body($test, $mir, 'ordinary_call_control');
+		die "$test: ordinary call incorrectly received a strlen prefix fact\n"
+			if $control =~ /\bstrlen_prefix=16\b/;
+
+		my $o0_mir_path = "$directory/test-o0.mir";
+		my $o0_status = run_command_capture(
+			cmd => [$app, '-O0', '--dump-machine-ir', $o0_mir_path,
+				$test],
+			stdout => "$directory/compile-o0.stdout",
+			stderr => "$directory/compile-o0.stderr",
+			timeout => 30,
+		);
+		die "$test: O0 control compile failed\n" .
+			read_file("$directory/compile-o0.stderr", 0) if $o0_status != 0;
+		die "$test: O0 declaration unexpectedly selected the O1 prefix fact\n"
+			if read_file($o0_mir_path, 0) =~ /\bstrlen_prefix=16\b/;
+		next;
+	}
 
 	my $expected_status = 0;
 	$expected_status = 56 if $test =~ /power-of-two-multiply/;
@@ -240,6 +285,7 @@ for my $test (@tests)
 	$expected_status = 41 if $test =~ /aligned-large-copy-direct/;
 	$expected_status = 43 if $test =~ /oversized-aligned-copy-compact/;
 	$expected_status = 73 if $test =~ /large-switch-immediate-cases/;
+	$expected_status = 25 if $test =~ /strlen-prefix-call/;
 	my $run_status = run_command_capture(
 		cmd => [$program],
 		stdout => "$directory/program.stdout",
@@ -249,7 +295,6 @@ for my $test (@tests)
 	die "$test: generated program returned $run_status, expected " .
 		"$expected_status\n" if $run_status != $expected_status;
 
-	my $mir = read_file($mir_path, 0);
 	if($test =~ /power-of-two-multiply/) {
 		my $code = main_code($test, $program);
 		die "$test: power-of-two multiply did not select a left shift\n"
@@ -279,6 +324,32 @@ for my $test (@tests)
 		my $code = main_code($test, $program, 1);
 		die "$test: literal cases were not encoded as immediate comparisons\n"
 			if count_register_immediate_compares($code) < 16;
+		next;
+	}
+	if($test =~ /strlen-prefix-call/) {
+		my $body = function_body($test, $mir, 'main');
+		my @prefix_calls = $body =~
+			/^\s+call\s+\@[^\s]+\s+\[[^\]]*\bstrlen_prefix=16\b[^\]]*\]$/mg;
+		die "$test: O1 direct builtin calls lost their serialized prefix fact\n"
+			if scalar(@prefix_calls) != 2;
+		my $code = main_code($test, $program, 1);
+		die "$test: strlen prefix fact selected no vector byte-zero probe\n"
+			if !has_vector_byte_zero_probe($code);
+
+		my $o0_mir_path = "$directory/test-o0.mir";
+		my $o0_status = run_command_capture(
+			cmd => [$app, '-O0', '--dump-machine-ir', $o0_mir_path,
+				$test],
+			stdout => "$directory/compile-o0.stdout",
+			stderr => "$directory/compile-o0.stderr",
+			timeout => 30,
+		);
+		die "$test: O0 control compile failed\n" .
+			read_file("$directory/compile-o0.stderr", 0) if $o0_status != 0;
+		my $o0_body = function_body(
+			$test, read_file($o0_mir_path, 0), 'main');
+		die "$test: O0 call unexpectedly selected the O1 prefix operation\n"
+			if $o0_body =~ /\bstrlen_prefix=16\b/;
 		next;
 	}
 	if($test =~ /frame-copy-operands/) {

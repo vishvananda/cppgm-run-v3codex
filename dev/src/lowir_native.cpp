@@ -33,6 +33,7 @@
 #include "lowir_native_spill_selection.h"
 #include "lowir_native_spill_slots.h"
 #include "lowir_native_stack.h"
+#include "lowir_native_strlen.h"
 #include "lowir_native_value.h"
 #include "lowir_native_varargs.h"
 #include "lowir_native_wide.h"
@@ -41,18 +42,14 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
-namespace lowir_native {
-namespace {
+namespace lowir_native { namespace {
 using lowir_model::Instruction; using lowir_model::LowOperation; using lowir_model::LowType; using lowir_model::Operand;
 using mir_model::MirInstruction; using mir_model::MirOperand;
 using abi::FunctionSignature; using abi::FunctionSignatureIndex;
 using analysis::FunctionFacts; using analysis::StorageFacts;
 using analysis::analyze_function; using analysis::analyze_storage; using analysis::register_mask;
-using analysis::register_was_clobbered_before;
-using allocation::RegisterPool; using allocation::XmmPool;
-using allocation::is_callee_saved;
-using namespace build;
-using namespace selection;
+using analysis::register_was_clobbered_before; using allocation::RegisterPool; using allocation::XmmPool;
+using allocation::is_callee_saved; using namespace build; using namespace selection;
 class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private AddressLowering<FunctionLowerer>,
                         private address_replay_detail::AddressReplay<FunctionLowerer>,
@@ -98,7 +95,7 @@ public:
                   lowir_native::Stats * stats,
                   allocation::AllocationDecisionLog * decisions)
     : program_(program), source_(source), pointer_globals_(pointer_globals),
-      tls_wrappers_(tls_wrappers),
+      tls_wrappers_(tls_wrappers), strlen_symbol_(strlen_detail::builtin_symbol(program)),
       signatures_(signatures), optimization_level_(optimization_level),
       stats_(stats),
       facts_(analyze_function(source, stats, optimization_level)),
@@ -227,6 +224,7 @@ private:
   const lowir_model::LowirFunction & source_;
   const std::vector<unsigned char> & pointer_globals_;
   const std::vector<lowir_model::SymbolId> & tls_wrappers_;
+  const lowir_model::SymbolId strlen_symbol_;
   const FunctionSignatureIndex & signatures_;
   int optimization_level_;
   lowir_native::Stats * stats_;
@@ -2633,6 +2631,8 @@ private:
     }
     if(direct) {
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
+      call.call_encoding = strlen_detail::call_encoding(
+        optimization_level_, instruction, parameters, variadic, strlen_symbol_);
       call.call_variadic = variadic;
       call.call_unwind_no =
         instruction.call_boundary.unwind == lowir_model::CUM_NO;
