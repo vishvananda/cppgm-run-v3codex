@@ -2270,6 +2270,64 @@ inception lane while another build or profiler is active.
   retained for the rejected policy, no Cachegrind or full inception comparison
   ran, and no profiler process remains.
 
+- **P32-L75 (IMMEDIATE-CALL LOCAL-PHI MANAGED-POOL PROBE REJECTED).** Flat
+  address-level sampling localized the remaining `Lexer::Run` excess around
+  the merge immediately before `AppendUTF8`: the retained P32-L56 rule removed
+  one incoming source home, but the merge itself still used a frame home.  A
+  diagnostic planner probe treated a one-use merge consumed by the first
+  direct call as a short local phi.  `Lexer::Run` contained ten eligible
+  merges and the planner assigned four, but all four activations found the
+  managed pool busy; there were zero promotions and the motivating body did
+  not change.  Broader and argument-prioritized versions changed only other
+  tokenizer functions and grew tokenizer text from 31,105 to 31,119 or
+  31,111 bytes.
+
+  The existing student-facing PA38 control caught the unsafe/ineffective
+  shape before timing: `442-acyclic-phi-frame-home` reported a post-call
+  identity transfer.  No control was weakened.  The managed-pool probe and
+  its counters were removed, restored PA38 passed 46/46, and the result rules
+  out another planner dose at this site: all ordinary caller-saved and
+  call-preserved capacity is already occupied at activation.
+
+- **P32-L76 (BOUNDED SCRATCH-CARRIED IMMEDIATE-CALL PHI REJECTED).** A second
+  PA38 probe tested the otherwise-unallocated `r10` scratch only for a sole,
+  non-loop-carried integer/pointer phi whose single use is the first simple
+  direct call, with at most six direct scalar arguments and every incoming
+  predecessor ending in an unconditional jump to the merge.  The phi-only
+  form replaced its frame store/load with edge register transfers.  On
+  `pp_tokenizer.cpp`, `Lexer::Run` shrank 12,269 -> 12,229 bytes, its frame
+  fell by 48 bytes, and tokenizer text fell 31,105 -> 31,033 bytes.  The
+  explicit O1/all-32-way self build completed in 18.47 s at
+  `/dev/shm/v3codex-p34-r10-immediate-phi-o1/bin/selfhost/cppgm++-self`;
+  complete compiler text grew 8,589,538 -> 8,589,674 bytes.  Its deterministic
+  frozen output was `3b406338...008f`, versus landing `21883ca7...e639`.
+  After one 10,042.35 ms baseline outlier, the balanced medians were 9,201.83
+  ms baseline and 9,209.68 ms candidate, +7.85 ms or +0.09%.
+
+  Disassembly then showed that the hot ring-buffer incoming value still used
+  its own frame home before entering the scratch phi.  A stricter load-only
+  source-donation form let that scalar load be born in the same carrier when
+  clobber analysis proved the intervening edge safe; calls and all other
+  producers retained ordinary transfers.  The hot load became a direct
+  memory-to-register load, `Lexer::Run` shrank 12,269 -> 12,099 bytes, and
+  tokenizer text fell to 30,851 bytes.  The workload object was deterministic
+  at the same candidate hash and its text fell 620,818 -> 620,664 bytes.  The
+  complete compiler grew to 8,590,342 text bytes and its clean O1/all-32-way
+  preparation completed in 17.87 s at
+  `/dev/shm/v3codex-p34-r10-load-direct-o1/bin/selfhost/cppgm++-self`.
+  A reversed balanced screen measured baseline
+  9,168.60/9,167.14/9,169.24 ms (median 9,168.60) and candidate
+  9,204.18/9,288.67/9,195.45 ms (median 9,204.18), a 35.58 ms or 0.39%
+  regression.
+
+  Both production shapes therefore fail the reproducible 0.5% keep gate for
+  a new placement policy despite the genuine local code-quality improvement.
+  The implementation is removed rather than retaining 120 lines of new
+  scratch-lifetime machinery.  The focused PA38 suite passed 46/46 throughout
+  the final form and again after restoration.  No student contract or new
+  property is retained for the rejected policy, no Cachegrind or full
+  inception comparison ran, and no profiler process remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
