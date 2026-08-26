@@ -868,7 +868,9 @@ perl scripts/cppgm_file_audit.pl --stage pa38 --paths dev
 ```
 
 Final PA39 validation uses isolated roots.  **Every inception invocation uses
-both outer `-j32` and `INCEPTION_BUILD_JOBS=32`:**
+outer `-j32`, `INCEPTION_BUILD_JOBS=32`, and
+`INCEPTION_OBJECT_BUILD_JOBS=32`; `INCEPTION_SELFHOST_OPT_LEVEL=1` is explicit
+even though some make targets have a different default:**
 
 ```sh
 P32_RUN_ROOT=/tmp/v3codex-p32-COMMIT-j32
@@ -878,14 +880,16 @@ P32_RUN_ROOT=/tmp/v3codex-p32-COMMIT-j32
   INCEPTION_OBJ_ROOT_BASE="$P32_RUN_ROOT/obj" \
   INCEPTION_BIN_ROOT_BASE="$P32_RUN_ROOT/bin" \
   INCEPTION_SELFHOST_OPT_LEVEL=1 \
-  INCEPTION_BUILD_JOBS=32
+  INCEPTION_BUILD_JOBS=32 \
+  INCEPTION_OBJECT_BUILD_JOBS=32
 
 /usr/bin/time -v make -C pa39 -j32 compare-cppgm++-inception \
   CXX=../dev/cppgm++ CPPGM_HOST_CXX=g++ \
   INCEPTION_OBJ_ROOT_BASE="$P32_RUN_ROOT/obj" \
   INCEPTION_BIN_ROOT_BASE="$P32_RUN_ROOT/bin" \
   INCEPTION_SELFHOST_OPT_LEVEL=1 \
-  INCEPTION_BUILD_JOBS=32
+  INCEPTION_BUILD_JOBS=32 \
+  INCEPTION_OBJECT_BUILD_JOBS=32
 ```
 
 Repeat restored-self O0 and O3 lanes at final landing.  Do not reuse a partial
@@ -2002,7 +2006,7 @@ inception lane while another build or profiler is active.
   aggregate residuals, but the measured `Run` body is still the largest
   source-independent target.  No profiler remains.
 
-- **P32-L65 (CONDITIONAL-CALL PARAMETER STAGING REJECTED).** Address-level
+- **P32-L65 (CONDITIONAL-CALL PARAMETER STAGING RESULT INVALIDATED).** Address-level
   inspection found one genuine path-placement opportunity in
   `IsIdentifierBody`: its scalar input uses a callee-saved register for the
   whole function because one fallback arm calls `IsInRanges`, so common ASCII
@@ -2015,19 +2019,16 @@ inception lane while another build or profiler is active.
   The intended local shape appeared: `IsIdentifierBody` removed its `rbx`
   preserve and move, inserted an `i32` frame save/reload only on the call arm,
   and preserved behavior.  PA38 remained 46/46, and frozen outputs stayed
-  byte-identical at `21883ca7...e639`.  The broad policy nevertheless changed
-  placement across most self-host objects and grew final compiler text from
-  8,589,538 to 8,730,274 bytes.  Three balanced software-event medians
-  regressed from 9,177.32 to 9,417.50 ms (+2.62%).  Restricting the admission
-  to heavily reused `i32` parameters did not solve the interference: the O3
-  tokenizer object still grew 31,105 to 32,109 text bytes and the compiler
-  remained about 141 KiB larger.  The static and native results reject this
-  placement family as a route to the remaining gap, so the implementation is
-  removed and receives no student contract or test.  The development compiler
-  was rebuilt from the restored 3,000-line backend; no profiler or build
-  process remains.
+  byte-identical at `21883ca7...e639`.  The implementation was removed after
+  an apparent 141 KiB text increase and +2.62% task-clock result.  P32-L67
+  subsequently proved that candidate was accidentally built with the PA39
+  default self-host level O3 and compared with the required O1 baseline.
+  Those size and timing numbers are not comparable and do not reject this
+  placement family.  The local shape and PA38 correctness evidence remain
+  valid; the performance question is reopened for a source-matched O1 rebuild.
+  No student contract or test is retained while the implementation is absent.
 
-- **P32-L66 (LEAF FIXED-COLOR RECOLOR REJECTED).** The fresh profile's
+- **P32-L66 (LEAF FIXED-COLOR RECOLOR RESULT INVALIDATED).** The fresh profile's
   `Program::FindEntry`/`DirectLookup` aggregate is about 178 ms self versus
   90/85 ms GCC/Clang, and all three compilers preserve the same sole call
   boundary.  Exact disassembly makes the local deficiency concrete:
@@ -2042,14 +2043,43 @@ inception lane while another build or profiler is active.
   `FindEntry` and shrank the self-hosted body to 406 bytes.  The PA38 property
   controls remained clean; two legacy exact MIR fixtures changed under the
   initial admission, as expected for a physical placement change.  The
-  isolated 32-way self build and a successful frozen compile then exposed
-  destructive whole-program interference before timing: even with `%rcx`
-  restricted to leaf functions, final compiler text grew 8,589,538 to
-  8,719,330 bytes (+129,792), with growth distributed across most compiler
-  objects.  The local push/pop removal therefore fails the static finalist
-  gate and cannot contribute the required 343--508 ms.  The implementation is
-  removed, no README or student property is added for a rejected policy, and
-  no profiler remains.
+  implementation was removed after an apparent 129,792-byte text increase.
+  P32-L67 subsequently proved that candidate was built at the PA39 default O3
+  and compared with the O1 landing compiler.  The size comparison is invalid,
+  so the local push/pop improvement remains open pending a source-matched O1
+  rebuild.  No README or student property is retained while the policy is
+  absent, and no profiler remains.
+
+- **P32-L67 (SELF-HOST LEVEL VALIDATION CORRECTION).** Three consecutive
+  probe builds omitted `INCEPTION_SELFHOST_OPT_LEVEL=1`; PA39 therefore used
+  its default O3 while the landing compiler remained O1.  This caused the
+  nearly identical 125--141 KiB distributed text increase across unrelated
+  policies and invalidated P32-L65's timing plus P32-L65/L66's static
+  comparisons.  Rebuilding the next probe with explicit O1 reversed the
+  apparent growth to an 8,148-byte reduction, confirming the configuration
+  error.  Section 8.4 now makes self-host level and all three 32-way settings
+  mandatory in every preparation and comparison command.  P32-L65 and L66
+  are reopened rather than treated as negative evidence.
+
+- **P32-L68 (BUSY LOCAL-PHI EVICTION REJECTED).** `Program::FindEntry`'s
+  common small-scope loop had one planned local phi whose activation lost to
+  an unplanned R9/R8 resident, leaving three frame operands in the 15-MIR loop.
+  A bounded PA38 probe evicted only an eligible occupant of the phi's already
+  proven caller-saved color to a one-time spill home, then retried the existing
+  activation.  It did not change the candidate population, steal parameter
+  registers, or weaken spill safety.  The target loop fell to zero frame
+  operands, at the cost of one spill and two register copies; `FindEntry`
+  stayed essentially size-neutral at 420 -> 419 bytes.  PA38 passed 46/46.
+
+  The correctly configured O1 self compiler reduced total text 8,589,538 to
+  8,581,390 bytes and left tokenizer text unchanged at 31,105.  Because this
+  is allocation behavior, a full outer/inner/object-32-way O1 inception ran
+  before timing and matched every object plus the final compiler in 34.68 s.
+  Six balanced software-task-clock positions then measured baseline
+  9,156.90/9,134.87/9,093.33 ms (median 9,134.87) and candidate
+  9,160.32/9,150.69/9,170.73 ms (median 9,160.32): +25.45 ms, +0.28%.
+  The implementation is removed at the fast native gate and receives no
+  student contract or retained property test.  No profiler remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
