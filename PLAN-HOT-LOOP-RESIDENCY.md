@@ -1979,6 +1979,14 @@ inception lane while another build or profiler is active.
   absolute `Lexer::Run`, token-movement, and physical-cursor gaps rather than
   widening the rejected all-switch or balanced-tree policies.
 
+- **P32-L63 (LARGE-SWITCH CHECKPOINT PUSH).** Atomic PA29 implementation,
+  student contract, focused structural/behavioral control, coverage matrix,
+  rejected-probe evidence, finalist gates, and source-matched rebaseline
+  commit `e02fb136` pushed successfully to `origin/v3opt`
+  (`702c067c..e02fb136`).  This ledger-only follow-up records the completed
+  checkpoint and does not require a duplicate compiler gate.  No profiler,
+  inception, build, or unpushed implementation commit remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
