@@ -2716,6 +2716,100 @@ inception lane while another build or profiler is active.
   receives no student contract or property.  The tree is restored, clean,
   and has no profiler, build, or timing process.
 
+- **P32-L87 (FRAMED ODD-SAVE SINGLE-COLOR PROBE REJECTED BROADLY).** The
+  landed odd-save recolorer requires two independently safe colors because a
+  frameless SysV call function would otherwise trade one push/pop pair for an
+  alignment adjustment.  A destructive-interference probe admitted one safe
+  color when the function must retain its frame pointer and already has a
+  nonzero local-stack adjustment; in that shape the existing `sub`/`add`
+  instructions can change immediate without adding instructions.  The rule
+  was derived entirely from final frame facts and did not recognize a source
+  function or workload.
+
+  The O1 compiler prepared with explicit outer, inner, and object 32-way
+  settings in 18.24 seconds under
+  `/dev/shm/v3codex-p34-framed-recolor.beQ02T`.  Complete compiler text fell
+  8,581,391 -> 8,579,023 bytes, but the target
+  `PhysicalCursor::Next` remained byte-for-byte the same 2,191-byte function
+  with all five saves: no single callee-saved color has an independently safe
+  caller-saved replacement there.  The surrounding hot functions moved in
+  the wrong direction: `Lexer::Run` grew 56 bytes, `Lexer::Peek` 10, and
+  `TranslationCursor::Next` 25.  All 46 PA38 programs passed, while the
+  structural driver correctly reported that control `444`'s historical exact
+  five-save assertion had changed to four.  The semantic fast-loop properties
+  still held--both loop homes were absent and the call-reaching negative kept
+  its homes--but no control change is retained for a rejected optimization.
+
+  The clean full-source O1/all-32 oracle under
+  `/dev/shm/v3codex-p34-framed-recolor-full.Z0Y24H` measured 32.70 seconds
+  wall, 890.50 user, and 49.21 system, or 939.71 aggregate CPU seconds.
+  Against the landed source-matched 32.90/881.87/49.30 result, aggregate CPU
+  regresses 8.54 seconds or 0.92%; the small wall movement is therefore only
+  scheduler-tail noise.  The probe is removed.  This rejects the framed
+  profitability extension as a class and establishes that the remaining
+  physical-cursor save cost needs earlier lifetime/allocation work rather
+  than this post-allocation policy.  The source tree is restored and clean,
+  and no profiler, inception, or build process remains.
+
+- **P32-L88 (LATE-HINT CAP-52 BROAD REPLAY REMAINS REJECTED).** L41's
+  supported `--inline-limit hint-late-cap=52` diagnostic was replayed because
+  it removes or distributes a still-profiled token-move call family and had
+  previously been judged only by the frozen translation unit.  No source was
+  changed.  The current O1 compiler was prepared in 17.74 seconds with outer,
+  inner, and object parallelism all 32 under
+  `/dev/shm/v3codex-p34-hint52.LCu1pE`.  As before, this is a costly dose:
+  complete compiler text grows 8,581,391 -> 8,651,319 bytes and
+  `Lexer::Run` grows 12,167 -> 12,616 bytes; the current token-move body also
+  retains at least one out-of-line use, so the old local disappearance is no
+  longer complete.
+
+  The first clean full-source lane looked barely positive at 32.99 seconds
+  wall, 876.66 user, and 49.14 system, or 925.80 aggregate CPU seconds,
+  compared with L85's landed 32.90/881.87/49.30 or 931.17 seconds.  The
+  required reverse repeat did not confirm it: fresh landed production under
+  `/dev/shm/v3codex-p34-hint52-base-repeat.JovUFr` measured
+  32.78/879.83/48.65 (928.48 total), while fresh cap-52 under
+  `/dev/shm/v3codex-p34-hint52-repeat.SbvrSX` measured
+  32.91/879.75/49.46 (929.21 total).  Across the two positions per lane,
+  production averages 32.84 seconds wall and 929.83 aggregate CPU; cap-52
+  averages 32.95 and 927.51.  The apparent CPU reduction is only 2.32 seconds
+  or 0.25%, wall regresses 0.33%, and the direction changes by position.
+  This remains below the repeated 0.5% broad-oracle threshold and does not
+  justify the 70-KiB dose.  No implementation, contract, or test changes are
+  retained, and no profiler or build process remains.
+
+- **P32-L89 (HIGH-FAN-IN MERGE RESIDENCY PROBES REJECTED).** Final LowIR
+  and MIR inspection isolated `PhysicalCursor::Next`'s decoded scalar as a
+  five-input acyclic phi with two uses.  Its five predecessor transfers store
+  to one frame home; the common tail compares that home and reloads it for the
+  return.  This is structurally distinct from L12's rejected blanket merge-
+  phi policy, which added callee-save ceremony to many one-load leaves.
+
+  Three bounded forms were screened.  A local caller-saved phi interval could
+  not claim any of R9, R8, RDI, or RSI across the complete predecessor-
+  transfer span; every choice was legitimately busy, so it was inert.  A
+  high-fan-in/multi-use callee-saved admission did claim a home, but displaced
+  existing residents: the target grew 453 -> 456 MIR instructions, added
+  three loads and three spills, and grew 2,191 -> 2,207 native bytes.  It was
+  rejected statically.  Finally, retaining the frame merge but promoting only
+  its dominated two-use tail into a clobber-free RSI interval succeeded.  It
+  removes the second frame reload without changing transfers, saves, or
+  behavior, but grows the target three bytes; complete compiler text grows
+  only 120 bytes.  PA38 remained 46/46 throughout.
+
+  The tail candidate prepared at explicit O1/all-32 settings in 18.34 seconds
+  under `/dev/shm/v3codex-p34-merge-tail.ltcAvs`.  Its clean full-source
+  build under `/dev/shm/v3codex-p34-merge-tail-full.JuTlLz` measured
+  32.38 seconds wall, 882.17 user, and 48.73 system, or 930.90 aggregate CPU
+  seconds.  That is effectively flat against L85's 931.17-second landed lane
+  and worse than L88's fresh 928.48-second production repeat.  Only three
+  compiler sites received the promotion, so neither static population nor
+  the broad oracle supports retaining the additional placement mechanism.
+  All three forms are removed.  The result closes acyclic merge residency as
+  the next material physical-cursor win: the remaining gap is the much larger
+  instruction/movement body, not this single common-tail reload.  The source
+  tree is restored and no profiler or build process remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
