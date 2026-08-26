@@ -1411,6 +1411,28 @@ inception lane while another build or profiler is active.
   with outer and inner 32-way inception, and changed no source or fixtures.
   The cap remains 48, no contract/test is warranted, and no profiler or
   inception process remains.
+- **P32-L42 (LEXER DENSITY PROBES REJECTED).** Three related diagnostics
+  separated executed work from layout-only shrinkage in the residual
+  `Lexer::Run` body.  First, spelling the local 13-entry named-operator table
+  as static constant storage (a source-only upper-bound probe for aggregate
+  globalization) shrank `Run` by 767 bytes and tokenizer text by 602 bytes,
+  but five balanced pairs were flat: 9.48/9.00 s baseline versus 9.49/9.00 s
+  candidate wall/user.  Second, redirecting explicit MIR edges through
+  jump-only blocks and then pruning unreachable blocks shrank `Run` by 1,429
+  bytes but lengthened branches throughout the compiler; final text grew
+  71,564 bytes and the first two balanced pairs were slower at 9.45/8.96 s
+  versus 9.40/8.92 s.  Finally, removing target redirection isolated ordinary
+  unreachable-MIR pruning.  It shrank tokenizer text by 2,035 bytes and `Run`
+  by 1,360 bytes, while its 2,971-byte implementation left final compiler text
+  nearly neutral (+44 bytes).  The frozen output stayed exact at
+  `8a33ad95...5de93f`, but five-pair medians regressed 9.39/8.91 -> 9.42/8.94
+  s.  A matched 9,450.653 ms software profile attributed about 488 ms to the
+  smaller `Run`, versus about 451 ms in the retained baseline.  This proves
+  that removing never-executed blocks can destructively perturb the current
+  layout without reducing operation count.  The static-table source edit and
+  both machine probes are removed; PA38's existing 46/46 result is restored,
+  no fixture or contract changes are retained, and no profiler or build
+  process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
