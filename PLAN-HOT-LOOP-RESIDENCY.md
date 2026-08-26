@@ -1394,6 +1394,23 @@ inception lane while another build or profiler is active.
   to `origin/v3opt` (`4889a189..fa926453`).  The coverage matrix explicitly
   maps the new contract to control 448's structural and behavioral predicates.
   The worktree and remote tip agree before the next residual profile.
+- **P32-L41 (LATE HINT CAP 52 REJECTED).** The residual profile attributed
+  about 120 ms to the macro processor's out-of-line `Token` move constructor.
+  A diagnostic-only inception build raised only `hint-late-cap` from 48 to 52,
+  the narrowest threshold that admits that constructor: macro-processor LowIR
+  calls fell 37 -> 1, its native calls fell 38 -> 2, and the standalone hot
+  symbol disappeared.  This was not a free call-boundary win.  It cloned about
+  1,596 LowIR lines into 36 callers, grew macro-processor text by 6,050 bytes,
+  and grew the final compiler by 67,632 bytes.  Five balanced pairs at the
+  exact retained `8a33ad95...5de93f` output were flat at 9.50 s wall and only
+  9.02 -> 9.01 s user.  Software task-clock was slightly worse (9,450.821 ->
+  9,472.707 ms); `perf diff` shows the removed 1.19% constructor sample
+  reappearing chiefly in `MacroProcessor::AddSourceToken`, vector relocation,
+  and other callers, with layout displacement elsewhere.  The experiment used
+  `/dev/shm/v3codex-p32-hint52-self-j32/bin/selfhost/cppgm++-self`, prepared
+  with outer and inner 32-way inception, and changed no source or fixtures.
+  The cap remains 48, no contract/test is warranted, and no profiler or
+  inception process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
