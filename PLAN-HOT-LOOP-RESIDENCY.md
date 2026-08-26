@@ -2232,6 +2232,44 @@ inception lane while another build or profiler is active.
   student contract or property is retained, no Cachegrind or full inception
   comparison ran, and no profiler process remains.
 
+- **P32-L74 (LOOP-CALLER HINTED-INLINING DOSE REJECTED).** The post-switch
+  profile still attributes about 150 ms to the macro processor's out-of-line
+  `Token` move constructor.  Static comparison makes the redistribution
+  concrete: the self compiler retains 37 native calls to that constructor,
+  GCC retains four, and Clang retains none.  P32-L41 already showed that
+  raising the late hinted cap from 48 to 52 inlined essentially every call
+  but merely moved the samples into 36 callers.  This probe tested a narrower
+  structural dose: admit a hinted 49--52-instruction nonleaf only when the
+  caller already contains a CFG backedge.  It used typed function metadata and
+  shape only, with no source or symbol recognition.
+
+  A preliminary two-noalias-pointer boundary qualifier had zero population;
+  the source constructor fact is not represented by that exact serialized
+  parameter shape, so it was removed rather than made into a false contract.
+  The loop-caller dose did have the intended dynamic population.  In the
+  compiler it reduced `Token` move calls 37 -> 9, but expanded complete text
+  8,589,538 -> 8,664,678 bytes (+75,140).  The candidate was based on
+  `370cf5d0` and prepared at
+  `/dev/shm/v3codex-p34-loop-hint-o1/bin/selfhost/cppgm++-self` with explicit
+  self-host O1 plus outer, inner, and object parallelism of 32 in 18.26 s.
+  It produced deterministic frozen output `84675522...2c2b`; the landing
+  compiler remained deterministic at `21883ca7...e639`.
+
+  A balanced six-position software-task-clock screen measured baseline
+  9,384.39/9,152.31/9,269.51 ms (median 9,269.51) and candidate
+  9,240.28/9,354.78/9,290.46 ms (median 9,290.46), a 20.95 ms or 0.23%
+  regression.  Thus concentrating the cap-52 dose in loop-bearing callers
+  does not recover the hidden constructor time; it reproduces the earlier
+  sample redistribution while adding more large-caller code.
+
+  A diagnostic frame-pointer call-chain capture completed, but generated
+  unusably deep chains through frameless generated functions.  Several slow
+  offline reporters launched while diagnosing it were explicitly terminated;
+  the bounded flat profile remains the fast attribution method.  The inlining
+  probe is removed, restored PA37 passes 187/187, no README/property is
+  retained for the rejected policy, no Cachegrind or full inception comparison
+  ran, and no profiler process remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
