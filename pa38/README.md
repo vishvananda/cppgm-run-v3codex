@@ -213,6 +213,14 @@ semantic-preserving rewrites where safe:
   reach a call, a function without the existing preserved pressure, or an
   otherwise unproved path relationship retains the ordinary frame homes; no
   particular physical registers are required
+- permit a bypassable, call-free loop to begin loop-carried integer or pointer
+  `phi` residency on its first incoming edge, after any call-bearing prefix,
+  when the complete incoming-edge-through-backedge interval has no call or
+  fixed-register clobber.  This local residency must use caller-saved capacity,
+  must not add a function-wide save/restore, and must not overlap another
+  planned owner of that capacity.  A call in the interval, unavailable
+  capacity at the incoming edge, or an unproved span retains the ordinary
+  frame-home transfers; no particular physical register is required
 - forward a scalar compiler temporary from its defining register into an
   immediately following integer comparison when that comparison is the
   temporary's only use, both operations have the same machine type, and the

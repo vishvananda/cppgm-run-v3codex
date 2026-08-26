@@ -1,9 +1,9 @@
 # PLAN-HOT-LOOP-RESIDENCY: P32 residual operation-count parity
 
 Status: active; retained-change coverage has been converted to
-student-implementable property/behavior oracles; focused lanes, the full
-through-PA38 gate, file audit, and fresh 32-way inception all pass;
-performance work has resumed
+student-implementable property/behavior oracles; local loop-phi activation is
+the latest retained increment; focused lanes, the full through-PA38 gate, file
+audit, and fresh 32-way inception all pass; performance work continues
 
 Date: 2026-08-26
 
@@ -1348,6 +1348,46 @@ inception lane while another build or profiler is active.
   its direct gain.  The implementation is removed and receives no README or
   feature test.  The tree is restored byte-for-byte to the retained source;
   no Cachegrind, Valgrind, perf, or inception process remains.
+
+- **P32-L39 (EDGE-LOCAL LOOP-PHI ACTIVATION RETAINED).** Starting from pushed
+  `4889a189`, the PA38 location planner now gives a bypassable call-free loop
+  an exact local caller-saved interval from its first predecessor transfer
+  through the extended backedge span.  It checks every fixed clobber, keeps
+  local spans disjoint from other planned owners, activates without reading
+  the phi's not-yet-initialized frame fallback, and falls back if the register
+  is busy.  This avoids taxing an earlier call-bearing prefix with a
+  function-entry callee-saved reservation.  On the retained PA11 input the
+  final MIR falls 49,190 -> 49,101 lines: the allocation and old-buffer-copy
+  loops in `std::vector<unsigned>::_M_fill_append` each keep a loop-carried
+  value resident and lose their repeated frame transfers.  The tokenizer MIR
+  is byte-identical, directly screening the destructive lexer-layout failure
+  seen in L38.  The frozen object loses 354 text bytes and is deterministic at
+  `8a33ad95...5de93f`, versus baseline `d70bd5cf...7ad1a8`.  Disabled-by-default
+  telemetry reports 458 eligible local phis, 38 static assignments, 18
+  successful edge activations, and 20 safe busy fallbacks on the frozen TU.
+  Two balanced software-task-clock profiles put the dominant fill-append
+  instance at about 1.46% baseline versus 1.16% candidate (roughly 28 ms less
+  sampled CPU per compile); total sampled task-clock is also slightly lower.
+  No exact-Ir Cachegrind run was used for this increment.
+
+  Eight preliminary rotating A/B samples, followed by a final five-pair
+  rebuild checkpoint, measured 9.39/8.93 s candidate versus 9.44/8.97 s
+  baseline wall/user medians.  Fresh same-source O1 compilers at
+  `/dev/shm/v3codex-p32-local-final-{self-j32,gcc-o1,clang-o1}` then measured
+  9.38 s self, 5.85 s GCC, and 5.73 s Clang in three rotating samples, for
+  honest wall ratios of 1.603x and 1.637x.  Self and GCC emit the exact
+  `8a33ad95...5de93f` object; Clang's stable compiler-local spelling emits
+  `ae6d5a73...a0b5fe3`.  PA38's README specifies the source-independent
+  activation and fallback proof.  Control `448-local-loop-phi-activation`
+  validates behavior plus the local structural properties: no per-iteration
+  phi-home traffic after an earlier call, unchanged preserved capacity versus
+  O0, and frame fallback for a call-crossing loop.  It does not match whole
+  program, LowIR, MIR, object, register choice, or hash content.  PA38 passes
+  46/46, the through report passes 5,453/5,453, and the PA38 file audit has no
+  fatal findings.  Fresh O1 inception used outer `-j32` and inner
+  `INCEPTION_BUILD_JOBS=32`; comparison took 35.54 s wall (910.58 s aggregate
+  user, 230,208 KiB maximum RSS) and every object plus the final compiler
+  matched.  No Cachegrind, Valgrind, perf, or inception process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

@@ -118,6 +118,14 @@ void report_edge_staging_stats(std::ostream & output, const Stats & stats)
          << stats.planned_use_tail_promotions
          << " planned_use_tail_busy_fails="
          << stats.planned_use_tail_busy_fails
+         << " planner_local_phi_candidates="
+         << stats.planner_local_phi_candidates
+         << " planner_local_phi_assignments="
+         << stats.planner_local_phi_assignments
+         << " planned_local_phi_promotions="
+         << stats.planned_local_phi_promotions
+         << " planned_local_phi_busy_fails="
+         << stats.planned_local_phi_busy_fails
          << " planner_cyclic_region_candidates="
          << stats.planner_cyclic_region_candidates
          << " planner_cyclic_region_assignments="

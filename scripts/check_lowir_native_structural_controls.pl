@@ -55,7 +55,7 @@ if (scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|historical-placement-contracts).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -82,6 +82,66 @@ for my $test (@tests)
 	die "$test: generated program failed with status $run_status\n" if $run_status != 0;
 
 	my $mir = read_file($mir_path);
+	if ($test =~ /local-loop-phi-activation/) {
+		my $positive = function_body($test, $mir, 'late_local_loop');
+		die "$test: reducer lost its call-bearing prefix\n"
+			if $positive !~ /^\s+call \@observe\b/m;
+		my $loop = block_body($positive, 'loop');
+		my $body = block_body($positive, 'body');
+		die "$test: reducer lost its bypassable loop\n"
+			if !defined($loop) || !defined($body);
+		for my $name ('index', 'sum') {
+			my $home = frame_offset($positive, $name);
+			die "$test: reducer lost the $name fallback home\n"
+				if !defined($home);
+			die "$test: locally resident $name still uses its frame home per iteration\n"
+				if $loop =~ /\Q$home\E/ || $body =~ /\Q$home\E/;
+		}
+
+		my $guard = function_body($test, $mir, 'call_in_loop');
+		my $guard_body = block_body($guard, 'body');
+		die "$test: safety reducer lost its loop call\n"
+			if !defined($guard_body) || $guard_body !~ /^\s+call \@observe\b/m;
+		for my $name ('index', 'sum') {
+			my $home = frame_offset($guard, $name);
+			die "$test: call-crossing $name lost its stable frame home\n"
+				if !defined($home);
+		}
+
+		my $baseline_mir = "$directory/baseline.mir";
+		my $baseline_program = "$directory/baseline.program";
+		$status = run_command_capture(
+			cmd => [$app, '-O0', '--dump-machine-ir', $baseline_mir,
+				'-o', $baseline_program, $test],
+			stdout => "$directory/baseline-compile.stdout",
+			stderr => "$directory/baseline-compile.stderr",
+			timeout => 30,
+		);
+		die "$test: O0 native compile failed\n" .
+			read_file("$directory/baseline-compile.stderr") if $status != 0;
+		$run_status = run_command_capture(
+			cmd => [$baseline_program],
+			stdout => "$directory/baseline-program.stdout",
+			stderr => "$directory/baseline-program.stderr",
+			timeout => 30,
+		);
+		die "$test: O0 generated program failed with status $run_status\n"
+			if $run_status != 0;
+		my $baseline = function_body(
+			$test, read_file($baseline_mir), 'late_local_loop');
+		die "$test: local loop activation changed preserved capacity\n"
+			if preserve_count($positive) != preserve_count($baseline);
+		$loop = block_body($baseline, 'loop');
+		$body = block_body($baseline, 'body');
+		for my $name ('index', 'sum') {
+			my $home = frame_offset($baseline, $name);
+			die "$test: O0 $name baseline lost its frame traffic\n"
+				if !defined($home) ||
+				   ((defined($loop) ? $loop : '') !~ /\Q$home\E/ &&
+				    (defined($body) ? $body : '') !~ /\Q$home\E/);
+		}
+		next;
+	}
 	if ($test =~ /adjacent-frame-compare-forwarding/) {
 		my $positive = function_body($test, $mir, 'pressured_compare');
 		die "$test: reducer lost its six-register pressure call\n"

@@ -72,10 +72,17 @@ enum PlannedLocationKind
 {
   PLK_GPR,
   PLK_CYCLIC_REGION_GPR,
+  PLK_LOCAL_PHI_GPR,
   PLK_XMM,
   PLK_FRAME,
   PLK_REMATERIALIZE
 };
+
+inline bool planned_register_kind(PlannedLocationKind kind)
+{
+  return kind == PLK_GPR || kind == PLK_CYCLIC_REGION_GPR ||
+    kind == PLK_LOCAL_PHI_GPR;
+}
 
 struct PlannedLocationSegment
 {
@@ -158,8 +165,7 @@ protected:
        static_cast<std::size_t>(value) >= location_timeline_.size()) return 0;
     const ValueLocationTimeline & timeline = location_timeline_[value];
     for(std::size_t i = 0; i < timeline.size(); ++i)
-      if((timeline[i].kind == PLK_GPR ||
-          timeline[i].kind == PLK_CYCLIC_REGION_GPR) &&
+      if(planned_register_kind(timeline[i].kind) &&
          timeline[i].begin <= position &&
          position <= timeline[i].end) return &timeline[i];
     return 0;
@@ -196,8 +202,7 @@ protected:
       return false;
     const ValueLocationTimeline & timeline = location_timeline_[value];
     for(std::size_t i = 0; i < timeline.size(); ++i)
-      if((timeline[i].kind == PLK_GPR ||
-          timeline[i].kind == PLK_CYCLIC_REGION_GPR) &&
+      if(planned_register_kind(timeline[i].kind) &&
          timeline[i].begin <= lowerer.position_ &&
          lowerer.position_ <= timeline[i].end &&
          timeline[i].index == static_cast<unsigned>(
@@ -273,8 +278,7 @@ protected:
       return false;
     const ValueLocationTimeline & timeline = location_timeline_[value];
     for(std::size_t i = 0; i < timeline.size(); ++i)
-      if((timeline[i].kind == PLK_GPR ||
-          timeline[i].kind == PLK_CYCLIC_REGION_GPR) &&
+      if(planned_register_kind(timeline[i].kind) &&
          timeline[i].index == static_cast<unsigned>(
            lowerer.values_[value].location.reg) &&
          timeline[i].begin <= lowerer.position_ &&
@@ -303,13 +307,13 @@ protected:
     for(std::size_t v = 0; v < location_timeline_.size(); ++v) {
       for(std::size_t i = 0; i < location_timeline_[v].size(); ++i) {
         const PlannedLocationSegment & segment = location_timeline_[v][i];
-        if(segment.kind != PLK_GPR &&
-           segment.kind != PLK_CYCLIC_REGION_GPR) continue;
+        if(!planned_register_kind(segment.kind)) continue;
         planned_release_schedule_.push_back(
           std::make_pair(segment.end,
                          lowir_model::ValueId(
                            static_cast<std::uint32_t>(v))));
-        if(segment.begin >
+        if(segment.kind == PLK_LOCAL_PHI_GPR ||
+           segment.begin >
              static_cast<const Derived &>(*this).facts_.definition[v])
           planned_promotion_schedule_.push_back(
             std::make_pair(segment.begin,
@@ -338,10 +342,10 @@ protected:
       const PlannedLocationSegment * segment = 0;
       const ValueLocationTimeline & timeline = location_timeline_[value];
       for(std::size_t i = 0; i < timeline.size(); ++i)
-        if((timeline[i].kind == PLK_GPR ||
-            timeline[i].kind == PLK_CYCLIC_REGION_GPR) &&
+        if(planned_register_kind(timeline[i].kind) &&
            timeline[i].begin == lowerer.position_ &&
-           timeline[i].begin > lowerer.facts_.definition[value]) {
+           (timeline[i].kind == PLK_LOCAL_PHI_GPR ||
+            timeline[i].begin > lowerer.facts_.definition[value])) {
           segment = &timeline[i];
           break;
         }
@@ -351,19 +355,28 @@ protected:
         continue;
       const X64Register reg = static_cast<X64Register>(segment->index);
       if(!lowerer.registers_.try_reserve(reg)) {
-        if(lowerer.stats_) ++lowerer.stats_->planned_use_tail_busy_fails;
+        if(lowerer.stats_) {
+          if(segment->kind == PLK_LOCAL_PHI_GPR)
+            ++lowerer.stats_->planned_local_phi_busy_fails;
+          else
+            ++lowerer.stats_->planned_use_tail_busy_fails;
+        }
         continue;
       }
       const mir_model::MirOperand source = lowerer.values_[value].location;
-      lowerer.move_value_to_register(
-        out, reg, source, lowerer.values_[value].type);
+      if(segment->kind != PLK_LOCAL_PHI_GPR)
+        lowerer.move_value_to_register(
+          out, reg, source, lowerer.values_[value].type);
       mir_model::MirOperand replacement;
       replacement.kind = mir_model::MirOperand::OP_REG;
       replacement.reg = reg;
       lowerer.set_value_location(value, replacement);
       if(lowerer.stats_) {
         ++lowerer.stats_->planned_register_grants;
-        ++lowerer.stats_->planned_use_tail_promotions;
+        if(segment->kind == PLK_LOCAL_PHI_GPR)
+          ++lowerer.stats_->planned_local_phi_promotions;
+        else
+          ++lowerer.stats_->planned_use_tail_promotions;
       }
     }
   }
@@ -439,8 +452,7 @@ protected:
       for(std::size_t i = 0; i < location_timeline_[value].size(); ++i) {
         const PlannedLocationSegment & segment =
           location_timeline_[value][i];
-        if(segment.kind != PLK_GPR &&
-           segment.kind != PLK_CYCLIC_REGION_GPR) continue;
+        if(!planned_register_kind(segment.kind)) continue;
         static const X64Register pool[] = {XR_R9, XR_R8, XR_RDI, XR_RSI};
         for(std::size_t reg = 0; reg < sizeof(pool) / sizeof(pool[0]); ++reg)
           if(segment.index == static_cast<unsigned>(pool[reg])) {

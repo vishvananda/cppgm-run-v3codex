@@ -223,6 +223,10 @@ struct Stats
   std::size_t planner_use_tail_assignments = 0;
   std::size_t planned_use_tail_promotions = 0;
   std::size_t planned_use_tail_busy_fails = 0;
+  std::size_t planner_local_phi_candidates = 0;
+  std::size_t planner_local_phi_assignments = 0;
+  std::size_t planned_local_phi_promotions = 0;
+  std::size_t planned_local_phi_busy_fails = 0;
 };
 
 struct RelocatableLabel

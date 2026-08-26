@@ -130,6 +130,7 @@ struct Candidate
   std::size_t end;
   bool crossing;
   bool is_phi;
+  bool is_local_phi;
   bool is_invariant;
   bool is_cyclic_region;
   bool is_call_argument;
@@ -209,10 +210,13 @@ void assign_candidate_location(const Candidate & candidate, X64Register reg,
   // A phi home is reserved before the walk and receives predecessor
   // transfers before its linear definition, so its occupancy begins at
   // function entry.  Ordinary segments begin at their definition.
-  const std::size_t begin = candidate.is_phi ? 0 : candidate.definition;
+  const std::size_t begin =
+    candidate.is_phi && !candidate.is_local_phi ? 0 : candidate.definition;
   (*timeline)[value].push_back(PlannedLocationSegment(
-    begin, candidate.end, candidate.is_cyclic_region ?
-      PLK_CYCLIC_REGION_GPR : PLK_GPR, static_cast<unsigned>(reg)));
+    begin, candidate.end,
+    candidate.is_local_phi ? PLK_LOCAL_PHI_GPR :
+      (candidate.is_cyclic_region ? PLK_CYCLIC_REGION_GPR : PLK_GPR),
+    static_cast<unsigned>(reg)));
 }
 
 // The reactive pool prefers RBX, R12, R13 in that order, so the planner
@@ -254,7 +258,7 @@ void assign_candidate_registers(
   // displace the fewest other residents.
   for(std::size_t i = 0; i < candidates.size(); ++i) {
     const Candidate & candidate = candidates[i];
-    if(!candidate.is_phi) continue;
+    if(!candidate.is_phi || candidate.is_local_phi) continue;
     for(std::size_t reg = sizeof(kPool) / sizeof(kPool[0]); reg-- > 0;) {
       if(facts.has_i128_atomic && kPool[reg] == XR_RBX) continue;
       if(phi_claimed[reg]) continue;
@@ -270,6 +274,32 @@ void assign_candidate_registers(
       if(stats) {
         ++stats->planned_value_registers;
         ++stats->planned_phi_registers;
+      }
+      break;
+    }
+  }
+  // A bypassable loop phi can activate a caller-saved register at its first
+  // predecessor transfer instead of reserving a callee-saved home from
+  // function entry.  The exact transfer-to-span-end interval must contain no
+  // clobber, and exact claimed spans keep distinct local loops reusable.
+  std::vector<std::pair<std::size_t, std::size_t> > local_phi_claimed[
+    sizeof(kCallerPool) / sizeof(kCallerPool[0])];
+  for(std::size_t i = 0; i < candidates.size(); ++i) {
+    const Candidate & candidate = candidates[i];
+    if(!candidate.is_local_phi) continue;
+    for(std::size_t reg = 0;
+        reg < sizeof(kCallerPool) / sizeof(kCallerPool[0]); ++reg) {
+      if(!span_is_free(local_phi_claimed[reg],
+                       candidate.definition, candidate.end) ||
+         clobbered_in_interval(facts, kCallerPool[reg],
+                               candidate.definition, candidate.end))
+        continue;
+      local_phi_claimed[reg].push_back(
+        std::make_pair(candidate.definition, candidate.end));
+      assign_candidate_location(candidate, kCallerPool[reg], timeline);
+      if(stats) {
+        ++stats->planned_value_registers;
+        ++stats->planner_local_phi_assignments;
       }
       break;
     }
@@ -354,6 +384,8 @@ void assign_candidate_registers(
     for(std::size_t reg = 0;
         reg < sizeof(kCallerPool) / sizeof(kCallerPool[0]); ++reg) {
       if(caller_busy_until[reg] > candidate.definition) continue;
+      if(!span_is_free(local_phi_claimed[reg],
+                       candidate.definition, candidate.end)) continue;
       if(crossed & analysis::register_mask(kCallerPool[reg])) continue;
       caller_busy_until[reg] = candidate.end + 1;
       assign_candidate_location(candidate, kCallerPool[reg], timeline);
@@ -682,6 +714,7 @@ FunctionLocationTimeline plan_value_locations(
       continue;
     }
     bool is_phi = phi_loop_carried[raw] != 0;
+    bool is_local_phi = false;
     // The unavoidable-header gate: claim a register only when no
     // layout-forward edge jumps from before the phi's header to after it.
     // A jumped-over loop may be dynamically cold while the function stays
@@ -706,7 +739,12 @@ FunctionLocationTimeline plan_value_locations(
             definition_block[raw] != FunctionFacts::missing_position() &&
             !block_reaches_call(
               function, definition_block[raw], block_by_id);
-          if(!reuses_saturated_preserved_pool) is_phi = false;
+          if(!reuses_saturated_preserved_pool) {
+            if(phi_transfer_start[raw] < header)
+              is_local_phi = true;
+            else
+              is_phi = false;
+          }
           break;
         }
     }
@@ -781,10 +819,13 @@ FunctionLocationTimeline plan_value_locations(
     candidate.end = facts.last_use[raw];
     candidate.crossing = facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
     candidate.is_phi = is_phi;
+    candidate.is_local_phi = is_local_phi;
     candidate.is_invariant = is_invariant;
     candidate.is_cyclic_region = is_cyclic_region;
     candidate.is_call_argument =
       facts.has(value, FunctionFacts::VF_ONLY_CALL_ARGUMENT);
+    if(stats && candidate.is_local_phi)
+      ++stats->planner_local_phi_candidates;
     if(stats && candidate.is_call_argument)
       ++stats->planner_candidate_call_arguments;
     // Phis are edge-live by construction (written at predecessor

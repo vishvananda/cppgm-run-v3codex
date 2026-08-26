@@ -320,12 +320,12 @@ private:
   bool try_claim_planned_phi_register(lowir_model::ValueId value,
                                       const LowType & type)
   {
-    const unsigned char entry = planned_register_entry(value);
-    if(entry == 0) return false;
+    const location_planning::PlannedLocationSegment * segment = planned_register_segment(value);
+    if(!segment || segment->kind == location_planning::PLK_LOCAL_PHI_GPR) return false;
     // The constrained-wide-pressure binary path claims R15 as a fixed
     // parameter destination, below the reservation discipline.
     if(constrained_wide_pressure()) return false;
-    const X64Register planned = static_cast<X64Register>(entry - 1);
+    const X64Register planned = static_cast<X64Register>(segment->index);
     if(crosses_register_clobber(value, planned) ||
        !registers_.try_reserve(planned)) return false;
     define(value, type, reg_operand(planned));
