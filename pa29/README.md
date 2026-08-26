@@ -593,6 +593,13 @@ To complete PA29, implement these goals:
    a temporary base address. The encoder must still preserve both logical
    addresses and any live scalar values that overlap its scratch registers.
 
+   For fixed copies through 32 bytes, scalar chunks may also avoid the setup
+   for a string operation.  This direct form extends through 48 bytes when
+   the operation declares at least eight-byte alignment, so every complete
+   chunk is a naturally aligned word access.  Larger or more weakly aligned
+   copies retain the compact string-operation form.  Both forms must preserve
+   the source bytes, destination bytes, and declared scratch effects.
+
    Native emission may carry a compiler-created scalar temporary from its one
    defining frame store to later typed reloads in the same block when the
    complete bounded window is safe. A carried window must not cross a call,
@@ -834,6 +841,10 @@ strategies include:
   store when that is cheaper than string-instruction setup; choose the scratch
   from the MIR instruction's declared clobber set and keep both logical
   address registers intact until their last use
+- encode a fixed `copy_bytes` through 32 bytes as scalar chunks, extending
+  that direct form through 48 bytes for operations with at least eight-byte
+  declared alignment; keep larger or more weakly aligned copies on the
+  compact string-operation path
 - carry a sole-use load's typed frame, global, dereference, or indexed address
   into an immediately following legal integer right operand, keeping its
   address inputs live until the consuming instruction

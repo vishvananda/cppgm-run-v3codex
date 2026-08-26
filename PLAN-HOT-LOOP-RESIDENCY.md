@@ -2,8 +2,8 @@
 
 Status: active; retained-change coverage has been converted to
 student-implementable property/behavior oracles; pressure-aware edge-local
-loop-phi capacity is the latest retained minor increment; its focused lane
-passes and the next fixed-copy encoding probe is active; performance work
+loop-phi capacity is retained as a minor increment; naturally aligned fixed
+copies through 48 bytes are the latest performance landing; performance work
 continues
 
 Date: 2026-08-26
@@ -761,7 +761,7 @@ checked-in outputs remain independent compatibility gates:
 | readonly scalar storage | PA15 **Assignment Boundary** | PA15 control `540-readonly-scalar-storage`: LowIR structural positive plus volatile, TLS, and class-object negatives |
 | constructor alias boundaries and nested temporary lifetime | PA17 copy/move boundary and nested operand/full-expression paragraphs | PA17 controls `532`/`533` distinguish constructor versus assignment parameter facts and validate operator-use/destruction/unwind relationships plus behavior; PA37 driver `460`/`461` verifies propagation |
 | pointer-difference lowering | PA15 pointer-arithmetic Assignment Boundary paragraph | PA15 control `530-pointer-difference-strength-reduction`; focused function-body predicates require arithmetic shift for an eight-byte element and signed division for a three-byte element, without comparing the complete generated LowIR |
-| small copy, constant multiply, and scratch-carried reload encoding | PA29 native goals 3, 8, and 15 plus its compact-MIR implementation rules | PA29 controls `900`-`902`/`905` inspect only instruction families and local MIR operands; the historical scratch reducer requires a positive diagnostic fact and integer/float-pressure behavior |
+| small/medium copy, constant multiply, and scratch-carried reload encoding | PA29 native goals 3, 8, and 15 plus its compact-MIR implementation rules | PA29 controls `900`-`902`/`905`-`908` inspect only instruction families and local MIR operands, including the fixed-copy size/alignment boundary; the historical scratch reducer requires a positive diagnostic fact and integer/float-pressure behavior |
 | local-global and deferred parameter-address selection | PA29 required native behavior item 15 | controls `903` and the focused historical deferred-address pass check direct-storage/materialized-address and pre-/post-call carrier relationships plus behavior |
 | O1 LowIR survivor transforms and guards | PA37 O1 optimization-level bullets for underflow, adjacent noalias copies, full overwrite, shared loops, cold-path pricing, and phi repair | survivor-property pass over `506`-`511` plus O0 baselines and PA17/driver alias-source controls; only local relationships are inspected |
 | historical readonly, strength, and small-object survivors | PA37 O1/O2 readonly, scalar-object, and counted-loop bullets | control `525-historical-lowir-contracts`; focused O0/O1/O2 predicates plus generated behavior, including the object-valued-copy guard and no complete LowIR comparison |
@@ -1481,6 +1481,52 @@ inception lane while another build or profiler is active.
   46/46 pass; full through/audit/inception and the atomic push are due with the
   next checkpoint.  Both Cachegrind output objects have the expected hashes,
   and no profiler remains.
+- **P32-L44 (NATURALLY ALIGNED MEDIUM COPY LANDING).** The existing PA29
+  encoder used scalar chunks through 32 bytes and string-operation setup above
+  that boundary.  A broad 64-byte scalar point grew final compiler text by
+  95,156 bytes and was nearly flat in five native pairs despite a 1.16%
+  software-task-clock improvement.  Extending only byte-aligned copies grew
+  text by 1,520 bytes and regressed five-pair wall time by 0.53%, proving that
+  replacing the `Token` move constructor's 61-byte tail is detrimental on
+  native hardware even though Cachegrind charges its repeated string
+  instruction heavily.  Restricting the population first to alignment above
+  one and then to at least eight bytes produced the distributed native win.
+
+  The compiler contains 1,477 affected 40-byte, 408 affected 48-byte, 105
+  affected 56-byte, and 358 affected 64-byte string copies.  A 40-byte ceiling
+  grew text by 45,128 bytes but measured only 9.39/8.88 versus 9.41/8.93 s
+  wall/user in three pairs.  The retained 48-byte ceiling grows compiler text
+  8,567,790 -> 8,628,630 bytes (+60,840, +0.71%) and frozen text 621,799 ->
+  621,955 bytes (+156).  The rejected 64-byte ceiling grew compiler text by
+  85,432 bytes and frozen text by 348 bytes.  Thus 48 bytes is the measured
+  performance/code-density knee: every complete extended chunk is naturally
+  aligned, while larger and weaker-alignment copies retain compact string
+  setup.
+
+  Five balanced pairs at
+  `/dev/shm/v3codex-p32-copy48-align8-j32/bin/selfhost/cppgm++-self` give
+  9.270/8.790 s candidate versus 9.430/8.940 s retained-base wall/user medians
+  (-1.70%/-1.68%).  Matching software task-clock falls 9,442.571 ->
+  9,317.171 ms (-1.33%).  Exact Ir-only Cachegrind falls
+  39,594,329,579 -> 38,830,309,716 instructions (-764,019,863, -1.930%);
+  the rejected 64-byte upper bound reached 38,667,607,597 (-2.341%) but its
+  extra static growth did not buy a larger repeatable native win.  Frozen
+  output is deterministic at `261b3f42...5514`: same-revision self and GCC
+  objects are byte-identical, while Clang has identical text, data, sections,
+  disassembly, and size and differs only in the established two numeric local
+  symbol spellings.
+
+  PA29 now explains the size/alignment policy without naming a register.
+  Controls `906`-`908` check the aligned positive, weak-alignment fallback,
+  upper-size fallback, and runtime bytes using only the local `copy_bytes`
+  relationship and bounded entry-function instruction families.  They do not
+  compare a complete MIR, program, object, hash, or register choice.  Restoring
+  the old 32-byte ceiling makes the positive property fail.  PA29 is 291/291,
+  PA37 is 187/187, PA38 is 46/46, through PA38 is 5,453/5,453, and the PA38
+  audit has zero fatal findings.  Fresh outer/inner 32-way O1 inception matches
+  in 53.03 s wall; commit and push identities follow in the checkpoint entry.
+  All measured objects have their expected hashes, and no profiler or build
+  process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

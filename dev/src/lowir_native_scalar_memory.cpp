@@ -171,7 +171,13 @@ bool emit_small_copy_bytes(
   const bool frame_sided =
     destination_operand.kind == mir_model::MirOperand::OP_FRAME ||
     source_operand.kind == mir_model::MirOperand::OP_FRAME;
-  if(bytes == 0 || bytes > 32) {
+  // Scalar chunks avoid string-operation setup for small copies.  Medium
+  // copies use the wider range only when the declared alignment makes every
+  // full chunk a naturally aligned word access; keeping weakly aligned copies
+  // on the compact fallback also limits code growth.
+  const bool direct_chunks = bytes <= 32 ||
+    (bytes <= 48 && instruction.byte_alignment >= 8);
+  if(bytes == 0 || !direct_chunks) {
     if(frame_sided)
       throw std::logic_error("large native copy requires address registers");
     return false;

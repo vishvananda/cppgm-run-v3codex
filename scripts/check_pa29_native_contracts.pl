@@ -169,6 +169,9 @@ for my $test (@tests)
 	$expected_status = 168 if $test =~ /structured-factor-multiply/;
 	$expected_status = 66 if $test =~ /frame-copy-operands/;
 	$expected_status = 10 if $test =~ /small-copy-boundary/;
+	$expected_status = 37 if $test =~ /aligned-medium-copy-direct/;
+	$expected_status = 39 if $test =~ /weakly-aligned-medium-copy-compact/;
+	$expected_status = 41 if $test =~ /large-aligned-copy-compact/;
 	my $run_status = run_command_capture(
 		cmd => [$program],
 		stdout => "$directory/program.stdout",
@@ -211,6 +214,33 @@ for my $test (@tests)
 		my $code = main_code($test, $program);
 		die "$test: bounded small copy used string-operation setup\n"
 			if index($code, "\xf3\xa4") >= 0;
+		next;
+	}
+	if($test =~ /aligned-medium-copy-direct/) {
+		my $body = function_body($test, $mir, 'main');
+		die "$test: aligned medium copy lost its documented operation\n"
+			if $body !~ /^\s+copy_bytes 48x8, /m;
+		my $code = main_code($test, $program);
+		die "$test: aligned medium copy used string-operation setup\n"
+			if index($code, "\xf3\xa4") >= 0;
+		next;
+	}
+	if($test =~ /weakly-aligned-medium-copy-compact/) {
+		my $body = function_body($test, $mir, 'main');
+		die "$test: weakly aligned medium copy lost its documented operation\n"
+			if $body !~ /^\s+copy_bytes 48x1, /m;
+		my $code = main_code($test, $program);
+		die "$test: weakly aligned medium copy lost compact string encoding\n"
+			if index($code, "\xf3\xa4") < 0;
+		next;
+	}
+	if($test =~ /large-aligned-copy-compact/) {
+		my $body = function_body($test, $mir, 'main');
+		die "$test: large aligned copy lost its documented operation\n"
+			if $body !~ /^\s+copy_bytes 56x8, /m;
+		my $code = main_code($test, $program);
+		die "$test: large aligned copy lost compact string encoding\n"
+			if index($code, "\xf3\xa4") < 0;
 		next;
 	}
 	if($test =~ /scratch-carried-frame-reloads/) {
