@@ -1987,6 +1987,70 @@ inception lane while another build or profiler is active.
   checkpoint and does not require a duplicate compiler gate.  No profiler,
   inception, build, or unpushed implementation commit remains.
 
+- **P32-L64 (SOURCE-MATCHED POST-SWITCH ATTRIBUTION).** Fresh 997 Hz native
+  software-task-clock profiles collected 8,795 self, 5,479 GCC, and 5,335
+  Clang samples with zero lost samples.  Approximate absolute attribution
+  puts `Lexer::Run` at 422 ms self versus 183/174 ms in GCC/Clang, but that
+  body-only difference is not an honest gap: GCC leaves
+  `IsIdentifierInitial` outlined while self and Clang inline much of it.
+  Comparable tokenizer aggregates still leave a material excess, without
+  assigning all 239--248 ms to `Run`.  `EnsureEntry` is already essentially
+  at host parity.  `Lexer::Peek` cannot be treated as an isolated target:
+  self `Peek` plus `TranslationCursor::Next` is about 474 ms, below Clang's
+  redistributed 656 ms, while GCC redistributes more of the same work through
+  inlining.  Token movement and `PhysicalCursor::Next` remain plausible
+  aggregate residuals, but the measured `Run` body is still the largest
+  source-independent target.  No profiler remains.
+
+- **P32-L65 (CONDITIONAL-CALL PARAMETER STAGING REJECTED).** Address-level
+  inspection found one genuine path-placement opportunity in
+  `IsIdentifierBody`: its scalar input uses a callee-saved register for the
+  whole function because one fallback arm calls `IsInRanges`, so common ASCII
+  returns pay save, setup-move, and restore instructions.  A generic PA38
+  probe kept an eligible incoming scalar argument in its caller-saved ABI
+  register and saved/reloaded it only around a sole acyclic conditional call
+  that received the same value.  It recognized only type, use, clobber, call,
+  and CFG facts.
+
+  The intended local shape appeared: `IsIdentifierBody` removed its `rbx`
+  preserve and move, inserted an `i32` frame save/reload only on the call arm,
+  and preserved behavior.  PA38 remained 46/46, and frozen outputs stayed
+  byte-identical at `21883ca7...e639`.  The broad policy nevertheless changed
+  placement across most self-host objects and grew final compiler text from
+  8,589,538 to 8,730,274 bytes.  Three balanced software-event medians
+  regressed from 9,177.32 to 9,417.50 ms (+2.62%).  Restricting the admission
+  to heavily reused `i32` parameters did not solve the interference: the O3
+  tokenizer object still grew 31,105 to 32,109 text bytes and the compiler
+  remained about 141 KiB larger.  The static and native results reject this
+  placement family as a route to the remaining gap, so the implementation is
+  removed and receives no student contract or test.  The development compiler
+  was rebuilt from the restored 3,000-line backend; no profiler or build
+  process remains.
+
+- **P32-L66 (LEAF FIXED-COLOR RECOLOR REJECTED).** The fresh profile's
+  `Program::FindEntry`/`DirectLookup` aggregate is about 178 ms self versus
+  90/85 ms GCC/Clang, and all three compilers preserve the same sole call
+  boundary.  Exact disassembly makes the local deficiency concrete:
+  self-hosted `FindEntry` is a leaf but saves all five callee-saved registers
+  and occupies 420 bytes, versus 281 bytes GCC and 247 bytes Clang.  The
+  retained exact-MIR-liveness recolorer deliberately excludes leaf functions
+  and does not consider fixed-purpose `%rcx`.
+
+  A bounded PA38 probe admitted leaf functions only to `%rcx`, while retaining
+  every existing explicit-occurrence, boundary-interference, clobber, debug,
+  and same-instruction guard.  It removed one save/restore pair from
+  `FindEntry` and shrank the self-hosted body to 406 bytes.  The PA38 property
+  controls remained clean; two legacy exact MIR fixtures changed under the
+  initial admission, as expected for a physical placement change.  The
+  isolated 32-way self build and a successful frozen compile then exposed
+  destructive whole-program interference before timing: even with `%rcx`
+  restricted to leaf functions, final compiler text grew 8,589,538 to
+  8,719,330 bytes (+129,792), with growth distributed across most compiler
+  objects.  The local push/pop removal therefore fails the static finalist
+  gate and cannot contribute the required 343--508 ms.  The implementation is
+  removed, no README or student property is added for a rejected policy, and
+  no profiler remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
