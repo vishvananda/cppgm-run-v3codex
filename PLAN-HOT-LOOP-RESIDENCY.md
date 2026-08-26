@@ -8,8 +8,8 @@ performance landing; the exact-cost 16-byte vector zero is retained as a
 minor native-positive quality increment; immediate-call merge sources may
 donate their frame homes as a minor MIR-quality increment; direct immediate
 comparisons for large switches are the latest performance landing;
-the odd-save paired recoloring replay is the current finalist; the latest
-pre-replay full-source O1 aggregate-CPU gaps are 1.610x GCC and 1.553x Clang
+odd-save paired recoloring is the latest performance landing; the current
+full-source O1 aggregate-CPU gaps are 1.591x GCC and 1.546x Clang
 
 Date: 2026-08-26
 
@@ -2679,6 +2679,42 @@ inception lane while another build or profiler is active.
   with zero fatal findings and 36 established advisories, and O1/all-32-way
   inception match.  Push `5fdf07b5..1759b398` advanced `origin/v3opt`
   successfully.  No profiler, inception, build, or timing process remains.
+
+- **P32-L85 (POST-ODD-SAVE THREE-COMPILER REBASELINE).** Fresh landed-source
+  O1 host compilers prepared with outer, inner, and object parallelism all 32:
+  GCC in 29.88 s wall and Clang in 30.54 s.  Sequential clean full-source
+  builds then measured GCC 21.31 s wall/541.03 user/44.10 system, self
+  32.90/881.87/49.30, and Clang 21.33/557.71/44.62.  The honest landed ratios
+  are 1.544x self/GCC and 1.542x self/Clang by wall, and 1.591x and 1.546x by
+  aggregate CPU.  GCC remains binding: at its current 585.13-second
+  denominator, self must remove about 53.5 aggregate CPU seconds or 5.74% to
+  reach 1.50x.  Host roots are
+  `/dev/shm/v3codex-p34-odd-host-{gcc,clang}.*`; full-build roots are
+  `/dev/shm/v3codex-p34-odd-full-{gcc,self,clang}.*`.
+
+  A fresh 199 Hz full-source task-clock profile recorded 186K samples with no
+  loss in `/dev/shm/v3codex-p34-odd-profile.LarfQc/self.data`; the profiled
+  build used 884.19 user and 49.92 system seconds.  `Lexer::Peek` is now
+  11.04%, `Lexer::Run` 8.93%, `PhysicalCursor::Next` 4.71%, token move 2.81%,
+  `TranslationCursor::Next` 2.79%, and `AppendUTF8` 2.24%.  Relative to the
+  pre-landing profile, the combined Peek/translation cluster loses about 11
+  aggregate CPU seconds.  Against the structurally closer archived Clang
+  profile, the remaining approximate excesses are now 35 seconds in `Run`,
+  19 seconds in physical-next, and 17 seconds in Peek plus translation; host
+  attribution is approximate because inlining redistributes these rows.
+
+- **P32-L86 (HOST-EH FRAME-VETO PROBE REJECTED STATICALLY).** The ELF writer
+  already serializes frameless CFI for personality-bearing functions, while
+  final frame-pointer selection separately rejects explicit EH MIR operations
+  and frame operands.  A bounded diagnostic removed only the redundant early
+  `host_eh_enabled` veto, leaving the dynamic-stack, scratch, debug, EH-op, and
+  frame-operand guards intact.  PA38 stayed 46/46, but the resulting O1/all-
+  32-way compiler changed only 16 text bytes.  `Lexer::Run`, `Peek`,
+  `PhysicalCursor::Next`, and `TranslationCursor::Next` were byte-for-byte
+  unchanged and remained framed: their real cold exception/frame state trips
+  the later guards.  The probe is removed without consuming a timing lane and
+  receives no student contract or property.  The tree is restored, clean,
+  and has no profiler, build, or timing process.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
