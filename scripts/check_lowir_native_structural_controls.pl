@@ -98,6 +98,24 @@ for my $test (@tests)
 				if $loop =~ /\Q$home\E/ || $body =~ /\Q$home\E/;
 		}
 
+		my $pressured = function_body($test, $mir, 'pressured_local_loop');
+		my $pressured_loop = block_body($pressured, 'loop');
+		my $pressured_body = block_body($pressured, 'body');
+		die "$test: pressured reducer lost its bypassable loop\n"
+			if !defined($pressured_loop) || !defined($pressured_body);
+		for my $name ('index', 'sum') {
+			my $home = frame_offset($pressured, $name);
+			die "$test: pressured reducer lost the $name fallback home\n"
+				if !defined($home);
+			die "$test: alternate caller-saved capacity left $name in its frame home per iteration\n"
+				if $pressured_loop =~ /\Q$home\E/ ||
+				   $pressured_body =~ /\Q$home\E/;
+		}
+		my $capacity = function_body(
+			$test, $mir, 'pressured_capacity_baseline');
+		die "$test: local activation added preserved-register capacity\n"
+			if preserve_count($pressured) != preserve_count($capacity);
+
 		my $guard = function_body($test, $mir, 'call_in_loop');
 		my $guard_body = block_body($guard, 'body');
 		die "$test: safety reducer lost its loop call\n"
@@ -139,6 +157,19 @@ for my $test (@tests)
 				if !defined($home) ||
 				   ((defined($loop) ? $loop : '') !~ /\Q$home\E/ &&
 				    (defined($body) ? $body : '') !~ /\Q$home\E/);
+		}
+		my $pressured_baseline = function_body(
+			$test, read_file($baseline_mir), 'pressured_local_loop');
+		$pressured_loop = block_body($pressured_baseline, 'loop');
+		$pressured_body = block_body($pressured_baseline, 'body');
+		for my $name ('index', 'sum') {
+			my $home = frame_offset($pressured_baseline, $name);
+			die "$test: O0 pressured $name baseline lost its frame traffic\n"
+				if !defined($home) ||
+				   ((defined($pressured_loop) ? $pressured_loop : '') !~
+				      /\Q$home\E/ &&
+				    (defined($pressured_body) ? $pressured_body : '') !~
+				      /\Q$home\E/);
 		}
 		next;
 	}

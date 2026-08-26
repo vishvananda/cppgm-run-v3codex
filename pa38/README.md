@@ -218,9 +218,13 @@ semantic-preserving rewrites where safe:
   when the complete incoming-edge-through-backedge interval has no call or
   fixed-register clobber.  This local residency must use caller-saved capacity,
   must not add a function-wide save/restore, and must not overlap another
-  planned owner of that capacity.  A call in the interval, unavailable
-  capacity at the incoming edge, or an unproved span retains the ordinary
-  frame-home transfers; no particular physical register is required
+  planned owner of that capacity.  When an earlier call-bearing prefix already
+  creates full call-preserved pressure, the planner should prefer otherwise
+  free caller-saved argument capacity for the local interval so unrelated
+  caller-saved temporaries do not block activation.  A call in the interval,
+  unavailable capacity at the incoming edge, added preserved-register
+  pressure, or an unproved span retains the ordinary frame-home transfers; no
+  particular physical register is required
 - forward a scalar compiler temporary from its defining register into an
   immediately following integer comparison when that comparison is the
   temporary's only use, both operations have the same machine type, and the

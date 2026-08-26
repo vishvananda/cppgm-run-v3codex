@@ -1,9 +1,10 @@
 # PLAN-HOT-LOOP-RESIDENCY: P32 residual operation-count parity
 
 Status: active; retained-change coverage has been converted to
-student-implementable property/behavior oracles; local loop-phi activation is
-the latest retained increment; focused lanes, the full through-PA38 gate, file
-audit, and fresh 32-way inception all pass; performance work continues
+student-implementable property/behavior oracles; pressure-aware edge-local
+loop-phi capacity is the latest retained minor increment; its focused lane
+passes and the next fixed-copy encoding probe is active; performance work
+continues
 
 Date: 2026-08-26
 
@@ -333,6 +334,13 @@ different gates:
 - A heuristic that changes inlining, outlining, or allocation policy must show
   a reproducible whole-compiler benefit or a finalist-level exact Ir benefit.
   Locally prettier MIR alone does not establish policy profitability.
+
+A narrow backend preference may still remain as a minor code-quality increment
+when its complete safety proof is mechanical, it adds no function-wide
+preserved capacity, generated movement and exact whole-program Ir both fall,
+and balanced native timing shows no regression.  Such an increment is recorded
+separately and does not count as clearing Phase C's 0.5% performance-policy
+gate or the cumulative rebaseline threshold.
 
 ## 6. Investigations
 
@@ -768,7 +776,7 @@ checked-in outputs remain independent compatibility gates:
 | cyclic choice-region residency | PA38 O1 cyclic choice-region bullet | control `443-cyclic-choice-region-residency`; focused O1-versus-O0 home predicate plus runtime refresh/invariant results, allowing any call-preserved register and never comparing complete MIR or executable contents |
 | post-inline scalar-slot promotion | PA37 O1 late/post-prune cleanup paragraph | control `524-post-prune-inline-slot-promotion`; focused O0-versus-O1 call/slot/phi predicates plus O1 behavior, with no complete LowIR or executable comparison |
 | guarded fast-loop phi residency | PA38 O1 guarded-fast-arm bullet | control `444-call-free-fast-loop-phi-residency`; focused O0-versus-O1 frame-home and preserved-capacity predicates, a call-reaching negative, and runtime behavior, allowing any physical registers |
-| edge-local loop-phi activation | PA38 O1 bypassable call-free-loop bullet | control `448-local-loop-phi-activation`; focused O0-versus-O1 per-iteration frame traffic and preserved-capacity relationships, a call-crossing negative, and runtime behavior, allowing any physical registers |
+| edge-local loop-phi activation | PA38 O1 bypassable call-free-loop bullet | control `448-local-loop-phi-activation`; focused O0-versus-O1 per-iteration frame traffic, a pressure-matched no-added-preserve comparison, a call-crossing negative, and runtime loop/bypass behavior, allowing any physical registers |
 | historical planned capacity and fallback ownership | PA38 O2 single-use, call-free, call-safe, and lazy-home bullets | control `445-historical-placement-contracts`; focused home/capacity relationships plus O0/O1 runtime behavior, never naming a physical register or comparing complete MIR |
 
 One focused control may cover several rows when each function has one named
@@ -1433,6 +1441,46 @@ inception lane while another build or profiler is active.
   both machine probes are removed; PA38's existing 46/46 result is restored,
   no fixture or contract changes are retained, and no profiler or build
   process remains.
+- **P32-L43 (PRESSURE-AWARE LOCAL-PHI CAPACITY RETAINED AS MINOR QUALITY).**
+  Appending argument-capable registers after the original local pair was
+  inert.  Preferring them for every local phi exposed more activations, but a
+  low-pressure reducer showed that the broad rule could perturb a function's
+  preserved set.  The retained PA38 rule therefore changes preference only
+  when the earlier call-bearing prefix already has five values live through
+  its first call: it tries the otherwise-free argument-capable caller-saved
+  locations first, then the established local pair, and retains the existing
+  exact span/clobber and dynamic-busy fallbacks.  Frozen telemetry changes
+  458/38/18/20 candidate/assignment/promotion/busy counts to 458/38/27/11.
+  An exclusive alternate-pair intermediate was rejected because its seven
+  lost static assignments grew PA11 primary text by 248 bytes.
+
+  The retained point changes the frozen object from `8a33ad95...5de93f` to
+  deterministic `8eef1058...f7b52` and removes 99 text bytes.  PA11 primary
+  text falls 125,065 -> 124,871 bytes; the dominant
+  `std::vector<unsigned>::_M_fill_append` falls 428 -> 414 bytes and removes
+  its destination's per-iteration frame update while preserving its existing
+  five-register save set.  The complete compiler at
+  `/dev/shm/v3codex-p32-local-argpressure-j32/bin/selfhost/cppgm++-self`
+  loses 2,564 text bytes and was prepared with outer `-j32` plus inner 32-way
+  compilation in 18.17 s wall (448.26 s aggregate user, 228,676 KiB RSS).
+  Five balanced pairs measure 9.43/8.93 s candidate versus 9.44/8.96 s
+  baseline wall/user medians.  Matching software-task-clock is 9,442.571 ms
+  versus 9,450.821 ms; the fill helper falls from about 112.5 to 87.8 ms.
+  Exact Ir-only Cachegrind completes in 377.68/379.20 s candidate/baseline and
+  measures 39,594,329,579 versus 39,637,456,131 instructions
+  (-43,126,552, -0.109%); 31,205,000 of the reduction is in the fill helper.
+  Thus this is retained under the minor mechanically safe preference rule,
+  not claimed as clearing Phase C's 0.5% performance-policy gate.
+
+  PA38 control `448-local-loop-phi-activation` now checks behavior on both the
+  loop and bypass arms, removal of each loop phi home's per-iteration traffic,
+  equality of preserved capacity with a pressure-matched non-loop function,
+  the O0 frame baseline, and the call-crossing fallback.  It never matches a
+  physical register, complete LowIR/MIR/program, object, or hash.  Disabling
+  the preference makes the focused check fail.  The focused control and PA38
+  46/46 pass; full through/audit/inception and the atomic push are due with the
+  next checkpoint.  Both Cachegrind output objects have the expected hashes,
+  and no profiler remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

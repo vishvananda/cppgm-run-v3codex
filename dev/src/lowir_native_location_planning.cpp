@@ -131,6 +131,7 @@ struct Candidate
   bool crossing;
   bool is_phi;
   bool is_local_phi;
+  bool prefer_argument_local_phi;
   bool is_invariant;
   bool is_cyclic_region;
   bool is_call_argument;
@@ -248,6 +249,8 @@ void assign_candidate_registers(
   static const X64Register kPool[] =
     {XR_R13, XR_R12, XR_RBX, XR_R14, XR_R15};
   static const X64Register kCallerPool[] = {XR_R9, XR_R8};
+  static const X64Register kLocalCallerPool[] =
+    {XR_R9, XR_R8, XR_RDI, XR_RSI};
   std::vector<std::pair<std::size_t, std::size_t> >
     claimed[sizeof(kPool) / sizeof(kPool[0])];
   std::size_t caller_busy_until[sizeof(kCallerPool) /
@@ -283,20 +286,24 @@ void assign_candidate_registers(
   // function entry.  The exact transfer-to-span-end interval must contain no
   // clobber, and exact claimed spans keep distinct local loops reusable.
   std::vector<std::pair<std::size_t, std::size_t> > local_phi_claimed[
-    sizeof(kCallerPool) / sizeof(kCallerPool[0])];
+    sizeof(kLocalCallerPool) / sizeof(kLocalCallerPool[0])];
   for(std::size_t i = 0; i < candidates.size(); ++i) {
     const Candidate & candidate = candidates[i];
     if(!candidate.is_local_phi) continue;
-    for(std::size_t reg = 0;
-        reg < sizeof(kCallerPool) / sizeof(kCallerPool[0]); ++reg) {
+    static const std::size_t kArgumentFirstOrder[] = {2, 3, 0, 1};
+    const std::size_t order_size = candidate.prefer_argument_local_phi ?
+      sizeof(kArgumentFirstOrder) / sizeof(kArgumentFirstOrder[0]) : 2;
+    for(std::size_t order = 0; order < order_size; ++order) {
+      const std::size_t reg = candidate.prefer_argument_local_phi ?
+        kArgumentFirstOrder[order] : order;
       if(!span_is_free(local_phi_claimed[reg],
                        candidate.definition, candidate.end) ||
-         clobbered_in_interval(facts, kCallerPool[reg],
+         clobbered_in_interval(facts, kLocalCallerPool[reg],
                                candidate.definition, candidate.end))
         continue;
       local_phi_claimed[reg].push_back(
         std::make_pair(candidate.definition, candidate.end));
-      assign_candidate_location(candidate, kCallerPool[reg], timeline);
+      assign_candidate_location(candidate, kLocalCallerPool[reg], timeline);
       if(stats) {
         ++stats->planned_value_registers;
         ++stats->planner_local_phi_assignments;
@@ -820,6 +827,8 @@ FunctionLocationTimeline plan_value_locations(
     candidate.crossing = facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
     candidate.is_phi = is_phi;
     candidate.is_local_phi = is_local_phi;
+    candidate.prefer_argument_local_phi =
+      is_local_phi && first_call_preserved_pressure >= 5;
     candidate.is_invariant = is_invariant;
     candidate.is_cyclic_region = is_cyclic_region;
     candidate.is_call_argument =
