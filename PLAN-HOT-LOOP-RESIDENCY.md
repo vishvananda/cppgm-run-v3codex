@@ -2130,6 +2130,30 @@ inception lane while another build or profiler is active.
   restored PA38 passes 46/46, and no full inception comparison, student
   contract, retained property, or profiler remains.
 
+- **P32-L71 (CALL-FREE LOOP MEMORY GVN REJECTED).** Source-matched profiles
+  located duplicated bucket-vector reloads in `Program::FindEntry` after the
+  `name_index_probes` counter store.  A bounded PA37 probe extended the
+  already-retained final O1 memory-GVN pass from inline-hint functions to
+  call-free functions containing a CFG backedge, after all inlining had
+  finished.  This was a scheduling experiment only: it did not weaken the
+  optimizer's alias rules.  PA37 passed 187/187.  On the PA11 compiler the
+  pass visited eight additional functions and reported 24 additional load
+  eliminations (54 -> 78); PA11 text fell 146,437 -> 146,401 bytes and
+  `Program::FindEntry` fell 420 -> 416 bytes.  Disassembly nevertheless
+  confirmed that the motivating hot reload survived, correctly, because the
+  intervening store has no LowIR alias proof separating it from the bucket
+  storage.
+
+  The candidate was prepared at explicit self-host O1 with outer, inner, and
+  object build parallelism all set to 32 in 18.13 s.  Complete compiler text
+  grew 8,589,538 -> 8,591,470 bytes.  Its frozen output was deterministic at
+  `1a2cc6d...f4c`; the landing output remained `21883ca7...e639`.  Balanced
+  software-task-clock positions measured baseline 9,235.83/9,259.55/9,198.32
+  ms (median 9,235.83) and candidate 9,391.70/9,313.08/9,253.28 ms (median
+  9,313.08), a 77.25 ms or 0.84% regression.  The implementation is removed
+  at the fast gate, restored PA37 passes 187/187, and no full inception
+  comparison, student contract, retained property, or profiler remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
