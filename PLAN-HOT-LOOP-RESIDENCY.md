@@ -1326,6 +1326,28 @@ inception lane while another build or profiler is active.
   fixture updates, and plans.  It cites the clean 5,453/5,453 through report,
   PA38 file audit, and fresh outer/inner-32-way inception recorded in P32-L35,
   and pushed successfully to `origin/v3opt` (`f5bfd68e..2b218e8e`).
+- **P32-L38 (MERGE-TO-CALL-ARGUMENT FORWARDING REJECTED).** A generic PA38
+  probe recognized a single-use temporary frame merge whose complete set of
+  single-successor predecessor edges stored the value and whose target
+  immediately reloaded it into a known direct-call argument register.  It
+  required binding identity, matching types, no volatile or debug-visible
+  home, no alternate entry, and no intervening use or clobber.  The tokenizer
+  probe removed 21 MIR instructions and 234 text bytes; `Lexer::Run` lost ten
+  MIR instructions, 30 loop frame operands, and 150 native bytes, including
+  the measured identifier loop's two stores plus its `AppendUTF8` reload.
+  PA38 remained 46/46.  A matched GCC-O1 host build emitted the exact retained
+  frozen hash `d70bd5cf...d1a8`, cost no measurable compile time (5.81 versus
+  5.83 s medians), and a fresh outer/inner-32-way candidate self build finished
+  in 19.34 s wall (477.43 s aggregate user, 229,624 KiB maximum RSS).  Three
+  rotating self samples nevertheless regressed 9.42/8.95 -> 9.50/9.02 s
+  wall/user while preserving the same frozen hash.  Phase attribution puts
+  only about 13 ms of the roughly 100 ms measured regression in machine
+  optimization; most displacement appeared in preprocessing/frontend time.
+  This is negative evidence that even removing the exact hottest spill/reload
+  cluster destructively perturbs the current compiler layout enough to exceed
+  its direct gain.  The implementation is removed and receives no README or
+  feature test.  The tree is restored byte-for-byte to the retained source;
+  no Cachegrind, Valgrind, perf, or inception process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
