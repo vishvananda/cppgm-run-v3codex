@@ -2105,6 +2105,31 @@ inception lane while another build or profiler is active.
   passes 46/46.  No student contract is retained for a rejected policy and no
   profiler remains.
 
+- **P32-L70 (CONDITIONAL-CALL PARAMETER STAGING REJECTED AT CORRECT O1).**
+  P32-L65's one-parameter, one-call acyclic placement was reconstructed with
+  the narrowed `i32`, at-least-eight-use policy and mechanical type, CFG,
+  liveness, clobber, and direct-call guards.  It produced the intended local
+  relationship in `IsIdentifierBody`: ordinary ASCII paths retained the
+  incoming argument carrier, while only the guarded range-search arm saved
+  and restored the value through a typed frame home.  The frozen object stayed
+  byte-identical at `21883ca7...e639`, PA38 passed 46/46, and the candidate was
+  prepared at explicit self-host O1 with all three 32-way settings in 18.04 s.
+
+  Correct O1 static evidence does not establish a win.  Removing the
+  callee-save setup while adding the cold frame transfer grew the local body
+  185 to 187 bytes, tokenizer text 31,105 to 31,107 bytes, and complete
+  compiler text 8,589,538 to 8,596,034 bytes.  The first balanced
+  software-task-clock set measured baseline 9,153.34/9,093.11/9,273.01 ms
+  (median 9,153.34) and candidate 9,207.62/9,194.19/9,283.48 ms (median
+  9,207.62), +0.59%.  A reversed repeat measured baseline
+  9,173.39/9,196.78/9,199.50 ms (median 9,196.78) and candidate
+  9,131.23/9,227.05/9,153.72 ms (median 9,153.72), -0.47%.  Across all six
+  positions the medians are 9,185.09 and 9,200.91 ms, a candidate regression
+  of 15.82 ms or 0.17%, rather than the reproducible 0.5% improvement required
+  for a placement policy.  The implementation is removed at the fast gate,
+  restored PA38 passes 46/46, and no full inception comparison, student
+  contract, retained property, or profiler remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
