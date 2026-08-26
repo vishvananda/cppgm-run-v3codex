@@ -768,6 +768,7 @@ checked-in outputs remain independent compatibility gates:
 | cyclic choice-region residency | PA38 O1 cyclic choice-region bullet | control `443-cyclic-choice-region-residency`; focused O1-versus-O0 home predicate plus runtime refresh/invariant results, allowing any call-preserved register and never comparing complete MIR or executable contents |
 | post-inline scalar-slot promotion | PA37 O1 late/post-prune cleanup paragraph | control `524-post-prune-inline-slot-promotion`; focused O0-versus-O1 call/slot/phi predicates plus O1 behavior, with no complete LowIR or executable comparison |
 | guarded fast-loop phi residency | PA38 O1 guarded-fast-arm bullet | control `444-call-free-fast-loop-phi-residency`; focused O0-versus-O1 frame-home and preserved-capacity predicates, a call-reaching negative, and runtime behavior, allowing any physical registers |
+| edge-local loop-phi activation | PA38 O1 bypassable call-free-loop bullet | control `448-local-loop-phi-activation`; focused O0-versus-O1 per-iteration frame traffic and preserved-capacity relationships, a call-crossing negative, and runtime behavior, allowing any physical registers |
 | historical planned capacity and fallback ownership | PA38 O2 single-use, call-free, call-safe, and lazy-home bullets | control `445-historical-placement-contracts`; focused home/capacity relationships plus O0/O1 runtime behavior, never naming a physical register or comparing complete MIR |
 
 One focused control may cover several rows when each function has one named
@@ -1388,6 +1389,11 @@ inception lane while another build or profiler is active.
   `INCEPTION_BUILD_JOBS=32`; comparison took 35.54 s wall (910.58 s aggregate
   user, 230,208 KiB maximum RSS) and every object plus the final compiler
   matched.  No Cachegrind, Valgrind, perf, or inception process remains.
+- **P32-L40 (LOCAL-PHI CHECKPOINT PUSH).** Atomic implementation, PA38
+  contract/control, telemetry, and ledger commit `fa926453` pushed successfully
+  to `origin/v3opt` (`4889a189..fa926453`).  The coverage matrix explicitly
+  maps the new contract to control 448's structural and behavioral predicates.
+  The worktree and remote tip agree before the next residual profile.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
