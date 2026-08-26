@@ -596,7 +596,7 @@ To complete PA29, implement these goals:
    For fixed copies through 32 bytes, direct chunks may also avoid the setup
    for a string operation.  The direct encoder uses its reserved vector
    scratch for each complete 16-byte chunk and scalar chunks for the tail.
-   This form extends through 48 bytes when the operation declares at least
+   This form extends through 64 bytes when the operation declares at least
    eight-byte alignment.  Larger or more weakly aligned copies retain the
    compact string-operation form.  Both forms must preserve the source bytes,
    destination bytes, and declared scratch effects; vector chunks may not
@@ -844,7 +844,7 @@ strategies include:
   from the MIR instruction's declared clobber set and keep both logical
   address registers intact until their last use
 - encode a fixed `copy_bytes` through 32 bytes with reserved-scratch vector
-  chunks and a scalar tail, extending that direct form through 48 bytes for
+  chunks and a scalar tail, extending that direct form through 64 bytes for
   operations with at least eight-byte declared alignment; keep larger or more
   weakly aligned copies on the compact string-operation path
 - carry a sole-use load's typed frame, global, dereference, or indexed address

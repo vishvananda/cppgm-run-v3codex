@@ -3,7 +3,8 @@
 Status: active; retained-change coverage has been converted to
 student-implementable property/behavior oracles; pressure-aware edge-local
 loop-phi capacity is retained as a minor increment; reserved-scratch vector
-chunks for direct fixed copies are the latest performance landing;
+chunks through naturally aligned 64-byte fixed copies are the latest
+performance landing;
 performance work continues
 
 Date: 2026-08-26
@@ -1617,6 +1618,49 @@ inception lane while another build or profiler is active.
   53.63 s wall (1,399.37 s aggregate user, 229,372 KiB maximum RSS).  All
   exact and native output hashes are deterministic, and no profiler, build,
   or timing process remains.
+- **P32-L48 (ALIGNED LARGE VECTOR-COPY LANDING; WEAK EXPANSION REJECTED).**
+  Vector chunks changed the code-density knee measured in L44.  Extending the
+  direct form from 48 through 64 bytes only for operations declaring at least
+  eight-byte alignment grows final compiler text 8,571,706 -> 8,585,994 bytes
+  (+14,288) and frozen text 620,844 -> 620,964 bytes (+120), while removing
+  another 186,511,579 exact instructions: 38,646,948,485 -> 38,460,436,906
+  (-0.483%).  The reduction is distributed through semantic type work and
+  the LowIR optimizer rather than concentrated in one source spelling.
+
+  Four interleaved native samples per lane measure 9.375/8.900 s for the L47
+  compiler versus 9.295/8.810 s for the aligned-64 compiler wall/user medians
+  (-0.85%/-1.01%); a clean software task-clock sample likewise falls
+  9,313.14 -> 9,262.00 ms.  The candidate compiler is
+  `/dev/shm/v3codex-p32-vector64-align8-o1-j32/bin/selfhost/cppgm++-self` and
+  its frozen output is deterministic at `73c95999...e769` in both native and
+  exact runs.  These are fast A/B results against L47, not a new three-host
+  ratio; the next cumulative source-matched host checkpoint remains required
+  before claiming progress against the 1.50x exit line.
+
+  A broader diagnostic admitted weakly aligned fixed copies through 64 bytes.
+  It added another 6,028 bytes of compiler text, did not change this frozen
+  output, and was indistinguishable from the aligned-only policy across two
+  screened native blocks (combined eight-sample wall medians 9.275 versus
+  9.260 s, with user time effectively equal).  Contradictory pair orderings
+  and machine-load outliers did not support a keep decision.  Weakly aligned
+  medium copies therefore retain the compact string path.
+
+  PA29 now describes the aligned 64-byte boundary as a student-visible
+  encoding policy.  Control `908` executes a 56-byte aligned copy and checks
+  only the local copy relation plus vector-load/store instruction classes and
+  absence of string setup; new control `909` executes a 72-byte aligned copy
+  and checks the compact fallback class.  Neither prescribes a physical
+  register or compares a complete program, LowIR, MIR, object, or hash.
+  Restoring the old 48-byte cutoff makes `908` fail specifically because the
+  direct vector class disappears, and restoring the candidate passes it.
+  PA29 passes 291/291 and the full through-PA38 report passes 5,453/5,453.
+  The PA38 file audit has zero fatal findings and the same 36 advisory
+  warnings.  Fresh O1 inception used outer `-j32` and inner
+  `INCEPTION_BUILD_JOBS=32`; every object and the final compiler matched in
+  54.08 s wall (1,360.50 s aggregate user, 229,168 KiB maximum RSS).  The one
+  intended Cachegrind process exited normally, and no profiler or build
+  process remains.  The atomic commit and push follow in the checkpoint
+  entry.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

@@ -189,7 +189,8 @@ for my $test (@tests)
 	$expected_status = 10 if $test =~ /small-copy-boundary/;
 	$expected_status = 37 if $test =~ /aligned-medium-copy-direct/;
 	$expected_status = 39 if $test =~ /weakly-aligned-medium-copy-compact/;
-	$expected_status = 41 if $test =~ /large-aligned-copy-compact/;
+	$expected_status = 41 if $test =~ /aligned-large-copy-direct/;
+	$expected_status = 43 if $test =~ /oversized-aligned-copy-compact/;
 	my $run_status = run_command_capture(
 		cmd => [$program],
 		stdout => "$directory/program.stdout",
@@ -256,12 +257,23 @@ for my $test (@tests)
 			if index($code, "\xf3\xa4") < 0;
 		next;
 	}
-	if($test =~ /large-aligned-copy-compact/) {
+	if($test =~ /aligned-large-copy-direct/) {
 		my $body = function_body($test, $mir, 'main');
-		die "$test: large aligned copy lost its documented operation\n"
+		die "$test: aligned large copy lost its documented operation\n"
 			if $body !~ /^\s+copy_bytes 56x8, /m;
 		my $code = main_code($test, $program);
-		die "$test: large aligned copy lost compact string encoding\n"
+		die "$test: aligned large copy used string-operation setup\n"
+			if index($code, "\xf3\xa4") >= 0;
+		die "$test: aligned large copy used no reserved-scratch vector chunk\n"
+			if !has_vector_copy_pair($code);
+		next;
+	}
+	if($test =~ /oversized-aligned-copy-compact/) {
+		my $body = function_body($test, $mir, 'main');
+		die "$test: oversized aligned copy lost its documented operation\n"
+			if $body !~ /^\s+copy_bytes 72x8, /m;
+		my $code = main_code($test, $program);
+		die "$test: oversized aligned copy lost compact string encoding\n"
 			if index($code, "\xf3\xa4") < 0;
 		next;
 	}
