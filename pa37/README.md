@@ -331,6 +331,10 @@ running optimizing transforms.
   scalar global to its typed initializer; mutable, volatile, thread-local,
   externally replaceable, aggregate, and indirectly addressed storage keeps
   the ordinary memory operation
+- folding a direct call to the ABI-designated `strlen` operation when its
+  argument is the direct address of `storage=readonly` structured byte data
+  with a compiler-known first NUL byte; writable or unterminated data and a
+  dynamically supplied pointer keep the call
 - removal of dead local-slot traffic for unused direct slot loads and for
   stores to direct local slots that have no remaining loads, escaping uses, or
   other non-store uses

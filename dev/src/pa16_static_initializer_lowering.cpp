@@ -178,6 +178,10 @@ SymbolId StaticInitializerLowering::EnsureStringLiteralSpelling(
 	Global global;
 	global.symbol = symbol;
 	global.type = LowObject(units.size() * alignment, alignment);
+	// A C++ string literal is an array of const code units.  Preserve that
+	// immutability at the serialized LowIR boundary so later passes need no
+	// frontend-only knowledge to reason about its contents.
+	global.storage = Global::STORAGE_READONLY;
 	global.initializer_kind = Global::STRUCTURED_VALUE;
 	for (std::size_t i = 0; i < units.size(); ++i)
 	{

@@ -2328,6 +2328,73 @@ inception lane while another build or profiler is active.
   property is retained for the rejected policy, no Cachegrind or full
   inception comparison ran, and no profiler process remains.
 
+- **P32-L77 (NARROW LOAD-NORMALIZATION FUSION REJECTED).** The next native
+  probe tried to fold a typed narrow load and its following sign/zero
+  normalization, then to omit a later normalization already implied by a
+  dominating extension.  The broad form shrank `PhysicalCursor::Next` from
+  `0x88f` to `0x853` bytes and `pp_tokenizer` text from 30,050 to 29,944
+  bytes, but the O1/all-32-way candidate rejected the frozen source with an
+  incompatible-macro-redefinition diagnostic.  Bisection showed that load
+  fusion alone retained the failure; same-width zero extension had been
+  incorrectly treated as proving same-width sign extension.
+
+  The mechanically safe `i8` load plus `zext i8` subset shrank
+  `PhysicalCursor::Next` to `0x873` and tokenizer text to 30,012 bytes.  Its
+  complete compiler instead grew 8,589,538 -> 8,590,178 text bytes and its
+  deterministic frozen output was `ee15ca8c...4c8557`.  Preparation at
+  `/dev/shm/v3codex-p34-loadu8-o1` took 17.73 s with explicit O1 and all three
+  32-way settings.  A balanced task-clock screen measured baseline
+  9,166.03/9,117.89/9,122.23 ms (median 9,122.23) and candidate
+  9,185.00/9,133.03/9,159.46 ms (median 9,159.46), a 37.23 ms or 0.41%
+  regression.  PA29 was 291/291 before restoration and again afterward.
+  Both forms are removed; no student contract or property is retained and no
+  Cachegrind, inception comparison, or stale profiler remains.
+
+- **P32-L78 (READONLY BYTE-STRING LENGTH FOLD RETAINED).** Fresh profile and
+  static attribution found 1,054 `strlen@plt` calls in the self compiler,
+  versus 207 in GCC and 180 in Clang, with about 136 ms of sampled self time.
+  The frozen optimized LowIR retained 84 direct `strlen` calls; 72 received
+  the direct address of one of 33 structured byte globals.  The source
+  lowering had not preserved the C++ string literal array's const element
+  contract, so PA16 now serializes literal backing data as
+  `storage=readonly`.  A PA37 O1 rule uses only that LowIR property, the
+  structured byte initializer, and the ABI-designated `strlen` operation to
+  replace a direct base-address call with the first-NUL length.  Writable,
+  unterminated, non-byte, and dynamic-pointer inputs remain calls; no literal
+  symbol spelling or workload content participates.
+
+  On the frozen unit the 72 eligible calls disappear and the 12 dynamic calls
+  remain.  In the complete self compiler, static `strlen@plt` calls fall
+  1,054 -> 78 and text falls 8,589,538 -> 8,577,926 bytes (-11,612).  The
+  isolated O1/all-32-way compiler at
+  `/dev/shm/v3codex-p34-strlen-o1.P0AzF5/bin/selfhost/cppgm++-self` prepared in
+  17.68 s.  Its frozen output is deterministic at
+  `f92da5db...d9c866`; it intentionally differs from the prior
+  `21883ca7...e639` because the object now records readonly literal storage.
+
+  Two reverse-balanced task-clock sets independently pass the native keep
+  gate.  The first measured baseline 9,202.76/9,285.91/9,155.25 ms (median
+  9,202.76) and candidate 9,127.37/9,119.03/9,261.11 ms (median 9,127.37),
+  -75.39 ms or -0.82%.  The second measured baseline
+  9,194.32/9,240.20/9,259.19 ms (median 9,240.20) and candidate
+  9,257.28/9,153.63/9,086.50 ms (median 9,153.63), -86.57 ms or -0.94%.
+  Across all twelve positions, medians are 9,221.48 and 9,140.50 ms,
+  -80.98 ms or -0.88%.  Exact Ir was not needed because both native sets
+  cleared 0.5% reproducibly.
+
+  PA16 and PA37 READMEs give students the high-level storage and fold
+  contracts.  New routed property checks identify only named reducer
+  functions: PA16 requires literal backing storage to be readonly while an
+  ordinary writable character array stays writable; PA37 requires the call
+  to disappear with the correct first-NUL result while three unsafe guards
+  retain it.  They do not compare a complete LowIR program, MIR, object,
+  register assignment, or hash.  PA16 is 301/301, PA37 is 187/187, PA38 is
+  46/46, and root through-PA38 is 5,453/5,453.  The PA38 audit has zero fatal
+  findings and the established 36 advisories; `lowir_opt.cpp` remains exactly
+  3,000 lines.  Full O1 inception with explicit outer, inner, and object
+  32-way settings matched every object and the final compiler in 36.89 s.
+  No Cachegrind was started and no profiler or inception process remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,

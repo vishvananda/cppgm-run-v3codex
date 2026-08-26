@@ -96,6 +96,12 @@ A declaration lowered for `__builtin_unreachable` carries the PA13
 `role=unreachable` symbol fact together with `effects=readnone`, `unwind=no`,
 and `return=noreturn`.
 
+The backing array for each C++ string literal is emitted as an internal
+structured global with `storage=readonly`.  This records the source array's
+const element contract in serializable LowIR; an ordinary writable character
+array must not gain that storage property merely because it has a static
+initializer.
+
 PA16 writes a single concatenated LowIR program consisting of:
 
 - zero or more `global` definitions

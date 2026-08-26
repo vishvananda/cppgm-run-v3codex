@@ -1,5 +1,7 @@
 #include "lowir_scalar_rules.h"
 
+#include <limits>
+
 namespace lowir_opt {
 
 using lowir_model::Function;
@@ -55,6 +57,108 @@ ReadonlyGlobalIndex::ReadonlyGlobalIndex(
     constants[global.symbol] = global.init_operand;
     types[global.symbol] = global.type;
   }
+}
+
+namespace {
+
+bool readonly_byte_string_length(
+    const lowir_model::GlobalDefinition & global, std::size_t * length)
+{
+  if(!global.structured || global.storage != lowir_model::GSM_READONLY)
+    return false;
+  std::size_t offset = 0;
+  for(std::size_t i = 0; i < global.data_items.size(); ++i) {
+    const lowir_model::GlobalDefinition::DataItem & item =
+      global.data_items[i];
+    if(item.kind == lowir_model::GlobalDefinition::DataItem::ITEM_ZERO) {
+      if(item.zero_bytes == 0) continue;
+      *length = offset;
+      return true;
+    }
+    if(item.kind != lowir_model::GlobalDefinition::DataItem::ITEM_INTEGER ||
+       item.type.storage_size != 1 ||
+       item.literal_operand.kind != Operand::OP_INTEGER ||
+       !item.literal_operand.has_int_value)
+      return false;
+    if(static_cast<unsigned char>(item.literal_operand.int_value) == 0) {
+      *length = offset;
+      return true;
+    }
+    ++offset;
+  }
+  return false;
+}
+
+}  // namespace
+
+ReadonlyByteStringIndex::ReadonlyByteStringIndex(
+    const lowir_model::LowirProgram & program)
+  : known(program.symbol_names.size(), 0),
+    lengths(program.symbol_names.size()), strlen_symbol()
+{
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
+    const lowir_model::FunctionDeclaration & declaration =
+      program.function_declarations[i];
+    if(declaration.metadata.object_symbol.valid() &&
+       program.strings.get(declaration.metadata.object_symbol) ==
+         "cppgm_builtin_strlen") {
+      strlen_symbol = declaration.symbol;
+      break;
+    }
+  }
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    const lowir_model::GlobalDefinition & global = program.globals[i];
+    std::size_t length = 0;
+    if(readonly_byte_string_length(global, &length) &&
+       length <= static_cast<std::size_t>(
+         std::numeric_limits<long long>::max())) {
+      known[global.symbol] = 1;
+      lengths[global.symbol] = length;
+    }
+  }
+}
+
+bool fold_readonly_byte_string_lengths(Function * function,
+    const ReadonlyByteStringIndex & strings, Stats * stats)
+{
+  if(!strings.strlen_symbol.valid()) return false;
+  std::vector<lowir_model::SymbolId> address_origins(
+    function->value_names.size());
+  bool changed = false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      Instruction & ins = function->blocks[block].instructions[index];
+      if(ins.kind == Instruction::IK_ADDR && ins.dest.valid() &&
+         ins.first.kind == Operand::OP_GLOBAL)
+        address_origins[ins.dest] = ins.first.symbol;
+      if(ins.kind != Instruction::IK_CALL ||
+         ins.first.kind != Operand::OP_GLOBAL ||
+         ins.first.symbol != strings.strlen_symbol || ins.args.size() != 1 ||
+         ins.args[0].kind != Operand::OP_TEMP) continue;
+      const lowir_model::ValueId argument = ins.args[0].value;
+      if(static_cast<std::uint32_t>(argument) >= address_origins.size())
+        continue;
+      const lowir_model::SymbolId global = address_origins[argument];
+      if(!global.valid() || static_cast<std::uint32_t>(global) >=
+           strings.known.size() || !strings.known[global]) continue;
+      Operand result;
+      result.kind = Operand::OP_INTEGER;
+      result.has_int_value = true;
+      result.int_value = static_cast<long long>(strings.lengths[global]);
+      result.int_high = 0;
+      result.literal_type = ins.type;
+      ins.kind = Instruction::IK_CONST;
+      ins.first = result;
+      ins.second = Operand();
+      ins.third = Operand();
+      ins.args.clear();
+      ins.call_params.clear();
+      ins.has_call_signature = false;
+      changed = true;
+      if(stats) ++stats->rewrites;
+    }
+  return changed;
 }
 
 bool fold_readonly_global_loads(Function * function,

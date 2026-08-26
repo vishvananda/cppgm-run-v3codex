@@ -19,9 +19,7 @@
 #include "lowir_staged_copy_forwarding.h"
 #include "lowir_small_object_promotion.h"
 #include "lowir_unreachable_opt.h"
-
 #include <algorithm>
-
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -2982,9 +2980,18 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       }
     }
   }
-  // Inlining can expose a repeated branch condition after the caller's last
-  // ordinary cleanup.  One final linear sweep consumes only edge-local facts;
-  // it is not an optimizer fixed point.
+  ReadonlyByteStringIndex byte_strings(program);
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    if(fold_readonly_byte_string_lengths(
+         &program.functions[i], byte_strings, stats)) {
+      lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
+      timed_function_pass(simplify_values, &program.functions[i], stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+        &simplify_arena);
+      timed_dce(&program.functions[i], boundaries, stats, &dce_scratch);
+      timed_cfg(&program.functions[i], stats, &cfg_scratch, &analysis);
+    }
+  // Consume edge-local conditions exposed by the final inlining cleanup.
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     fold_edge_known_branches(&program.functions[i], stats, &cfg_scratch);
   finish_optimizer_stats(program, pruning, stats, started);

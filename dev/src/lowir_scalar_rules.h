@@ -25,6 +25,18 @@ struct ReadonlyGlobalIndex
                       bool populate);
 };
 
+// Readonly structured byte globals whose first zero byte is known, together
+// with the ABI-designated strlen declaration used by ordinary LowIR calls.
+struct ReadonlyByteStringIndex
+{
+  std::vector<unsigned char> known;
+  std::vector<std::size_t> lengths;
+  lowir_model::SymbolId strlen_symbol;
+
+  explicit ReadonlyByteStringIndex(
+    const lowir_model::LowirProgram & program);
+};
+
 // A readonly scalar global with a literal initializer always observes that
 // literal, so a typed direct load of it is the constant.
 bool fold_readonly_global_loads(lowir_model::Function * function,
@@ -32,6 +44,11 @@ bool fold_readonly_global_loads(lowir_model::Function * function,
     const std::vector<lowir_model::Operand> & readonly_constants,
     const std::vector<lowir_model::LowType> & readonly_types,
     Stats * stats);
+
+// Replace strlen of the direct address of a known readonly byte string by
+// its first-NUL length.  The proof uses only serialized LowIR facts.
+bool fold_readonly_byte_string_lengths(lowir_model::Function * function,
+    const ReadonlyByteStringIndex & strings, Stats * stats);
 
 bool same_operand(const lowir_model::Operand & a,
                   const lowir_model::Operand & b);
