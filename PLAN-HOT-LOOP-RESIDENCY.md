@@ -8,7 +8,8 @@ performance landing; the exact-cost 16-byte vector zero is retained as a
 minor native-positive quality increment; immediate-call merge sources may
 donate their frame homes as a minor MIR-quality increment; direct immediate
 comparisons for large switches are the latest performance landing;
-performance work continues from 1.558x GCC and 1.588x Clang
+the odd-save paired recoloring replay is the current finalist; the latest
+pre-replay full-source O1 aggregate-CPU gaps are 1.610x GCC and 1.553x Clang
 
 Date: 2026-08-26
 
@@ -2604,6 +2605,72 @@ inception lane while another build or profiler is active.
   wall.  The retained implementation commit is `de969f83` and the gate-ledger
   commit is `6e5fb7c5`; both pushed successfully to `origin/v3opt` in
   `f261eadf..6e5fb7c5`.  No profiler, inception, or build process remains.
+
+- **P32-L82 (CURRENT-SOURCE FULL-BUILD REBASELINE).** Fresh host compilers and
+  the retained post-L81 self compiler were timed as finished `CXX` drivers on
+  clean current-source PA39 builds with self-host level O1 and outer, inner,
+  and object parallelism all explicitly 32.  GCC measured 21.23 s wall and
+  585.09 aggregate CPU seconds; Clang measured 21.66/606.76; self measured
+  33.36/942.05.  The honest full-source ratios are therefore 1.571x GCC and
+  1.540x Clang by wall, and 1.610x GCC and 1.553x Clang by aggregate CPU.  GCC
+  is the binding lane: self must remove about 64.4 aggregate CPU seconds, or
+  6.8%, to reach 1.50x at the current denominator.  The binaries are under
+  `/dev/shm/v3codex-p34-prefix-host-{gcc,clang}.*` and the retained self root
+  is `/dev/shm/v3codex-p34-prefix-de969f83.Mo4xTZ`.
+
+- **P32-L83 (ODD-SAVE RECOLOR REPLAY FINALIST).** L53's source-independent
+  odd-save multi-color policy was reconstructed on the current L81 landing.
+  It retains the established one-color even-save behavior, but when a call
+  function starts with an odd saved-register count it requires at least two
+  independently liveness-safe callee-saved colors and distinct caller-saved
+  destinations before rewriting the pair.  This preserves the SysV alignment
+  profitability proof: two saves disappear without adding a padding word.
+  Every source occurrence remains explicit; each replacement remains free at
+  every source-live boundary and clobber; debug and implicit-register guards
+  are unchanged.  No symbol, source function, or workload is recognized.
+
+  The O1 compiler prepared with all three 32-way settings in 17.70 s.
+  `Lexer::Peek` drops from five to three callee-saved registers and 453 to 433
+  bytes, `Lexer::Run` drops 109 bytes, and complete compiler text drops 1,904
+  bytes.  Two clean full-source reverse pairs measured production
+  32.70 s wall/935.44 aggregate CPU seconds and 33.35/937.97; the candidate
+  measured 32.73/931.97 and 32.33/928.84.  Mean wall improves 33.025 to
+  32.530 s (-1.50%) and mean aggregate CPU improves 936.71 to 930.41 s
+  (-6.30 s, -0.67%), clearing the broad-oracle retention threshold that did
+  not exist at L53.  This is measured destructive interference: the old
+  blanket odd-count exclusion preserved two unnecessary function-wide saves
+  in common conditional-call code.
+
+  The frozen fast guard remains inside its resolution band: three task-clock
+  samples have medians 9,163.31 ms production and 9,184.82 ms candidate
+  (+0.23%).  Production outputs are deterministic at `62396068...58d47` and
+  candidate outputs at `c1b20dc2...eb7a2`.  PA38's existing behavioral
+  recoloring control now carries distinct even- and odd-save positives: the
+  odd shape exposes two independent call-free address ranges and must finish
+  with no more preserved capacity than the even shape, while a two-call live
+  value remains call-preserved.  The checker uses register classes and
+  capacity relationships, not a register spelling or complete MIR/program
+  oracle.  The README states the paired-profitability rule.  Focused control
+  and PA38 pass 1/1 and 46/46.
+
+  The finalist Cachegrind lane disabled cache and branch simulation.  The
+  exact retained baseline executed 38,243,807,255 Ir; the final candidate
+  executed 37,762,578,773, a reduction of 481,228,482 or 1.258%.  Diff
+  attribution assigns -395.9 million Ir to `Lexer::Peek` and -99.2 million to
+  `TranslationCursor::Next`, with small distributed offsets.  Stopping the
+  recolor search as soon as its one- or two-color profitability quota is met
+  preserves generated output byte-for-byte and removes another 2.03 million
+  Ir versus the initially timed candidate; final complete text is 2,144 bytes
+  below production.  Exact files are under
+  `/dev/shm/v3codex-p34-odd-cachegrind.mToHlQ`.
+
+  Final verification passes PA38 46/46 and root through-PA38 5,453/5,453.
+  The PA38 file audit has zero fatal findings and the established 36
+  advisories.  A fresh final compiler prepared at explicit O1 and all three
+  32-way settings in 17.84 s; inception matched every object and the final
+  compiler in 33.50 s wall, 883.07 s user, and 49.52 s system.  The isolated
+  root is `/dev/shm/v3codex-p34-odd-final.Tx2q0J`.  Commit and push remain
+  pending; no profiler, inception, build, or timing process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

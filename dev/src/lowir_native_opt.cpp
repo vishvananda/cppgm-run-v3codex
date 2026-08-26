@@ -820,37 +820,48 @@ bool recolor_call_free_callee_saved(MirFunction & function,
     }
   // In a frameless SysV call function, an even save count also needs one
   // padding word.  Recoloring one save then removes both the memory operation
-  // and the padding adjustment in each prologue/epilogue.  Odd-to-even
-  // recoloring merely trades a save for an adjustment and is not a clear hot
-  // path win, while leaf functions have no call-alignment tax at all.
-  if(!has_call || function.callee_saved_regs.size() % 2 != 0) return false;
+  // and the padding adjustment in each prologue/epilogue.  At an odd save
+  // count, require two independently safe colors so the result also removes
+  // one save/alignment pair rather than merely trading a save for padding.
+  // Leaf functions have no call-alignment tax at all.
+  if(!has_call) return false;
   static const X64Register destinations[] = {
     XR_R8, XR_R9, XR_RDI, XR_RSI
   };
+  std::vector<std::pair<X64Register, X64Register> > rewrites;
+  bool destination_used[sizeof(destinations) / sizeof(destinations[0])] =
+    {false, false, false, false};
+  const std::size_t required =
+    function.callee_saved_regs.size() % 2 == 0 ? 1 : 2;
   for(std::size_t saved = function.callee_saved_regs.size();
-      saved != 0; --saved) {
+      saved != 0 && rewrites.size() < required; --saved) {
     const X64Register source = function.callee_saved_regs[saved - 1];
     for(std::size_t candidate = 0;
         candidate < sizeof(destinations) / sizeof(destinations[0]);
         ++candidate) {
+      if(destination_used[candidate]) continue;
       const X64Register destination = destinations[candidate];
       if(!can_recolor_register(
            function, liveness, source, destination)) continue;
-      for(std::size_t block = 0; block < function.blocks.size(); ++block)
-        for(std::size_t instruction = 0;
-            instruction < function.blocks[block].instructions.size();
-            ++instruction)
-          for(std::size_t operand = 0;
-              operand < function.blocks[block].instructions[instruction].
-                operands.size(); ++operand)
-            rewrite_register(
-              &function.blocks[block].instructions[instruction].
-                operands[operand], source, destination);
-      if(stats) ++stats->rewrites;
-      return true;
+      rewrites.push_back(std::make_pair(source, destination));
+      destination_used[candidate] = true;
+      break;
     }
   }
-  return false;
+  if(rewrites.size() < required) return false;
+  for(std::size_t rewrite = 0; rewrite < rewrites.size(); ++rewrite)
+    for(std::size_t block = 0; block < function.blocks.size(); ++block)
+      for(std::size_t instruction = 0;
+          instruction < function.blocks[block].instructions.size();
+          ++instruction)
+        for(std::size_t operand = 0;
+            operand < function.blocks[block].instructions[instruction].
+              operands.size(); ++operand)
+          rewrite_register(
+            &function.blocks[block].instructions[instruction].operands[operand],
+            rewrites[rewrite].first, rewrites[rewrite].second);
+  if(stats) stats->rewrites += rewrites.size();
+  return true;
 }
 
 bool is_removable_definition(const MirInstruction & instruction,

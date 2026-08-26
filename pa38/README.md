@@ -249,9 +249,12 @@ semantic-preserving rewrites where safe:
   original register.  Call liveness should use the call's exact annotated
   argument set when present.  At O1 this is required for the profitable
   even-save call-function case, where removing one save also removes the
-  SysV call-alignment padding adjustment; leaf functions, odd save counts,
-  call-crossing ranges, and unproved interference retain their original
-  placement.  No particular caller-saved register is required
+  SysV call-alignment padding adjustment.  An odd-save call function may be
+  recolored only when at least two independently safe callee-saved colors have
+  distinct caller-saved destinations, so the pair removes both saves without
+  adding alignment padding.  Leaf functions, an odd count with fewer than two
+  safe colors, call-crossing ranges, and unproved interference retain their
+  original placement.  No particular caller-saved register is required
 - reuse a final-use pointer register as the destination of an eligible scalar
   load only when the effective address is consumed before the destination is
   overwritten, the pointer has no surviving aliases or edge use, and the load

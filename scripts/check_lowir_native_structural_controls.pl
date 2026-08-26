@@ -218,18 +218,35 @@ for my $test (@tests)
 	if ($test =~ /call-free-callee-save-recoloring/) {
 		my $positive = function_body($test, $mir, 'recolor_candidate');
 		my $append = block_body($positive, 'append');
-		die "$test: reducer lost its call-free multi-store address range\n"
+		die "$test: odd-save reducer lost its call-free address ranges\n"
 			if !defined($append);
 		my ($carrier) = $append =~
-			/^\s+store\.i64 \[([a-z0-9]+)\],[^\n]*\n\s+store\.i64 \[\1\+8\],[^\n]*\n\s+store\.i64 \[\1\+16\],/m;
+			/^\s+store\.i64 \[([a-z0-9]+)\],[^\n]*\n.*?^\s+store\.i64 \[\1\+8\],[^\n]*\n.*?^\s+store\.i64 \[\1\+16\],/ms;
 		die "$test: related stores do not share one address carrier\n"
 			if !defined($carrier);
 		my %caller_saved = map { $_ => 1 }
 			qw(rax rcx rdx rsi rdi r8 r9 r10 r11);
-		die "$test: call-free address range retained a callee-saved carrier\n"
-			if !$caller_saved{$carrier};
+		my @odd_carriers = $append =~ /^\s+lea ([a-z0-9]+), \[/mg;
+		die "$test: odd-save reducer lost its two independent address ranges\n"
+			if scalar(@odd_carriers) != 2 ||
+			   $odd_carriers[0] eq $odd_carriers[1];
+		for my $odd_carrier (@odd_carriers) {
+			die "$test: odd-save call-free range retained a callee-saved carrier\n"
+				if !$caller_saved{$odd_carrier};
+		}
 		die "$test: reducer lost its exact one-register call annotation\n"
 			if $positive !~ /^\s+call \@next_value \[args=\([a-z0-9]+\),/m;
+
+		my $even = function_body(
+			$test, $mir, 'even_save_recolor_candidate');
+		my $even_append = block_body($even, 'append');
+		my ($even_carrier) = defined($even_append) ?
+			($even_append =~ /^\s+lea ([a-z0-9]+), \[/m) : ();
+		die "$test: even-save call-free range was not recolored\n"
+			if !defined($even_carrier) || !$caller_saved{$even_carrier};
+		die "$test: odd pair did not remove its additional save capacity\n"
+			if preserve_count($positive) == 0 ||
+			   preserve_count($positive) != preserve_count($even);
 
 		my $guard = function_body($test, $mir, 'cross_call_guard');
 		my ($crossing) = $guard =~
