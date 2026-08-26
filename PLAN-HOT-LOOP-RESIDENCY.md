@@ -1661,6 +1661,14 @@ inception lane while another build or profiler is active.
   intended Cachegrind process exited normally, and no profiler or build
   process remains.  The atomic commit and push follow in the checkpoint
   entry.
+- **P32-L49 (ALIGNED LARGE-COPY CHECKPOINT PUSH).** Atomic implementation,
+  PA29 contract/control, boundary fixtures, and ledger commit `7d60e65d`
+  passed the L48 gates and pushed successfully to `origin/v3opt`
+  (`41820c99..7d60e65d`).  This ledger-only follow-up records the completed
+  checkpoint and does not require a duplicate compiler gate.  No profiler,
+  build, or timing process remains.  Continue with a census of fixed zeroing
+  and other distributed memory traffic before selecting the next native A/B
+  candidate.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
