@@ -2468,6 +2468,52 @@ inception lane while another build or profiler is active.
   representation, no Cachegrind or inception comparison ran, and no profiler
   or build process remains.
 
+- **P32-L80 (FULL-SOURCE THREE-COMPILER ATTRIBUTION).** Flat native
+  `task-clock` profiles now cover clean full-source O1/all-32-way builds for
+  the exact current self, GCC, and Clang compilers.  They collected 187K,
+  115K, and 119K samples with zero loss and about 940.50, 580.63, and
+  599.08 aggregate task-clock seconds.  The corresponding CPU ratios are
+  1.620x GCC and 1.570x Clang, consistent with the unprofiled clean-build
+  oracle after profiler overhead.
+
+  The self lane assigns about 108.3 s to `Lexer::Peek`, 75.0 s to
+  `Lexer::Run`, 40.6 s to `PhysicalCursor::Next`, 31.6 s to
+  `TranslationCursor::Next`, 26.1 s to the macro `Token` move, and 20.1 s to
+  `AppendUTF8`.  Host inlining redistributes these rows, so they are not
+  independent gaps.  Against the structurally closer Clang lane,
+  `Peek+TranslationCursor` is about 139.9 versus 112.4 s (+27.5), `Run` is
+  75.0 versus 48.6 s (+26.4), and physical-next is 40.6 versus 25.3 s
+  (+15.3).  Those three aggregate excesses total about 69.2 s, nearly the
+  69.6 s aggregate reduction needed to reach 1.50x GCC in this oracle.
+  `simplify_values_with_analysis` is only 0.29% of the self profile, which
+  independently explains why L79's representation shrink could not move the
+  broad workload.
+
+  Address-level inspection of `Run`'s hottest `+0x1000..+0x1274` cluster
+  found the inlined generic pattern that initializes a 13-pointer local table
+  from readonly literals, scans it, calls `strlen`, and conditionally calls
+  `memcmp`.  Current optimized LowIR preserves the direct literal addresses
+  but loses them through the variable indexed local load before `strlen`.
+  GCC and Clang also retain one dynamic `strlen` call in their `Run` bodies,
+  so deleting that source-level algorithm is neither the parity explanation
+  nor an acceptable workload reshape.  Across the whole self build, libc
+  `strlen` plus the PLT stub accounts for about 16.8 task-clock seconds; the
+  hosts spend about 14 seconds in libc `strlen` with attribution redistributed
+  around the call.
+
+  The next diagnostic therefore remains generic: census bounded readonly
+  string candidates and the loop state made call-crossing by their
+  `strlen`/`memcmp` operations.  A native intrinsic or split-lifetime probe is
+  justified only if structural facts give a source-independent profitability
+  bound and final native movement improves; it may not recognize the named
+  operator table, compiler source, or frozen workload.  Any retained native
+  operation belongs in PA29 with a high-level student contract plus focused
+  structural/behavioral guards; any LowIR provenance transform belongs in
+  PA37.  The three profile files are
+  `/dev/shm/v3codex-p34-fullprofile-{self,gcc,clang}.data`.  A bounded offline
+  annotate attempt was terminated by its timeout, and no profiler or build
+  process remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
