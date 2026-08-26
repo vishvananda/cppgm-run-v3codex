@@ -2154,6 +2154,47 @@ inception lane while another build or profiler is active.
   at the fast gate, restored PA37 passes 187/187, and no full inception
   comparison, student contract, retained property, or profiler remains.
 
+- **P32-L72 (DEFERRED FIXED-RESULT CONSTANT DIVISION REJECTED; INTERFERENCE
+  MEASURED).** Source-matched disassembly found a concrete host-code gap in
+  `TypeTable::Get`: self used hardware signed division by the constant 56,
+  while GCC and Clang used multiply-high magic.  The existing PA29 encoder
+  already implements constant division but recognizes only an adjacent result
+  copy or direct return.  O1 instead left the quotient in `rax`, performed an
+  independent load and extension, and consumed it in a later comparison.
+  `TypeTable::Get` was 110 bytes with `idiv` versus 130 bytes with magic.
+
+  Three source-matched variants tested whether other replacements caused
+  destructive code-layout interference.  The broad sound fixed-result
+  liveness recognition removed 4,578 of the complete compiler's 4,978
+  hardware divides and grew text 8,589,538 -> 8,685,638 bytes.  Its explicit
+  O1/all-32-way preparation took 18.03 s; balanced task-clock medians were
+  9,197.99 ms baseline and 9,201.18 ms candidate, +0.03%.  Restricting the
+  deferred use to comparisons removed 1,997 divides, grew text to 8,630,078
+  bytes, and prepared in 17.79 s.  That policy regressed balanced medians
+  9,147.88 -> 9,278.33 ms, +1.43%.  Candidate frozen hashes were respectively
+  `523e400e...cb22e` and `6e538442...74567`; baseline remained
+  `21883ca7...e639`.
+
+  A final interference control admitted comparison uses only in functions
+  with at most 32 final MIR instructions.  It changed just 14 compiler sites,
+  including the one motivating `TypeTable::Get` site, and limited total text
+  growth to 1,752 bytes (8,591,290).  Its O1/all-32-way preparation took 17.62
+  s and its frozen output was byte-identical to baseline.  Two reversed
+  three-position sets measured -0.13% and -0.30%; all six positions give
+  baseline/candidate medians 9,161.83/9,141.89 ms, only -19.94 ms or -0.22%.
+  A fresh 997 Hz profile confirms the local diagnosis—`TypeTable::Get` falls
+  from 0.89% to 0.44% of task-clock—but also confirms that this is not the
+  material end-to-end lever needed for the remaining 3.7--5.5% gap.
+
+  The broad candidate passed PA29 291/291 and PA38 46/46; the narrowed forms
+  passed the focused PA29 gate.  A provisional high-level PA29 contract and
+  structural/behavioral instruction-family control were used during the
+  experiment, without exact MIR, bytes, or program-content matching.  All
+  implementation, provisional documentation, and provisional test changes
+  are removed because no variant reached the 0.5% production-policy gate.
+  Restored PA29 passes 291/291 and PA38 passes 46/46.  No full inception
+  comparison ran for a rejected candidate, and no profiler process remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
