@@ -1527,6 +1527,19 @@ inception lane while another build or profiler is active.
   in 53.03 s wall; commit and push identities follow in the checkpoint entry.
   All measured objects have their expected hashes, and no profiler or build
   process remains.
+- **P32-L45 (CHECKPOINT PUSH).** Atomic commits `eb9d8652` (pressure-aware
+  local-phi capacity and its PA38 property coverage) and `23abb61b` (aligned
+  medium-copy encoding and its PA29 boundary coverage) passed the combined
+  checkpoint.  Root `make test-report-through-pa38` is 5,453/5,453; the PA38
+  file audit has zero fatal findings and 36 existing advisory warnings; and
+  fresh O1 `compare-cppgm++-inception` matches at every object and final
+  compiler using outer `-j32` and `INCEPTION_BUILD_JOBS=32` (53.03 s wall,
+  1,354.55 s aggregate user, 229,724 KiB RSS).  Push `8f5fe453..23abb61b`
+  advanced `origin/v3opt` successfully.  This ledger-only follow-up cites
+  those completed gates and does not require a duplicate compiler gate.  No
+  profiler, build, or timing process remains.  Next, perform I6's clean
+  same-revision self/GCC/Clang native rebaseline and rank the residual exact
+  hot functions before selecting another implementation slice.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
