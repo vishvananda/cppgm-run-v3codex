@@ -1875,6 +1875,16 @@ inception lane while another build or profiler is active.
   with comparison completing in 35.03 s wall (906.42 s user, 51.08 s system,
   229,464 KiB maximum RSS).  The atomic commit and push follow in the next
   checkpoint entry.  No profiler, inception, or build process remains.
+- **P32-L57 (IMMEDIATE-CALL MERGE-HOME CHECKPOINT PUSH).** Atomic PA38
+  implementation, student contract, positive/negative structural-behavioral
+  control, coverage matrix, and evidence ledger commit `3048bb70` passed the
+  L56 gates and pushed successfully to `origin/v3opt`
+  (`c053ac72..3048bb70`).  This ledger-only follow-up records the completed
+  checkpoint and does not require a duplicate compiler gate.  No profiler,
+  inception, build, or timing process remains.  Continue from the remaining
+  absolute `Lexer::Run`, token-movement, and physical-cursor gaps using native
+  attribution and task-clock screening; reserve Cachegrind for the next
+  native-positive finalist.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
