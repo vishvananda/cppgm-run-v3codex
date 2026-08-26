@@ -2601,8 +2601,9 @@ inception lane while another build or profiler is active.
   5,453/5,453.  The PA38 file audit has zero fatal findings and the established
   36 advisories.  Fresh O1 inception at explicit outer, inner, and object
   32-way settings matched every object and the final compiler in 34.57 s
-  wall.  The retained implementation commit is `de969f83`; push is pending.
-  No profiler, inception, or build process remains.
+  wall.  The retained implementation commit is `de969f83` and the gate-ledger
+  commit is `6e5fb7c5`; both pushed successfully to `origin/v3opt` in
+  `f261eadf..6e5fb7c5`.  No profiler, inception, or build process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
