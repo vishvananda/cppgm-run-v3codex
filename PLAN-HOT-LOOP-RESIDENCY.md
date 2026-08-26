@@ -1740,6 +1740,85 @@ inception lane while another build or profiler is active.
   `origin/v3opt` successfully.  This ledger-only follow-up also records L51's
   rejected probes and does not require another compiler gate.  No profiler,
   build, or timing process remains.
+- **P32-L53 (ODD-SAVE MULTI-COLOR RECOLORING REJECTED).** The exact-liveness
+  callee-save reducer retained in L26 deliberately leaves odd save counts
+  unchanged because removing one save merely introduces the SysV alignment
+  word.  A general extension planned distinct caller-saved destinations for
+  every independently safe whole color and admitted an odd-save function only
+  when at least two colors could be removed together.  Each source retained
+  the existing explicit-occurrence, debug, boundary-interference, and call-
+  clobber proof; destinations were unique and no symbol or source shape was
+  recognized.
+
+  The broad probe initially also recolored every safe color in the already-
+  profitable even-save class.  A split point restored the established
+  one-color even policy while retaining only the odd-save extension.  The
+  split and broad candidates produced identical tokenizer objects, and their
+  complete compilers differed by only 24 text bytes, ruling out collateral
+  even-save recoloring as the explanation for the measured result.  Relative
+  to the retained compiler, tokenizer text fell 225 bytes,
+  `Lexer::Peek` fell 20 bytes, `Lexer::Run` fell 109 bytes, and complete
+  compiler text fell 2,500--2,524 bytes.  Fresh self compilers used outer
+  `-j32` and inner `INCEPTION_BUILD_JOBS=32`; the split build completed in
+  18.20 s wall.
+
+  Four rotating native pairs were effectively flat with a slight regression:
+  retained medians were 9.260/8.775 s versus 9.275/8.785 s candidate
+  wall/user.  Three balanced software-task-clock samples, with one candidate
+  outlier, gave medians of 9,280.91 ms retained and 9,254.32 ms candidate
+  (-0.29%).  This does not clear the 0.5% allocation-policy gate and does not
+  justify broadening a retained placement policy on static shrink alone.  The
+  probe is removed and the existing PA38 control `446` again passes its
+  focused behavior, caller-saved-range, exact-call-argument, and call-crossing
+  safety predicates.  No new contract or test is warranted for rejected
+  behavior; had the extension survived, PA38 would have described combined
+  odd-save profitability and tested it through capacity relationships rather
+  than a physical register or complete MIR/program match.  No profiler,
+  build, or timing process remains.
+
+- **P32-L54 (CURRENT-SOURCE GCC/CLANG O1 RE-BASELINE).** Fresh host compilers
+  were built from the L50 source with outer `-j32`, inner
+  `INCEPTION_BUILD_JOBS=32`, and O1 self-host settings.  GCC completed in
+  30.14 s wall and Clang in 32.74 s.  Six rotations placed every lane in each
+  sequence position twice.  Median wall/user times were 9.270/8.790 s for the
+  retained self compiler, 5.905/5.445 s for GCC, and 5.790/5.330 s for Clang.
+  The honest current gaps are therefore 1.570x GCC and 1.601x Clang.  Reaching
+  1.50x requires another 0.413 s (4.45%) against GCC and 0.585 s (6.31%)
+  against Clang.  Self and GCC produced the retained
+  `73c95999...e769` output; Clang produced `979fe59d...c16b`, with the
+  established local numeric lambda spelling as the only instruction-content
+  difference.  Text, data, section, and relocation sizes all matched.
+
+  Fresh software-task-clock profiles had no lost samples.  They attribute
+  about 417 ms to `Lexer::Run`, 402 ms to `Lexer::Peek`, 166 ms to the Token
+  move constructor, and 150 ms to `PhysicalCursor::Next` in the self lane.
+  The corresponding host symbols are substantially redistributed by
+  inlining: in particular, self `Peek` plus `TranslationCursor::Next` is
+  about 522 ms versus about 639 ms in Clang, so the separate self `Peek`
+  symbol is not itself an honest gap.  `Run` remains about 206--246 ms above
+  the hosts, while Token movement and physical-cursor work remain plausible
+  aggregate residuals.  The already rejected global inline-cap and converted-
+  Boolean/threading probes cover the most direct versions of those apparent
+  opportunities.  The exact retained Ir remains 38,458,796,066.  No stale
+  Cachegrind, profiler, inception, or build process remains.
+- **P32-L55 (ALIGNED REP-MOVSQ COPY ENCODING REJECTED).** A native-encoding
+  probe replaced the general `rep movsb` fallback with `rep movsq` exactly
+  when the proved object alignment was at least eight and the constant copy
+  size was divisible by eight.  This was a source-independent alignment and
+  extent rule, not a program-content match.  It converted 1,563 of the
+  compiler's 1,812 static `rep movsb` sites to qword copies, left 249 byte
+  copies, increased compiler text by 1,656 bytes, and produced deterministic
+  candidate output `64cec7f1...c16b`.  The existing PA29 extended-stack copy
+  behavior control passed.
+
+  Samples taken immediately after two all-core host builds were invalidated
+  when both retained and candidate times rose to 19--30 s.  After recovery,
+  a reverse-order software-task-clock pair measured 9,584.01 ms retained and
+  10,095.71 ms candidate: the qword form regressed 5.34%.  On this ERMS host,
+  reducing the architectural iteration count is not a useful proxy for native
+  performance and Cachegrind would point in the wrong direction.  The probe
+  is removed, no new contract/test is warranted, and no profiler, build, or
+  timing process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
