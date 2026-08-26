@@ -156,6 +156,31 @@ sub has_vector_copy_pair
 	return $load && $store;
 }
 
+sub has_vector_zero_store
+{
+	my ($code) = @_;
+	my ($clear, $store) = (0, 0);
+	for(my $offset = 0; $offset + 2 < length($code); ++$offset) {
+		my $prefix = ord(substr($code, $offset, 1));
+		next if $prefix != 0x66 && $prefix != 0xf3;
+		my $opcode = $offset + 1;
+		my $rex = ord(substr($code, $opcode, 1));
+		++$opcode if $rex >= 0x40 && $rex <= 0x4f;
+		next if $opcode + 2 >= length($code) ||
+			ord(substr($code, $opcode, 1)) != 0x0f;
+		my $second = ord(substr($code, $opcode + 1, 1));
+		my $modrm = ord(substr($code, $opcode + 2, 1));
+		if($prefix == 0x66 && $second == 0xef && ($modrm >> 6) == 3) {
+			my $left = ($modrm >> 3) & 7;
+			my $right = $modrm & 7;
+			$clear = 1 if $left == $right;
+		}
+		$store = 1 if $prefix == 0xf3 && $second == 0x7f &&
+			($modrm >> 6) != 3;
+	}
+	return $clear && $store;
+}
+
 if(scalar(@ARGV) != 2)
 {
 	die "Usage: check_pa29_native_contracts.pl " .
@@ -275,6 +300,17 @@ for my $test (@tests)
 		my $code = main_code($test, $program);
 		die "$test: oversized aligned copy lost compact string encoding\n"
 			if index($code, "\xf3\xa4") < 0;
+		next;
+	}
+	if($test =~ /cost-directed-small-zeroinit/) {
+		my $body = function_body($test, $mir, 'main');
+		die "$test: fixed zero lost its documented 16-byte operation\n"
+			if $body !~ /^\s+zero_bytes 16x8, /m;
+		my $code = main_code($test, $program);
+		die "$test: 16-byte zero retained string-operation setup\n"
+			if index($code, "\xf3\xaa") >= 0;
+		die "$test: 16-byte zero used no cleared vector store\n"
+			if !has_vector_zero_store($code);
 		next;
 	}
 	if($test =~ /scratch-carried-frame-reloads/) {

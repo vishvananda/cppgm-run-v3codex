@@ -4,7 +4,8 @@ Status: active; retained-change coverage has been converted to
 student-implementable property/behavior oracles; pressure-aware edge-local
 loop-phi capacity is retained as a minor increment; reserved-scratch vector
 chunks through naturally aligned 64-byte fixed copies are the latest
-performance landing;
+performance landing; the exact-cost 16-byte vector zero is retained as a
+minor native-positive quality increment;
 performance work continues
 
 Date: 2026-08-26
@@ -1669,6 +1670,42 @@ inception lane while another build or profiler is active.
   build, or timing process remains.  Continue with a census of fixed zeroing
   and other distributed memory traffic before selecting the next native A/B
   candidate.
+- **P32-L50 (EXACT-COST 16-BYTE VECTOR ZERO RETAINED AS MINOR QUALITY).** A
+  compiler-binary census found 174 fixed `rep stosb` sites: 147 at 16 bytes,
+  nine at 24, three at 32, and only 15 across the remaining larger sizes.
+  The retained rule changes only the dominant 16-byte class.  A cleared
+  encoder-reserved vector scratch plus one unaligned store costs 8--9 target
+  bytes depending on the address register, versus 9--12 bytes for count
+  materialization, integer clearing, and REP setup.  It uses baseline x86-64
+  instruction support, preserves integer flags, and consumes no allocatable
+  XMM capacity.  The less populous 24/32-byte classes lack the same guaranteed
+  byte-cost proof and remain unchanged.
+
+  The O1 candidate is
+  `/dev/shm/v3codex-p32-vector-zero16-o1-j32/bin/selfhost/cppgm++-self`.
+  Its 147 sixteen-byte REP sites disappear, while every other REP-size census
+  count is unchanged.  The new encoder implementation offsets the per-site
+  shrink and leaves complete compiler text nearly neutral at 8,585,994 ->
+  8,586,038 bytes (+44).  Four balanced native samples measure 9.290/8.820 s
+  for the L48 baseline versus 9.250/8.785 s candidate wall/user medians
+  (about -0.4% each).  Three balanced software task-clock samples improve
+  9,256.10 -> 9,228.03 ms (-0.30%).  All native and exact output objects are
+  byte-identical at `73c95999...e769`.
+
+  Exact Ir-only Cachegrind confirms only a minor distributed reduction:
+  38,460,436,906 -> 38,458,796,066 instructions (-1,640,840, -0.0043%).
+  This does not clear Phase C's policy gate and is not treated as a major gap
+  closer.  It is retained under the narrower mechanical backend rule because
+  each affected encoding is smaller, exact work falls, and both independent
+  native protocols are non-regressing.  PA29's existing
+  `cost-directed-small-zeroinit` fixture now also serves as the focused
+  property control: it executes all zeroed bytes and checks only the local
+  16-byte MIR operation, cleared-vector/store instruction classes, and the
+  absence of string setup.  It names no physical register and compares no
+  complete MIR, program, object, or hash.  Disabling the new class makes the
+  control fail specifically on retained REP setup; restoring it passes.
+  PA29 passes 291/291.  Full aggregate gates are amortized with the next push
+  checkpoint, and no profiler or build process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

@@ -593,6 +593,14 @@ To complete PA29, implement these goals:
    a temporary base address. The encoder must still preserve both logical
    addresses and any live scalar values that overlap its scratch registers.
 
+   A fixed 16-byte zero may avoid string-operation setup with a cleared
+   reserved vector scratch and one unaligned store.  This direct form must be
+   smaller than the corresponding setup for every address-register choice,
+   preserve the integer condition flags, and must not consume an XMM register
+   available to ordinary value placement.  Other zero sizes retain the
+   existing exact target-byte comparison between direct scalar stores and the
+   compact string form.
+
    For fixed copies through 32 bytes, direct chunks may also avoid the setup
    for a string operation.  The direct encoder uses its reserved vector
    scratch for each complete 16-byte chunk and scalar chunks for the tail.
@@ -838,7 +846,9 @@ strategies include:
   sign-extended 32-bit values at 64 bits; choose an encoder scratch that does
   not overlap a dereference base or index for other 64-bit values
 - compare the exact target-byte cost of a fixed small `zero_bytes` with its
-  `rep stosb` setup and use direct zero stores only when they are smaller
+  `rep stosb` setup and use direct zero stores only when they are smaller;
+  encode the 16-byte case with a cleared reserved vector scratch and one
+  unaligned store, without consuming allocatable floating-point capacity
 - encode a 1-, 2-, 4-, or 8-byte `copy_bytes` as one complete scalar load and
   store when that is cheaper than string-instruction setup; choose the scratch
   from the MIR instruction's declared clobber set and keep both logical

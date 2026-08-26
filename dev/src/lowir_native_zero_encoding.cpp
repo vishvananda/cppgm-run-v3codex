@@ -65,6 +65,24 @@ void emit_direct_stores(elf_detail::CodeBuffer & out,
 	out.note_direct_zero_encoding(byte_count, stores);
 }
 
+void emit_vector_zero_16(elf_detail::CodeBuffer & out,
+	X64Register destination)
+{
+	// The allocator reserves xmm6/xmm7 for encoder scratch use.  A pxor and
+	// one unaligned store are smaller than REP setup for every address
+	// register, preserve integer flags, and require only baseline x86-64 SSE2.
+	out.byte(0x66);
+	out.byte(0x0f);
+	out.byte(0xef);
+	out.byte(0xff); // pxor xmm7, xmm7
+	out.byte(0xf3);
+	emit_rex(out, false, static_cast<X64Register>(XMM_7), destination);
+	out.byte(0x0f);
+	out.byte(0x7f);
+	emit_memory_modrm(out, static_cast<unsigned>(XMM_7), destination, 0);
+	out.note_direct_zero_encoding(16, 1);
+}
+
 }
 
 void emit_zero_bytes(elf_detail::CodeBuffer & out, X64Register destination,
@@ -72,6 +90,11 @@ void emit_zero_bytes(elf_detail::CodeBuffer & out, X64Register destination,
 {
 	if (byte_count == 0)
 		throw std::logic_error("native zero-byte span is empty");
+	if (byte_count == 16)
+	{
+		emit_vector_zero_16(out, destination);
+		return;
+	}
 	if (direct_store_cost(destination, byte_count) <
 		rep_store_cost(destination, byte_count))
 	{

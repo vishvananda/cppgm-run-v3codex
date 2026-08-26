@@ -88,6 +88,9 @@ endif
 		perl ../scripts/check_pa29_native_contracts.pl \
 			$(CPPGM_TEST_APP) \
 			course/pa29/behavior/deferred-address-parameter-carrier-reuse.t; \
+		perl ../scripts/check_pa29_native_contracts.pl \
+			$(CPPGM_TEST_APP) \
+			course/pa29/behavior/cost-directed-small-zeroinit.t; \
 	fi
 endif
 
