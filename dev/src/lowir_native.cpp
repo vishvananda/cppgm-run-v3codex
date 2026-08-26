@@ -2783,11 +2783,11 @@ private:
     move_value_to_register(out, XR_RAX, source,
                            operand_type(instruction.first));
     for(std::size_t i = 0; i < instruction.args.size(); i += 2) {
-      move_value_to_register(out, XR_RCX, resolve(instruction.args[i]),
-                             operand_type(instruction.args[i]));
+      const MirOperand case_value = resolve(instruction.args[i]);
+      if(instruction.args.size() < 32 || case_value.kind != MirOperand::OP_IMM) move_value_to_register(out, XR_RCX, case_value, operand_type(instruction.args[i]));
       MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
       append_operand(compare, reg_operand(XR_RAX));
-      append_operand(compare, reg_operand(XR_RCX));
+      append_operand(compare, instruction.args.size() >= 32 && case_value.kind == MirOperand::OP_IMM ? case_value : reg_operand(XR_RCX));
       out.push_back(compare);
       MirInstruction branch = machine_instruction(MirInstruction::MI_JCC);
       branch.condition = XC_E;

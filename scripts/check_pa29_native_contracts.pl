@@ -73,7 +73,7 @@ sub address_to_offset
 
 sub main_code
 {
-	my ($test, $path) = @_;
+	my ($test, $path, $bounded_prefix) = @_;
 	my $data = read_file($path, 1);
 	die "$test: generated program is not little-endian ELF64\n"
 		if substr($data, 0, 6) ne "\x7fELF\x02\x01";
@@ -95,6 +95,8 @@ sub main_code
 	my $main_offset = address_to_offset($test, $data, $main_address);
 	my $limit = $main_offset + 256;
 	$limit = length($data) if $limit > length($data);
+	return substr($data, $main_offset, $limit - $main_offset)
+		if $bounded_prefix;
 	my $end = $main_offset;
 	while($end < $limit && ord(substr($data, $end, 1)) != 0xc3) {
 		++$end;
@@ -136,6 +138,27 @@ sub has_integer_multiply
 			ord(substr($code, $offset + 1, 1)) == 0xaf;
 	}
 	return 0;
+}
+
+sub count_register_immediate_compares
+{
+	my ($code) = @_;
+	my $count = 0;
+	for(my $offset = 0; $offset + 2 < length($code); ++$offset) {
+		my $opcode = $offset;
+		my $prefix = ord(substr($code, $opcode, 1));
+		++$opcode if $prefix >= 0x40 && $prefix <= 0x4f;
+		next if $opcode + 2 >= length($code);
+		my $opcode_byte = ord(substr($code, $opcode, 1));
+		next if $opcode_byte != 0x81 && $opcode_byte != 0x83;
+		my $end = $opcode + ($opcode_byte == 0x81 ? 5 : 2);
+		next if $end >= length($code);
+		my $modrm = ord(substr($code, $opcode + 1, 1));
+		next if ($modrm >> 6) != 3 || (($modrm >> 3) & 7) != 7;
+		++$count;
+		$offset = $end;
+	}
+	return $count;
 }
 
 sub has_vector_copy_pair
@@ -216,6 +239,7 @@ for my $test (@tests)
 	$expected_status = 39 if $test =~ /weakly-aligned-medium-copy-compact/;
 	$expected_status = 41 if $test =~ /aligned-large-copy-direct/;
 	$expected_status = 43 if $test =~ /oversized-aligned-copy-compact/;
+	$expected_status = 73 if $test =~ /large-switch-immediate-cases/;
 	my $run_status = run_command_capture(
 		cmd => [$program],
 		stdout => "$directory/program.stdout",
@@ -242,6 +266,19 @@ for my $test (@tests)
 			if !has_register_shift_left($code);
 		die "$test: structured-factor multiply retained an integer multiply\n"
 			if has_integer_multiply($code);
+		next;
+	}
+	if($test =~ /large-switch-immediate-cases/) {
+		my $body = function_body($test, $mir, 'main');
+		my @immediate = $body =~
+			/^\s+cmp\.i64\s+[a-z0-9]+,\s*-?\d+\s*$/mg;
+		die "$test: large switch did not retain its literal case comparisons\n"
+			if scalar(@immediate) < 16;
+		die "$test: dynamic switch case lost its register comparison fallback\n"
+			if $body !~ /^\s+cmp\.i64\s+[a-z0-9]+,\s*[a-z0-9]+\s*$/m;
+		my $code = main_code($test, $program, 1);
+		die "$test: literal cases were not encoded as immediate comparisons\n"
+			if count_register_immediate_compares($code) < 16;
 		next;
 	}
 	if($test =~ /frame-copy-operands/) {

@@ -453,6 +453,15 @@ To complete PA29, implement these goals:
    first-class machine-IR branches and direct calls, not a normalized CY86-style
    fallback.
 
+   For a `switch` with at least sixteen case edges, an integer-literal case
+   should remain an immediate operand of its machine comparison.  When that
+   value fits the target comparison's immediate field, encode the comparison
+   directly instead of first copying the value to a scratch register.  A
+   nonliteral case value keeps the ordinary register-materialization path,
+   and smaller switches may use that path for every case.  This is a local
+   instruction-selection rule; it does not prescribe a particular selector
+   register, case order, block layout, or complete MIR.
+
 2. Direct startup/runtime wiring.
    The startup path should call `@__cppgm_init`, `@main`, and `@__cppgm_fini` as direct
    machine-IR call sites where those hooks exist.

@@ -6,8 +6,9 @@ loop-phi capacity is retained as a minor increment; reserved-scratch vector
 chunks through naturally aligned 64-byte fixed copies are the latest
 performance landing; the exact-cost 16-byte vector zero is retained as a
 minor native-positive quality increment; immediate-call merge sources may
-donate their frame homes as the latest minor MIR-quality increment;
-performance work continues
+donate their frame homes as a minor MIR-quality increment; direct immediate
+comparisons for large switches are the latest performance landing;
+performance work continues from 1.558x GCC and 1.588x Clang
 
 Date: 2026-08-26
 
@@ -747,6 +748,7 @@ P31/P32 worktree survivors:
 | O1+ direct/unshared epilogues | PA29 control `904` establishes shared O0 epilogues; PA38 survivor property `425` requires direct O1 epilogues including the multiple-return reducer | owned focused policy/behavioral predicates |
 | single-use acyclic phi frame-home ownership transfer | PA38 control `442-acyclic-phi-frame-home` checks a one-shot chain and an iteration-local same-SCC chain; multi-use, loop-carried, and repeated loop-invariant controls retain independent homes, while runtime behavior catches destructive reuse | owned structural/behavioral predicate; no complete MIR or executable snapshot |
 | immediate-call merge-phi source-home donation | PA38 control `442-acyclic-phi-frame-home` checks that an eligible same-SCC source is written directly to the merge home with no identity edge transfer; a non-immediate consumer retains independent homes and the ordinary transfer, while a repeated loop invariant retains a distinct home and behavior catches destructive reuse | owned focused structural/behavioral predicate; no physical register, complete MIR, executable, object, hash, or compiler-source match |
+| large-switch literal immediate comparisons | PA29 control `910-large-switch-immediate-cases` requires literal cases to remain MIR immediates and encodable literals to become local register/immediate comparisons, retains a dynamic register-comparison fallback, and executes the reducer | owned focused structural/behavioral predicate; the local decoder accepts short or full-width immediates and any selector register, with no complete MIR, executable, object, hash, or compiler-source match |
 | cyclic choice-region call-result residency | PA38 control `443-cyclic-choice-region-residency` checks that O1 keeps a refreshed, repeatedly compared call result available across an intervening call while O0 retains the frame-home baseline; runtime results exercise per-iteration refresh and a loop-invariant guard | owned focused structural/behavioral predicate; no physical register, complete MIR, or executable snapshot |
 | post-late/post-prune inline scalar-slot promotion | PA37 control `524-post-prune-inline-slot-promotion` checks that O0 retains the call and scalar slot while O1 removes both, forms the required pointer phi, and preserves generated behavior; a helper-call mutation makes the control fail | owned LowIR structural/behavioral predicate; no complete LowIR or executable snapshot |
 | path-disjoint guarded fast-loop phi residency | PA38 control `444-call-free-fast-loop-phi-residency` checks O1 removal of two fast-loop frame homes, the O0 frame-home baseline, unchanged five-register preserved capacity, and a call-reaching negative that must retain both homes; the pre-landing backend fails the control | owned focused structural/behavioral predicate; no physical register, complete MIR, or executable snapshot |
@@ -765,7 +767,7 @@ checked-in outputs remain independent compatibility gates:
 | readonly scalar storage | PA15 **Assignment Boundary** | PA15 control `540-readonly-scalar-storage`: LowIR structural positive plus volatile, TLS, and class-object negatives |
 | constructor alias boundaries and nested temporary lifetime | PA17 copy/move boundary and nested operand/full-expression paragraphs | PA17 controls `532`/`533` distinguish constructor versus assignment parameter facts and validate operator-use/destruction/unwind relationships plus behavior; PA37 driver `460`/`461` verifies propagation |
 | pointer-difference lowering | PA15 pointer-arithmetic Assignment Boundary paragraph | PA15 control `530-pointer-difference-strength-reduction`; focused function-body predicates require arithmetic shift for an eight-byte element and signed division for a three-byte element, without comparing the complete generated LowIR |
-| small/medium copy, constant multiply, and scratch-carried reload encoding | PA29 native goals 3, 8, and 15 plus its compact-MIR implementation rules | PA29 controls `900`-`902`/`905`-`908` inspect only instruction families and local MIR operands, including the fixed-copy size/alignment boundary; the historical scratch reducer requires a positive diagnostic fact and integer/float-pressure behavior |
+| native copy, constant multiply, large-switch, and scratch-carried reload encoding | PA29 native goals 3, 8, and 15 plus its compact-MIR and large-switch implementation rules | PA29 controls `900`-`902`/`905`-`910` inspect only instruction families and local MIR operands, including fixed-copy size/alignment boundaries and immediate-versus-dynamic switch cases; the historical scratch reducer requires a positive diagnostic fact and integer/float-pressure behavior |
 | local-global and deferred parameter-address selection | PA29 required native behavior item 15 | controls `903` and the focused historical deferred-address pass check direct-storage/materialized-address and pre-/post-call carrier relationships plus behavior |
 | O1 LowIR survivor transforms and guards | PA37 O1 optimization-level bullets for underflow, adjacent noalias copies, full overwrite, shared loops, cold-path pricing, and phi repair | survivor-property pass over `506`-`511` plus O0 baselines and PA17/driver alias-source controls; only local relationships are inspected |
 | historical readonly, strength, and small-object survivors | PA37 O1/O2 readonly, scalar-object, and counted-loop bullets | control `525-historical-lowir-contracts`; focused O0/O1/O2 predicates plus generated behavior, including the object-valued-copy guard and no complete LowIR comparison |
@@ -1885,6 +1887,97 @@ inception lane while another build or profiler is active.
   absolute `Lexer::Run`, token-movement, and physical-cursor gaps using native
   attribution and task-clock screening; reserve Cachegrind for the next
   native-positive finalist.
+
+- **P32-L58 (BALANCED LARGE-SWITCH TREE REJECTED).** A source-independent
+  LowIR probe lowered switches with at least sixteen cases as balanced compare
+  trees while leaving smaller switches on the ordinary linear path.  It
+  converted the 26-case punctuator switch in `Lexer::Run` and left both
+  nine-case switches untouched, but increased `Lexer::Run` by 476 text bytes
+  and tokenizer text from 31,129 to 31,745 bytes.  PA37 remained 187/187.
+  Three balanced native software-event samples measured 9,272.09 ms retained
+  versus 9,262.51 ms candidate, only -0.10%.  The extra branches and blocks do
+  not clear the allocation/CFG-policy keep threshold, so the probe is removed
+  and receives no student contract or feature test.
+
+- **P32-L59 (IMMEDIATE SCALAR-RETURN PHI REJECTED).** A generic native
+  placement probe selected the ABI return register for a scalar phi whose only
+  use was an immediate return.  Complete compiler text fell 6,944 bytes and
+  tokenizer helper `IsIdentifierBody` fell 185 to 175 bytes, but balanced
+  software-event medians were 9,205.15 ms retained and 9,204.13 ms candidate
+  (-0.01%), with one candidate outlier.  Two existing PA38 controls also
+  exposed compatibility assumptions that would need a more permissive local
+  property before this representation could land.  With no native benefit to
+  justify that policy and coverage work, the implementation is removed and no
+  new contract or test remains.
+
+- **P32-L60 (BROAD SWITCH-IMMEDIATE INTERFERENCE REJECTED).** Retaining every
+  literal switch case as a direct comparison immediate, regardless of switch
+  size, shrank tokenizer text 31,129 to 31,079 bytes, reduced `Lexer::Run` by
+  25 bytes, and removed 3,624 bytes from the complete compiler.  PA38 passed
+  46/46, and three balanced software-event samples suggested -0.73%.  Repeated
+  native wall/user samples contradicted that proxy: retained medians were
+  about 9.215/8.730 s and the broad candidate about 9.260/8.785 s, a
+  0.5--0.6% regression.  This is measured destructive interference from
+  extending an otherwise useful encoding choice into smaller switches: text
+  size alone and deterministic instruction count do not capture its layout
+  effect.  The all-size rule is removed.  The next probe retains only the
+  measured large-switch class and leaves the two nine-case tokenizer switches
+  on their established lowering.
+
+- **P32-L61 (LARGE-SWITCH IMMEDIATE COMPARISONS LANDING).** The retained PA29
+  instruction-selection rule applies only to switches with at least sixteen
+  case edges.  Literal case values remain MIR immediates and, when encodable,
+  become direct native register/immediate comparisons; nonliteral cases keep
+  the register-materialization fallback.  The rule depends only on case count
+  and operand kind.  It recognizes no source spelling, symbol, case value,
+  physical register, or complete MIR/program shape.
+
+  The 26-case punctuator switch changes while both nine-case switches retain
+  their established layout.  Tokenizer text falls 31,129 to 31,105 bytes and
+  `Lexer::Run` falls 25 bytes.  The final complete compiler text is 8,589,538
+  bytes versus 8,591,410 retained (-1,872 bytes); the compact audit form is
+  128 bytes larger than the originally measured candidate but keeps
+  `lowir_native.cpp` at its 3,000-line limit.  Three final-source balanced
+  software-event samples measure 9,183.53 ms retained versus 9,117.79 ms
+  candidate (-65.74 ms, -0.716%).  An earlier four-pair native wall/user run
+  measured approximately -1.1%/-1.3%.
+
+  Exact Ir-only Cachegrind completes normally at 38,438,972,631 instructions
+  retained and 38,376,376,742 candidate, removing 62,595,889 instructions
+  (-0.16284%).  The retained and candidate profile outputs have hashes
+  `73c95999...e769` and `21883ca7...e639`; all final native candidate outputs
+  repeat the latter hash.  No stale profiler existed before the run and none
+  remains afterward.
+
+  PA29 now gives students the high-level size/operand contract.  Control
+  `910-large-switch-immediate-cases` executes the switch, requires only local
+  literal-immediate and dynamic-register MIR relationships, and accepts either
+  short or full-width native immediates in any register.  Raising the threshold
+  above the reducer's case count makes the positive fail; restoration passes.
+  PA29 is 291/291, PA38 is 46/46, and root through-PA38 is 5,453/5,453.  The
+  PA38 file audit has zero fatal findings and the existing 36 advisories.
+  Fresh isolated O1 inception at
+  `/dev/shm/v3codex-p32-switchimm-final.1jeCam` used outer `-j32`, inner build
+  jobs 32, and object jobs 32; every object and the final compiler matched,
+  with comparison completing in 34.86 s wall.  No profiler, inception, or
+  build process remains.
+
+- **P32-L62 (SOURCE-MATCHED SWITCH CHECKPOINT REBASELINE).** Fresh GCC and
+  Clang O1 host compilers were built from the exact landing source with outer
+  and inner 32-way settings in 29.69 s and 30.51 s wall.  After one warmup per
+  lane, six Latin-square rotations placed every compiler in each sequence
+  position twice.  Median wall/user times are 9.185/8.700 s self,
+  5.895/5.465 s GCC, and 5.785/5.310 s Clang.  The honest ratios are now
+  1.558x GCC and 1.588x Clang.  Reaching 1.50x requires another 0.343 s
+  (3.73%) against GCC and 0.508 s (5.53%) against Clang.
+
+  Self and GCC outputs are byte-identical at `21883ca7...e639`.  Clang emits
+  `727d616f...8d01`; text, data, sections, relocations, and disassembly match,
+  with only the established compiler-created local lambda numeric spelling
+  different.  No profiler or build process remains.  The next attribution
+  should use this exact landing compiler and concentrate on the remaining
+  absolute `Lexer::Run`, token-movement, and physical-cursor gaps rather than
+  widening the rejected all-switch or balanced-tree policies.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
