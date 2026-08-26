@@ -264,7 +264,6 @@ private:
   long long xmm_call_scratch_ = 0;
   long long variadic_register_save_offset_ = 0;
   abi::VariadicState variadic_state_;
-
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
                                    lowir_model::FixedPresentationName name,
                                    const LowType & type)
@@ -302,6 +301,8 @@ private:
                                          const LowType & type,
                                          TemporaryHomeReason reason = THR_COUNT)
   {
+    MirOperand merge_home;
+    if(planned_phi_source_home(value, &merge_home)) return merge_home;
     if(stats_ && planned_register_entry(value) != 0)
       ++stats_->planned_frame_homes_by_reason[
         reason <= THR_COUNT ? reason : THR_COUNT];
@@ -309,7 +310,6 @@ private:
       target_, frame_bytes_, spill_slots_, generated_frame_names_, facts_,
       value, type, position_, reason, result_crosses_call(value), stats_);
   }
-
   bool crosses_call(lowir_model::ValueId value) const
   {
     return facts_.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);

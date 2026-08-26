@@ -5,7 +5,8 @@ student-implementable property/behavior oracles; pressure-aware edge-local
 loop-phi capacity is retained as a minor increment; reserved-scratch vector
 chunks through naturally aligned 64-byte fixed copies are the latest
 performance landing; the exact-cost 16-byte vector zero is retained as a
-minor native-positive quality increment;
+minor native-positive quality increment; immediate-call merge sources may
+donate their frame homes as the latest minor MIR-quality increment;
 performance work continues
 
 Date: 2026-08-26
@@ -745,6 +746,7 @@ P31/P32 worktree survivors:
 | O1+ conservative frameless policy and unwind metadata | PA29 control `904` establishes the O0 policy; PA38 survivor property `425` checks eligible leaf/call/return cases and frame, dynamic-stack, float-scratch, and host-EH guards | owned focused policy/behavioral predicates |
 | O1+ direct/unshared epilogues | PA29 control `904` establishes shared O0 epilogues; PA38 survivor property `425` requires direct O1 epilogues including the multiple-return reducer | owned focused policy/behavioral predicates |
 | single-use acyclic phi frame-home ownership transfer | PA38 control `442-acyclic-phi-frame-home` checks a one-shot chain and an iteration-local same-SCC chain; multi-use, loop-carried, and repeated loop-invariant controls retain independent homes, while runtime behavior catches destructive reuse | owned structural/behavioral predicate; no complete MIR or executable snapshot |
+| immediate-call merge-phi source-home donation | PA38 control `442-acyclic-phi-frame-home` checks that an eligible same-SCC source is written directly to the merge home with no identity edge transfer; a non-immediate consumer retains independent homes and the ordinary transfer, while a repeated loop invariant retains a distinct home and behavior catches destructive reuse | owned focused structural/behavioral predicate; no physical register, complete MIR, executable, object, hash, or compiler-source match |
 | cyclic choice-region call-result residency | PA38 control `443-cyclic-choice-region-residency` checks that O1 keeps a refreshed, repeatedly compared call result available across an intervening call while O0 retains the frame-home baseline; runtime results exercise per-iteration refresh and a loop-invariant guard | owned focused structural/behavioral predicate; no physical register, complete MIR, or executable snapshot |
 | post-late/post-prune inline scalar-slot promotion | PA37 control `524-post-prune-inline-slot-promotion` checks that O0 retains the call and scalar slot while O1 removes both, forms the required pointer phi, and preserves generated behavior; a helper-call mutation makes the control fail | owned LowIR structural/behavioral predicate; no complete LowIR or executable snapshot |
 | path-disjoint guarded fast-loop phi residency | PA38 control `444-call-free-fast-loop-phi-residency` checks O1 removal of two fast-loop frame homes, the O0 frame-home baseline, unchanged five-register preserved capacity, and a call-reaching negative that must retain both homes; the pre-landing backend fails the control | owned focused structural/behavioral predicate; no physical register, complete MIR, or executable snapshot |
@@ -775,6 +777,7 @@ checked-in outputs remain independent compatibility gates:
 | frame-pointer and epilogue policy | PA29 serialized MIR policy plus PA38 O1 frame/epilogue bullets | PA29 `904` and PA38 property `425` inspect only policy fields and documented guards, never complete MIR |
 | per-function native census | PA38 compile-only driver diagnostic paragraph | driver `440-function-census`; structural field/function coverage only, never exact values or timing |
 | merge-phi frame-home ownership | PA38 O1 merge-home bullet | control `442-acyclic-phi-frame-home`; focused frame-home/edge-movement predicates plus runtime results, allowing a register-resident implementation and never comparing complete MIR or executable contents |
+| immediate-call merge source-home donation | PA38 O1 immediate-call merge-home bullet | control `442-acyclic-phi-frame-home`; an eligible source-to-merge home relationship is contrasted with non-immediate and loop-invariant controls, and generated behavior validates repeated alternate edges without prescribing a register or complete MIR/program |
 | cyclic choice-region residency | PA38 O1 cyclic choice-region bullet | control `443-cyclic-choice-region-residency`; focused O1-versus-O0 home predicate plus runtime refresh/invariant results, allowing any call-preserved register and never comparing complete MIR or executable contents |
 | post-inline scalar-slot promotion | PA37 O1 late/post-prune cleanup paragraph | control `524-post-prune-inline-slot-promotion`; focused O0-versus-O1 call/slot/phi predicates plus O1 behavior, with no complete LowIR or executable comparison |
 | guarded fast-loop phi residency | PA38 O1 guarded-fast-arm bullet | control `444-call-free-fast-loop-phi-residency`; focused O0-versus-O1 frame-home and preserved-capacity predicates, a call-reaching negative, and runtime behavior, allowing any physical registers |
@@ -1819,6 +1822,59 @@ inception lane while another build or profiler is active.
   performance and Cachegrind would point in the wrong direction.  The probe
   is removed, no new contract/test is warranted, and no profiler, build, or
   timing process remains.
+
+- **P32-L56 (IMMEDIATE-CALL MERGE SOURCE HOME RETAINED AS MINOR QUALITY).**
+  High-resolution 997 Hz software profiles collected 9,330 self, 6,239 GCC,
+  and 5,915 Clang samples.  Absolute attribution puts `Lexer::Run` at about
+  492 ms self versus 188/186 ms in the hosts, an honest 304--306 ms excess.
+  Address-level inspection localized roughly 95 ms of self samples around a
+  queue value entering `AppendUTF8`: LowIR already contains the right merge
+  phi, but PA38 gave an incoming one-use temporary its own frame home and then
+  copied it to the merge home immediately before the call.
+
+  The retained O1+ rule lets one same-typed, one-use incoming temporary be
+  defined directly in a one-use merge phi's frame home when the first
+  non-phi instruction consumes that merge as a call argument.  In a cyclic
+  target, the incoming definition must share the exact cyclic component with
+  the merge, proving that it is refreshed before every dynamic transfer.
+  Alternate incoming edges still write the merge home.  An intervening
+  consumer, another use, a representation change, an already selected source
+  location, or a cyclic loop invariant retains the ordinary path.  The rule
+  is based only on local use/type/control-flow facts and recognizes no symbol,
+  source spelling, or complete instruction sequence.
+
+  On `pp_tokenizer.cpp`, MIR falls 2,838 -> 2,818 instructions, 599 -> 589
+  loads, and 586 -> 576 stores; object text falls 31,325 -> 31,129 bytes and
+  `Lexer::Run` shrinks 140 bytes.  Four balanced native samples are flat at
+  9.310 s wall median; user medians improve 8.805 -> 8.785 s (-0.23%).  Four
+  software task-clock samples give 9,301.88 ms retained versus 9,308.27 ms
+  candidate (+0.07%).  The one already-running finalist Cachegrind completed
+  normally at 38,458,796,066 -> 38,439,077,871 instructions (-19,718,195,
+  -0.05127%).  This is below the major performance gate and is retained only
+  as a mechanical MIR-quality increment with native non-regression, not as a
+  material closer of the remaining 1.50x gap.
+
+  Moving the planner into the existing phi-lowering module was required to
+  restore `lowir_native.cpp` to its 3,000-line audit limit.  That packaging
+  changed final compiler text to 8,591,410 bytes, so a fresh balanced check
+  measured 9,202.81 ms retained versus 9,217.36 ms final (+0.16%), still
+  inside the non-regression band.  Every native and exact output has hash
+  `73c95999...e769`.  PA38's student contract and control
+  `442-acyclic-phi-frame-home` now own the rule: the positive checks direct
+  home definition and absence of the identity transfer when the implementation
+  uses frames, while a register-resident implementation is accepted; a
+  non-immediate twin and repeated loop-invariant twin guard the boundary, and
+  generated behavior exercises alternate edges.  Disabling the rule restores
+  the redundant source home/transfer and fails the focused positive.
+
+  The focused control and PA38's 46/46 fast suite pass.  Root through-PA38
+  passes 5,453/5,453; the PA38 file audit has zero fatal findings and the
+  existing 36 advisories.  Fresh isolated O1 inception at
+  `/dev/shm/v3codex-p32-mergehome-final.tQSP0o` used outer `-j32`, inner build
+  jobs 32, and object jobs 32; every object and the final compiler matched,
+  with comparison completing in 35.03 s wall (906.42 s user, 51.08 s system,
+  229,464 KiB maximum RSS).  The atomic commit and push follow in the next
+  checkpoint entry.  No profiler, inception, or build process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

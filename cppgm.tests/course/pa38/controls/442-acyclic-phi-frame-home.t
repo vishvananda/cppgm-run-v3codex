@@ -1,4 +1,12 @@
 global @observed : i64 = 0
+global @phi_input : i64 = 7
+global @phi_zero_a : i64 = 0
+global @phi_zero_b : i64 = 0
+
+function @identity(%value : i64) -> i64 [unwind=no] {
+  block ^entry:
+    return i64 %value
+}
 
 function @single_use_chain(%outer : i64, %inner : i64) -> i64 [unwind=no] {
   block ^entry:
@@ -158,6 +166,120 @@ function @repeated_local_chain(%inner : i64, %count : i64) -> i64 [unwind=no] {
     return i64 %sum
 }
 
+function @immediate_call_phi_home(%count : i64) -> i64 [unwind=no] {
+  block ^entry:
+    %bias_a = load i64 @phi_zero_a
+    %bias_b = load i64 @phi_zero_b
+    jump ^loop
+
+  block ^loop:
+    %index = phi i64 [^entry: 0, ^join: %next]
+    %sum = phi i64 [^entry: 0, ^join: %next_sum]
+    %done = cmp uge i64 %index, %count
+    branch %done, ^exit, ^body
+
+  block ^body:
+    %odd = binary and i64 %index, 1
+    branch %odd, ^right, ^left
+
+  block ^left:
+    %left_value = load i64 @phi_input
+    %noise = call i64 @identity(%index)
+    jump ^join
+
+  block ^right:
+    %right_value = binary add i64 %index, 20
+    jump ^join
+
+  block ^join:
+    %choice = phi i64 [^left: %left_value, ^right: %right_value]
+    %used = call i64 @identity(%choice)
+    %next_sum = binary add i64 %sum, %used
+    %next = binary add i64 %index, 1
+    jump ^loop
+
+  block ^exit:
+    %with_a = binary add i64 %sum, %bias_a
+    %with_b = binary add i64 %with_a, %bias_b
+    return i64 %with_b
+}
+
+function @non_immediate_call_phi_home(%count : i64) -> i64 [unwind=no] {
+  block ^entry:
+    %bias_a = load i64 @phi_zero_a
+    %bias_b = load i64 @phi_zero_b
+    jump ^loop
+
+  block ^loop:
+    %index = phi i64 [^entry: 0, ^join: %next]
+    %sum = phi i64 [^entry: 0, ^join: %next_sum]
+    %done = cmp uge i64 %index, %count
+    branch %done, ^exit, ^body
+
+  block ^body:
+    %odd = binary and i64 %index, 1
+    branch %odd, ^right, ^left
+
+  block ^left:
+    %left_value = load i64 @phi_input
+    %noise = call i64 @identity(%index)
+    jump ^join
+
+  block ^right:
+    %right_value = binary add i64 %index, 20
+    jump ^join
+
+  block ^join:
+    %choice = phi i64 [^left: %left_value, ^right: %right_value]
+    %join_noise = call i64 @identity(%index)
+    %used = call i64 @identity(%choice)
+    %next_sum = binary add i64 %sum, %used
+    %next = binary add i64 %index, 1
+    jump ^loop
+
+  block ^exit:
+    %with_a = binary add i64 %sum, %bias_a
+    %with_b = binary add i64 %with_a, %bias_b
+    return i64 %with_b
+}
+
+function @repeated_invariant_call_guard(%count : i64) -> i64 [unwind=no] {
+  block ^entry:
+    %bias_a = load i64 @phi_zero_a
+    %bias_b = load i64 @phi_zero_b
+    %stable = load i64 @phi_input
+    jump ^loop
+
+  block ^loop:
+    %index = phi i64 [^entry: 0, ^join: %next]
+    %sum = phi i64 [^entry: 0, ^join: %next_sum]
+    %done = cmp uge i64 %index, %count
+    branch %done, ^exit, ^body
+
+  block ^body:
+    %use_stable = cmp ne i64 %index, 0
+    branch %use_stable, ^stable_edge, ^fresh_edge
+
+  block ^stable_edge:
+    jump ^join
+
+  block ^fresh_edge:
+    %fresh = call i64 @identity(99)
+    jump ^join
+
+  block ^join:
+    %choice = phi i64 [^stable_edge: %stable, ^fresh_edge: %fresh]
+    %used = call i64 @identity(%choice)
+    %next_sum = binary add i64 %sum, %used
+    %next = binary add i64 %index, 1
+    jump ^loop
+
+  block ^exit:
+    %with_a = binary add i64 %sum, %bias_a
+    %with_b = binary add i64 %with_a, %bias_b
+    return i64 %with_b
+}
+
 function @main() -> i64 [role=entry] {
   block ^entry:
     %inner = call i64 @single_use_chain(0, 1)
@@ -167,6 +289,9 @@ function @main() -> i64 [role=entry] {
     %looped = call i64 @loop_carried_guard(1, 10)
     %repeated = call i64 @repeated_merge_guard(1, 2)
     %local = call i64 @repeated_local_chain(1, 2)
+    %call_phi = call i64 @immediate_call_phi_home(2)
+    %delayed_phi = call i64 @non_immediate_call_phi_home(2)
+    %guarded = call i64 @repeated_invariant_call_guard(2)
     %bad0 = cmp ne i64 %inner, 11
     %bad1 = cmp ne i64 %outer, 33
     %bad2 = cmp ne i64 %multi, 66
@@ -174,11 +299,17 @@ function @main() -> i64 [role=entry] {
     %bad4 = cmp ne i64 %looped, 10
     %bad8 = cmp ne i64 %repeated, 7
     %bad10 = cmp ne i64 %local, 44
+    %bad12 = cmp ne i64 %call_phi, 28
+    %bad16 = cmp ne i64 %delayed_phi, 28
+    %bad13 = cmp ne i64 %guarded, 106
     %bad5 = binary or i64 %bad0, %bad1
     %bad6 = binary or i64 %bad2, %bad3
     %bad7 = binary or i64 %bad4, %bad5
     %bad9 = binary or i64 %bad6, %bad7
     %bad11 = binary or i64 %bad8, %bad9
-    %bad = binary or i64 %bad10, %bad11
+    %bad14 = binary or i64 %bad10, %bad11
+    %bad15 = binary or i64 %bad12, %bad13
+    %bad17 = binary or i64 %bad15, %bad16
+    %bad = binary or i64 %bad14, %bad17
     return i64 %bad
 }

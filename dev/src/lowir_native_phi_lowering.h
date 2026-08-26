@@ -24,7 +24,8 @@ public:
   virtual void DefinePhi(const lowir_model::Instruction & phi,
                          bool loop_carried, std::size_t block,
                          bool target_is_cyclic,
-                         const std::vector<std::size_t> & phi_blocks) = 0;
+                         const std::vector<std::size_t> & phi_blocks,
+                         const std::vector<std::size_t> & definition_blocks) = 0;
   virtual mir_model::MirOperand PhiDestination(
     lowir_model::ValueId value) const = 0;
   virtual mir_model::MirOperand PhiSource(
@@ -45,6 +46,92 @@ template <class Derived>
 class PhiLowering : public Emitter
 {
 protected:
+  bool planned_phi_source_home(
+      lowir_model::ValueId value, mir_model::MirOperand * home) const
+  {
+    if(!value.valid()) return false;
+    const std::uint32_t raw = static_cast<std::uint32_t>(value);
+    if(raw >= merge_source_home_known_.size() ||
+       !merge_source_home_known_[raw])
+      return false;
+    *home = merge_source_homes_[raw];
+    return true;
+  }
+
+  void plan_immediate_call_phi_source_home(
+      Derived & lowerer, const lowir_model::Instruction & phi,
+      std::size_t block, bool target_is_cyclic,
+      const std::vector<std::size_t> & definition_blocks)
+  {
+    // A one-use incoming temporary may be born in the merge home when the
+    // merge is consumed immediately by a call.  Inside a cycle, require the
+    // definition to be refreshed in that same component on every transfer.
+    if(lowerer.optimization_level_ < 1 || lowerer.facts_.uses[phi.dest] != 1 ||
+       block >= lowerer.source_.blocks.size())
+      return;
+    const std::vector<lowir_model::Instruction> & instructions =
+      lowerer.source_.blocks[block].instructions;
+    std::size_t consumer = 0;
+    while(consumer < instructions.size() &&
+          instructions[consumer].kind == lowir_model::Instruction::IK_PHI)
+      ++consumer;
+    if(consumer >= instructions.size() ||
+       instructions[consumer].kind != lowir_model::Instruction::IK_CALL)
+      return;
+    bool is_argument = false;
+    for(std::size_t i = 0; i < instructions[consumer].args.size(); ++i)
+      if(instructions[consumer].args[i].kind ==
+           lowir_model::Operand::OP_TEMP &&
+         instructions[consumer].args[i].value == phi.dest) {
+        is_argument = true;
+        break;
+      }
+    if(!is_argument) return;
+    const mir_model::MirOperand destination =
+      lowerer.selected_value_location(phi.dest);
+    if(destination.kind != mir_model::MirOperand::OP_FRAME) return;
+
+    lowir_model::ValueId selected;
+    bool selected_is_call = true;
+    for(std::size_t incoming = 1;
+        incoming < phi.args.size(); incoming += 2) {
+      const lowir_model::Operand & operand = phi.args[incoming];
+      if(operand.kind != lowir_model::Operand::OP_TEMP) continue;
+      const lowir_model::ValueId source = operand.value;
+      const std::uint32_t raw = static_cast<std::uint32_t>(source);
+      if(raw >= definition_blocks.size() ||
+         definition_blocks[raw] >= lowerer.source_.blocks.size() ||
+         lowerer.facts_.uses[raw] != 1 || lowerer.value_known_[raw] ||
+         !lowir_model::same_lowir_type(
+           lowir_model::lowir_value_type(lowerer.source_, source), phi.type) ||
+         (target_is_cyclic &&
+          !lowerer.control_flow_.BlocksShareCyclicComponent(
+            definition_blocks[raw], block)))
+        continue;
+      bool definition_is_call = false;
+      const std::vector<lowir_model::Instruction> & definitions =
+        lowerer.source_.blocks[definition_blocks[raw]].instructions;
+      for(std::size_t i = 0; i < definitions.size(); ++i)
+        if(definitions[i].dest == source) {
+          definition_is_call =
+            definitions[i].kind == lowir_model::Instruction::IK_CALL;
+          break;
+        }
+      if(!selected.valid() || (selected_is_call && !definition_is_call)) {
+        selected = source;
+        selected_is_call = definition_is_call;
+      }
+    }
+    if(!selected.valid()) return;
+    if(merge_source_homes_.empty()) {
+      merge_source_homes_.resize(lowerer.source_.value_names.size());
+      merge_source_home_known_.assign(
+        lowerer.source_.value_names.size(), 0);
+    }
+    merge_source_homes_[selected] = destination;
+    merge_source_home_known_[selected] = 1;
+  }
+
   bool PhiBlockIsCyclic(std::size_t block) override
   {
     Derived & lowerer = static_cast<Derived &>(*this);
@@ -55,7 +142,8 @@ protected:
   void DefinePhi(const lowir_model::Instruction & phi,
                  bool loop_carried, std::size_t block,
                  bool target_is_cyclic,
-                 const std::vector<std::size_t> & phi_blocks) override
+                 const std::vector<std::size_t> & phi_blocks,
+                 const std::vector<std::size_t> & definition_blocks) override
   {
     Derived & lowerer = static_cast<Derived &>(*this);
     const lowir_model::ValueId value = phi.dest;
@@ -93,6 +181,8 @@ protected:
         lowerer.define(value, type,
           build::frame_operand(home.offset, binding));
         lowerer.merge_phi_frame_home_[value] = 1;
+        plan_immediate_call_phi_source_home(
+          lowerer, phi, block, target_is_cyclic, definition_blocks);
         return;
       }
     const long long offset = lowerer.allocate_frame_binding(
@@ -101,6 +191,8 @@ protected:
     lowerer.define(value, type, build::frame_operand(offset,
       static_cast<std::uint32_t>(lowerer.target_.frame_bindings.size())));
     lowerer.merge_phi_frame_home_[value] = loop_carried ? 0 : 1;
+    plan_immediate_call_phi_source_home(
+      lowerer, phi, block, target_is_cyclic, definition_blocks);
   }
 
   mir_model::MirOperand PhiDestination(
@@ -190,6 +282,10 @@ protected:
     emit_parallel_transfers(
       lowerer.phi_transfers_[predecessor_id], this, &out);
   }
+
+private:
+  std::vector<mir_model::MirOperand> merge_source_homes_;
+  std::vector<unsigned char> merge_source_home_known_;
 };
 
 void emit_parallel_transfers(const std::vector<Transfer> & transfers,

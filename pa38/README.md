@@ -196,6 +196,16 @@ semantic-preserving rewrites where safe:
   a loop invariant feeding a repeated merge, a value with another use, or a
   representation change must retain an independent home unless a different
   register-resident implementation makes the transfer unnecessary
+- when a one-use scalar merge is consumed immediately as a call argument,
+  allow one same-typed, one-use incoming temporary to be defined directly in
+  the merge's frame home.  This removes the incoming temporary's separate
+  home and its identity edge transfer; every alternate edge must still write
+  the merge home.  In a cyclic region, the incoming definition and merge must
+  belong to the same cyclic component so the value is refreshed before every
+  dynamic transfer.  A loop invariant, a value with another use or a different
+  representation, or a merge with an intervening consumer keeps the ordinary
+  independent-home path.  No particular register or instruction sequence is
+  required
 - keep a frequently reused, iteration-local scalar call result available to
   branch comparisons throughout one cyclic choice region.  The defining call
   must execute before every dynamic use, dominate every use, and have all of

@@ -420,6 +420,47 @@ for my $test (@tests)
 	$edge = block_body($local, 'inner_value_edge');
 	die "$test: iteration-local phi edge retained an identity transfer\n"
 		if defined($edge) && $edge =~ /^\s+(?:mov|load|store)(?:\.|\s)/m;
+
+	my $call_phi = function_body($test, $mir, 'immediate_call_phi_home');
+	my $call_choice = frame_offset($call_phi, 'choice');
+	my $call_source = frame_offset($call_phi, 'left_value');
+	my $call_left = block_body($call_phi, 'left');
+	die "$test: immediate-call reducer lost its pressured incoming call\n"
+		if !defined($call_left) || $call_left !~ /^\s+call \@identity\b/m;
+	if(defined($call_choice)) {
+		die "$test: eligible immediate-call source retained a distinct frame home\n"
+			if defined($call_source) && $call_source ne $call_choice;
+		die "$test: incoming value was not written directly to the merge home\n"
+			if $call_left !~ /^\s+store\.i64 \[rbp\Q$call_choice\E\],/m;
+		my ($after_pressure_call) = $call_left =~
+			/^\s+call \@identity\b[^\n]*\n(.*?)^\s+jmp \^join$/ms;
+		die "$test: immediate-call edge retained a post-call identity transfer\n"
+			if !defined($after_pressure_call) ||
+			   $after_pressure_call =~ /^\s+(?:mov|load|store)(?:\.|\s)/m;
+	}
+	my $delayed = function_body(
+		$test, $mir, 'non_immediate_call_phi_home');
+	my $delayed_source = frame_offset($delayed, 'left_value');
+	my $delayed_choice = frame_offset($delayed, 'choice');
+	my $delayed_left = block_body($delayed, 'left');
+	if(defined($delayed_source) && defined($delayed_choice)) {
+		die "$test: non-immediate control unsafely shared incoming homes\n"
+			if $delayed_source eq $delayed_choice;
+		die "$test: non-immediate control lost its ordinary edge transfer\n"
+			if !defined($delayed_left) ||
+			   $delayed_left !~ /^\s+load\.i64\b.*\Q$delayed_source\E/m ||
+			   $delayed_left !~
+			     /^\s+store\.i64 \[rbp\Q$delayed_choice\E\],/m;
+	}
+
+	my $invariant = function_body(
+		$test, $mir, 'repeated_invariant_call_guard');
+	my $stable = frame_offset($invariant, 'stable');
+	my $guard_choice = frame_offset($invariant, 'choice');
+	die "$test: repeated invariant unsafely donated its frame home\n"
+		if defined($stable) && defined($guard_choice) &&
+		   $stable eq $guard_choice;
+
 }
 
 print "native structural controls: PASS (" . scalar(@tests) . "/" .

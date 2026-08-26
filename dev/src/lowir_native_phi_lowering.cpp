@@ -55,16 +55,20 @@ void plan_transfers(
   std::vector<std::size_t> block_by_id(function.next_block_id, no_block);
   std::vector<std::size_t> phi_blocks(
     function.value_names.size(), no_block);
+  std::vector<std::size_t> definition_blocks(
+    function.value_names.size(), no_block);
   for(std::size_t block = 0; block < function.blocks.size(); ++block)
     block_by_id[function.blocks[block].id] = block;
-  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
     for(std::size_t i = 0;
         i < function.blocks[block].instructions.size(); ++i) {
-      const lowir_model::Instruction & phi =
+      const lowir_model::Instruction & instruction =
         function.blocks[block].instructions[i];
-      if(phi.kind != lowir_model::Instruction::IK_PHI) break;
-      phi_blocks[phi.dest] = block;
+      if(instruction.dest.valid()) definition_blocks[instruction.dest] = block;
+      if(instruction.kind == lowir_model::Instruction::IK_PHI)
+        phi_blocks[instruction.dest] = block;
     }
+  }
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
     const lowir_model::LowirBlock & target = function.blocks[block];
     const bool target_is_cyclic = emitter->PhiBlockIsCyclic(block);
@@ -83,7 +87,7 @@ void plan_transfers(
         }
       }
       emitter->DefinePhi(phi, loop_carried, block, target_is_cyclic,
-                         phi_blocks);
+                         phi_blocks, definition_blocks);
       for(std::size_t incoming = 0;
           incoming + 1 < phi.args.size(); incoming += 2) {
         const std::uint32_t predecessor = phi.args[incoming].block;
