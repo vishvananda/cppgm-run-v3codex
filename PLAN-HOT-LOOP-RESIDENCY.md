@@ -2677,8 +2677,8 @@ inception lane while another build or profiler is active.
   landed in commit `393e1afa` (`pa38: recolor profitable odd save pairs`).
   Its final gates are the P32-L83 PA38 46/46, through-PA38 5,453/5,453, audit
   with zero fatal findings and 36 established advisories, and O1/all-32-way
-  inception match.  Push to `origin/v3opt` is pending; no profiler, inception,
-  build, or timing process remains.
+  inception match.  Push `5fdf07b5..1759b398` advanced `origin/v3opt`
+  successfully.  No profiler, inception, build, or timing process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
