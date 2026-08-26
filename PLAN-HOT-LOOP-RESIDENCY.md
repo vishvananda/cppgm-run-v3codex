@@ -803,6 +803,31 @@ current compiler.
 5. Run three rotating native samples for direction.
 6. Use one native software `task-clock` profile for attribution when needed.
 
+Use a clean full-source PA39 O1 build as a second native timing oracle.  This
+oracle times a finished compiler binary as `CXX`; the shorter candidate
+preparation that uses the GCC-built `../dev/cppgm++` is not a self-generated
+runtime measurement.  Give every lane a fresh object/bin root, run lanes
+sequentially, and make all three levels of parallelism explicit:
+
+```sh
+make -s -C pa39 -j32 cppgm++-self \
+  CXX=<finished-compiler> CPPGM_HOST_CXX=g++ \
+  INCEPTION_OBJ_ROOT_BASE=<fresh-root>/obj \
+  INCEPTION_BIN_ROOT_BASE=<fresh-root>/bin \
+  INCEPTION_SELFHOST_OPT_LEVEL=1 \
+  INCEPTION_BUILD_JOBS=32 INCEPTION_OBJECT_BUILD_JOBS=32
+```
+
+Record wall, user, and system time.  Wall is the practical clean-build
+throughput result but can move with the 32-way scheduler tail; aggregate
+`user+sys` is the steadier work measure.  Require a rotated repeat before a
+sub-percent wall-only result changes a frozen-fixture decision.  An archived
+candidate may be compared only with its source-matched archived production
+compiler; regenerating current source once does not transplant a removed
+code-generation policy or a later optimization into the archived executable.
+Use this broad oracle to reveal translation-unit or critical-path wins, not as
+a replacement for the frozen task-clock gate.
+
 Every accepted increment is an atomic checkpoint.  Before committing it:
 
 1. update its student-facing README contract, focused property/behavior test,
@@ -2394,6 +2419,54 @@ inception lane while another build or profiler is active.
   3,000 lines.  Full O1 inception with explicit outer, inner, and object
   32-way settings matched every object and the final compiler in 36.89 s.
   No Cachegrind was started and no profiler or inception process remains.
+
+- **P32-L79 (FULL-SOURCE O1 ORACLE AND REJECTED-POLICY REPLAY).** A clean
+  PA39 compiler build now supplements the frozen translation unit as a broad
+  timing screen.  Every lane used a fresh `/dev/shm` object/bin root, O1, and
+  explicit outer, inner, and object parallelism of 32, and ran sequentially.
+  This times the finished compiler as `CXX`, not the faster GCC-built
+  `dev/cppgm++` used to prepare a self compiler.  Two source-matched current
+  runs measured self 32.87/33.84 s wall and 891.78/898.48 s user, GCC
+  20.84/21.11 and 539.18/539.03, and Clang 21.31/21.08 and
+  555.48/554.90.  The mean wall gaps are therefore 1.590x GCC and 1.574x
+  Clang; mean user gaps are 1.660x and 1.612x.  The broad workload confirms
+  rather than explains away the residual, while its wall-time spread requires
+  aggregate CPU and rotated repeats for small candidate decisions.
+
+  Three close P32 rejections were screened against the common pre-L78 landing
+  compiler on the same current full source set, avoiding a cross-version
+  comparison.  The bounded `r10` immediate-phi candidate used 947.58 s total
+  CPU versus the two-run landing mean 943.47 s (+0.44%); narrow `i8` load
+  normalization used 949.20 s (+0.61%).  Both remain rejected.  The old
+  definition-pointer binary appeared more interesting: three runs had a
+  32.76 s wall median versus the landing's two-run center of 33.145 s
+  (-1.16%), although mean total CPU improved only 0.35%.  That justified
+  reconstructing the representation on the current source rather than
+  promoting archived evidence.
+
+  The current PA37 reconstruction stored pointers to already-compacted
+  retained instructions instead of copying definition snapshots.  Pointer
+  use ended with the simplification pass; block vectors could not reallocate,
+  retained prefix elements could not be overwritten, and the pointer was
+  installed only after an instruction reached its compacted slot.  PA37
+  passed 187/187.  The true combined self compiler retained 78 static
+  `strlen@plt` calls and shrank text 8,577,926 -> 8,575,882 bytes.  Three
+  clean full-source runs nevertheless averaged 33.197 s wall and 944.61 s
+  total CPU versus current production's 33.177 s and 944.79 s: +0.06% wall
+  and -0.02% CPU, effectively identical.  A balanced frozen screen measured
+  production 9,124.49/9,146.90/9,402.14 ms (median 9,146.90) and candidate
+  9,214.26/9,162.58/9,120.38 ms (median 9,162.58), a 15.68 ms or 0.17%
+  regression.  Every frozen object matched current hash
+  `f92da5db...d9c866`.
+
+  The current reconstruction is removed because neither oracle reaches the
+  0.5% production gate.  This is measured destructive interference in the
+  broad-oracle signal: the archived cohort suggested a critical-path win, but
+  the combined current landing did not retain it.  Restored
+  `lowir_opt.cpp` is again 3,000 lines and the restored focused PA37 gate is
+  clean.  No student contract or property is retained for a removed internal
+  representation, no Cachegrind or inception comparison ran, and no profiler
+  or build process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
