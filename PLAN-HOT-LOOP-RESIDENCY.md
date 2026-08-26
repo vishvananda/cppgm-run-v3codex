@@ -2081,6 +2081,30 @@ inception lane while another build or profiler is active.
   The implementation is removed at the fast native gate and receives no
   student contract or retained property test.  No profiler remains.
 
+- **P32-L69 (LEAF FIXED-COLOR RECOLOR REJECTED AT CORRECT O1).** P32-L66's
+  bounded leaf-only `%rcx` admission was rebuilt with the required
+  `INCEPTION_SELFHOST_OPT_LEVEL=1` and all three 32-way settings.  The target
+  effect is real: `Program::FindEntry` dropped one callee-save pair and shrank
+  from 420 to 408 bytes; total compiler text fell from 8,589,538 to 8,586,370
+  bytes and tokenizer text from 31,105 to 31,095.  The focused PA38 structural
+  and survivor properties stayed clean.  Two legacy exact-MIR compatibility
+  fixtures changed, so the unlanded policy scored 44/46 without regenerating
+  those snapshots.  A full O1 outer/inner/object-32-way inception nevertheless
+  matched every object and the final compiler in 35.37 s.  Candidate frozen
+  outputs were internally stable at `2247d6be...39fc`; landing outputs stayed
+  stable at `21883ca7...e639`.
+
+  Two independently balanced software-task-clock sets agreed that the local
+  reduction does not improve the end-to-end workload.  Set one measured
+  baseline 9,273.12/9,194.37/9,276.67 ms (median 9,273.12) and candidate
+  9,659.45/9,275.46/9,276.54 ms (median 9,276.54), +0.04%; the first candidate
+  position was a scheduling outlier.  The reversed repeat measured baseline
+  9,453.58/9,194.01/9,253.86 ms (median 9,253.86) and candidate
+  9,428.52/9,248.39/9,256.35 ms (median 9,256.35), +0.03%.  The implementation
+  is removed, the original exact fixtures remain untouched, and restored PA38
+  passes 46/46.  No student contract is retained for a rejected policy and no
+  profiler remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
