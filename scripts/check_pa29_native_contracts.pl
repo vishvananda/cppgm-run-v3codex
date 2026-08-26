@@ -138,6 +138,24 @@ sub has_integer_multiply
 	return 0;
 }
 
+sub has_vector_copy_pair
+{
+	my ($code) = @_;
+	my ($load, $store) = (0, 0);
+	for(my $offset = 0; $offset + 2 < length($code); ++$offset) {
+		next if ord(substr($code, $offset, 1)) != 0xf3;
+		my $opcode = $offset + 1;
+		my $prefix = ord(substr($code, $opcode, 1));
+		++$opcode if $prefix >= 0x40 && $prefix <= 0x4f;
+		next if $opcode + 1 >= length($code) ||
+			ord(substr($code, $opcode, 1)) != 0x0f;
+		my $second = ord(substr($code, $opcode + 1, 1));
+		$load = 1 if $second == 0x6f;
+		$store = 1 if $second == 0x7f;
+	}
+	return $load && $store;
+}
+
 if(scalar(@ARGV) != 2)
 {
 	die "Usage: check_pa29_native_contracts.pl " .
@@ -214,6 +232,8 @@ for my $test (@tests)
 		my $code = main_code($test, $program);
 		die "$test: bounded small copy used string-operation setup\n"
 			if index($code, "\xf3\xa4") >= 0;
+		die "$test: bounded small copy used no reserved-scratch vector chunk\n"
+			if !has_vector_copy_pair($code);
 		next;
 	}
 	if($test =~ /aligned-medium-copy-direct/) {
@@ -223,6 +243,8 @@ for my $test (@tests)
 		my $code = main_code($test, $program);
 		die "$test: aligned medium copy used string-operation setup\n"
 			if index($code, "\xf3\xa4") >= 0;
+		die "$test: aligned medium copy used no reserved-scratch vector chunk\n"
+			if !has_vector_copy_pair($code);
 		next;
 	}
 	if($test =~ /weakly-aligned-medium-copy-compact/) {

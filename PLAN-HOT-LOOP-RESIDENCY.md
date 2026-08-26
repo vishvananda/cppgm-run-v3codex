@@ -2,9 +2,9 @@
 
 Status: active; retained-change coverage has been converted to
 student-implementable property/behavior oracles; pressure-aware edge-local
-loop-phi capacity is retained as a minor increment; naturally aligned fixed
-copies through 48 bytes are the latest performance landing; performance work
-continues
+loop-phi capacity is retained as a minor increment; reserved-scratch vector
+chunks for direct fixed copies are the latest performance landing;
+performance work continues
 
 Date: 2026-08-26
 
@@ -1540,6 +1540,83 @@ inception lane while another build or profiler is active.
   profiler, build, or timing process remains.  Next, perform I6's clean
   same-revision self/GCC/Clang native rebaseline and rank the residual exact
   hot functions before selecting another implementation slice.
+- **P32-L46 (SOURCE-MATCHED THREE-COMPILER REBASELINE).** Rebuilt O1 hosts
+  from the pushed `3fc68c24` source and compared them with the outer/inner-32
+  self compiler at
+  `/dev/shm/v3codex-p32-copy48-align8-{j32,gcc-o1,clang-o1}`.  Six rotating
+  samples put every sequence position in each lane twice.  Self measures
+  9.270/8.770 s wall/user, GCC 5.885/5.445 s, and Clang 5.765/5.305 s.  The
+  honest wall ratios are therefore 1.575x and 1.608x; the stricter Clang
+  denominator requires self at or below 8.6475 s, about 6.7% below this
+  checkpoint.  Self and GCC emit `261b3f42...5514`; Clang emits
+  `05ccbff5...d74`, differing only in the two established numeric local-symbol
+  spellings with otherwise matching sections and instructions.
+
+  Exact Ir-only profiles measure 38,830,309,716 self instructions,
+  20,701,878,992 GCC instructions, and 21,016,263,598 Clang instructions.
+  The self-minus-host named deltas are dominated by lexer code shape: against
+  GCC, out-of-line `Lexer::Peek`, `PhysicalCursor::Next`, `Lexer::Run`, and the
+  macro `Token` move account for about 3.649B, 1.118B, 1.134B, and 1.000B
+  instructions respectively; against Clang the corresponding excesses are
+  about 1.481B, 0.274B, 0.787B, and 1.019B.  The differing inlining decisions
+  mean these symbol rows are attribution, not independent work totals.  Native
+  task-clock agrees on the broader result: self `Run`/`Peek`/physical-next
+  together cost roughly 1.11 s, while the remainder is distributed across
+  construction, semantic lookup, and optimizer data-structure work.
+
+  Static shape explains why another global inline-dose sweep is not selected.
+  Self/GCC/Clang `Run` bodies are 12,434/9,539/5,104 bytes; self retains 477
+  rbp memory accesses there versus 76 total stack accesses in GCC and 36 in
+  Clang.  Yet Clang also leaves `Peek` and physical-next out of line, and the
+  already-tested cap-52/cap-72 points merely clone or displace work.  The next
+  slice is instead a general operation-count/code-density improvement in the
+  existing fixed-copy population, with native timing as the fast gate and one
+  exact finalist run.  Two stale sleeping `perf annotate` processes from
+  earlier diagnostics had accumulated only nine CPU seconds over several
+  hours; both were terminated before this rebaseline analysis.  They were not
+  executing samples and no stale profiler remained.
+- **P32-L47 (RESERVED-SCRATCH VECTOR COPY LANDING).** Direct fixed copies now
+  use unaligned 16-byte chunks through the encoder-reserved `xmm7`, followed
+  by the existing scalar tail.  The x86-64 target guarantees the required
+  instruction support, unaligned chunks do not strengthen the LowIR alignment
+  precondition, and ordinary floating-point value placement already excludes
+  `xmm6`/`xmm7`; therefore the change introduces no unmodeled live-value
+  clobber.  The existing size policy remains unchanged at this increment:
+  every copy through 32 bytes is direct, naturally eight-byte-aligned copies
+  through 48 bytes are direct, and the other copies keep string setup.
+
+  Against `/dev/shm/v3codex-p32-copy48-align8-j32`, the corrected O1 candidate
+  at `/dev/shm/v3codex-p32-simd-copy-o1-j32` shrinks final compiler text
+  8,628,630 -> 8,571,706 bytes (-56,924, -0.66%) and frozen text 621,955 ->
+  620,844 bytes (-1,111).  Candidate host and self emit the exact
+  `5b4f05a7...e548` object.  Four interleaved samples per lane measure
+  9.425/8.930 s baseline versus 9.375/8.885 s candidate wall/user medians;
+  one 11.16 s candidate run coincided with machine pressure and is an obvious
+  outlier but does not change either median.  Exact Ir-only Cachegrind measures
+  38,830,309,716 -> 38,646,948,485 instructions (-183,361,231, -0.472%).
+  The reduction is distributed: simplification, inlining, slot promotion,
+  instruction moves, lookup-result assignment, and syntax construction are
+  the leading named beneficiaries.  This clears the minor mechanical
+  code-density rule and is approximately at Phase C's 0.5% native threshold.
+
+  An initial scratch compiler accidentally used PA39's default O3 self-host
+  level and was compared briefly with the O1 baseline.  Its two candidate
+  samples and text size are discarded as a mismatched-control experiment; the
+  scratch was rebuilt explicitly with `INCEPTION_SELFHOST_OPT_LEVEL=1` before
+  any keep decision.  PA29's README now describes reserved vector chunks and
+  scalar tails.  Controls `905` and `906` require a vector load/store class in
+  the bounded entry body, reject string setup, retain the local 32/48-byte MIR
+  relationship, and execute the copied data.  They match no complete MIR,
+  program, object, hash, or physical register.  Disabling vector chunks makes
+  control `905` fail specifically on the missing class.
+
+  PA29 passes 291/291 and the root through-PA38 report passes 5,453/5,453.
+  The PA38 file audit has zero fatal findings and the same 36 advisory
+  warnings.  Fresh O1 inception uses outer `-j32` and inner
+  `INCEPTION_BUILD_JOBS=32`; every object and the final compiler match in
+  53.63 s wall (1,399.37 s aggregate user, 229,372 KiB maximum RSS).  All
+  exact and native output hashes are deterministic, and no profiler, build,
+  or timing process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

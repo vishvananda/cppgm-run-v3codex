@@ -51,6 +51,28 @@ bool integer_load_sign_extends(const lowir_model::LowType & type)
     type.kind == lowir_model::LTK_I64;
 }
 
+void emit_unaligned_vector_copy_chunk(elf_detail::CodeBuffer & out,
+                                      X64Register destination,
+                                      long long destination_offset,
+                                      X64Register source,
+                                      long long source_offset)
+{
+  // The allocator reserves xmm6/xmm7 for encoder scratch use.  movdqu is
+  // available on every x86-64 target and imposes no alignment requirement.
+  out.byte(0xf3);
+  emit_rex(out, false, static_cast<X64Register>(XMM_7), source);
+  out.byte(0x0f);
+  out.byte(0x6f);
+  emit_memory_modrm(out, static_cast<unsigned>(XMM_7), source,
+                    source_offset);
+  out.byte(0xf3);
+  emit_rex(out, false, static_cast<X64Register>(XMM_7), destination);
+  out.byte(0x0f);
+  out.byte(0x7f);
+  emit_memory_modrm(out, static_cast<unsigned>(XMM_7), destination,
+                    destination_offset);
+}
+
 }  // namespace
 
 void emit_address_normalized_load(
@@ -197,16 +219,24 @@ bool emit_small_copy_bytes(
   const X64Register source = side_base(source_operand);
   const long long destination_base = side_offset(destination_operand);
   const long long source_base = side_offset(source_operand);
-  // Reuse an existing MI_COPY_BYTES clobber so this target choice does not
-  // change MIR liveness.  A multi-chunk copy revisits both address
-  // registers, so the scratch must avoid them; among the three string-op
-  // clobbers one always remains.
+  // XMM7 is permanently reserved for encoder scratch use.  Scalar tails reuse
+  // an existing MI_COPY_BYTES clobber so this target choice does not change
+  // MIR liveness.  A multi-chunk copy revisits both address registers, so the
+  // integer scratch must avoid them; among the three string-op clobbers one
+  // always remains.
   const X64Register scratch =
     destination != XR_RCX && source != XR_RCX ? XR_RCX :
     destination != XR_RSI && source != XR_RSI ? XR_RSI : XR_RDI;
   std::size_t offset = 0;
   while(offset < bytes) {
     const std::size_t remaining = bytes - offset;
+    if(remaining >= 16) {
+      emit_unaligned_vector_copy_chunk(
+        out, destination, destination_base + static_cast<long long>(offset),
+        source, source_base + static_cast<long long>(offset));
+      offset += 16;
+      continue;
+    }
     const std::size_t chunk =
       remaining >= 8 ? 8 : remaining >= 4 ? 4 : remaining >= 2 ? 2 : 1;
     emit_load(out, scratch, source,
