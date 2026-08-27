@@ -561,6 +561,23 @@ for my $test (@tests)
 			if $body =~ /^\s+call\s+\@[^\n]*unreachable/m;
 		next;
 	}
+	if($test =~ /by-address-call-materializes-storage/) {
+		my $body = function_body($test, $mir, 'main');
+		my ($home) = $body =~
+			/^\s+temp %v -> (\[[^\]\n]+\]) : i64$/m;
+		die "$test: scalar call result received no addressable home\n"
+			if !defined($home);
+		die "$test: scalar call result was not preserved in its home\n"
+			if $body !~ /^\s+store\.i64 \Q$home\E, [a-z0-9]+$/m;
+		my ($address) = $body =~
+			/^\s+lea ([a-z0-9]+), \Q$home\E$/m;
+		die "$test: by-address argument did not materialize the home's address\n"
+			if !defined($address);
+		die "$test: materialized address was not consumed by the call boundary\n"
+			if $body !~
+			/^\s+call \@copy_ref \[args=\([^\n)]*\b\Q$address\E\b[^\n)]*\)\]$/m;
+		next;
+	}
 	die "$test: no native property predicate selected\n";
 }
 

@@ -75,7 +75,6 @@ void write_parameter_metadata(std::ostream & out, const ParameterMetadata & valu
   case PPM_DIRECT: break;
   case PPM_INDIRECT_RESULT: metadata.item("pass", "indirect_result"); break;
   case PPM_BY_ADDRESS: metadata.item("pass", "by_address"); break;
-  case PPM_REFERENCE: metadata.item("pass", "reference"); break;
   }
   if(value.alias == PALM_NOALIAS) metadata.item("alias", "noalias");
   metadata.finish();

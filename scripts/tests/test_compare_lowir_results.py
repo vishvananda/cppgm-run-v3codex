@@ -326,6 +326,22 @@ function @main() -> i32 [role=entry] {
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("removed decay surface", result.stdout)
 
+    def test_lowir_sanity_rejects_removed_reference_pass(self):
+        generated = REFERENCE.replace(
+            "%left : i64", "%left : ptr [pass=reference]", 1
+        )
+        result = self.compare(REFERENCE, generated)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("removed reference passing label", result.stdout)
+
+    def test_relaxed_compare_maps_legacy_reference_to_by_address(self):
+        reference = REFERENCE.replace(
+            "%left : i64", "%left : ptr [pass=reference]", 1
+        )
+        generated = reference.replace("pass=reference", "pass=by_address")
+        result = self.compare(reference, generated)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_relaxed_compare_erases_legacy_unary_decay(self):
         reference = REFERENCE.replace(
             "%sum = binary add i64 %left, %right",

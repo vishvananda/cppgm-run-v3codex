@@ -121,7 +121,7 @@ serialized LowIR.
 | `storage=readonly` and call `effects` | Active readonly folding and memory-barrier consumers; declaration facts cannot be inferred from bodies that are absent. | Keep. |
 | `object_root` | Active reachability/pruning consumer; language-required emission is not use-def reachability. | Keep the fact. |
 | `alias=noalias` | Produced for eligible value boundaries and consumed by staged-copy disjointness proof. | Keep with its current scoped meaning. |
-| `pass=indirect_result`, `pass=by_address` | Active call ABI/address-materialization consumers; pointer type alone cannot distinguish the object boundary. | Keep. |
+| `pass=indirect_result`, `pass=by_address` | Active call ABI/address-materialization consumers; pointer type alone cannot distinguish caller-owned result storage or an addressable-storage boundary. `by_address` is shared by indirect objects, values, and already-lowered source references. | Keep. |
 | `projection=array_element`, `projection=field` | Produced by lowering and consumed by current scalar/address/table transforms. | Keep. |
 | entry/init/fini, active EH/runtime imports, RTTI roles | Produced by source lowering and consumed by startup, standalone runtime, host object, or RTTI lowering. | Keep only the active values listed in the final role ledger. |
 | `section_name` in memory | Produced by the supported GNU section attribute and consumed by ELF placement. | Keep and make durable as `section=`; it is a real current boundary gap. |
@@ -136,6 +136,7 @@ serialized LowIR.
 | `trivial_lifecycle` | It has 224 checked-in reference occurrences across assignment-local and shared copies, but its only production consumer is `force_inline || (trivial_lifecycle && !no_inline)`. Retention is already independent in `object_root`. | At the semantic-to-LowIR boundary set `force_inline=yes` when the lifecycle helper is trivial and not `no_inline`; preserve `object_root` independently; then remove the field and spelling. |
 | `arity=prototype_relaxed` | No source producer, one handwritten smoke input, and no native variadic treatment. The documentation says it exists for a future producer. | Remove the enum, parser/serializer spelling, docs, and smoke fixture. Keep only `fixed` and `variadic`. |
 | `section_segment` | No producer and no Linux/ELF consumer. It is merely copied through LowIR, binary object, and MIR records. | Remove the field from every model and internal serialization. Do not add `section_segment=` without a supported target. |
+| `pass=reference` | No consumer distinguished the source-reference origin from another `by_address` boundary. Replacing it with an ordinary direct pointer lost required address materialization and regressed same-source O1 throughput, but mapping it to the existing `by_address` fact preserves the required semantics and backend policy. | Render and adapt source-reference boundaries as `pass=by_address`; remove the separate public/model value and reject its old spelling. |
 | Explicit conservative/default spellings | `arity=fixed`, `effects=readwrite`, `unwind=may`, `return=returns`, `pass=direct`, `capture=maycapture`, `access=readwrite`, `linkage=cpp`, and `key=no` mean the same thing as omission. Several are never emitted; the rest only exercise transport. | Canonicalize them to omission and remove public spellings or enum states that no active consumer needs. Retain non-default facts such as `readonly`, `noreturn`, `nounwind`, and `nocapture` only when independently justified. |
 | `role=unreachable` and synthetic call | The semantic fact is real, but the symbol role and call are indirect. `return=noreturn` cannot distinguish undefined continuation from an observable terminating call. | Add a first-class `unreachable` terminator, lower the builtin directly to it, and remove `SR_UNREACHABLE`, the synthetic declaration, and role-based CFG indexing. |
 | `eh_type`, `eh_call_unexpected`, `eh_current_exception_type` roles | No source producer and no behavioral backend consumer. | Remove from the public role set unless the baseline ledger finds a missed assignment-owned producer and property test. |
@@ -151,7 +152,6 @@ non-derivable current obligation.
 | --- | --- | --- |
 | `unary decay ptr` | Produced frequently, but it is an identity operation; O1 removes it and native lowering treats it as a copy. | A current behavior or optimizer consumer that cannot use `copy ptr` or the original address value. |
 | `pass=decay` | Two generated-reference families and no decay-specific consumer; generic `passing != direct` tests are not evidence that decay origin is required. | A call-boundary behavior or measured backend decision that cannot be derived from the already-lowered `ptr` type. |
-| `pass=reference` | Printed widely. Native code currently groups it with every non-direct mode, but no consumer distinguishes reference from decay or another pointer origin. | A correctness/ABI result that differs from a direct pointer and cannot be represented by `ptr`, `by_address`, `indirect_result`, `alias`, or access facts. |
 | `capture=nocapture` and parameter `access=*` | Produced for a small builtin boundary set, transported and compared for signature identity, but not consumed by production optimization or native lowering. `maycapture` and `access=readwrite` duplicate conservative defaults. | An active transform or ABI/object consumer. If one is added, retain only the minimal proven values and make the transform's guard property-tested. |
 | `projection=base_subobject`, `projection=reference_field` | Produced in many source refs, but no current pass has kind-specific behavior for either; generic expression keys merely preserve the label. | A current alias/layout/optimization decision that cannot use byte offset, type, `field`, or existing object facts. |
 
@@ -326,8 +326,9 @@ For each candidate:
 
 1. Normalize the fact at the typed-to-LowIR boundary using existing LowIR:
    - `unary decay ptr` -> the original pointer or `copy ptr`;
-   - `pass=decay` / `pass=reference` -> direct `ptr` unless another retained
-     ABI fact applies;
+   - `pass=decay` -> direct `ptr`;
+   - `pass=reference` -> direct `ptr` only if no addressable-storage behavior
+     is required, otherwise the already-retained `pass=by_address` fact;
    - unused capture/access values -> omission/conservative defaults; and
    - unconsumed projection kinds -> unannotated `index` or the minimal active
      projection.
@@ -354,12 +355,32 @@ Run candidates in this order, from least to most entangled:
 2. `unary decay ptr` and `pass=decay`;
 3. the remaining capture/access family;
 4. `projection=base_subobject` and `projection=reference_field`; and
-5. `pass=reference`.
+5. `pass=reference`, first against ordinary `ptr` and then against the retained
+   `by_address` boundary if direct passing loses address semantics.
 
 Do not use fixture count as a keep criterion.  Conversely, do not remove
 `projection=array_element`, `projection=field`, `alias=noalias`,
 `pass=by_address`, or `pass=indirect_result` in this phase: they already have
 active, distinct consumers.
+
+The final `pass=reference` ablation resolved the distinction. Replacing it
+with ordinary direct passing remained correct across the full 5,460-test gate
+and inception, but an adjacent same-host all-32 rotation worsened aggregate
+self/GCC CPU ratio from `915.29 / 585.88 = 1.562x` to
+`920.12 / 583.93 = 1.576x` (+0.87%). More importantly, that form required a
+special native layout exception to recover the address of a scalar/register
+temporary. Mapping source references to the existing public
+`pass=by_address` boundary preserves that addressable-storage obligation
+without a separate public source-origin enum or spelling. Keep the private
+typed-source `CALL_PASS_REFERENCE` tag: collapsing that tag as well perturbed
+self-generated code enough to worsen the repeated aggregate self/GCC ratio
+from `1.5585x` to `1.5711x` (+0.81%), despite a small GCC improvement. With
+the private tag retained and normalized through explicit boundary cases, two
+adjacent self samples averaged 922.25 CPU-seconds versus 921.09 for the parent
+(+0.13%, within noise); GCC candidate samples repeated at 587.08 versus the
+587.54 established parent mean (-0.08%). PA29's focused control checks the
+storage, address, call-use, and execution relationships without fixing a
+register, frame offset, or complete MIR dump.
 
 ### L6. Make the justified section fact durable
 

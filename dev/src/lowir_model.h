@@ -234,8 +234,7 @@ enum ParamPassingMode
 {
   PPM_DIRECT,
   PPM_INDIRECT_RESULT,
-  PPM_BY_ADDRESS,
-  PPM_REFERENCE
+  PPM_BY_ADDRESS
 };
 
 enum ParamAliasMode

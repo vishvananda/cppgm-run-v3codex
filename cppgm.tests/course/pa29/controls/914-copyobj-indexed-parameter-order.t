@@ -16,8 +16,8 @@ function @copy_argument(%ret : ptr [pass=indirect_result], %context : ptr,
     return void
 }
 
-function @copy_indexed_parameter(%operand : ptr [pass=reference],
-                                 %context0 : ptr [pass=reference],
+function @copy_indexed_parameter(%operand : ptr [pass=by_address],
+                                 %context0 : ptr [pass=by_address],
                                  %context1 : ptr, %fact : ptr) -> u8
     [unwind=no] {
   slot $result : obj<72x8>

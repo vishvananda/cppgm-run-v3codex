@@ -278,7 +278,7 @@ void AdaptParameterFacts(const Parameter& source,
 		lowir_model::StringId();
 	target->type = AdaptType(source.type);
 	if (source.reference)
-		target->metadata.passing = lowir_model::PPM_REFERENCE;
+		target->metadata.passing = lowir_model::PPM_BY_ADDRESS;
 	else if (source.indirect_result)
 		target->metadata.passing = lowir_model::PPM_INDIRECT_RESULT;
 	else if (source.by_address)
@@ -650,7 +650,7 @@ void AdaptInstruction(const Instruction& source,
 					const std::uint8_t passing = program.call_argument_references[
 						source.extra_first + i];
 					if (passing == Instruction::CALL_PASS_REFERENCE)
-						parameter.metadata.passing = lowir_model::PPM_REFERENCE;
+						parameter.metadata.passing = lowir_model::PPM_BY_ADDRESS;
 					else if (passing == Instruction::CALL_PASS_BY_ADDRESS)
 						parameter.metadata.passing = lowir_model::PPM_BY_ADDRESS;
 					else if (passing == Instruction::CALL_PASS_INDIRECT_RESULT)

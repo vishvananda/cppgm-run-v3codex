@@ -16,7 +16,7 @@ function @saved_address() -> ptr {
     return ptr %address
 }
 
-function @observe_reference(%value : ptr [pass=reference]) -> void {
+function @observe_reference(%value : ptr [pass=by_address]) -> void {
   block ^entry:
     return void
 }

@@ -555,7 +555,7 @@ Parameters may also carry explicit passing metadata after the parameter type:
 ```text
 function @helper(%ret : ptr [pass=indirect_result],
                  %obj : ptr [pass=by_address],
-                 %ref : ptr [pass=reference],
+                 %ref : ptr [pass=by_address],
                  %arr : ptr,
                  %buf : ptr [alias=noalias],
                  %x : i64) -> void {
@@ -569,7 +569,6 @@ The currently defined pass values are:
 
 - `indirect_result`
 - `by_address`
-- `reference`
 
 Omission means ordinary direct-value passing and has no explicit spelling.
 
@@ -580,8 +579,8 @@ The currently defined alias values are:
 The intended meaning is semantic, not host-ABI-specific:
 
 - `indirect_result`: this pointer names caller-owned result storage
-- `by_address`: this parameter is an indirect object/value boundary
-- `reference`: this parameter is a reference boundary
+- `by_address`: this parameter is an indirect object, value, or source-reference
+  boundary whose argument denotes addressable storage
 - `noalias`: this incoming pointer is disjoint from every other pointer
   parameter on the same boundary that also carries `alias=noalias`
 
@@ -680,7 +679,8 @@ The intended convention is:
   `-> obj<8x4>` when the frontend wants that boundary explicitly represented in LowIR
 - complete object return-by-value may also use an explicit leading destination pointer
   `ptr [pass=indirect_result]` when the source boundary is itself indirect
-- source-level references use `ptr [pass=reference]`
+- source-level references use the shared `ptr [pass=by_address]` boundary;
+  LowIR retains the required address semantics, not the source-level origin
 - array/function decay is represented by an ordinary `ptr`; LowIR does not
   retain the source-level origin of an already-lowered pointer value
 - variadic functions use explicit `arity=variadic` metadata on the function declaration or
@@ -707,7 +707,7 @@ function @sum_pair(%p : obj<8x4>) -> i64 {
   ...
 }
 
-function @consume_ref(%p : ptr [pass=reference]) -> void {
+function @consume_ref(%p : ptr [pass=by_address]) -> void {
   ...
 }
 ```

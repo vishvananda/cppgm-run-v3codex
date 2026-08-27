@@ -14,7 +14,7 @@ function @wrap(%this : ptr, %pf : ptr) -> ptr {
     store ptr %pf, $pf
     %t1 = load ptr $this
     %t2 = load ptr $pf
-    %t3 = call ptr %t2(%t1) as (%arg0 : ptr [pass=reference]) -> ptr
+    %t3 = call ptr %t2(%t1) as (%arg0 : ptr [pass=by_address]) -> ptr
     return ptr %t3
 }
 

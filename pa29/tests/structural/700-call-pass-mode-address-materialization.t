@@ -1,4 +1,4 @@
-function @copy_ref(%ret : ptr [pass=indirect_result], %src : ptr [pass=reference]) -> void {
+function @copy_ref(%ret : ptr [pass=indirect_result], %src : ptr [pass=by_address]) -> void {
   block ^entry:
     %v = load i64 %src
     store i64 %v, %ret

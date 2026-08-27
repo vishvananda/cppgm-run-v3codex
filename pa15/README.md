@@ -277,6 +277,9 @@ This PA15 milestone supports the following:
 - calls through function pointers and function references in the PA12 subset
 - lvalue references, including reference parameters, reference locals, reference
   returns, and aliasing through supported calls
+- reference parameters use LowIR's shared `ptr [pass=by_address]` boundary:
+  callers preserve the required addressable-storage behavior without retaining
+  a separate source-reference passing label
 - array-to-pointer decay, subscript expressions, pointer arithmetic, one-past
   pointer values, pointer compound assignment with element-size scaling, and
   pointer differences measured in elements; because the byte difference of

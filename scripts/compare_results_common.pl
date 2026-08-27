@@ -1954,6 +1954,9 @@ sub validate_lowir_text
 		if !$options->{allow_legacy_decay_surface} &&
 		   ($data =~ /\bpass\s*=\s*decay\b/ ||
 		    $data =~ /^\s*%[A-Za-z0-9_]+\s*=\s*unary\s+decay\s+ptr\b/m);
+	push @errors, "removed reference passing label in generated LowIR"
+		if !$options->{allow_legacy_reference_pass} &&
+		   $data =~ /\bpass\s*=\s*reference\b/;
 	push @errors, "removed capture/access parameter metadata in generated LowIR"
 		if !$options->{allow_legacy_capture_access} &&
 		   $data =~ /\b(?:capture|access)\s*=/;
@@ -2842,6 +2845,7 @@ sub canonicalize_lowir_generated_root_annotations_for_compare
 sub canonicalize_lowir_pair_for_compare
 {
 	my ($ref_data, $my_data) = @_;
+	$ref_data =~ s/\bpass\s*=\s*reference\b/pass=by_address/g;
 	$ref_data = canonicalize_lowir_tls_accesses_for_compare($ref_data);
 	$my_data = canonicalize_lowir_tls_accesses_for_compare($my_data);
 	($ref_data, $my_data) = canonicalize_lowir_pair_nothrow_resume_for_compare(
@@ -3272,6 +3276,7 @@ sub compare_lowir_text
 		  allow_legacy_trivial_lifecycle => 1,
 		  allow_legacy_unreachable_role => 1,
 		  allow_legacy_decay_surface => 1,
+		  allow_legacy_reference_pass => 1,
 		  allow_legacy_capture_access => 1,
 		  allow_legacy_source_origin_projection => 1 });
 	return (0, "ERROR: invalid reference LowIR: $ref_error") if !$ref_valid;

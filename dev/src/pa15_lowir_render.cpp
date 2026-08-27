@@ -78,7 +78,7 @@ void WriteParameter(std::ostream& output, const TypedProgram& program,
 		bool separator = false;
 		if (parameter.reference)
 		{
-			output << "pass=reference";
+			output << "pass=by_address";
 			separator = true;
 		}
 		else if (parameter.indirect_result)
@@ -358,7 +358,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 				const std::uint8_t passing =
 					program.call_argument_references[instruction.extra_first + i];
 				if (passing == Instruction::CALL_PASS_REFERENCE)
-					output << " [pass=reference]";
+					output << " [pass=by_address]";
 				else if (passing == Instruction::CALL_PASS_BY_ADDRESS)
 					output << " [pass=by_address]";
 				else if (passing == Instruction::CALL_PASS_INDIRECT_RESULT)

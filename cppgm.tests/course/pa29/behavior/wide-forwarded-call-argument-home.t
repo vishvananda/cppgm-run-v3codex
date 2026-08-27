@@ -14,7 +14,7 @@ function @cppgm_priv_exc_unhandled() -> void {
     return void
 }
 
-function @target(%a : ptr [pass=indirect_result], %b : ptr [pass=reference], %c : ptr [pass=reference], %d : ptr [pass=reference], %e : ptr [pass=reference], %f : ptr [pass=reference], %g : ptr) -> void {
+function @target(%a : ptr [pass=indirect_result], %b : ptr [pass=by_address], %c : ptr [pass=by_address], %d : ptr [pass=by_address], %e : ptr [pass=by_address], %f : ptr [pass=by_address], %g : ptr) -> void {
   block ^entry:
     %value = load i64 %f
     store i64 %value, @observed
@@ -26,7 +26,7 @@ function @consume(%value : ptr) -> void {
     return void
 }
 
-function @forward(%a : ptr [pass=indirect_result], %b : ptr [pass=reference], %c : ptr [pass=reference], %d : ptr [pass=reference], %e : ptr [pass=reference], %f : ptr [pass=reference], %g : ptr) -> void {
+function @forward(%a : ptr [pass=indirect_result], %b : ptr [pass=by_address], %c : ptr [pass=by_address], %d : ptr [pass=by_address], %e : ptr [pass=by_address], %f : ptr [pass=by_address], %g : ptr) -> void {
   slot $temporary : i64
 
   block ^entry:

@@ -1,4 +1,4 @@
-function @probe(%a : ptr [pass=reference], %b : ptr [pass=reference], %c : ptr [pass=reference], %d : ptr [pass=reference]) -> u8 {
+function @probe(%a : ptr [pass=by_address], %b : ptr [pass=by_address], %c : ptr [pass=by_address], %d : ptr [pass=by_address]) -> u8 {
   block ^entry:
     return u8 0
 }

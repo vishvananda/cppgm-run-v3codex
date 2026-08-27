@@ -48,7 +48,7 @@ for my $test (@tests)
 	my $text = read_file($roundtrip);
 	my ($parameters) = $text =~ /^function \@helper\(([^\n]*)\) -> void/m;
 	die "$test: O0 roundtrip lost helper boundary\n" if !defined($parameters);
-	for my $mode (qw(indirect_result by_address reference))
+	for my $mode (qw(indirect_result by_address))
 	{
 		die "$test: O0 roundtrip lost pass=$mode\n"
 			if $parameters !~ /\bpass=\Q$mode\E\b/;
@@ -58,7 +58,7 @@ for my $test (@tests)
 		   $text =~ /\bpass=decay\b|\bunary\s+decay\b/;
 	die "$test: call boundary does not pass an explicit pointer value\n"
 		if $text !~ /^\s+%\w+ = addr \$out$/m ||
-		   $text !~ /^\s+call void \@helper\(%\w+, %\w+, %\w+, %\w+, 5\)$/m;
+		   $text !~ /^\s+call void \@helper\(%\w+, %\w+, %\w+, 5\)$/m;
 
 	$status = run_command_capture(
 		cmd => [$lowir2cy86, '-o', $cy86_source, $roundtrip],

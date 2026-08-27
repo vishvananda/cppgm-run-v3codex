@@ -7,7 +7,7 @@ function @identity(%p : ptr) -> ptr {
     return ptr %p
 }
 
-function @probe(%this : ptr, %other : ptr [pass=reference], %tag : obj<1x1>) -> ptr {
+function @probe(%this : ptr, %other : ptr [pass=by_address], %tag : obj<1x1>) -> ptr {
   slot $tag : obj<1x1>
 
   block ^entry:

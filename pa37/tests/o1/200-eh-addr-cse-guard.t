@@ -1,5 +1,5 @@
 declare function @may_throw() -> void
-declare function @sink(%arg0 : ptr [pass=reference]) -> void
+declare function @sink(%arg0 : ptr [pass=by_address]) -> void
 
 function @f() -> i64 {
   slot $x : obj<16x8>

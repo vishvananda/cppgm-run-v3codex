@@ -508,7 +508,6 @@ private:
     if(key == "pass") {
       if(value == "indirect_result") out.passing = PPM_INDIRECT_RESULT;
       else if(value == "by_address") out.passing = PPM_BY_ADDRESS;
-      else if(value == "reference") out.passing = PPM_REFERENCE;
       else throw ParseError("invalid parameter pass metadata");
     } else if(key == "alias" && value == "noalias") out.alias = PALM_NOALIAS;
     else throw ParseError("invalid parameter metadata");

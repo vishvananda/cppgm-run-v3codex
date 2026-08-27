@@ -1,4 +1,4 @@
-function @probe(%phi : ptr [pass=reference], %compare : ptr [pass=reference], %constant : i64, %predecessor : u32, %branch : ptr [pass=reference], %selected : ptr) -> u8 {
+function @probe(%phi : ptr [pass=by_address], %compare : ptr [pass=by_address], %constant : i64, %predecessor : u32, %branch : ptr [pass=by_address], %selected : ptr) -> u8 {
   block ^entry:
     %t4 = index i8 [projection=field] %phi, 232
     %limit_addr = index i8 [projection=field] %t4, 8

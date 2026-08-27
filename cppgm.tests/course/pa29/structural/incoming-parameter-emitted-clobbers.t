@@ -5,7 +5,7 @@ global @cells = {
 }
 global @source : i64 = 99
 
-function @write_fields(%base : ptr, %first : ptr, %number : i64, %last : ptr [pass=reference]) -> void {
+function @write_fields(%base : ptr, %first : ptr, %number : i64, %last : ptr [pass=by_address]) -> void {
   slot $base : ptr
   slot $first : ptr
   slot $number : i64

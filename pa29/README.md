@@ -578,6 +578,14 @@ To complete PA29, implement these goals:
    into different ABI registers. Forwarding those parameters after earlier scratch-using
    operations must preserve their original values too.
 
+   A `ptr [pass=by_address]` parameter denotes an addressable-storage
+   boundary, including a source reference after source lowering. If its actual
+   argument is a scalar temporary or register result rather than an existing
+   pointer, native lowering must give the value temporary storage, pass that
+   storage's address, and preserve the callee's observable load/store behavior.
+   This requirement is structural and behavioral; it does not prescribe a
+   physical register, frame offset, or complete MIR dump.
+
    Eliminating a scalar parameter's initial store to and later load from a local slot
    must preserve the parameter across every intervening instruction that clobbers its
    incoming register, including a call or bulk-memory operation. The same selected

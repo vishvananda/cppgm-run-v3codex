@@ -31,7 +31,7 @@ function @seed(%this : ptr, %variable : u32, %binding : u32, %type : u32) -> voi
 }
 
 function @probe(%this : ptr, %variable : u32, %binding : u32, %type : u32,
-                %initializer : ptr [pass=reference], %has_initializer : u8,
+                %initializer : ptr [pass=by_address], %has_initializer : u8,
                 %declaration_only : u8, %qualified : u8) -> u32 {
   slot $object : u32
 

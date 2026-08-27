@@ -3,7 +3,7 @@ global @expected_syntax : ptr = 0
 global @expected_scope : ptr = 0
 global @expected_specifiers : ptr = 0
 
-function @check_forwarded(%ret : ptr [pass=indirect_result], %receiver : ptr, %syntax : ptr [pass=reference], %scope : ptr, %specifiers : ptr) -> void {
+function @check_forwarded(%ret : ptr [pass=indirect_result], %receiver : ptr, %syntax : ptr [pass=by_address], %scope : ptr, %specifiers : ptr) -> void {
   block ^entry:
     %want_receiver = load ptr @expected_receiver
     %want_syntax = load ptr @expected_syntax
@@ -22,7 +22,7 @@ function @check_forwarded(%ret : ptr [pass=indirect_result], %receiver : ptr, %s
     return void
 }
 
-function @forward_after_compare(%ret : ptr [pass=indirect_result], %receiver : ptr, %syntax : ptr [pass=reference], %scope : ptr, %specifiers : ptr, %defer : u8) -> void {
+function @forward_after_compare(%ret : ptr [pass=indirect_result], %receiver : ptr, %syntax : ptr [pass=by_address], %scope : ptr, %specifiers : ptr, %defer : u8) -> void {
   slot $selected : i64
 
   block ^entry:
