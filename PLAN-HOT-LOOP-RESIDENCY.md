@@ -8,10 +8,10 @@ performance landing; the exact-cost 16-byte vector zero is retained as a
 minor native-positive quality increment; immediate-call merge sources may
 donate their frame homes as a minor MIR-quality increment; direct immediate
 comparisons for large switches are the latest performance landing;
-odd-save paired recoloring is the latest performance landing; the current
-readonly pointer/length table publication is the latest critical-path
-landing; the provisional full-source O1 wall gaps are about 1.505x against
-the last stable GCC and Clang references
+odd-save paired recoloring is the latest performance landing; readonly
+pointer-and-length record colocation is the latest critical-path landing; the
+paired-normalized full-source O1 wall gaps are provisionally about 1.495x GCC
+and 1.494x Clang against the last stable references
 
 Date: 2026-08-27
 
@@ -761,6 +761,7 @@ P31/P32 worktree survivors:
 | exact-liveness callee-save recoloring | PA38 control `446-call-free-callee-save-recoloring` checks a call-free multi-store carrier uses caller-clobbered capacity while a call-crossing twin remains call-safe, and executes the reducer | owned focused structural/behavioral predicate; no complete MIR, object, or compiler-source match |
 | adjacent single-use frame-compare forwarding | PA38 control `447-adjacent-frame-compare-forwarding` checks the direct register comparison, O0 frame baseline, multi-use guard, and generated behavior | owned focused structural/behavioral predicate; no complete MIR or instruction-sequence match |
 | post-inline hinted-definition load reuse | PA37 control `526-late-inline-hint-load-reuse` checks O0/O1 load-count relationships, the ordinary-dose negative, store/writing-call barriers, readonly-call preservation, and behavior | owned focused LowIR/behavioral predicate; no complete module or compiler-source match |
+| readonly indexed string-table publication and record colocation | PA37 control `527-readonly-byte-strlen` checks the O0 local-table/call baseline, a shared indexed record address for the O1 pointer and length loads, all safety rejections, and O0/O1 behavior | owned focused LowIR structural/behavioral predicate; no symbol spelling, aggregate contents, complete module, executable, or hash match |
 
 #### Coverage closure map
 
@@ -777,6 +778,7 @@ checked-in outputs remain independent compatibility gates:
 | local-global and deferred parameter-address selection | PA29 required native behavior item 15 | controls `903` and the focused historical deferred-address pass check direct-storage/materialized-address and pre-/post-call carrier relationships plus behavior |
 | O1 LowIR survivor transforms and guards | PA37 O1 optimization-level bullets for underflow, adjacent noalias copies, full overwrite, shared loops, cold-path pricing, and phi repair | survivor-property pass over `506`-`511` plus O0 baselines and PA17/driver alias-source controls; only local relationships are inspected |
 | historical readonly, strength, and small-object survivors | PA37 O1/O2 readonly, scalar-object, and counted-loop bullets | control `525-historical-lowir-contracts`; focused O0/O1/O2 predicates plus generated behavior, including the object-valued-copy guard and no complete LowIR comparison |
+| readonly byte-string lengths and indexed string records | PA37 O1 readonly-string bullets | control `527-readonly-byte-strlen`; direct and indexed positives, six indexed safety guards, shared-record structure, and generated O0/O1 behavior without complete-output or symbol-name matching |
 | diagnostic inliner controls and observational census | PA37 **Command Line** paragraphs for `--inline-limit` and `--stats` | controls `520`-`522`; predicates require only call presence/absence, repeatable-name acceptance, invalid-value rejection, record fields, and a nonzero eligible guarded-prefix contribution—not full output or exact counts |
 | loop/EH placement and lifetime release | PA38 O2 interval paragraphs | survivor-property pass over `400`, `410`, `420`, and `428` checks only documented homes, release/reuse, call, and EH relationships; behavior is additional |
 | staged homes, LEA, call-result stores, and load takeover | PA38 O1 rewrite bullets | survivor-property pass over `426` uses local predicates and its live-address negative |
@@ -2953,6 +2955,46 @@ inception lane while another build or profiler is active.
   `/dev/shm/v3codex-p34-pointer-table-inception.1x3Kwp` matches every object
   and final compiler in 50.19/1328.19/93.57 seconds wall/user/system.  No
   profiler, cachegrind, or build process remains.
+
+- **P32-L93 (READONLY STRING-RECORD COLOCATION RETAINED).** L92 still
+  calculated two independent scale-eight table addresses in every
+  named-operator iteration: one for the readonly pointer and another for its
+  length.  The retained PA37 refinement publishes one internal readonly
+  aggregate of `{ptr, i64}` records.  It computes the variable-indexed record
+  address at the original pointer load and reuses that dominating address for
+  the corresponding length field.  The same complete-initialization,
+  dominance, readonly, nonescape, nonvolatile, and no-mutation proof decides
+  eligibility; the rule does not recognize a function, source spelling,
+  table contents, or symbol name.
+
+  Final `Lexer::Run` native code replaces the two scale-eight address
+  calculations with one scale-sixteen calculation and loses six bytes,
+  11,770 -> 11,764.  Complete compiler text grows only 1,356 bytes.  The
+  candidate prepared under
+  `/dev/shm/v3codex-p34-string-record-candidate.VgZoIB` in 17.74 seconds with
+  explicit O1 and outer/inner/object parallelism of 32, producing compiler
+  hash `0e572071...ea98`.  A source-matched C-B-C-B full-source rotation used
+  fresh roots.  Candidate lanes measured 32.22/874.75/49.70 and
+  32.31/874.25/49.64 seconds wall/user/system; retained lanes measured
+  32.50/879.06/49.42 and 32.44/880.03/49.60.  Means improve 32.470 -> 32.265
+  wall (-0.63%) and 929.055 -> 924.170 aggregate CPU (-0.53%).  Applying that
+  paired factor to L92's last stable 32.065-second wall point gives a
+  provisional 31.863 seconds, or 1.4952x GCC and 1.4938x Clang.  This is a
+  paired normalization, not a replacement for the next undistorted direct
+  host re-baseline.
+
+  The student-facing PA37 contract specifies shared readonly string records.
+  Control `527-readonly-byte-strlen` requires an O0 local-store/call baseline,
+  an O1 indexed record whose address feeds both pointer and length loads, a
+  two-record readonly aggregate, six safety fallbacks, and O0/O1 behavior.
+  It compares no complete LowIR program, aggregate values, symbol spelling,
+  executable, object, hash, register, or source workload.  PA37 passes
+  187/187, PA38 passes 46/46, through-PA38 passes 5,453/5,453, and the PA38
+  audit has only the 36 established warnings.  `lowir_opt.cpp` remains 3,000
+  lines.  Fresh all-32 O1 inception under
+  `/dev/shm/v3codex-p34-string-record-inception.HNtzsM` matches every object
+  and the final compiler in 50.23/1324.33/92.82 seconds wall/user/system.  No
+  Cachegrind, profiler, or inception process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

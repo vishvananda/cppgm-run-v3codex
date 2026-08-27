@@ -301,7 +301,8 @@ lowir_model::SymbolId direct_global_address_origin(
 
 bool table_pointer_load_origin(lowir_model::ValueId value,
     const std::vector<DefinitionLocation> & definitions,
-    TableAddressAnalysis * addresses, SlotAddressFact * address)
+    TableAddressAnalysis * addresses, SlotAddressFact * address,
+    lowir_model::ValueId * loaded_pointer)
 {
   for(std::size_t steps = 0; steps <= definitions.size(); ++steps) {
     const std::uint32_t id = value;
@@ -319,6 +320,7 @@ bool table_pointer_load_origin(lowir_model::ValueId value,
        definition->first.kind != Operand::OP_TEMP)
       return false;
     *address = addresses->resolve(definition->first.value);
+    *loaded_pointer = definition->dest;
     return address->known && address->dynamic;
   }
   return false;
@@ -338,6 +340,7 @@ struct TableUseLocation
   std::size_t block;
   std::size_t index;
   Operand element_index;
+  lowir_model::ValueId loaded_pointer;
 };
 
 struct StringTableCandidate
@@ -349,8 +352,7 @@ struct StringTableCandidate
   std::vector<lowir_model::SymbolId> symbols;
   std::vector<TableUseLocation> stores;
   std::vector<TableUseLocation> loads;
-  lowir_model::SymbolId pointer_symbol;
-  lowir_model::SymbolId length_symbol;
+  lowir_model::SymbolId table_symbol;
 };
 
 struct StringTableRewrite
@@ -359,6 +361,7 @@ struct StringTableRewrite
   std::size_t index;
   lowir_model::SlotId slot;
   Operand element_index;
+  lowir_model::ValueId loaded_pointer;
 };
 
 struct PointerTableRewrite
@@ -367,6 +370,7 @@ struct PointerTableRewrite
   std::size_t index;
   lowir_model::SlotId slot;
   Operand element_index;
+  lowir_model::ValueId record_address;
 };
 
 bool operand_uses_candidate_slot(const Operand & operand,
@@ -380,10 +384,12 @@ bool operand_uses_candidate_slot(const Operand & operand,
     candidates[slot].considered;
 }
 
-lowir_model::SymbolId append_length_table(
-    lowir_model::LowirProgram * program, const std::vector<std::size_t> & lengths)
+lowir_model::SymbolId append_string_table(
+    lowir_model::LowirProgram * program,
+    const std::vector<lowir_model::SymbolId> & symbols,
+    const std::vector<std::size_t> & lengths)
 {
-  const std::string prefix = "__o1_strlen_lengths_";
+  const std::string prefix = "__o1_string_records_";
   std::size_t suffix = program->symbol_names.size();
   std::string name;
   for(;; ++suffix) {
@@ -402,9 +408,17 @@ lowir_model::SymbolId append_length_table(
   table.structured = true;
   table.storage = lowir_model::GSM_READONLY;
   table.metadata.binding = lowir_model::SBM_INTERNAL;
-  table.data_items.reserve(lengths.size());
+  table.data_items.reserve(lengths.size() * 2);
+  const LowType & pointer =
+    lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
   const LowType & i64 = lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
   for(std::size_t i = 0; i < lengths.size(); ++i) {
+    lowir_model::GlobalDefinition::DataItem pointer_item;
+    pointer_item.kind = lowir_model::GlobalDefinition::DataItem::ITEM_ADDR;
+    pointer_item.type = pointer;
+    pointer_item.symbol_id = symbols[i];
+    table.data_items.push_back(pointer_item);
+
     lowir_model::GlobalDefinition::DataItem item;
     item.kind = lowir_model::GlobalDefinition::DataItem::ITEM_INTEGER;
     item.type = i64;
@@ -413,43 +427,6 @@ lowir_model::SymbolId append_length_table(
     item.literal_operand.int_value = static_cast<long long>(lengths[i]);
     item.literal_operand.int_high = 0;
     item.literal_operand.literal_type = i64;
-    table.data_items.push_back(item);
-  }
-  program->globals.push_back(std::move(table));
-  return program->globals.back().symbol;
-}
-
-lowir_model::SymbolId append_pointer_table(
-    lowir_model::LowirProgram * program,
-    const std::vector<lowir_model::SymbolId> & symbols)
-{
-  const std::string prefix = "__o1_strlen_pointers_";
-  std::size_t suffix = program->symbol_names.size();
-  std::string name;
-  for(;; ++suffix) {
-    name = prefix + std::to_string(suffix);
-    bool used = false;
-    for(std::size_t i = 0; i < program->symbol_names.size(); ++i)
-      if(program->strings.get(program->symbol_names[i]) == name) {
-        used = true;
-        break;
-      }
-    if(!used) break;
-  }
-
-  lowir_model::GlobalDefinition table;
-  table.symbol = lowir_model::append_lowir_symbol(*program, name);
-  table.structured = true;
-  table.storage = lowir_model::GSM_READONLY;
-  table.metadata.binding = lowir_model::SBM_INTERNAL;
-  table.data_items.reserve(symbols.size());
-  const LowType & pointer =
-    lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
-  for(std::size_t i = 0; i < symbols.size(); ++i) {
-    lowir_model::GlobalDefinition::DataItem item;
-    item.kind = lowir_model::GlobalDefinition::DataItem::ITEM_ADDR;
-    item.type = pointer;
-    item.symbol_id = symbols[i];
     table.data_items.push_back(item);
   }
   program->globals.push_back(std::move(table));
@@ -478,6 +455,10 @@ bool fold_readonly_byte_string_table_lengths(
   const LowType & pointer =
     lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
   const LowType & i64 = lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
+  LowType record_type;
+  record_type.storage_size = pointer.storage_size + i64.storage_size;
+  record_type.alignment = std::max(pointer.alignment, i64.alignment);
+  record_type.kind = lowir_model::LTK_OBJECT;
   const std::size_t pointer_size = pointer.storage_size;
 
   for(std::size_t function_index = 0;
@@ -515,14 +496,15 @@ bool fold_readonly_byte_string_table_lengths(
            ins.args[0].kind != Operand::OP_TEMP)
           continue;
         SlotAddressFact address;
+        lowir_model::ValueId loaded_pointer;
         if(!table_pointer_load_origin(ins.args[0].value, definitions,
-             &addresses, &address))
+             &addresses, &address, &loaded_pointer))
           continue;
         const std::uint32_t slot = address.slot;
         if(slot >= candidates.size()) continue;
         candidates[slot].considered = true;
         rewrites.push_back(StringTableRewrite{
-          block, index, address.slot, address.index});
+          block, index, address.slot, address.index, loaded_pointer});
       }
     if(rewrites.empty()) continue;
 
@@ -541,7 +523,8 @@ bool fold_readonly_byte_string_table_lengths(
       candidate.lengths.resize(candidate.count);
       candidate.symbols.resize(candidate.count);
       candidate.stores.resize(candidate.count,
-        TableUseLocation{kNoInstruction, kNoInstruction, Operand()});
+        TableUseLocation{kNoInstruction, kNoInstruction, Operand(),
+          lowir_model::ValueId()});
       candidate.eligible = true;
     }
 
@@ -597,7 +580,8 @@ bool fold_readonly_byte_string_table_lengths(
             }
             candidate.lengths[element] = strings.lengths[global_index];
             candidate.symbols[element] = global;
-            store = TableUseLocation{block, index, Operand()};
+            store = TableUseLocation{block, index, Operand(),
+              lowir_model::ValueId()};
             continue;
           }
           if(ins.kind == Instruction::IK_LOAD && operand_index == 0 &&
@@ -605,7 +589,7 @@ bool fold_readonly_byte_string_table_lengths(
              address.dynamic && address.offset == 0 &&
              address.stride == pointer_size) {
             candidate.loads.push_back(
-              TableUseLocation{block, index, address.index});
+              TableUseLocation{block, index, address.index, ins.dest});
             continue;
           }
           candidate.eligible = false;
@@ -643,11 +627,22 @@ bool fold_readonly_byte_string_table_lengths(
             candidate.eligible = false;
             break;
           }
+      for(std::size_t rewrite = 0;
+          rewrite < rewrites.size() && candidate.eligible; ++rewrite) {
+        if(rewrites[rewrite].slot !=
+           lowir_model::SlotId(static_cast<std::uint32_t>(slot))) continue;
+        bool found = false;
+        for(std::size_t load = 0; load < candidate.loads.size(); ++load)
+          if(candidate.loads[load].loaded_pointer ==
+             rewrites[rewrite].loaded_pointer) {
+            found = true;
+            break;
+          }
+        if(!found) candidate.eligible = false;
+      }
       if(candidate.eligible) {
-        candidate.pointer_symbol = append_pointer_table(
-          program, candidate.symbols);
-        candidate.length_symbol = append_length_table(
-          program, candidate.lengths);
+        candidate.table_symbol = append_string_table(
+          program, candidate.symbols, candidate.lengths);
       }
     }
 
@@ -657,23 +652,31 @@ bool fold_readonly_byte_string_table_lengths(
       function.blocks.size());
     std::vector<std::vector<std::size_t> > removals_by_block(
       function.blocks.size());
-    for(std::size_t i = 0; i < rewrites.size(); ++i)
-      if(candidates[rewrites[i].slot].eligible)
-        rewrites_by_block[rewrites[i].block].push_back(rewrites[i]);
+    std::vector<lowir_model::ValueId> record_addresses(
+      function.value_names.size());
     for(std::size_t slot = 0; slot < candidates.size(); ++slot) {
       const StringTableCandidate & candidate = candidates[slot];
       if(!candidate.eligible) continue;
       for(std::size_t load = 0; load < candidate.loads.size(); ++load) {
         const TableUseLocation & location = candidate.loads[load];
+        const lowir_model::ValueId record_address =
+          lowir_model::append_lowir_fresh_generated_value(function, pointer);
+        record_addresses[location.loaded_pointer] = record_address;
         pointer_rewrites_by_block[location.block].push_back(
           PointerTableRewrite{location.block, location.index,
             lowir_model::SlotId(static_cast<std::uint32_t>(slot)),
-            location.element_index});
+            location.element_index, record_address});
       }
       for(std::size_t store = 0; store < candidate.stores.size(); ++store)
         removals_by_block[candidate.stores[store].block].push_back(
           candidate.stores[store].index);
     }
+    for(std::size_t i = 0; i < rewrites.size(); ++i)
+      if(candidates[rewrites[i].slot].eligible) {
+        rewrites[i].loaded_pointer =
+          record_addresses[rewrites[i].loaded_pointer];
+        rewrites_by_block[rewrites[i].block].push_back(rewrites[i]);
+      }
     for(std::size_t block = 0; block < function.blocks.size(); ++block) {
       std::sort(pointer_rewrites_by_block[block].begin(),
         pointer_rewrites_by_block[block].end(),
@@ -718,15 +721,14 @@ bool fold_readonly_byte_string_table_lengths(
           address.dest = lowir_model::append_lowir_fresh_generated_value(
             function, pointer);
           address.first.kind = Operand::OP_GLOBAL;
-          address.first.symbol = candidates[rewrite.slot].pointer_symbol;
+          address.first.symbol = candidates[rewrite.slot].table_symbol;
           address.debug_location = ins.debug_location;
           replacement.push_back(address);
 
           Instruction element;
           element.kind = Instruction::IK_INDEX;
-          element.dest = lowir_model::append_lowir_fresh_generated_value(
-            function, pointer);
-          element.type = pointer;
+          element.dest = rewrite.record_address;
+          element.type = record_type;
           element.index_projection = lowir_model::IPK_ARRAY_ELEMENT;
           element.first = temporary_operand(address.dest);
           element.second = rewrite.element_index;
@@ -745,26 +747,19 @@ bool fold_readonly_byte_string_table_lengths(
         }
         const StringTableRewrite & rewrite =
           rewrites_by_block[block][rewrite_index++];
-        const lowir_model::SymbolId length_symbol =
-          candidates[rewrite.slot].length_symbol;
-
-        Instruction address;
-        address.kind = Instruction::IK_ADDR;
-        address.dest = lowir_model::append_lowir_fresh_generated_value(
-          function, pointer);
-        address.first.kind = Operand::OP_GLOBAL;
-        address.first.symbol = length_symbol;
-        address.debug_location = ins.debug_location;
-        replacement.push_back(address);
 
         Instruction element;
         element.kind = Instruction::IK_INDEX;
         element.dest = lowir_model::append_lowir_fresh_generated_value(
           function, pointer);
         element.type = i64;
-        element.index_projection = lowir_model::IPK_ARRAY_ELEMENT;
-        element.first = temporary_operand(address.dest);
-        element.second = rewrite.element_index;
+        element.index_projection = lowir_model::IPK_FIELD;
+        element.first = temporary_operand(rewrite.loaded_pointer);
+        element.second.kind = Operand::OP_INTEGER;
+        element.second.has_int_value = true;
+        element.second.int_value = 1;
+        element.second.int_high = 0;
+        element.second.literal_type = i64;
         element.debug_location = ins.debug_location;
         replacement.push_back(element);
 

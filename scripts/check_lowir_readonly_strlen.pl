@@ -109,22 +109,21 @@ for my $test (@tests)
 		if $positive =~ /^\s+%\w+ = call i64 \@measure_bytes\(%\w+\)$/m;
 	die "$test: eligible table retained its local pointer initialization\n"
 		if $positive =~ /^\s+store ptr /m;
-	die "$test: eligible table did not redirect its indexed pointer load\n"
-		if $positive !~ /^\s+%\w+ = index ptr .*?, %which$/m ||
-		   $positive !~ /^\s+%\w+ = load ptr %\w+$/m;
-	die "$test: eligible table did not use its index for an i64 table load\n"
-		if $positive !~ /^\s+%\w+ = index i64 .*?, %which$/m ||
-		   $positive !~ /^\s+%\w+ = load i64 %\w+$/m;
-	my @readonly_i64_tables = grep {
-		scalar(() = $_ =~ /^\s+i64\s+/mg) == 2
+	my ($record) = $positive =~
+		/^\s+(%\w+) = index obj<16x8> \[projection=array_element\] .*?, %which$/m;
+	die "$test: eligible table did not select a readonly record\n"
+		if !defined($record) ||
+		   $positive !~ /^\s+%\w+ = load ptr \Q$record\E$/m;
+	my ($length_address) = $positive =~
+		/^\s+(%\w+) = index i64 \[projection=field\] \Q$record\E, 1$/m;
+	die "$test: pointer and length loads did not share the selected record\n"
+		if !defined($length_address) ||
+		   $positive !~ /^\s+%\w+ = load i64 \Q$length_address\E$/m;
+	my @readonly_record_tables = grep {
+		$_ =~ /\A\s*ptr addr \@\w+\s+i64\s+\d+\s+ptr addr \@\w+\s+i64\s+\d+\s*\z/s
 	} ($o1 =~ /global \@\w+ \[storage=readonly, binding=internal\] = \{(.*?)\n\}/sg);
-	die "$test: eligible table did not publish a two-element readonly " .
-		"length table\n" if !@readonly_i64_tables;
-	my @readonly_pointer_tables = grep {
-		scalar(() = $_ =~ /^\s+ptr addr \@/mg) == 2
-	} ($o1 =~ /global \@\w+ \[storage=readonly, binding=internal\] = \{(.*?)\n\}/sg);
-	die "$test: eligible table did not publish a two-element readonly " .
-		"pointer table\n" if !@readonly_pointer_tables;
+	die "$test: eligible table did not publish two readonly " .
+		"pointer-and-length records\n" if !@readonly_record_tables;
 
 	for my $name ('keeps_partial_readonly_table',
 		'keeps_writable_string_table', 'keeps_escaped_readonly_table',
