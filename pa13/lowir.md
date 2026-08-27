@@ -355,13 +355,12 @@ The currently defined function metadata keys are:
 
 The currently defined arity values are:
 
-- `fixed`
 - `variadic`
 
-`fixed` is the default and is normally omitted. `variadic` means the function accepts at least
-its declared parameter prefix plus any later variadic arguments. LowIR does not reserve an
-additional arity mode for a hypothetical source boundary; a new mode requires a real producer,
-consumer, and property test.
+Omission means fixed arity and has no explicit spelling. `variadic` means the function accepts
+at least its declared parameter prefix plus any later variadic arguments. LowIR does not reserve
+an additional arity mode for a hypothetical source boundary; a new mode requires a real
+producer, consumer, and property test.
 
 The currently defined call-effect values are:
 
@@ -557,7 +556,7 @@ function @sum(%count : i64) -> i64 [arity=variadic] {
   ...
 }
 
-function @user_entry() -> i64 [arity=fixed, role=entry] {
+function @user_entry() -> i64 [role=entry] {
   ...
 }
 ```

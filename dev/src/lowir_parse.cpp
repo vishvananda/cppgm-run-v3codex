@@ -396,8 +396,7 @@ private:
                            FunctionBoundaryMetadata & out)
   {
     if(key == "arity") {
-      if(value == "fixed") out.arity = CAM_FIXED;
-      else if(value == "variadic") out.arity = CAM_VARIADIC;
+      if(value == "variadic") out.arity = CAM_VARIADIC;
       else throw ParseError("invalid arity metadata");
     } else if(key == "effects") {
       if(value == "readnone") out.effects = CFXM_READNONE;

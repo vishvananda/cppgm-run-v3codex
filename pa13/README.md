@@ -173,6 +173,10 @@ facts in LowIR text. PA13 translates those facts only to the extent needed for
 the CY86 adapter. It does not implement native object symbol binding, host ABI
 register assignment, or debugger behavior.
 
+Conservative/default states use omission rather than a second explicit
+spelling. For example, omitted function arity is fixed; `arity=variadic`
+records the non-default behavior that a later call validator must preserve.
+
 The `role` family includes the entry/init/fini and exception roles as well as
 the allocation, deallocation, termination, pure-virtual, dynamic-cast,
 bad-cast, bad-typeid, unreachable, and RTTI runtime roles listed in
