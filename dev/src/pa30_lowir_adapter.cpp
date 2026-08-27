@@ -393,7 +393,6 @@ void AdaptSymbolFacts(const Symbol& source,
 	symbol->prefer_local_object_binding = source.prefer_local_object_binding;
 	symbol->object_output_root = source.object_output_root ||
 		(source.internal_linkage && HasNonCallDemand(source));
-	symbol->object_trivial_lifecycle = source.trivial_lifecycle;
 	symbol->force_inline = source.force_inline;
 	symbol->inline_hint = source.inline_hint;
 	symbol->no_inline = source.no_inline;

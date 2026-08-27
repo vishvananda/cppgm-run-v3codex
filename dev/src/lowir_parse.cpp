@@ -436,10 +436,7 @@ private:
         out.binding = SBM_STRONG;
     }
     else if(key == "object_root") out.object_output_root = yes_flag(value);
-    else if(key == "trivial_lifecycle") {
-      if(!function_symbol) throw ParseError("trivial_lifecycle metadata requires a function");
-      out.object_trivial_lifecycle = yes_flag(value);
-    } else if(key == "force_inline") {
+    else if(key == "force_inline") {
       if(!function_symbol) throw ParseError("force_inline metadata requires a function");
       out.force_inline = yes_flag(value);
     } else if(key == "inline_hint") {

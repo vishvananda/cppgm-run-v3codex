@@ -185,6 +185,14 @@ function @empty_ctor(%this : ptr) -> void [binding=weak, trivial_lifecycle=yes] 
         result = self.compare(reference, generated)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_relaxed_compare_rejects_generated_trivial_lifecycle_metadata(self):
+        generated = REFERENCE.replace(
+            ") -> i64 {", ") -> i64 [trivial_lifecycle=yes] {", 1
+        )
+        result = self.compare(REFERENCE, generated)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("removed trivial_lifecycle metadata", result.stdout)
+
     def test_relaxed_compare_retains_nontrivial_calls(self):
         reference = REFERENCE.replace(
             "%sum = binary add i64 %left, %right",

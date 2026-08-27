@@ -1940,6 +1940,9 @@ sub validate_lowir_text
 
 	my $source_text = getrawdata($source_file);
 	my @errors;
+	push @errors, "removed trivial_lifecycle metadata in generated LowIR"
+		if !$options->{allow_legacy_trivial_lifecycle} &&
+		   $data =~ /\btrivial_lifecycle\s*=/;
 
 	my @tops = ($data =~ /^(?:declare\s+(?:function|global)|function|global)\s+@([A-Za-z0-9_]+)\b/gm);
 	my %top_count;
@@ -2722,7 +2725,6 @@ sub canonicalize_lowir_pair_for_compare
 	$ref_data = canonicalize_lowir_reference_liveness_for_compare(
 		$ref_data, $my_data);
 	$ref_data = canonicalize_lowir_trivial_lifecycle_for_compare($ref_data);
-	$my_data = canonicalize_lowir_trivial_lifecycle_for_compare($my_data);
 	my ($ref_functions, $my_functions) =
 		paired_lowir_function_symbol_maps($ref_data, $my_data);
 	my ($ref_globals, $my_globals) =
@@ -3140,7 +3142,8 @@ sub compare_lowir_text
 	my ($ref_valid, $ref_error) = validate_lowir_text(
 		$ref_data,
 		$source_file,
-		{ strict_presentation_order => 1 });
+		{ strict_presentation_order => 1,
+		  allow_legacy_trivial_lifecycle => 1 });
 	return (0, "ERROR: invalid reference LowIR: $ref_error") if !$ref_valid;
 	my ($my_valid, $my_error) = validate_lowir_text(
 		$my_data,

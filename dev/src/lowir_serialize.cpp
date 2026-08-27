@@ -153,7 +153,6 @@ void write_symbol_metadata(MetadataWriter & metadata,
   metadata.flag("keep_alias", value.keep_internal_alias);
   metadata.flag("prefer_local", value.prefer_local_object_binding);
   metadata.flag("object_root", value.object_output_root);
-  metadata.flag("trivial_lifecycle", value.object_trivial_lifecycle);
   metadata.flag("force_inline", value.force_inline);
   metadata.flag("inline_hint", value.inline_hint);
   metadata.flag("no_inline", value.no_inline);

@@ -262,6 +262,10 @@ PA16 supports the following in addition to the PA15 procedural subset:
   names a private nested type in the member's class context
 - constructors and destructors defined inside the class body
 - implicit default constructors and destructors when no user-declared one exists
+- semantically trivial constructor/destructor actions may be omitted directly;
+  if a retained helper must be substituted, use the ordinary mandatory inline
+  policy rather than a separate lifecycle label, let `no_inline` take
+  precedence for that helper, and decide `object_root` retention independently
 - demand-driven LowIR emission of the ctor/dtor helpers required by the supported lifetime
   paths above
 - constructor initializer lists for:

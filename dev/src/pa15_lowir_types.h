@@ -502,7 +502,6 @@ struct Symbol
 	bool referenced;
 	bool object_output_root;
 	bool lifecycle_base_entry;
-	bool trivial_lifecycle;
 	bool force_inline;
 	bool inline_hint;
 	bool no_inline;
@@ -522,7 +521,7 @@ struct Symbol
 		  demand_reason_mask(0),
 		  declaration_emitted(false), definition_emitted(false), referenced(false),
 		  object_output_root(false), lifecycle_base_entry(false),
-		  trivial_lifecycle(false), force_inline(false),
+		  force_inline(false),
 		  inline_hint(false), no_inline(false) {}
 };
 

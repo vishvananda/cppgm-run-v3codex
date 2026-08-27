@@ -76,6 +76,8 @@ test: $(TEST_DEPS)
 	@if [ -d "$(COURSE_CONTROL_TEST_ROOT)" ]; then \
 		perl ../scripts/check_pa16_string_literal_storage.pl \
 			$(CPPGM_TEST_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
+		perl ../scripts/check_pa16_lifecycle_policy.pl \
+			$(CPPGM_TEST_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
 	fi
 endif
 
@@ -88,7 +90,8 @@ REF_TEST_RUN = case "$(TEST)" in \
 esac
 
 CHECK_RUN = case "$(TEST)" in \
-	$(COURSE_CONTROL_TEST_ROOT)/*) perl ../scripts/check_pa16_string_literal_storage.pl $(CPPGM_TEST_APP) "$(TEST)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*string-literal-readonly*) perl ../scripts/check_pa16_string_literal_storage.pl $(CPPGM_TEST_APP) "$(TEST)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*lifecycle-inline-policy*) perl ../scripts/check_pa16_lifecycle_policy.pl $(CPPGM_TEST_APP) "$(TEST)" ;; \
 	*) scripts/run_all_tests.pl $(CPPGM_TEST_APP) check "$(TEST)" ;; \
 esac
 CHECK_COMPARE = case "$(TEST)" in \

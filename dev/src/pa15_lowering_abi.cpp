@@ -104,7 +104,8 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 	Symbol& record = output->symbols[symbol];
 	record.lifecycle_base_entry |=
 		binding.constructor_base_entry || binding.destructor_base_entry;
-	record.trivial_lifecycle = trivial_constructor || trivial_destructor;
+	if ((trivial_constructor || trivial_destructor) && !record.no_inline)
+		record.force_inline = true;
 	if (output->host_object_emission && record.internal_linkage &&
 		node.kind == pa12_semantic_detail::DUMP_FUNCTION_DEFINITION &&
 		(binding.constructor || binding.destructor))

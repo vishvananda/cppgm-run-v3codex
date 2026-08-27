@@ -131,14 +131,10 @@ private:
   {
     std::vector<unsigned char> forced(program_.symbol_names.size(), 0);
     for(std::size_t i = 0; i < program_.function_declarations.size(); ++i)
-      if(program_.function_declarations[i].metadata.force_inline ||
-         (program_.function_declarations[i].metadata.object_trivial_lifecycle &&
-          !program_.function_declarations[i].metadata.no_inline))
+      if(program_.function_declarations[i].metadata.force_inline)
         forced[program_.function_declarations[i].symbol] = 1;
     for(std::size_t i = 0; i < program_.functions.size(); ++i)
-      if(program_.functions[i].metadata.force_inline ||
-         (program_.functions[i].metadata.object_trivial_lifecycle &&
-          !program_.functions[i].metadata.no_inline))
+      if(program_.functions[i].metadata.force_inline)
         forced[program_.functions[i].symbol] = 1;
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       const Function & function = program_.functions[i];
@@ -475,9 +471,7 @@ std::unique_ptr<LowirProgram> rewrite_program(const LowirProgram & source)
 {
 	bool has_forced_definition = false;
 	for(std::size_t i = 0; i < source.functions.size(); ++i)
-		if((source.functions[i].metadata.force_inline ||
-		    (source.functions[i].metadata.object_trivial_lifecycle &&
-		     !source.functions[i].metadata.no_inline)) &&
+		if(source.functions[i].metadata.force_inline &&
 		   source.functions[i].boundary.arity != lowir_model::CAM_VARIADIC) {
 			has_forced_definition = true;
 			break;
@@ -486,9 +480,7 @@ std::unique_ptr<LowirProgram> rewrite_program(const LowirProgram & source)
 		std::vector<unsigned char> forced_declarations(
 			source.symbol_names.size(), 0);
 		for(std::size_t i = 0; i < source.function_declarations.size(); ++i)
-			if(source.function_declarations[i].metadata.force_inline ||
-			   (source.function_declarations[i].metadata.object_trivial_lifecycle &&
-			    !source.function_declarations[i].metadata.no_inline))
+			if(source.function_declarations[i].metadata.force_inline)
 				forced_declarations[source.function_declarations[i].symbol] = 1;
 		for(std::size_t i = 0;
 			!has_forced_definition && i < source.functions.size(); ++i)

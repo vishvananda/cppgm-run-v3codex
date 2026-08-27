@@ -159,8 +159,7 @@ Required metadata families:
 
 - top-level `role`, `linkage`, `binding`, `object`, function `tls_for`,
   `keep_alias`, `prefer_local`, and global `storage`
-- function `object_root`, `trivial_lifecycle`, `force_inline`, `inline_hint`,
-  and `no_inline`
+- function `object_root`, `force_inline`, `inline_hint`, and `no_inline`
 - function `arity`, `effects`, `unwind`, and `return`
 - parameter `pass`, `capture`, `access`, and `alias`
 - index `projection`

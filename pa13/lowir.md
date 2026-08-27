@@ -172,9 +172,6 @@ function @main() -> i64 [role=entry, binding=strong, keep_alias=yes] {
 function @helper() -> i64 [binding=strong, object=_ZL6helperv, prefer_local=yes] {
   ...
 }
-function @Tag__Tag(%this : ptr) -> void [binding=weak, trivial_lifecycle=yes] {
-  ...
-}
 function @small_required_helper(%x : i64) -> i64 [force_inline=yes] {
   ...
 }
@@ -184,9 +181,9 @@ function @boot() -> void [role=init, binding=strong] {
 ```
 
 The currently defined top-level metadata keys are `role`, `linkage`, `binding`, `object`,
-`tls_for` (functions only), `keep_alias`, `prefer_local`, `object_root`, `trivial_lifecycle`
-(functions only), `force_inline` (functions only), `inline_hint` (functions only),
-`no_inline` (functions only), and `storage` (globals only).
+`tls_for` (functions only), `keep_alias`, `prefer_local`, `object_root`, `force_inline`
+(functions only), `inline_hint` (functions only), `no_inline` (functions only), and
+`storage` (globals only).
 
 The currently defined global `storage` values are:
 
@@ -280,13 +277,6 @@ The `object_root=yes` metadata flag records that the definition is a language-re
 object-emission root even when no LowIR instruction refers to it, as for a member emitted by
 an explicit template-instantiation definition. Omission means false; there is no
 `object_root=no` spelling.
-
-The `trivial_lifecycle=yes` metadata flag on top-level function declarations and definitions
-records that the
-function is a semantically trivial C++ lifecycle helper, such as a trivial
-constructor or destructor wrapper. Object lowering may use this fact to remove
-otherwise unreferenced weak lifecycle wrappers after the frontend has serialized
-the LowIR boundary. Omission means false; there is no `trivial_lifecycle=no` spelling.
 
 The `force_inline=yes` metadata flag on top-level function declarations and definitions
 records that eligible direct
@@ -385,7 +375,7 @@ and has no explicit spelling.
 Call signatures only accept call-boundary metadata such as `arity=...`, `effects=...`,
 `unwind=...`, and `return=...`. Top-level symbol metadata such as `role=...`, `linkage=...`,
 `binding=...`, `object=...`, `keep_alias=...`, `prefer_local=...`, `object_root=...`, and
-`trivial_lifecycle=...`, `force_inline=...`, `inline_hint=...`, and
+`force_inline=...`, `inline_hint=...`, and
 `no_inline=...` are not valid on `as (...) -> ...`
 call signatures.
 
