@@ -192,7 +192,6 @@ private:
   void CopyBytes(const MemoryRef & source, const MemoryRef & dest, std::size_t bytes);
   std::string MemoryAt(const MemoryRef & memory, std::size_t byte_offset) const;
   std::string ValueMemory(ValueId value) const;
-  std::string ValueAddress(ValueId value) const;
   std::string SlotMemory(SlotId slot) const;
   std::string SlotAddress(SlotId slot) const;
   std::string BlockLabel(const std::string & block) const;
@@ -558,13 +557,6 @@ std::string FunctionEmitter::ValueMemory(ValueId value) const
   if(static_cast<std::uint32_t>(value) >= value_locations_.size())
     throw ParseError("missing LowIR value layout");
   return memory_bp(value_locations_[value].offset);
-}
-
-std::string FunctionEmitter::ValueAddress(ValueId value) const
-{
-  if(static_cast<std::uint32_t>(value) >= value_locations_.size())
-    throw ParseError("missing LowIR value layout");
-  return std::to_string(value_locations_[value].offset);
 }
 
 std::string FunctionEmitter::SlotMemory(SlotId slot) const

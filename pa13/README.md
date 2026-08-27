@@ -224,7 +224,7 @@ Required instructions:
   `atomic_signal_fence`
 - `index`
 - `copyobj` and `zeroinit`
-- `unary`, `binary`, `cmp`, `convert`, and `select`
+- `unary`, `binary`, `cmp`, and `convert`
 - direct and indirect `call`, including explicit `as (...) -> ...` signatures
   for indirect calls
 - `jump`, `branch`, `switch`, and `return`

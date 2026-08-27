@@ -629,8 +629,7 @@ bool is_pure(Instruction::Kind kind)
     kind == Instruction::IK_PHI ||
     kind == Instruction::IK_ADDR || kind == Instruction::IK_INDEX ||
     kind == Instruction::IK_UNARY || kind == Instruction::IK_BINARY ||
-    kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT ||
-    kind == Instruction::IK_SELECT;
+    kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT;
 }
 
 }  // namespace

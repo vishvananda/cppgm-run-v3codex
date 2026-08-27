@@ -123,7 +123,7 @@ struct Stats
   std::size_t planned_direct_copy_edge_homes = 0;
   std::size_t planned_direct_call_edge_homes = 0;
   std::size_t edge_staging_total = 0;
-  std::array<std::size_t, lowir_model::Instruction::IK_SELECT + 1>
+  std::array<std::size_t, lowir_model::Instruction::IK_PHI + 1>
     edge_staging_by_kind = {{0}};
   std::size_t edge_staging_gpr = 0;
   std::size_t edge_staging_xmm = 0;

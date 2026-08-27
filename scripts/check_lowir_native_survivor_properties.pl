@@ -83,7 +83,7 @@ if(scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:400-loop-invariant-call-crossing-placement|405-deferred-compare-across-call|406-volatile-access-emission|407-select-scalar-choice|410-eh-edge-placement-barrier|420-loop-and-eh-placement|425-native-layout-policy-guards|426-staged-home-selection|427-rematerialized-storage-addresses|428-dominated-post-call-use-tails)\.t$/);
+	qr/(?:400-loop-invariant-call-crossing-placement|405-deferred-compare-across-call|406-volatile-access-emission|410-eh-edge-placement-barrier|420-loop-and-eh-placement|425-native-layout-policy-guards|426-staged-home-selection|427-rematerialized-storage-addresses|428-dominated-post-call-use-tails)\.t$/);
 die "No native survivor-property tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -129,16 +129,6 @@ for my $test (@tests)
 			die "$test: native lowering removed or merged volatile traffic\n"
 				if scalar(() = $body =~ /^\s+store\.i32 /mg) != 2 ||
 				   scalar(() = $body =~ /^\s+load\.i32 /mg) != 2;
-		}
-		next;
-	}
-	if($test =~ /407-select-scalar-choice/) {
-		for my $name ('choose', 'choose_narrow') {
-			my $body = function_body($test, $o1, $name);
-			my @choices = $body =~ /^\s+cmov\w+ /mg;
-			die "$test: live typed select in $name was not lowered to one " .
-				"local conditional choice\n"
-				if scalar(@choices) != 1;
 		}
 		next;
 	}

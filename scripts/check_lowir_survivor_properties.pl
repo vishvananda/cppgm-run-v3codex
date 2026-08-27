@@ -98,7 +98,7 @@ if(scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:385-branch-boolean-conversion|386-negated-boolean-compare|387-duplicate-block-loads|388-staged-copy-forwarding|389-aggregate-slot-scalar-replacement|390-sink-cold-blocks|391-inline-growth-budget-boundary|392-inline-trivial-leaf-budget-exempt|392-sink-cold-only-definitions|395-truncate-noreturn-continuation|475-inline-discardable-size-cap|476-inline-single-call-caller-budget|490-inline-hint-late-nonleaf|505-select-preservation|506-nonzero-underflow-predicate|507-adjacent-noalias-scalar-copy|508-fully-overwritten-zero-init|509-shared-loop-inline-policy|510-cold-path-discounted-inlining|511-phi-integrity-survivors|540-volatile-access-preservation)\.t$/);
+	qr/(?:385-branch-boolean-conversion|386-negated-boolean-compare|387-duplicate-block-loads|388-staged-copy-forwarding|389-aggregate-slot-scalar-replacement|390-sink-cold-blocks|391-inline-growth-budget-boundary|392-inline-trivial-leaf-budget-exempt|392-sink-cold-only-definitions|395-truncate-noreturn-continuation|475-inline-discardable-size-cap|476-inline-single-call-caller-budget|490-inline-hint-late-nonleaf|506-nonzero-underflow-predicate|507-adjacent-noalias-scalar-copy|508-fully-overwritten-zero-init|509-shared-loop-inline-policy|510-cold-path-discounted-inlining|511-phi-integrity-survivors|540-volatile-access-preservation)\.t$/);
 die "No LowIR survivor-property tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -110,19 +110,6 @@ for my $test (@tests)
 	my $optimized = $test =~ /540-volatile-access-preservation/
 		? run_optimizer($app, $test, $directory, 'O2') : $o1;
 
-	if($test =~ /505-select-preservation/) {
-		my $baseline = function_body($test, $o0, 'keeps_select');
-		my $positive = function_body($test, $o1, 'keeps_select');
-		my @before = $baseline =~ /^\s+%\w+ = select i64 /mg;
-		my @after = $positive =~ /^\s+%\w+ = select i64 /mg;
-		die "$test: O0 lost the two-choice baseline\n"
-			if scalar(@before) != 2;
-		die "$test: O1 did not preserve the live typed choice while " .
-			"removing its unused sibling\n"
-			if scalar(@after) != 1 ||
-			   $positive !~ /^\s+%\w+ = select i64 %\w+, %\w+, %\w+$/m;
-		next;
-	}
 	if($test =~ /540-volatile-access-preservation/) {
 		my $baseline = function_body(
 			$test, $o0, 'keeps_volatile_slot_accesses');

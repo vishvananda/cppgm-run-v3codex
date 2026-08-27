@@ -203,7 +203,6 @@ bool partial_prefix_instruction(const Instruction & instruction,
   case Instruction::IK_SWITCH:
   case Instruction::IK_RETURN:
   case Instruction::IK_PHI:
-  case Instruction::IK_SELECT:
     return true;
   case Instruction::IK_LOAD:
     if(!instruction.volatile_access) return true;

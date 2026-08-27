@@ -866,6 +866,12 @@ scalar type: `i1`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `f32`,
 `phi`; exception state remains represented by the explicit exception/runtime
 instructions.
 
+A conditional scalar choice is represented with ordinary control flow: branch
+to the blocks that produce the alternative values, jump from those blocks to
+a merge block, and select the incoming value there with `phi`. This keeps the
+condition's control-flow relationship explicit and requires no separate
+branchless-choice instruction.
+
 ### Memory and Addressing
 
 ```text
@@ -881,7 +887,6 @@ atomic_store <type> <value>, <ptr-value>, <order>
 %t = atomic_exchange <type> <ptr-value>, <value>, <order>
 %t = atomic_compare_exchange <type> <ptr-value>, <expected-ptr>, <desired>, <success-order>, <failure-order>
 %t = index <type> [projection=<kind>] <base>, <offset>
-%t = select <type> <condition>, <true-value>, <false-value>
 ```
 
 In the PA13 subset, `index` computes a pointer by advancing a base pointer by `offset`
@@ -898,12 +903,6 @@ lowering shape. The currently supported projection kinds are:
 
 When omitted, `index` still means plain pointer arithmetic with no stronger semantic
 projection claim.
-
-`select` evaluates both value operands and produces the true value when the
-condition is nonzero, otherwise the false value. It is a pure scalar
-operation with no control-flow edge and no short-circuit guarantee, so a
-lowering or optimization pass may only form one when evaluating both
-operands is safe.
 
 `load volatile` and `store volatile` mark an observable access to a
 volatile-qualified object. Volatility is a property of the operation, not of

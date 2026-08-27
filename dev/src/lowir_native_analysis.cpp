@@ -56,9 +56,6 @@ unsigned instruction_clobber_mask(const Instruction & instruction,
     return register_mask(XR_RAX) | register_mask(XR_RCX) |
       register_mask(XR_RSI) | register_mask(XR_RDI) |
       register_mask(XR_R11);
-  if(instruction.kind == Instruction::IK_SELECT)
-    return register_mask(XR_RAX) | register_mask(XR_RDX) |
-      register_mask(XR_R10) | register_mask(XR_R11);
   if(wide && instruction.kind == Instruction::IK_CONVERT)
     return register_mask(XR_RAX) | register_mask(XR_RDX);
   if(wide && instruction.kind == Instruction::IK_BINARY)

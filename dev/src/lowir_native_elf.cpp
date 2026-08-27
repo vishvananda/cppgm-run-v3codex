@@ -1572,13 +1572,6 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     require_operands(instruction, 1);
     emit_set_condition(out, instruction.condition, require_register(instruction.operands[0]));
     return;
-  case mir_model::MirInstruction::MI_CMOV:
-    require_operands(instruction, 2);
-    emit_conditional_move(out, instruction.condition,
-      require_register(instruction.operands[0]),
-      require_register(instruction.operands[1]),
-      type_width(instruction.type) == 64 ? 64 : 32);
-    return;
   case mir_model::MirInstruction::MI_MOVZX:
     require_operands(instruction, 2);
     emit_move_zero_extended_byte(out, require_register(instruction.operands[0]),

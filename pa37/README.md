@@ -309,10 +309,6 @@ running optimizing transforms.
 - creation of a loop preheader by splitting a single critical entry edge only
   when a small explicit block budget and sufficient invariant work justify it
 - dead-code elimination for unused pure temp-producing instructions
-- preservation of a live, typed `select` as a scalar conditional choice when
-  its selector is not constant, while an unused sibling choice may be removed;
-  later native lowering may choose any behaviorally equivalent branchless or
-  control-flow implementation allowed by PA38
 - preservation of every volatile load and store, including an unused volatile
   load; ordinary nonvolatile slot traffic remains eligible for propagation,
   dead-store removal, duplicate-load reuse, and promotion

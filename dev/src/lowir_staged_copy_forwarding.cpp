@@ -156,8 +156,7 @@ bool overwrite_scan_pure(Instruction::Kind kind)
   return kind == Instruction::IK_CONST || kind == Instruction::IK_COPY ||
     kind == Instruction::IK_ADDR || kind == Instruction::IK_INDEX ||
     kind == Instruction::IK_UNARY || kind == Instruction::IK_BINARY ||
-    kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT ||
-    kind == Instruction::IK_SELECT;
+    kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT;
 }
 
 RelativePointer relative_pointer(

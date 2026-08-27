@@ -2948,8 +2948,6 @@ private:
       else emit_unary_value(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_CONVERT)
       emit_convert(instruction, block, instruction_index, out);
-    else if(instruction.kind == Instruction::IK_SELECT)
-      emit_select(instruction, out);
     else if(instruction.kind == Instruction::IK_CALL)
       emit_call(instruction, block, instruction_index, out);
     else if(instruction.kind == Instruction::IK_COPYOBJ ||
