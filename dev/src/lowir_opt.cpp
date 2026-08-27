@@ -2664,11 +2664,13 @@ void optimize_function_bodies(
       timed_dce(&function, boundaries, stats, &dce_scratch);
     if(level >= 1 && coalesce_adjacent_scalar_copies(&function, stats))
       timed_dce(&function, boundaries, stats, &dce_scratch);
-    if(level >= 1) factor_scaled_index_multipliers(&function, stats);
+    if(level >= 1)
+      factor_scaled_index_multipliers(&function, &analysis, stats);
     if(level >= 2 && simplify_counted_loops(&function, &analysis, stats)) {
       timed_dce(&function, boundaries, stats, &dce_scratch);
       timed_cfg(&function, stats, &cfg_scratch, &analysis);
     }
+    if(level >= 1) analysis.invalidate_values();
     if(level >= 3) {
       const std::chrono::steady_clock::time_point unroll_started =
         stats ? std::chrono::steady_clock::now() :

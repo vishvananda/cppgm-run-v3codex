@@ -5,6 +5,8 @@
 
 #include <vector>
 
+namespace lowir_analysis { class FunctionAnalysis; }
+
 namespace lowir_opt {
 
 // Rewrite an unsigned divide, remainder, or multiply whose right operand is
@@ -16,7 +18,8 @@ bool strength_reduce_binary(lowir_model::Instruction * ins,
 // Factor a single-use integer multiplier between the arithmetic operation and
 // an index's element stride so x86-compatible scales remain in the address.
 bool factor_scaled_index_multipliers(lowir_model::Function * function,
-    Stats * stats);
+                                     lowir_analysis::FunctionAnalysis * analysis,
+                                     Stats * stats);
 
 // The readonly scalar globals of one program with literal initializers,
 // indexed densely by symbol.

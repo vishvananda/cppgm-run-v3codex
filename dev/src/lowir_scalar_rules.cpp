@@ -47,9 +47,11 @@ bool strength_reduce_binary(Instruction * ins, const LowType & type)
   return true;
 }
 
-bool factor_scaled_index_multipliers(Function * function, Stats * stats)
+bool factor_scaled_index_multipliers(
+    Function * function, lowir_analysis::FunctionAnalysis * analysis,
+    Stats * stats)
 {
-  const lowir_analysis::ValueIndex values(*function, stats);
+  const lowir_analysis::ValueIndex & values = analysis->value_index();
 
   bool changed = false;
   for(std::size_t block = 0; block < function->blocks.size(); ++block)

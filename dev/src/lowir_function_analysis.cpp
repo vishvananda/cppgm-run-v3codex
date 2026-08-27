@@ -53,6 +53,8 @@ std::size_t evaluate_dominator(
 
 }  // namespace
 
+ValueIndex::ValueIndex() {}
+
 ValueIndex::ValueIndex(const lowir_model::Function & function,
                        lowir_opt::Stats * stats)
   : definitions_(function.value_names.size(), kMissingValueDefinition),
@@ -505,7 +507,7 @@ FunctionAnalysis::FunctionAnalysis(const lowir_model::Function & function,
                                    lowir_opt::Stats * stats)
   : function_(function), stats_(stats), epoch_(1), graph_valid_(false),
     dominators_valid_(false), dominator_children_valid_(false),
-    frontiers_valid_(false), loops_valid_(false)
+    frontiers_valid_(false), loops_valid_(false), value_index_valid_(false)
 {}
 
 const Graph & FunctionAnalysis::graph()
@@ -566,6 +568,25 @@ const LoopForest & FunctionAnalysis::loop_forest()
         std::chrono::steady_clock::now() - started).count());
   }
   return loops_;
+}
+
+const ValueIndex & FunctionAnalysis::value_index()
+{
+  if(value_index_valid_) {
+    if(stats_) ++stats_->value_index_reuses;
+    return value_index_;
+  }
+  value_index_ = ValueIndex(function_, stats_);
+  value_index_valid_ = true;
+  return value_index_;
+}
+
+void FunctionAnalysis::invalidate_values()
+{
+  if(!value_index_valid_) return;
+  value_index_ = ValueIndex();
+  value_index_valid_ = false;
+  if(stats_) ++stats_->value_index_invalidations;
 }
 
 void FunctionAnalysis::invalidate_cfg()

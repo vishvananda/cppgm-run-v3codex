@@ -24,14 +24,15 @@ sub run_optimizer
 	my ($app, $test, $directory, $level) = @_;
 	my $output = "$directory/$level.lowir";
 	my $status = run_command_capture(
-		cmd => [$app, "-$level", '-o', $output, $test],
+		cmd => [$app, "-$level", '--stats', '-o', $output, $test],
 		stdout => "$directory/$level.stdout",
 		stderr => "$directory/$level.stderr",
 		timeout => 30,
 	);
 	die "$test: lowiropt -$level failed\n" .
 		read_file("$directory/$level.stderr") if $status != 0;
-	return ($output, read_file($output));
+	return ($output, read_file($output),
+		read_file("$directory/$level.stderr"));
 }
 
 sub function_body
@@ -78,12 +79,17 @@ for my $test (@tests)
 {
 	my $directory = tempdir('lowir-historical-contracts-XXXXXX',
 		TMPDIR => 1, CLEANUP => 1);
-	my ($o0_path, $o0) = run_optimizer(
+	my ($o0_path, $o0, $o0_stats) = run_optimizer(
 		$app, $test, $directory, 'O0');
-	my ($o1_path, $o1) = run_optimizer(
+	my ($o1_path, $o1, $o1_stats) = run_optimizer(
 		$app, $test, $directory, 'O1');
-	my ($o2_path, $o2) = run_optimizer(
+	my ($o2_path, $o2, $o2_stats) = run_optimizer(
 		$app, $test, $directory, 'O2');
+	for my $field (qw(value_index_reuses value_index_invalidations))
+	{
+		die "$test: O2 optimizer stats lack a positive $field\n"
+			if $o2_stats !~ /(?:^|\s)\Q$field\E=([1-9]\d*)(?:\s|$)/;
+	}
 
 	my $o0_readonly = function_body($test, $o0, 'fold_readonly');
 	my $o1_readonly = function_body($test, $o1, 'fold_readonly');

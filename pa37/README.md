@@ -66,9 +66,10 @@ signature, `no_inline`, or growth-safety checks.
 `lowiropt --stats` writes one `pa37_opt_stats` diagnostic record to standard
 error.  In addition to the ordinary optimizer work counts, the record reports
 construction cost for any immutable value definition/use index: index builds,
-scanned instructions and value-operand positions, storage allocations, and
-peak transient bytes.  Parameters and missing definitions are distinct index
-states, and phi predecessor labels are not value uses.  The record also
+reuses, explicit invalidations, scanned instructions and value-operand
+positions, storage allocations, and peak transient bytes.  Parameters and
+missing definitions are distinct index states, and phi predecessor labels are
+not value uses.  The record also
 includes an entry-prefix census for direct calls whose callee has a
 side-effect-free path to an early return and at least one bailout edge.  These
 statistics are observational only: they do not enable partial inlining or

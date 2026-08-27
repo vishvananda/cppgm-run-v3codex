@@ -686,6 +686,40 @@ This plan is complete only when:
   `cb5a4452...`/8,637,627, `51b3518f...`/5,787,332, and
   `763b24f4...`/5,026,821.  Retain; cross-pass reuse remains a separate next
   experiment.
+- **D2-VR (MUTATION-BOUNDED VALUE-INDEX REUSE, RETAINED).** On the tree based
+  on `69ed83e9`, `FunctionAnalysis` now owns an empty-by-default value index
+  with explicit lazy query and invalidation operations.  It stores the index
+  directly, so no analysis-object heap allocation is added.  Scaled-index
+  factorization builds the facts; O2+ counted-loop simplification reuses them
+  immediately because both passes preserve value definitions and temporary-use
+  topology; the coordinator then explicitly invalidates and releases the
+  arrays before LICM, GVN, or any later mutation.  The stats contract reports
+  reuse and invalidation, the general stats control checks their structural
+  presence, and the PA37 O2 historical control requires positive reuse and
+  invalidation without fixing exact counts.  Focused properties, PA37
+  188/188, PA38 45/45, `git diff --check`, and the default zero-fatal/36-warning
+  audit pass.  Exact O1 private logs cover all 215 current translation units:
+  old and candidate objects are byte-identical and every pre-existing counter
+  is identical, including 124,209 builds, 1,440,820 scanned instructions,
+  4,619,399 operand positions, 247,750 allocations, the 72,608-byte index
+  peak, and the 10,229,916-byte promotion peak.  The candidate additionally
+  records 124,209 explicit end-of-window invalidations.  On the O2 historical
+  fixture, reuse reduces builds 12 to 11, scanned instructions 76 to 65,
+  operand positions 237 to 202, and allocations 24 to 22; it records one
+  reuse and 11 invalidations, preserves the 368-byte peak, and emits the same
+  native object.  Candidate SHA-256/text is
+  `a460771a...`/8,637,371, 256 text bytes below D2-V2.  The first two
+  reverse/interleaved self lanes triggered the repeat rule at candidate
+  31.69/32.64 versus old 32.36/31.52 seconds wall despite lower candidate CPU.
+  A clean third pair at 31.40/31.82 resolves the three-lane means to
+  31.910/31.900 seconds wall (+0.03%) and 907.00/912.84 aggregate CPU (-0.64%).
+  Exact-source GCC lanes are 30.22/29.66 wall and 580.65/576.50 CPU; Clang
+  lanes are 30.91/30.54 wall and 654.38/651.60 CPU.  Accepted means are self
+  31.910/907.00, GCC 29.940/578.575, and Clang 30.725/652.99 seconds wall/CPU,
+  or 1.066x and 1.039x wall.  Self, GCC, and Clang hashes/text are
+  `a460771a...`/8,637,371, `f1ce5efe...`/5,787,940, and
+  `cba80c5e...`/5,027,345.  Retain this narrowly scoped reuse boundary; other
+  passes still require their own invalidation proof.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

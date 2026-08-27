@@ -29,6 +29,8 @@ my @tests = collect_tests($root, qr/partial-inline-census.*\.t$/);
 die "No optimizer-census tests found under $root\n" if !@tests;
 my @required_fields = qw(
 	value_index_builds
+	value_index_reuses
+	value_index_invalidations
 	value_index_instruction_visits
 	value_index_operand_visits
 	value_index_allocations
@@ -69,7 +71,8 @@ for my $test (@tests)
 	}
 	for my $field (@required_fields)
 	{
-		next if $field eq 'partial_inline_census_direct_calls';
+		next if $field eq 'partial_inline_census_direct_calls' ||
+			$field eq 'value_index_reuses';
 		die "$test: optimizer fixture did not contribute to $field\n"
 			if $values{$field} == 0;
 	}

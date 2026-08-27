@@ -89,6 +89,7 @@ struct ValueDefinition
 class ValueIndex
 {
 public:
+  ValueIndex();
   ValueIndex(const lowir_model::Function & function,
              lowir_opt::Stats * stats);
 
@@ -122,6 +123,8 @@ public:
   const std::vector<EdgeList> & dominator_children();
   const std::vector<EdgeList> & dominance_frontier();
   const LoopForest & loop_forest();
+  const ValueIndex & value_index();
+  void invalidate_values();
   void invalidate_cfg();
   std::size_t epoch() const;
 
@@ -133,12 +136,14 @@ private:
   std::vector<EdgeList> dominator_children_;
   std::vector<EdgeList> frontiers_;
   LoopForest loops_;
+  ValueIndex value_index_;
   std::size_t epoch_;
   bool graph_valid_;
   bool dominators_valid_;
   bool dominator_children_valid_;
   bool frontiers_valid_;
   bool loops_valid_;
+  bool value_index_valid_;
 };
 
 }  // namespace lowir_analysis

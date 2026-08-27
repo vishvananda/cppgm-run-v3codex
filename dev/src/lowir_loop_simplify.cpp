@@ -234,7 +234,7 @@ bool simplify_counted_loops(Function * function,
 {
   const lowir_analysis::LoopForest & forest = analysis->loop_forest();
   if(forest.loops.empty()) return false;
-  const lowir_analysis::ValueIndex values(*function, stats);
+  const lowir_analysis::ValueIndex & values = analysis->value_index();
 
   bool changed = false;
   bool cfg_changed = false;
