@@ -20,7 +20,7 @@ function @memory_copy(
     %destination : ptr [capture=nocapture, access=write, alias=noalias],
     %source : ptr [capture=nocapture, access=read, alias=noalias],
     %count : i64) -> ptr
-    [effects=readwrite, unwind=no, binding=strong,
+    [unwind=no, binding=strong,
      object=cppgm_builtin_memcpy] {
   block ^entry:
     jump ^test

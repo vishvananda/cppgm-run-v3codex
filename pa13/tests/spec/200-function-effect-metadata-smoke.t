@@ -1,13 +1,13 @@
 declare function @trap() -> void [effects=readnone, unwind=no, return=noreturn]
 
-function @callee(%x : i64) -> i64 [effects=readonly, unwind=no, return=returns] {
+function @callee(%x : i64) -> i64 [effects=readonly, unwind=no] {
   block ^entry:
     return i64 %x
 }
 
-function @helper(%fn : ptr, %x : i64) -> i64 [effects=readwrite, unwind=may, return=returns] {
+function @helper(%fn : ptr, %x : i64) -> i64 {
   block ^entry:
-    %0 = call i64 %fn(%x) as (%arg : i64) -> i64 [effects=readonly, unwind=no, return=returns]
+    %0 = call i64 %fn(%x) as (%arg : i64) -> i64 [effects=readonly, unwind=no]
     return i64 %0
 }
 

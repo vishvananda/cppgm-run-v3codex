@@ -1,6 +1,6 @@
-declare function @observe(%value : i64) -> void [effects=readwrite]
+declare function @observe(%value : i64) -> void
 declare function @fail(%value : i64) -> void
-    [effects=readwrite, return=noreturn]
+    [return=noreturn]
 
 function @cold_helper(%condition : i64, %value : i64) -> i64
     [binding=strong] {

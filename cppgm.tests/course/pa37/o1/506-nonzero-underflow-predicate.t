@@ -1,4 +1,4 @@
-declare function @mutate(%address : ptr) -> void [effects=readwrite]
+declare function @mutate(%address : ptr) -> void
 
 function @fold_after_nonzero_edge(%address : ptr) -> i64 {
   block ^entry:

@@ -367,9 +367,7 @@ void AdaptBoundaryFacts(const Symbol& source,
 	boundary->effects = source.effects == Symbol::EFFECTS_READNONE ?
 		lowir_model::CFXM_READNONE :
 		source.effects == Symbol::EFFECTS_READONLY ?
-		lowir_model::CFXM_READONLY :
-		source.effects == Symbol::EFFECTS_READWRITE ?
-		lowir_model::CFXM_READWRITE : lowir_model::CFXM_DEFAULT;
+		lowir_model::CFXM_READONLY : lowir_model::CFXM_DEFAULT;
 	if (source.nonthrowing) boundary->unwind = lowir_model::CUM_NO;
 	if (source.noreturn) boundary->returns = lowir_model::CRM_NORETURN;
 }

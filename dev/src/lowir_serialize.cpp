@@ -132,16 +132,13 @@ void write_boundary_metadata(MetadataWriter & metadata,
   case CFXM_DEFAULT: break;
   case CFXM_READNONE: metadata.item("effects", "readnone"); break;
   case CFXM_READONLY: metadata.item("effects", "readonly"); break;
-  case CFXM_READWRITE: metadata.item("effects", "readwrite"); break;
   }
   switch(value.unwind) {
   case CUM_DEFAULT: break;
-  case CUM_MAY: metadata.item("unwind", "may"); break;
   case CUM_NO: metadata.item("unwind", "no"); break;
   }
   switch(value.returns) {
   case CRM_DEFAULT: break;
-  case CRM_RETURNS: metadata.item("return", "returns"); break;
   case CRM_NORETURN: metadata.item("return", "noreturn"); break;
   }
 }

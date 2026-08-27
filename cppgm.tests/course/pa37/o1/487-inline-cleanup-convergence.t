@@ -1,4 +1,4 @@
-declare function @bad() -> void [effects=readwrite]
+declare function @bad() -> void
 
 function @main() -> i64 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:

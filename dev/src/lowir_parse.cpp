@@ -402,15 +402,12 @@ private:
     } else if(key == "effects") {
       if(value == "readnone") out.effects = CFXM_READNONE;
       else if(value == "readonly") out.effects = CFXM_READONLY;
-      else if(value == "readwrite") out.effects = CFXM_READWRITE;
       else throw ParseError("invalid effects metadata");
     } else if(key == "unwind") {
-      if(value == "may") out.unwind = CUM_MAY;
-      else if(value == "no") out.unwind = CUM_NO;
+      if(value == "no") out.unwind = CUM_NO;
       else throw ParseError("invalid unwind metadata");
     } else if(key == "return") {
-      if(value == "returns") out.returns = CRM_RETURNS;
-      else if(value == "noreturn") out.returns = CRM_NORETURN;
+      if(value == "noreturn") out.returns = CRM_NORETURN;
       else throw ParseError("invalid return metadata");
     }
   }

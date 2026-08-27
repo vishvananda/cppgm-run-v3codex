@@ -1,4 +1,4 @@
-declare function @observe(%value : ptr) -> void [effects=readwrite, unwind=no]
+declare function @observe(%value : ptr) -> void [unwind=no]
 
 function @copy_complete_scalar_object() -> i64 [no_inline=yes] {
   slot $source : obj<8x8>

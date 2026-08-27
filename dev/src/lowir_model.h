@@ -280,21 +280,18 @@ enum CallEffectsMode
 {
   CFXM_DEFAULT,
   CFXM_READNONE,
-  CFXM_READONLY,
-  CFXM_READWRITE
+  CFXM_READONLY
 };
 
 enum CallUnwindMode
 {
   CUM_DEFAULT,
-  CUM_MAY,
   CUM_NO
 };
 
 enum CallReturnMode
 {
   CRM_DEFAULT,
-  CRM_RETURNS,
   CRM_NORETURN
 };
 

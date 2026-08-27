@@ -1,5 +1,5 @@
 declare function @pure() -> i64 [effects=readnone, unwind=no]
-declare function @sink() -> i64 [effects=readwrite, unwind=no]
+declare function @sink() -> i64 [unwind=no]
 
 function @main(%fn : ptr) -> i64 {
   block ^entry:

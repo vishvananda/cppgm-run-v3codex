@@ -1,6 +1,6 @@
 declare function @readonly_value() -> i64 [effects=readonly, unwind=no]
 declare function @readnone_value() -> i64 [effects=readnone, unwind=no]
-declare function @ordinary_value() -> i64 [effects=readwrite, unwind=no]
+declare function @ordinary_value() -> i64 [unwind=no]
 declare function @throwing_readonly_value() -> i64 [effects=readonly]
 
 function @drop_effect_free_calls(%fn : ptr) -> i64 {

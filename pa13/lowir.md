@@ -340,7 +340,7 @@ Functions may also carry explicit call-boundary metadata after the return type:
 
 ```text
 declare function @printf(%fmt : ptr [pass=decay]) -> i32 [arity=variadic, effects=readonly]
-function @sum(%count : i64) -> i64 [arity=variadic, effects=readwrite] {
+function @sum(%count : i64) -> i64 [arity=variadic] {
   ...
 }
 declare function @trap() -> void [effects=readnone, unwind=no, return=noreturn]
@@ -367,18 +367,13 @@ The currently defined call-effect values are:
 
 - `readnone`
 - `readonly`
-- `readwrite`
 
-`readwrite` is the ordinary conservative default when omitted. `readnone` means the boundary
-does not read or write memory. `readonly` means the boundary may read memory but does not
-write it.
+Omission is the ordinary conservative read/write default and has no explicit spelling.
+`readnone` means the boundary does not read or write memory. `readonly` means the boundary
+may read memory but does not write it.
 
-The currently defined unwind values are:
-
-- `may`
-- `no`
-
-`may` is the ordinary default when omitted. `no` means the boundary does not unwind.
+The currently defined unwind value is `no`. Omission means the call may unwind and has no
+explicit spelling.
 
 This is an IR-level fact, not a promise about how every frontend always infers
 it. In particular, the current `cppgm++ --emit-lowir` path only infers
@@ -387,13 +382,8 @@ it. In particular, the current `cppgm++ --emit-lowir` path only infers
 `noexcept(expr)` may still omit `unwind=no` until that semantic path has a
 cheap non-text-based implementation.
 
-The currently defined return values are:
-
-- `returns`
-- `noreturn`
-
-`returns` is the ordinary default when omitted. `noreturn` means the boundary never returns
-normally.
+The currently defined return value is `noreturn`. Omission means the call returns normally
+and has no explicit spelling.
 
 Call signatures only accept call-boundary metadata such as `arity=...`, `effects=...`,
 `unwind=...`, and `return=...`. Top-level symbol metadata such as `role=...`, `linkage=...`,

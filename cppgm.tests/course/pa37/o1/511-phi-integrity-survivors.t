@@ -1,6 +1,6 @@
 declare function @undefined_path() -> void
     [role=unreachable, effects=readnone, unwind=no, return=noreturn]
-declare function @observe(%value : i64) -> void [effects=readwrite]
+declare function @observe(%value : i64) -> void
 
 function @repair_fold_target_phi(%choose : i64) -> i64 [no_inline=yes] {
   block ^entry:

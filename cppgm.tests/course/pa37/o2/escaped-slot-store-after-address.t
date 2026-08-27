@@ -1,4 +1,4 @@
-declare function @observe(%value : ptr) -> void [effects=readwrite, unwind=no]
+declare function @observe(%value : ptr) -> void [unwind=no]
 
 function @preserve_escaped_stores() -> void {
   slot $value : i64
