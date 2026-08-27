@@ -514,8 +514,7 @@ private:
                             ParameterMetadata & out)
   {
     if(key == "pass") {
-      if(value == "direct") out.passing = PPM_DIRECT;
-      else if(value == "indirect_result") out.passing = PPM_INDIRECT_RESULT;
+      if(value == "indirect_result") out.passing = PPM_INDIRECT_RESULT;
       else if(value == "by_address") out.passing = PPM_BY_ADDRESS;
       else if(value == "reference") out.passing = PPM_REFERENCE;
       else if(value == "decay") out.passing = PPM_DECAY;

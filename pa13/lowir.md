@@ -588,11 +588,12 @@ and `alias`.
 
 The currently defined pass values are:
 
-- `direct`
 - `indirect_result`
 - `by_address`
 - `reference`
 - `decay`
+
+Omission means ordinary direct-value passing and has no explicit spelling.
 
 The currently defined capture values are:
 
@@ -616,7 +617,6 @@ The intended meaning is semantic, not host-ABI-specific:
 - `by_address`: this parameter is an indirect object/value boundary
 - `reference`: this parameter is a reference boundary
 - `decay`: this parameter came from array/function decay
-- `direct`: ordinary direct-value passing
 - `nocapture`: the callee does not retain the incoming pointer value beyond the call
 - `maycapture`: the callee may retain or otherwise capture the incoming pointer value
 - `none`: the callee does not dereference the incoming pointer
@@ -626,7 +626,7 @@ The intended meaning is semantic, not host-ABI-specific:
 - `noalias`: this incoming pointer is disjoint from every other pointer
   parameter on the same boundary that also carries `alias=noalias`
 
-For the current LowIR subset, non-`direct` pass modes require parameter type `ptr`.
+For the current LowIR subset, every explicitly spelled pass mode requires parameter type `ptr`.
 Capture, access, and alias metadata also currently require parameter type `ptr`.
 `indirect_result` must appear on the first parameter and requires function return type `void`.
 
