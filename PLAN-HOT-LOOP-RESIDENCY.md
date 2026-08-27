@@ -1,6 +1,6 @@
 # PLAN-HOT-LOOP-RESIDENCY: P32 residual operation-count parity
 
-Status: active; retained-change coverage has been converted to
+Status: complete; retained-change coverage has been converted to
 student-implementable property/behavior oracles; pressure-aware edge-local
 loop-phi capacity is retained as a minor increment; reserved-scratch vector
 chunks through naturally aligned 64-byte fixed copies are the latest
@@ -13,7 +13,8 @@ multiplier factoring is a retained critical-path landing; unused-result
 dynamic builtin-copy lowering is retained; lifetime-bounded ordinary O1 load
 reuse is the latest performance landing; source-matched exact-final full-source
 O1 wall ratios are about 1.476x GCC and 1.481x Clang, so the two-host exit
-target is reached pending the checkpoint push
+target is reached; the retained implementation and evidence are pushed through
+`0f6f8ece`
 
 Date: 2026-08-27
 
@@ -3890,6 +3891,15 @@ inception lane while another build or profiler is active.
   remains active.  L115 remains a valid fallback only if a future
   source-matched checkpoint loses the margin; it is not added after the exit
   criterion has already been reached.
+
+- **P32-L120 (FINAL CHECKPOINT PUSH).** Implementation commit `764e12a3` and
+  evidence/metric commit `0f6f8ece` were pushed together to `origin/v3opt`
+  (`c6824b82..0f6f8ece`).  The immediately preceding 5,453/5,453 through gate,
+  36-warning/zero-fatal audit, and byte-identical 32-way O1 inception are the
+  final verification matrix; this documentation-only closure does not rerun
+  those completed gates.  The working branch was clean and synchronized after
+  the push, and the temporary detached production-source worktree used only
+  for the timing control was removed.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
