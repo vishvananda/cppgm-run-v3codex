@@ -3251,6 +3251,30 @@ inception lane while another build or profiler is active.
   is removed, `lowir_opt.cpp` is restored to 3,000 lines, and no profiler,
   Cachegrind, inception, or build process remains.
 
+- **P32-L104 (EARLIER-PLAN RATIO-SENSITIVITY AUDIT).** Rejected survivors
+  and probes in `PLAN-O1-PARITY.md` and `PLAN-INLINE-PARITY.md` were also
+  checked for the same self-only metric error.  No earlier item outranks the
+  P32 queue.  Memory-GVN, inlining-dose, residency, recoloring, compare, and
+  fixed-result placement experiments were superseded by narrower retained
+  P30--P32 mechanisms or retested on later placement; unsound allocator/address
+  variants remain closed; source reshapes remain out of scope; and probes with
+  no final native change need no denominator lane.  P30 L58--L60 are subsumed
+  by P32's broader fixed-result/division work.  P30 L74--L76/L80 changed only
+  compiler-work microstructure, had deterministic whole-self instruction
+  regressions, and exposed no target-code population, so they remain below the
+  replay threshold.
+
+  The one additional sound lower-priority replay is O1 P22b's block-local
+  frame-load forwarding: after its store-invalidation fix it removed 911
+  frozen loads and 1.2 KiB of target text with self wall/user at +0.09%/0.00%,
+  but it never received a candidate-source host denominator.  It remains
+  behind P32 L72's compiler-wide deferred fixed-result division and L23's
+  still-profiled unused-result dynamic-copy class.  Reconstruct L72 first,
+  screen it on the current full-source O1 workload, and build the binding GCC
+  denominator only if the current static population and self lane remain
+  credible; do not replay obsolete variants merely because their historical
+  numerator was close.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
