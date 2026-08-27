@@ -1,6 +1,6 @@
 # Plan: Audit and Reduce Optimizer Duplication
 
-Status: ready for execution; initial duplication census complete, no cleanup
+Status: executing; D0 baseline and consolidation ledger frozen, no cleanup
 implementation landed
 
 Date: 2026-08-27
@@ -144,6 +144,29 @@ lower that global threshold merely to make the count a target.
 | P2 | Native address setup/store emission | `lowir_native_address_folding.cpp` repeats setup/store shape checks and frame/global/deref normalization in adjacent reducers. | Extract address normalization and final emission only after the existing PA29 structural/behavioral controls prove every accepted and rejected shape. |
 | P3 | Native placement ordering | `lowir_native_location_planning.cpp` repeats use-count/definition ordering and register-claim loops for local phi, cyclic-region, invariant, crossing, and ordinary candidates. | Share comparators and claim mechanics only where tie-breaking and pool direction are identical.  Allocation priority is output behavior and must not drift. |
 | P3 | Small syntactic matches | namespace preambles, common `using` declarations, and ordinary nested block loops appear in the tight duplicate report. | Ignore unless consolidation follows a real ownership boundary.  Do not create a utility solely to reduce the raw detector count. |
+
+## Frozen consolidation ledger
+
+This table is the D0 decision boundary.  Line numbers name the frozen
+`74d1538e` tree; later ledger entries record their movement.  The coverage
+column names student-facing properties, not exact whole-program output.
+
+| Family | Frozen definitions and callers | Boundary and owner | Coverage | Disposition |
+| --- | --- | --- | --- | --- |
+| LowIR pipeline and cleanup recipes | `lowir_opt.cpp:2754-2994` owns `optimize`; its local pass calls include 19 simplify, 29 DCE, 13 CFG, and seven `FunctionAnalysis` constructions. | PA37 owns the visible O1-O3 pass order.  Recipes may share only identical transform-followup order and must expose CFG/value invalidation. | PA37 O1/O2/O3 optimizer and driver suites, especially late/post-prune controls 475, 476, 490, 509, 510, and 520-524. | **split/share** in D3; keep differing recipes local. |
+| Exact LowIR storage identity | `lowir_boolean_cfg.cpp:87` called at 191; `lowir_loop_opt.cpp:234` called at 379; `lowir_scalar_rules.cpp:954` called at 1007. | All three mean exactly temp value, slot id, or global symbol plus address binding; no literals, volatility, or type comparison.  PA37 owns the optimizer helper. | PA37 387, 506, 526, 528, 529, and 540 plus survivor-property scripts. | **share first** in D1. |
+| Full/scalar LowIR operand identity | Internal `lowir_cleanup_o1.cpp:112` is called by instruction identity at 216-228; exported `lowir_scalar_rules.cpp:881` is called by `lowir_opt.cpp:434,978,1492` and staged-copy lines 143, 166, 593-595. | Cleanup identity includes full literal/presentation/binding state.  Scalar value identity intentionally has a narrower truth table. | PA37 cleanup, phi, forwarding, and staged-copy controls 385-389, 507, 508, 511, 524, and 525. | **rename/split** in D1; share only a proven common core. |
+| Operand traversal | At least 25 fixed `first`/`second`/`third` arrays plus `args` loops and 141 wider operand references across LowIR optimizer modules. | Allocation-free fixed-plus-variable traversal is shareable only when operand roles do not matter.  Phi odd `args` entries remain predecessor labels. | PA37 phi, CFG, scalar, memory, loop, and inlining suites. | **share** in D1, with specialized phi traversal local. |
+| Hash combine | `lowir_cleanup_o1.cpp:91`, `lowir_expression_key.cpp:75`, and `lowir_memory_gvn.cpp:280`; cleanup also inlines the same expression into debug hashing at 44-48. | Only the exact `seed ^= value + 0x9e3779b9 + (seed<<6) + (seed>>2)` primitive is common; key field selection remains local. | PA37 tail merge, expression GVN/PRE, memory GVN, readonly, and scaled-index controls 385, 506, 511, 525, and 527. | **share** in D1. |
+| Definition/use indexing | Repeated value-sized scans in Boolean CFG, PRE, loop optimization, memory GVN, scalar rules, slot forwarding, promotion, and `lowir_opt.cpp`; `FunctionAnalysis` owns CFG/dominator/loop facts only. | Immutable definitions/uses may be built without CFG.  No fact survives mutation without explicit invalidation; parameters and missing definitions remain distinct. | PA37 CFG, phi, PRE/GVN, slot, loop, readonly, and staged-copy controls. | **share one pass at a time** in D2; ablate reuse if work/bytes rise. |
+| Pointer/offset provenance | `lowir_small_object_promotion.cpp:74` `AddressProvenance`, line 249 `OffsetProvenance`, and `lowir_staged_copy_forwarding.cpp:44` `OffsetProvenance`; callers at 467/988 and 301. | Recursion, cycle states, and memoization are common mechanics.  Address facts, typed aggregate offsets, and staged-copy byte offsets retain separate policies, including negative/poison rules. | PA37 388, 389, 507, 508, 511, 524, and 525. | **share mechanics/split policy** in D2; reject if templates grow text/work. |
+| CFG terminal rebuilding | Branch/switch constant folds at `lowir_boolean_cfg.cpp:709-749` and equal-target repair at 819-831 rebuild a debug-preserving jump. | Selected target and debug location are inputs; reachability, phi repair, and bypass logic are not part of the helper. | PA37 385, 386, 390, 392, 395, 511, 523, and 528. | **share** in D4. |
+| Cold propagation | `lowir_cleanup_o1.cpp:724` `cold_block_mask` and line 814 `raising_path_mask` duplicate id indexing and reverse fixed-point propagation. | Layout coldness excludes blocks with ordinary/EH successors and ignores switch cases; raising-path coldness includes switch labels and treats EH markers separately. | PA37 cold-path/inlining controls 390-392, 509-511, and 520-524. | **share mechanics/split successor policy** in D4. |
+| Inliner post-success accounting | Leaf-batch success at `lowir_inline_o1.cpp:1516-1541` and general success at 1613-1640; shared budget/body helpers already at 866 and 922. | Budget consumption, body discard, rewrites, and stats are common after success.  Leaf rebuilding versus block/EH mutation remains separate. | PA37 ordinary, hinted, late, and post-prune controls 391, 392, 475, 476, 490, 509, 510, and 520-524. | **share post-success only** in D4. |
+| MIR identity and register effects | Full identity at `lowir_native_opt.cpp:441`, physical location at `lowir_native_phi_lowering.cpp:11`; duplicated i128 use/def opcode groups at native-opt lines 190-197 and 258-265. | Full MIR operand state differs from assignable physical location.  Opcode membership may be common, but use and definition masks remain separate. | PA38 442-448, O1 406 and 425-428, plus native behavior fixtures. | **rename/split identity; share exact opcode group** in D5. |
+| Native address folding | Adjacent dead setup/store reducers at `lowir_native_address_folding.cpp:202` and 253 repeat sequence validation and frame/global/deref normalization. | Normalize only after each reducer preserves its current sequence, scratch-liveness, index, sign-crossing, and R11 exclusions. | PA29 native contract and PA38 native survivor properties. | **share exact normalization** in D5; keep eligibility local. |
+| Native placement | Candidate sorts and claims at `lowir_native_location_planning.cpp:322-448`, with further ordinary sorting at 869. | Use-count sorting, pool direction, span/clobber checks, i128 RBX exclusion, phi priority, and tie breakers are output behavior. | PA38 442-448 and placement/movement census properties. | **share only proven comparator/claim variants** in D5; otherwise keep local. |
+| Tight-report syntax | Include/namespace preambles in loop, GVN, PRE, slot, and small-object modules. | No semantic ownership exists merely because normalized syntax matches. | Default file audit. | **keep local/non-actionable**. |
 
 ## Semantic distinctions that must survive
 
@@ -460,6 +483,29 @@ This plan is complete only when:
   performance baseline is 31.895 seconds self, 21.460 GCC, and 22.080 Clang,
   or 1.486x/1.445x wall, with compiler hash `8b695207...`.  This entry changes
   documentation only; no production code or test is changed.
+- **D0 (BASELINE FROZEN).** The documentation-only planning head is
+  `74d1538e`; its compiler is byte-identical to `beec7ac7`.  A fresh 32-way
+  O1 all-source build with observational `--stats` compiled 204 translation
+  units in 19.38 seconds wall (473.48 user, 45.24 system), reproduced compiler
+  SHA-256 `8b6952075632e689e99e8a7f502e1f3c00b9cfa6d280e07e0e33c3653b69bbd4`,
+  and reproduced 8,640,083 text bytes.  Because parallel stream insertion
+  interleaved the initial records, each exact compile command was rerun at
+  32-way parallelism with a private stderr file; all 204 records were then
+  parsed independently.  Aggregate O1 facts are: 119,035 functions,
+  2,689,132 input and 1,454,794 output instructions, 45,058,681 instruction
+  visits, 2,785,884 block visits, 9,040,686 CFG-edge visits, 89,832 CFG builds
+  / 156,780 reuses / 4,474 invalidations, 75,765 dominator builds / 137,750
+  reuses, 65,459 loop builds / 2,886 reuses, 318,084 simplify runs, 405,706
+  DCE runs, 437,539 CFG runs, 670,904 slot runs, 73,945 each forward/local
+  slot runs, 156,992 remove-slot runs, 127,952 promotion runs, and 119,035
+  each small-object/dead-store runs.  Summed optimizer `elapsed_ns` is
+  20,756,534,872; maximum per-TU promotion transient storage is 10,229,916
+  bytes.  Exact default and tight audit output is saved in
+  `PLAN-OPTIMIZER-DUPLICATION-AUDIT-BASELINE.txt` (SHA-256
+  `e0336e1cdc5fe5e58d199b32ab57803932db4506f96dbdbfef258d650cb88508`).  The detailed matrix
+  above freezes every merge boundary, assignment owner, property coverage,
+  and disposition.  D0 is complete; no production code, test, or generated
+  fixture changed.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

@@ -1,0 +1,61 @@
+Default PA38 file audit at 74d1538e
+Command: perl scripts/cppgm_file_audit.pl --stage pa38 --paths dev
+
+File audit passed for pa38 with 36 warning(s).
+  [warning][complexity] dev/src/lowir_inline_o1.cpp:1552: inline_calls nesting depth is 7; consider simplifying control flow
+  [warning][bad-division] dev/src/lowir_model.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/lowir_native.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/lowir_native_address_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/lowir_native_index_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/lowir_native_location_planning.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/lowir_opt.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/mir_model.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa10_parser_name_facts.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa11_model.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa12_semantic.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa12_semantic_detail.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa12_semantic_model.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa12_semantic_tables.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa15_lowir_types.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa16_aggregate_helper_lowering.h:1: large catch-all helper file; consider a responsibility-named module
+  [warning][bad-division] dev/src/pa16_aggregate_helper_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa16_array_lifetime_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa16_assignment_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa16_call_argument_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa16_constructor_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa16_destructor_action_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa16_initialization_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa16_lifetime_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa16_slot_planning.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa17_special_member_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa17_temporary_lifetime_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa21_local_static_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa26_exception_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa26_initializer_list_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa28_virtual_base_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][bad-division] dev/src/pa33_static_lifecycle_lowering.h:1: header contains substantial implementation body; prefer .cpp ownership
+  [warning][duplication] dev/cppgm++.cpp:1832: large duplicate block also appears at dev/cppgm++.cpp:1569
+  [warning][duplication] dev/preproc.cpp:46: large duplicate block also appears at dev/macro.cpp:40
+  [warning][duplication] dev/src/lowir_native_elf.cpp:2541: large duplicate block also appears at dev/src/lowir_native_elf.cpp:1821
+  [warning][duplication] dev/src/pa15_lowering.cpp:1: large duplicate block also appears at dev/src/lowir_native.cpp:1
+
+Tight optimizer-only report at 74d1538e
+Command: the 17-path, --no-follow-includes, --duplicate-window 6,
+         --duplicate-min-chars 100 command in PLAN-OPTIMIZER-DUPLICATION.md
+
+File audit passed for pa38 with 15 warning(s).
+  [warning][complexity] dev/src/lowir_inline_o1.cpp:1552: inline_calls nesting depth is 7; consider simplifying control flow
+  [warning][duplication] dev/src/lowir_boolean_cfg.cpp:733: large duplicate block also appears at dev/src/lowir_boolean_cfg.cpp:709
+  [warning][duplication] dev/src/lowir_cleanup_o1.cpp:837: large duplicate block also appears at dev/src/lowir_cleanup_o1.cpp:765
+  [warning][duplication] dev/src/lowir_inline_o1.cpp:1618: large duplicate block also appears at dev/src/lowir_inline_o1.cpp:1521
+  [warning][duplication] dev/src/lowir_loop_opt.cpp:236: large duplicate block also appears at dev/src/lowir_boolean_cfg.cpp:89
+  [warning][duplication] dev/src/lowir_loop_simplify.cpp:9: large duplicate block also appears at dev/src/lowir_loop_opt.cpp:10
+  [warning][duplication] dev/src/lowir_memory_gvn.cpp:13: large duplicate block also appears at dev/src/lowir_loop_opt.cpp:10
+  [warning][duplication] dev/src/lowir_native_address_folding.cpp:253: large duplicate block also appears at dev/src/lowir_native_address_folding.cpp:202
+  [warning][duplication] dev/src/lowir_native_location_planning.cpp:414: large duplicate block also appears at dev/src/lowir_native_location_planning.cpp:323
+  [warning][duplication] dev/src/lowir_native_opt.cpp:258: large duplicate block also appears at dev/src/lowir_native_opt.cpp:190
+  [warning][duplication] dev/src/lowir_opt.cpp:34: large duplicate block also appears at dev/src/lowir_cleanup_o1.cpp:12
+  [warning][duplication] dev/src/lowir_pre.cpp:11: large duplicate block also appears at dev/src/lowir_memory_gvn.cpp:12
+  [warning][duplication] dev/src/lowir_scalar_rules.cpp:954: large duplicate block also appears at dev/src/lowir_boolean_cfg.cpp:87
+  [warning][duplication] dev/src/lowir_slot_forward_o1.cpp:5: large duplicate block also appears at dev/src/lowir_loop_simplify.cpp:5
+  [warning][duplication] dev/src/lowir_small_object_promotion.cpp:10: large duplicate block also appears at dev/src/lowir_loop_opt.cpp:9
