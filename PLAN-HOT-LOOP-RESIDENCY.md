@@ -3901,6 +3901,49 @@ inception lane while another build or profiler is active.
   the push, and the temporary detached production-source worktree used only
   for the timing control was removed.
 
+- **P32-L121 (POST-CONTRACT PREDICATE INTERFERENCE RETAINED; GAP STILL
+  OPEN).** After the LowIR-contract program, fresh exact-source software
+  profiles put the remaining excess back in generated frontend code:
+  `Lexer::Peek`, `Lexer::Run`, and `PhysicalCursor::Next`, while the LowIR
+  simplifier itself remained below one percent.  `Peek` had regained an
+  unsigned `size - 1 >= size` bounds branch and its cold exception body even
+  though the preceding edge proved that exact SSA value nonzero.  The original
+  P31 proof recognized only a second load in the comparison block.  Final O1
+  load reuse and separately inlined queue accessors had changed the value into
+  a dominating load, so two individually retained transformations interfered
+  and disabled the proof.
+
+  The retained repair recognizes the same unchanged SSA value across a bounded
+  unique-predecessor chain, preserves the older stable-reload proof, and reruns
+  predicate cleanup only for callers changed by an inlining wave after final
+  O1 load reuse.  Distinct values, volatile reloads, and writing-call barriers
+  remain guarded.  This is a generic LowIR property; it does not recognize the
+  tokenizer or any program text.  `Lexer::Peek` shrinks 421 -> 323 bytes and
+  loses the hot comparison/branch plus its first cold throw block.  Complete
+  self compiler text grows only 584 bytes for the proof machinery.
+
+  A reverse-order same-source compiler ablation measured old-self lanes at
+  32.07/867.94/48.22 and 32.34/868.38/48.85 seconds wall/user/system versus
+  candidate lanes at 32.44/858.27/49.34 and 31.77/855.51/48.14.  Mean wall is
+  32.205 -> 32.105 (-0.31%) and aggregate CPU is 916.695 -> 905.630 (-1.21%).
+  Exact-candidate-source GCC lanes measured 21.05/542.20/44.33 and
+  20.91/541.95/44.20; Clang lanes measured 21.85/563.09/44.78 and
+  22.35/564.56/45.12.  Candidate mean ratios are therefore **1.530x GCC** and
+  **1.453x Clang** by wall, and **1.544x GCC** and **1.488x Clang** by
+  aggregate CPU.  GCC remains binding and needs roughly another two percent
+  self wall reduction for the 1.50x exit.
+
+  PA37's README now describes same-value dominance and stable-reload safety.
+  Control `528-nonzero-underflow-value-proof` checks the O0 comparison, its O1
+  removal through an intervening block, and a distinct-value negative without
+  matching a complete LowIR program.  PA37 passes 188/188 and PA38 passes
+  45/45.  Candidate compiler SHA-256 is
+  `43df77f52dd35aba8d1c7041abbfc62befdae5d9de02d486ccbfac414566b0ab`.
+  The next target is the remaining redundant queue-size reload on `Peek`'s
+  backedge: Clang carries the just-stored size to the header comparison, while
+  self reloads it immediately.  Test this as generic loop-carried exact-store
+  forwarding, not as a source rewrite or field-specific rule.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,

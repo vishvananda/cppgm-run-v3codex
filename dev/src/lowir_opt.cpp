@@ -2863,9 +2863,11 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       program, late_call_graph, &late_rewritten_symbols, stats, &cleanup,
       inline_limits);
     for(std::size_t i = 0; i < program.functions.size(); ++i)
-      if(late_rewritten_symbols[program.functions[i].symbol])
+      if(late_rewritten_symbols[program.functions[i].symbol]) {
+        inlined_symbols[program.functions[i].symbol] = 1;
         promote_after_late_inlining(&program.functions[i], boundaries, stats,
           &simplify_arena, &dce_scratch, &cfg_scratch);
+      }
     for(std::size_t i = 0; i < program.functions.size(); ++i)
     if(stats) {
       stats->rewrites += late_rewrites;
@@ -2912,6 +2914,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       boundaries = function_boundaries(program);
       for(std::size_t i = 0; i < program.functions.size(); ++i)
         if(post_prune_rewritten_symbols[program.functions[i].symbol]) {
+          inlined_symbols[program.functions[i].symbol] = 1;
           prepare_for_inlining(
             &program.functions[i], boundaries, stats, &simplify_arena,
             &dce_scratch, &cfg_scratch);
@@ -2983,9 +2986,21 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       timed_dce(&program.functions[i], boundaries, stats, &dce_scratch);
       timed_cfg(&program.functions[i], stats, &cfg_scratch, &analysis);
     }
-  // Consume edge-local conditions exposed by the final inlining cleanup.
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
+  // Consume predicates assembled from separately inlined accessors after the
+  // final O1 load-reuse pass has exposed their shared SSA value.  Restrict the
+  // repeated CFG proof to callers that an inlining wave actually changed.
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    if(inlined_symbols[program.functions[i].symbol] &&
+       fold_nonzero_underflow_branches(&program.functions[i], stats)) {
+      lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
+      timed_function_pass(simplify_values, &program.functions[i], stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+        &simplify_arena);
+      timed_dce(&program.functions[i], boundaries, stats, &dce_scratch);
+      timed_cfg(&program.functions[i], stats, &cfg_scratch, &analysis);
+    }
     fold_edge_known_branches(&program.functions[i], stats, &cfg_scratch);
+  }
   finish_optimizer_stats(program, pruning, stats, started);
 }
 }  // namespace lowir_opt

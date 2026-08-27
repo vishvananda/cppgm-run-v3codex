@@ -21,7 +21,7 @@ bool fold_edge_known_branches(
   lowir_model::Function * function, Stats * stats,
   CleanupCfgScratch * scratch);
 // Fold the unsigned x-1 underflow test on an edge where a preceding branch
-// has established that an unchanged scalar load is nonzero.
+// establishes that the same SSA value, or a stable reload of it, is nonzero.
 bool fold_nonzero_underflow_branches(
   lowir_model::Function * function, Stats * stats);
 // Terminal folding, unreachable-block removal with dead-edge value

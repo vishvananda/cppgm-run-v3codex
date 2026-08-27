@@ -151,8 +151,9 @@ bool block_memory_stable(const Block & block)
 bool edge_establishes_nonzero(const Function & function,
                               std::size_t predecessor,
                               std::size_t successor,
-                              const Operand & address,
-                              const lowir_model::LowType & type)
+                              const Operand & checked_value,
+                              const Instruction * reload,
+                              bool stable_reload_path)
 {
   const Block & incoming_block = function.blocks[predecessor];
   if(incoming_block.instructions.empty()) return false;
@@ -178,12 +179,17 @@ bool edge_establishes_nonzero(const Function & function,
   const bool nonzero_edge = predicate->op.kind == LowOperation::LOP_NE ?
     true_edge : false_edge;
   if(!nonzero_edge) return false;
+  if(tested.kind == Operand::OP_TEMP &&
+     checked_value.kind == Operand::OP_TEMP &&
+     tested.value == checked_value.value)
+    return true;
+  if(!stable_reload_path || !reload) return false;
   const Instruction * original_load =
     local_definition(incoming_block, tested.value);
   return original_load && original_load->kind == Instruction::IK_LOAD &&
     !original_load->volatile_access &&
-    same_load_address(original_load->first, address) &&
-    lowir_model::same_lowir_type(original_load->type, type) &&
+    same_load_address(original_load->first, reload->first) &&
+    lowir_model::same_lowir_type(original_load->type, reload->type) &&
     block_memory_stable_from(incoming_block, original_load);
 }
 
@@ -470,12 +476,13 @@ bool fold_nonzero_underflow_branches(Function * function, Stats * stats)
        subtract->first.value != underflow->second.value) continue;
     const Instruction * reload =
       local_definition(current, subtract->first.value);
-    if(!reload || reload->kind != Instruction::IK_LOAD ||
-       reload->volatile_access ||
-       !block_memory_stable_from(current, reload)) continue;
+    const bool stable_reload = reload &&
+      reload->kind == Instruction::IK_LOAD &&
+      !reload->volatile_access &&
+      block_memory_stable_from(current, reload);
 
-    if(!block_memory_stable(current)) continue;
     bool established = false;
+    bool stable_reload_path = stable_reload && block_memory_stable(current);
     std::size_t successor = block;
     std::vector<unsigned char> seen(function->blocks.size(), 0);
     seen[successor] = 1;
@@ -485,9 +492,11 @@ bool fold_nonzero_underflow_branches(Function * function, Stats * stats)
       if(seen[predecessor]) break;
       seen[predecessor] = 1;
       established = edge_establishes_nonzero(
-        *function, predecessor, successor, reload->first, reload->type);
-      if(established || !block_memory_stable(function->blocks[predecessor]))
-        break;
+        *function, predecessor, successor, subtract->first,
+        stable_reload ? reload : 0, stable_reload_path);
+      if(established) break;
+      stable_reload_path = stable_reload_path &&
+        block_memory_stable(function->blocks[predecessor]);
       successor = predecessor;
     }
     if(!established) continue;

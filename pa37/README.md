@@ -320,8 +320,10 @@ running optimizing transforms.
   load; ordinary nonvolatile slot traffic remains eligible for propagation,
   dead-store removal, duplicate-load reuse, and promotion
 - folding an unsigned `x - 1 >= x` underflow test to false on a path already
-  proving the same stable loaded value is nonzero; a volatile access, an
-  intervening memory-writing call, or any other loss of load identity keeps
+  proving the same unchanged scalar value is nonzero, including when that SSA
+  value was defined in an earlier block; a second load may use the proof only
+  while the loaded location remains stable, so a volatile reload, an
+  intervening memory-writing call, or any other loss of value identity keeps
   the comparison and both edges
 - replacing adjacent same-width scalar load/store copy groups with one
   `copyobj` only when they cover a contiguous constant byte range, are
