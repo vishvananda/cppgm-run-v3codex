@@ -2600,11 +2600,28 @@ std::string MangleFunction(const pa11::Program& program,
 	if (structured_class_owner &&
 		!AppendClassTemplateOwner(program, binding, &facts, &fact_case, true))
 		throw std::logic_error("class template ABI owner was lost");
-	const TypeRecord& function_type = program.types.Get(node.type);
-	const TypeId* parameters = program.types.Parameters(node.type);
+	const bool member = binding.member_owner != kNoEntity &&
+		!binding.static_member_function;
+	// Most member dump boundaries prepend the implicit object and the ABI path
+	// skips it. Out-of-class defaulted assignment definitions can retain only
+	// the declared parameter; use the binding type for that shortened boundary.
+	bool use_declared_assignment_parameters = false;
+	if (member && binding.operator_kind == OPERATOR_ASSIGN)
+	{
+		const TypeRecord& node_function_type = program.types.Get(node.type);
+		const TypeRecord& binding_function_type = program.types.Get(binding.type);
+		use_declared_assignment_parameters =
+			node_function_type.parameter_count !=
+				binding_function_type.parameter_count + 1;
+	}
+	const TypeId encoded_function_type = use_declared_assignment_parameters ?
+		binding.type : node.type;
+	const TypeRecord& function_type =
+		program.types.Get(encoded_function_type);
+	const TypeId* parameters =
+		program.types.Parameters(encoded_function_type);
 	AppendFunctionTemplateArgumentsAndResult(program, binding, function_type,
 		recipe, &facts, &fact_case);
-	const bool member = binding.member_owner != kNoEntity && !binding.static_member_function;
 	AppendMemberFunctionQualifiers(program, binding, member, &fact_case);
 	const AbiTerminalKind operator_terminal =
 		OperatorTerminal(binding.operator_kind, member,
@@ -2665,7 +2682,8 @@ std::string MangleFunction(const pa11::Program& program,
 			ABI_TERMINAL_DESTRUCTOR_COMPLETE;
 		AppendTypedFact(&fact_case, &terminal);
 	}
-	const std::size_t first_parameter = member ? 1 : 0;
+	const std::size_t first_parameter =
+		member && !use_declared_assignment_parameters ? 1 : 0;
 	const TypeRecord* recipe_function = recipe ?
 		&program.types.Get(recipe->function_type) : 0;
 	const TypeId* recipe_parameters = recipe_function &&

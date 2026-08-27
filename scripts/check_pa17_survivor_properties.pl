@@ -72,7 +72,7 @@ if(scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:constructor-alias-boundaries|enclosing-temporary-lifetime)\.cpp$/);
+	qr/(?:constructor-alias-boundaries|enclosing-temporary-lifetime|out-of-class-move-assignment-boundary)\.cpp$/);
 die "No PA17 survivor-property tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -116,6 +116,15 @@ for my $test (@tests)
 			/^\s+block \^\w+:\n(?:\s+.*\n)*?\s+call void \@\Q$destructor\E\(\Q$outer\E\)\n\s+jump \^/m;
 		die "$test: inner-construction failure does not clean the enclosing temporary\n"
 			if !$cleanup;
+		compile_and_run($app, $test, $directory, $path);
+		next;
+	}
+	if($test =~ /out-of-class-move-assignment-boundary/) {
+		my ($assignment) = $lowir =~
+			/^(function \@[^\n]+\bobject=_ZN7MoveBoxaSEOS_[^\n]*\{)$/m;
+		die "$test: out-of-class move assignment did not retain its " .
+			"declared rvalue-reference ABI identity\n"
+			if !defined($assignment);
 		compile_and_run($app, $test, $directory, $path);
 		next;
 	}

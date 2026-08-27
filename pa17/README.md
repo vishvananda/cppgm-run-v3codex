@@ -132,6 +132,11 @@ Ref-qualified member functions extend the PA16 member-call model: overload resol
 uses the implicit object argument, and the object expression's value category participates in
 viability and ranking for supported `&` and `&&` qualified members.
 
+The ABI identity of a member function is built from its declared source parameters; the
+implicit object used by LowIR lowering is not part of that declared parameter list. In
+particular, an out-of-class move-assignment definition retains its rvalue-reference parameter
+in the ABI identity.
+
 Nested operand and overload analysis must preserve the identity of the
 enclosing binary operator and the lifetime of its full expression. Interning
 additional candidate or conversion spellings while resolving an overloaded
