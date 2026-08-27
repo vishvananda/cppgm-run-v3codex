@@ -3357,6 +3357,88 @@ inception lane while another build or profiler is active.
   build process remains active.  O1 P22b's block-local frame-load forwarding
   is the next strongest same-source replay.
 
+- **P32-L107 (BLOCK-LOCAL FRAME-LOAD FORWARDING REPLAY REJECTED BY
+  SAME-SOURCE WALL RATIO).** O1 P22b's corrected machine-level rule was
+  reconstructed inside the existing local copy-propagation walk.  A typed,
+  nonvolatile integer or pointer frame load could reuse an earlier load's
+  still-live physical register within the same block.  Register definitions,
+  overlapping direct frame stores, indirect stores, calls, throws, bulk
+  writes, and atomics invalidated the fact; encoder-owned `r10`/`r11` were
+  never carriers.  This explicitly preserved P22b's plain-`MI_STORE`
+  soundness repair rather than repeating the historical bug.
+
+  Later placement work made the current population much larger than P22b's
+  old 911-load/1.2-KiB result.  Downstream local propagation compounded the
+  forwarded loads, shrinking complete compiler text from 7,923,410 to
+  7,868,546 bytes (-54,864).  PA38 passed 46/46.  An initial fixed-array
+  invalidation implementation also completed an all-32 O1 inception
+  comparison with every object and final compiler matching; its avoidable
+  per-instruction scan was then replaced by a register-validity bitmask
+  without changing the generated-code rule.  The final bitmask candidate at
+  `/dev/shm/v3codex-p22b-candidate.h4kc3J/bin/selfhost/cppgm++-self` has
+  SHA-256 `cd36f078e2917164c18521d48525f2e8ae48421b652099d1ddb62ace057542c9`.
+
+  Two clean all-32 full-source self lanes measured
+  32.70/873.22/49.96 and 32.52/870.08/49.78 seconds wall/user/system,
+  averaging 32.610 wall and 921.520 aggregate CPU.  A third lane at
+  34.08/911.18/53.28 was excluded because aggregate work rose by about 4.7%,
+  not merely because its scheduler tail moved.  The exact-source GCC compiler
+  under `/dev/shm/v3codex-p22b-gcc-prep.eoJv72` measured
+  21.11/546.60/44.61 and 21.28/547.47/45.40, averaging 21.195 wall and
+  592.040 CPU.  Candidate ratios are therefore 1.539x wall and 1.557x CPU.
+  Aggregate CPU improves L106's 1.562x point by about 0.35%, but the binding
+  wall ratio worsens from 1.516x by about 1.48%.  The explicit wall-time
+  objective rejects that mixed trade; no Clang lane is warranted.
+
+  The implementation is removed, PA38 remains clean, and no contract or
+  property is retained for rejected behavior.  This closes the only
+  additional high-priority rejection identified by the earlier-plan audit.
+  P32 L59's immediate scalar-return phi is the sole remaining source-independent
+  replay with real final native shrink and no same-source host denominator;
+  it is a lower-value static screen because its later full-source self result
+  was neutral and its representation requires compatibility-test updates.
+
+- **P32-L108 (IMMEDIATE SCALAR-RETURN PHI REPLAY REJECTED BY
+  SAME-SOURCE WALL RATIO).** P32-L59's source-independent placement rule was
+  reconstructed on the current tree.  At O1, a non-loop-carried integer or
+  pointer phi used once by the block's immediate return, optionally through
+  the block's sole scalar conversion, received the ABI return register as its
+  home.  The candidate reproduced L59's recorded compatibility footprint:
+  PA38 reached 44/46 because the loop/EH and staged-home canonicalizers, plus
+  the acyclic-frame diagnostic, assume a frame-backed phi representation.
+  Those controls were not weakened for a performance probe.
+
+  The current complete compiler text fell 7,923,410 -> 7,917,346 bytes
+  (-6,064).  Its explicit O1/all-32 preparation took 17.86 seconds at
+  `/dev/shm/v3codex-p33-returnphi-replay.oJCZW2/bin/selfhost/cppgm++-self`,
+  SHA-256
+  `27abef54a95c3e939cccae43bc4809595420f133628c5d9f863f2c17afd2aac4`.
+  Two deterministic all-32 full-source self lanes measured
+  32.93/870.79/50.76 and 32.18/868.48/49.77 seconds wall/user/system,
+  averaging 32.555 wall and 919.900 aggregate CPU.
+
+  The exact-source GCC compiler prepared in 30.11 seconds at
+  `/dev/shm/v3codex-p33-returnphi-gcc-prep.J9F4x1/bin/host/cppgm++-self`,
+  SHA-256
+  `30c85fe2500a9ded7f3f339861d978f7b83c5ab46995af729dbaab81a6262864`.
+  Two uncontended lanes measured 21.16/545.60/44.94 and
+  21.18/545.77/44.91, averaging 21.170 wall and 590.610 aggregate CPU.  A
+  22.38/586.34/49.75 lane was excluded as a 7.7% aggregate-work outlier; a
+  23.24/553.08/45.81 lane confirmed ordinary aggregate work but had a large
+  scheduler tail and was excluded from the wall mean.  Every lane produced
+  the candidate hash above.
+
+  The resulting same-source ratios are 1.538x wall and 1.558x aggregate CPU.
+  Relative to L106's retained 1.516x/1.562x point, CPU ratio improves about
+  0.29% but the binding wall ratio worsens about 1.43%.  The corrected metric
+  therefore does not rescue L59.  The implementation is removed, the PA38
+  compatibility controls remain unchanged, and restored PA38 is 46/46.  No
+  compiler, make, profiler, Cachegrind, or Valgrind process remains active.
+  This closes the ratio-sensitive rejection queue: remaining old probes were
+  already denominator-tested, had no final native-code effect or deterministic
+  generated-code regressions, were unsound/source-shaping, or were superseded
+  by retained narrower work.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
