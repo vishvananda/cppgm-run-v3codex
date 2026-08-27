@@ -3790,6 +3790,53 @@ inception lane while another build or profiler is active.
   population.  The historical replay queue is closed; further candidates
   must come from a new source-independent mechanism or new attribution.
 
+- **P32-L118 (BOUNDED SMALL DYNAMIC-COPY ENCODING REJECTED BY
+  SAME-SOURCE RATIO).** With the historical queue closed, a fresh generic
+  PA29 probe targeted the two hot `rep movsb` offsets in the macro `Token`
+  move constructor.  A flag-dead `copy_bytes_dynamic` with runtime count at
+  most sixteen copied exact first/last 1-, 2-, 4-, or 8-byte chunks; zero
+  copied nothing, larger counts retained `rep movsb`, and a copy across live
+  condition flags also retained the flag-preserving string form.  The proof
+  used only the existing nonoverlapping `memcpy` contract and the MIR's
+  declared `rdi`/`rsi`/`rdx` inputs plus `rcx` clobber.  It recognized no
+  source function, symbol, string contents, or workload.
+
+  The broad form changed 871 compiler sites, grew the hot constructor
+  215 -> 311 bytes, and grew complete compiler text
+  8,656,879 -> 8,741,303 bytes (+84,424).  Its O1/all-32 compiler at
+  `/dev/shm/v3codex-small-dyncopy-candidate.5BbOOU` and every accepted
+  full-source lane produced SHA-256
+  `aa17eae46b7010282c9303a8d2d2df71bd6c223d713e5f964441613ad6d014e6`.
+  Two clean self lanes measured 31.70/864.65/48.92 and
+  31.79/863.79/49.28 seconds wall/user/system.  Two clean exact-source GCC
+  lanes measured 20.89/541.72/44.48 and 20.86/542.83/44.39 seconds; their
+  host compiler was prepared under
+  `/dev/shm/v3codex-small-dyncopy-gcc-prep.iddLgm`.  Additional 22.21 and
+  22.24 second GCC lanes had scheduler tails, with the latter also carrying
+  elevated aggregate work, and are not used to make a favorable wall claim.
+
+  The clean means are 31.745/913.320 self and 20.875/586.710 GCC wall/CPU,
+  or 1.521x wall and 1.557x aggregate CPU.  Relative to L106's
+  1.516x/1.562x point, CPU ratio improves only about 0.35% while binding wall
+  ratio regresses about 0.3%.  An identical-candidate-source control using
+  the pre-change L106 self compiler measured 32.37/917.90 wall/CPU versus the
+  candidate's first 31.70/913.57, confirming a real but only 0.47% generated-
+  work saving before the faster GCC denominator is applied.  The corrected
+  metric therefore rejects the broad policy and no Clang lane is warranted.
+
+  A loaded-length-plus-one restriction reproduced L112's 470-site
+  population and kept the hot constructor while reducing text growth to
+  49,092 bytes.  Its full-source lane at
+  `/dev/shm/v3codex-loaded-dyncopy-v2.hD6pAl` measured 32.15 seconds wall and
+  914.97 aggregate CPU, worse than the broad form; the excluded 401 sites
+  supplied real distributed benefit, so that narrowing is also removed.
+  Candidate PA29 passed 291/291.  After removal PA29 passes 291/291, PA38
+  passes 46/46, the worktree again contains no production or fixture change,
+  and no compiler, profiler, Cachegrind, Valgrind, or build process remains
+  active.  No student contract/property is retained for either rejected
+  encoding.  Historical replays remain closed; the next step requires a new
+  profile-driven mechanism rather than another denominator-only rescue.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
