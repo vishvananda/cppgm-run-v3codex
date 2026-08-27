@@ -85,6 +85,7 @@ test: $(TEST_DEPS)
 			"$(COURSE_CONTROL_TEST_ROOT)"; \
 		perl ../scripts/check_pa13_global_section.pl \
 			$(LOWIROPT_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
+		perl ../scripts/audit_lowir_contract.pl; \
 	fi
 endif
 
