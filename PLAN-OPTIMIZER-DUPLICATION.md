@@ -720,6 +720,15 @@ This plan is complete only when:
   `a460771a...`/8,637,371, `f1ce5efe...`/5,787,940, and
   `cba80c5e...`/5,027,345.  Retain this narrowly scoped reuse boundary; other
   passes still require their own invalidation proof.
+- **D-C2 (VALUE-INDEX CUMULATIVE CHECKPOINT).** The retained D2 immutable
+  index, counted-loop migration, and bounded reuse increments pass root
+  `make test-report-through-pa38` at 5,465/5,465 and the default audit at zero
+  fatal findings/36 established warnings; the tight optimizer report remains
+  14 warnings.  A fresh isolated explicit-O1 inception used outer, inner, and
+  object parallelism all at 32 under
+  `/dev/shm/v3codex-optdup-d2-cumulative-inception.ZzvTLM`; every object and
+  final `cppgm++` match.  No stale compiler, profiler, Valgrind, or Cachegrind
+  process preceded the checkpoint.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
