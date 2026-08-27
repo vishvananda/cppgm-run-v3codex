@@ -335,8 +335,9 @@ running optimizing transforms.
   argument is the direct address of `storage=readonly` structured byte data
   with a compiler-known first NUL byte; writable or unterminated data and a
   dynamically supplied pointer keep the call
-- replacing `strlen` of a variable-indexed element of a local pointer table
-  with an indexed load from a synthesized `storage=readonly` length table
+- publishing readonly pointer and length aggregates for a local pointer table,
+  redirecting its variable-indexed pointer load to the readonly aggregate, and
+  replacing the corresponding `strlen` with an indexed length load
   when every local-table element is initialized exactly once with the direct
   address of compiler-known NUL-terminated readonly byte data, every
   initialization dominates the indexed load, and the local table does not

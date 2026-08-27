@@ -34,10 +34,8 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
 namespace lowir_opt {
 namespace {
-
 using lowir_model::Block;
 using lowir_model::BlockId;
 using lowir_model::Function;
@@ -54,10 +52,8 @@ using lowir_analysis::Graph;
 using lowir_analysis::build_graph;
 using lowir_analysis::dominance_frontiers;
 using lowir_analysis::dominators;
-
 const std::size_t kNoBlockIndex = static_cast<std::size_t>(-1);
 const std::size_t kNoBlock = static_cast<std::size_t>(-1);
-
 class PassArena
 {
 public:
@@ -1209,8 +1205,6 @@ bool eliminate_dead_code(Function * function,
   if(stats) stats->rewrites += removed;
   return true;
 }
-
-
 void normal_successors(const Function & function, const Graph & graph,
                        std::size_t block, std::vector<std::size_t> * out)
 {
@@ -1453,8 +1447,6 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
   }
   return changed;
 }
-
-
 struct AbstractState
 {
   bool executable = false;
@@ -2327,7 +2319,6 @@ bool promote_slots(Function * function, Stats * stats)
 {
   return promote_slots_with_analysis(function, stats, 0);
 }
-
 FunctionBoundaries
 function_boundaries(const LowirProgram & program)
 {
@@ -2347,7 +2338,6 @@ function_boundaries(const LowirProgram & program)
   }
   return result;
 }
-
 std::size_t instruction_count(const LowirProgram & program)
 {
   std::size_t result = 0;
@@ -2356,7 +2346,6 @@ std::size_t instruction_count(const LowirProgram & program)
       result += program.functions[i].blocks[j].instructions.size();
   return result;
 }
-
 typedef bool (*FunctionPass)(Function *, Stats *);
 
 bool timed_function_pass(FunctionPass pass, Function * function,
@@ -2430,7 +2419,6 @@ bool timed_function_pass(FunctionPass pass, Function * function,
     analysis->invalidate_cfg();
   return changed;
 }
-
 bool timed_dce(Function * function,
                const FunctionBoundaries & boundaries,
                Stats * stats,
@@ -2449,7 +2437,6 @@ bool timed_dce(Function * function,
       std::chrono::steady_clock::now() - started).count());
   return changed;
 }
-
 bool timed_cfg(Function * function, Stats * stats,
                CleanupCfgScratch * cfg_scratch,
                lowir_analysis::FunctionAnalysis * analysis = 0)
@@ -2470,7 +2457,6 @@ bool timed_cfg(Function * function, Stats * stats,
       std::chrono::steady_clock::now() - started).count());
   return changed;
 }
-
 bool prepare_for_inlining(Function * function,
                           const FunctionBoundaries & boundaries,
                           Stats * stats,
@@ -2489,7 +2475,6 @@ bool prepare_for_inlining(Function * function,
   timed_dce(function, boundaries, stats, dce_scratch);
   return values_changed;
 }
-
 struct LateInlineCleanupContext
 {
   const FunctionBoundaries * boundaries;
@@ -2564,7 +2549,6 @@ void promote_after_late_inlining(Function * function,
   timed_function_pass(remove_dead_slots, function, stats,
     &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
 }
-
 void optimize_function_bodies(
     LowirProgram & program, int level, const FunctionBoundaries & boundaries,
     const std::vector<unsigned char> & inlined_symbols,
@@ -2755,6 +2739,18 @@ void finish_optimizer_stats(
   stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now() - started).count());
+}
+
+void cleanup_readonly_string_table_rewrites(LowirProgram & program,
+    const FunctionBoundaries & boundaries,
+    const std::vector<unsigned char> & changed, Stats * stats,
+    DceScratch * dce_scratch)
+{
+  for(std::size_t i = 0; i < program.functions.size(); ++i) if(changed[i]) {
+    timed_dce(&program.functions[i], boundaries, stats, dce_scratch);
+    timed_function_pass(remove_dead_slots, &program.functions[i], stats,
+      &Stats::slot_runs, &Stats::slot_nanoseconds);
+  }
 }
 
 }  // namespace
@@ -2981,7 +2977,11 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     }
   }
   ReadonlyByteStringIndex byte_strings(program);
-  fold_readonly_byte_string_table_lengths(&program, byte_strings, stats);
+  std::vector<unsigned char> string_table_changed;
+  if(fold_readonly_byte_string_table_lengths(
+       &program, byte_strings, stats, &string_table_changed))
+    cleanup_readonly_string_table_rewrites(
+      program, boundaries, string_table_changed, stats, &dce_scratch);
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     if(fold_readonly_byte_string_lengths(
          &program.functions[i], byte_strings, stats)) {

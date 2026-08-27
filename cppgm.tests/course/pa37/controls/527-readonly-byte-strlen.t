@@ -90,8 +90,11 @@ function @folds_indexed_readonly_table(%which : i64) -> i64
     store ptr %second_data, %second_slot
     %element = index ptr [projection=array_element] %table_base, %which
     %data = load ptr %element
+    %first_byte = load u8 %data
+    %first_byte64 = convert zext i64 u8 %first_byte
     %length = call i64 @measure_bytes(%data)
-    return i64 %length
+    %result = binary add i64 %length, %first_byte64
+    return i64 %result
 }
 
 function @keeps_partial_readonly_table(%which : i64) -> i64
@@ -205,8 +208,8 @@ function @main() -> i32 [role=entry, unwind=no] {
     %unterminated = call i64 @keeps_unterminated_string_table(0)
     %mutated = call i64 @keeps_mutated_readonly_table(1)
     %volatile = call i64 @keeps_volatile_readonly_table(1)
-    %bad0 = cmp ne i64 %first, 3
-    %bad1 = cmp ne i64 %second, 1
+    %bad0 = cmp ne i64 %first, 100
+    %bad1 = cmp ne i64 %second, 121
     %bad2 = cmp ne i64 %partial, 3
     %bad3 = cmp ne i64 %writable, 3
     %bad4 = cmp ne i64 %escaped, 1

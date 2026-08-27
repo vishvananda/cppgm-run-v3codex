@@ -337,6 +337,7 @@ struct TableUseLocation
 {
   std::size_t block;
   std::size_t index;
+  Operand element_index;
 };
 
 struct StringTableCandidate
@@ -345,12 +346,22 @@ struct StringTableCandidate
   bool eligible = false;
   std::size_t count = 0;
   std::vector<std::size_t> lengths;
+  std::vector<lowir_model::SymbolId> symbols;
   std::vector<TableUseLocation> stores;
   std::vector<TableUseLocation> loads;
+  lowir_model::SymbolId pointer_symbol;
   lowir_model::SymbolId length_symbol;
 };
 
 struct StringTableRewrite
+{
+  std::size_t block;
+  std::size_t index;
+  lowir_model::SlotId slot;
+  Operand element_index;
+};
+
+struct PointerTableRewrite
 {
   std::size_t block;
   std::size_t index;
@@ -408,6 +419,43 @@ lowir_model::SymbolId append_length_table(
   return program->globals.back().symbol;
 }
 
+lowir_model::SymbolId append_pointer_table(
+    lowir_model::LowirProgram * program,
+    const std::vector<lowir_model::SymbolId> & symbols)
+{
+  const std::string prefix = "__o1_strlen_pointers_";
+  std::size_t suffix = program->symbol_names.size();
+  std::string name;
+  for(;; ++suffix) {
+    name = prefix + std::to_string(suffix);
+    bool used = false;
+    for(std::size_t i = 0; i < program->symbol_names.size(); ++i)
+      if(program->strings.get(program->symbol_names[i]) == name) {
+        used = true;
+        break;
+      }
+    if(!used) break;
+  }
+
+  lowir_model::GlobalDefinition table;
+  table.symbol = lowir_model::append_lowir_symbol(*program, name);
+  table.structured = true;
+  table.storage = lowir_model::GSM_READONLY;
+  table.metadata.binding = lowir_model::SBM_INTERNAL;
+  table.data_items.reserve(symbols.size());
+  const LowType & pointer =
+    lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
+  for(std::size_t i = 0; i < symbols.size(); ++i) {
+    lowir_model::GlobalDefinition::DataItem item;
+    item.kind = lowir_model::GlobalDefinition::DataItem::ITEM_ADDR;
+    item.type = pointer;
+    item.symbol_id = symbols[i];
+    table.data_items.push_back(item);
+  }
+  program->globals.push_back(std::move(table));
+  return program->globals.back().symbol;
+}
+
 Operand temporary_operand(lowir_model::ValueId value)
 {
   Operand result;
@@ -420,9 +468,12 @@ Operand temporary_operand(lowir_model::ValueId value)
 
 bool fold_readonly_byte_string_table_lengths(
     lowir_model::LowirProgram * program,
-    const ReadonlyByteStringIndex & strings, Stats * stats)
+    const ReadonlyByteStringIndex & strings, Stats * stats,
+    std::vector<unsigned char> * changed_functions)
 {
   if(!strings.strlen_symbol.valid()) return false;
+  if(changed_functions)
+    changed_functions->assign(program->functions.size(), 0);
   bool changed = false;
   const LowType & pointer =
     lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
@@ -432,6 +483,7 @@ bool fold_readonly_byte_string_table_lengths(
   for(std::size_t function_index = 0;
       function_index < program->functions.size(); ++function_index) {
     Function & function = program->functions[function_index];
+    bool function_changed = false;
     std::vector<DefinitionLocation> definitions(function.value_names.size());
     for(std::size_t block = 0; block < function.blocks.size(); ++block)
       for(std::size_t index = 0;
@@ -487,8 +539,9 @@ bool fold_readonly_byte_string_table_lengths(
         continue;
       candidate.count = type.storage_size / pointer_size;
       candidate.lengths.resize(candidate.count);
+      candidate.symbols.resize(candidate.count);
       candidate.stores.resize(candidate.count,
-        TableUseLocation{kNoInstruction, kNoInstruction});
+        TableUseLocation{kNoInstruction, kNoInstruction, Operand()});
       candidate.eligible = true;
     }
 
@@ -543,14 +596,16 @@ bool fold_readonly_byte_string_table_lengths(
               continue;
             }
             candidate.lengths[element] = strings.lengths[global_index];
-            store = TableUseLocation{block, index};
+            candidate.symbols[element] = global;
+            store = TableUseLocation{block, index, Operand()};
             continue;
           }
           if(ins.kind == Instruction::IK_LOAD && operand_index == 0 &&
              !ins.volatile_access && ins.type.kind == lowir_model::LTK_PTR &&
              address.dynamic && address.offset == 0 &&
              address.stride == pointer_size) {
-            candidate.loads.push_back(TableUseLocation{block, index});
+            candidate.loads.push_back(
+              TableUseLocation{block, index, address.index});
             continue;
           }
           candidate.eligible = false;
@@ -588,27 +643,101 @@ bool fold_readonly_byte_string_table_lengths(
             candidate.eligible = false;
             break;
           }
-      if(candidate.eligible)
+      if(candidate.eligible) {
+        candidate.pointer_symbol = append_pointer_table(
+          program, candidate.symbols);
         candidate.length_symbol = append_length_table(
           program, candidate.lengths);
+      }
     }
 
     std::vector<std::vector<StringTableRewrite> > rewrites_by_block(
       function.blocks.size());
+    std::vector<std::vector<PointerTableRewrite> > pointer_rewrites_by_block(
+      function.blocks.size());
+    std::vector<std::vector<std::size_t> > removals_by_block(
+      function.blocks.size());
     for(std::size_t i = 0; i < rewrites.size(); ++i)
       if(candidates[rewrites[i].slot].eligible)
         rewrites_by_block[rewrites[i].block].push_back(rewrites[i]);
+    for(std::size_t slot = 0; slot < candidates.size(); ++slot) {
+      const StringTableCandidate & candidate = candidates[slot];
+      if(!candidate.eligible) continue;
+      for(std::size_t load = 0; load < candidate.loads.size(); ++load) {
+        const TableUseLocation & location = candidate.loads[load];
+        pointer_rewrites_by_block[location.block].push_back(
+          PointerTableRewrite{location.block, location.index,
+            lowir_model::SlotId(static_cast<std::uint32_t>(slot)),
+            location.element_index});
+      }
+      for(std::size_t store = 0; store < candidate.stores.size(); ++store)
+        removals_by_block[candidate.stores[store].block].push_back(
+          candidate.stores[store].index);
+    }
+    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+      std::sort(pointer_rewrites_by_block[block].begin(),
+        pointer_rewrites_by_block[block].end(),
+        [](const PointerTableRewrite & left,
+           const PointerTableRewrite & right) {
+          return left.index < right.index;
+        });
+      std::sort(removals_by_block[block].begin(),
+        removals_by_block[block].end());
+    }
 
     for(std::size_t block = 0; block < function.blocks.size(); ++block) {
-      if(rewrites_by_block[block].empty()) continue;
+      if(rewrites_by_block[block].empty() &&
+         pointer_rewrites_by_block[block].empty() &&
+         removals_by_block[block].empty()) continue;
       std::vector<Instruction> replacement;
       replacement.reserve(function.blocks[block].instructions.size() +
-        rewrites_by_block[block].size() * 2);
+        (rewrites_by_block[block].size() +
+         pointer_rewrites_by_block[block].size()) * 2);
       std::size_t rewrite_index = 0;
+      std::size_t pointer_rewrite_index = 0;
+      std::size_t removal_index = 0;
       for(std::size_t index = 0;
           index < function.blocks[block].instructions.size(); ++index) {
         Instruction ins = std::move(
           function.blocks[block].instructions[index]);
+        if(removal_index < removals_by_block[block].size() &&
+           removals_by_block[block][removal_index] == index) {
+          ++removal_index;
+          changed = function_changed = true;
+          if(stats) ++stats->rewrites;
+          continue;
+        }
+        if(pointer_rewrite_index <
+             pointer_rewrites_by_block[block].size() &&
+           pointer_rewrites_by_block[block][pointer_rewrite_index].index ==
+             index) {
+          const PointerTableRewrite & rewrite =
+            pointer_rewrites_by_block[block][pointer_rewrite_index++];
+          Instruction address;
+          address.kind = Instruction::IK_ADDR;
+          address.dest = lowir_model::append_lowir_fresh_generated_value(
+            function, pointer);
+          address.first.kind = Operand::OP_GLOBAL;
+          address.first.symbol = candidates[rewrite.slot].pointer_symbol;
+          address.debug_location = ins.debug_location;
+          replacement.push_back(address);
+
+          Instruction element;
+          element.kind = Instruction::IK_INDEX;
+          element.dest = lowir_model::append_lowir_fresh_generated_value(
+            function, pointer);
+          element.type = pointer;
+          element.index_projection = lowir_model::IPK_ARRAY_ELEMENT;
+          element.first = temporary_operand(address.dest);
+          element.second = rewrite.element_index;
+          element.debug_location = ins.debug_location;
+          replacement.push_back(element);
+          ins.first = temporary_operand(element.dest);
+          replacement.push_back(std::move(ins));
+          changed = function_changed = true;
+          if(stats) ++stats->rewrites;
+          continue;
+        }
         if(rewrite_index >= rewrites_by_block[block].size() ||
            rewrites_by_block[block][rewrite_index].index != index) {
           replacement.push_back(std::move(ins));
@@ -648,11 +777,13 @@ bool fold_readonly_byte_string_table_lengths(
         ins.has_call_signature = false;
         ins.volatile_access = false;
         replacement.push_back(std::move(ins));
-        changed = true;
+        changed = function_changed = true;
         if(stats) ++stats->rewrites;
       }
       function.blocks[block].instructions.swap(replacement);
     }
+    if(changed_functions && function_changed)
+      (*changed_functions)[function_index] = 1;
   }
   return changed;
 }

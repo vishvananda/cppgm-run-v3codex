@@ -103,8 +103,15 @@ for my $test (@tests)
 		$test, $o1, 'folds_indexed_readonly_table');
 	die "$test: indexed table lacks the O0 strlen-call baseline\n"
 		if $baseline !~ /^\s+%\w+ = call i64 \@measure_bytes\(%\w+\)$/m;
+	die "$test: indexed table lacks its two local initialization stores\n"
+		if scalar(() = $baseline =~ /^\s+store ptr /mg) != 2;
 	die "$test: eligible indexed readonly table retained strlen\n"
 		if $positive =~ /^\s+%\w+ = call i64 \@measure_bytes\(%\w+\)$/m;
+	die "$test: eligible table retained its local pointer initialization\n"
+		if $positive =~ /^\s+store ptr /m;
+	die "$test: eligible table did not redirect its indexed pointer load\n"
+		if $positive !~ /^\s+%\w+ = index ptr .*?, %which$/m ||
+		   $positive !~ /^\s+%\w+ = load ptr %\w+$/m;
 	die "$test: eligible table did not use its index for an i64 table load\n"
 		if $positive !~ /^\s+%\w+ = index i64 .*?, %which$/m ||
 		   $positive !~ /^\s+%\w+ = load i64 %\w+$/m;
@@ -113,6 +120,11 @@ for my $test (@tests)
 	} ($o1 =~ /global \@\w+ \[storage=readonly, binding=internal\] = \{(.*?)\n\}/sg);
 	die "$test: eligible table did not publish a two-element readonly " .
 		"length table\n" if !@readonly_i64_tables;
+	my @readonly_pointer_tables = grep {
+		scalar(() = $_ =~ /^\s+ptr addr \@/mg) == 2
+	} ($o1 =~ /global \@\w+ \[storage=readonly, binding=internal\] = \{(.*?)\n\}/sg);
+	die "$test: eligible table did not publish a two-element readonly " .
+		"pointer table\n" if !@readonly_pointer_tables;
 
 	for my $name ('keeps_partial_readonly_table',
 		'keeps_writable_string_table', 'keeps_escaped_readonly_table',

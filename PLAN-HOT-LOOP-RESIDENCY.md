@@ -9,9 +9,11 @@ minor native-positive quality increment; immediate-call merge sources may
 donate their frame homes as a minor MIR-quality increment; direct immediate
 comparisons for large switches are the latest performance landing;
 odd-save paired recoloring is the latest performance landing; the current
-full-source O1 aggregate-CPU gaps are 1.591x GCC and 1.546x Clang
+readonly pointer/length table publication is the latest critical-path
+landing; the provisional full-source O1 wall gaps are about 1.505x against
+the last stable GCC and Clang references
 
-Date: 2026-08-26
+Date: 2026-08-27
 
 ## 1. Objective
 
@@ -2882,6 +2884,75 @@ inception lane while another build or profiler is active.
   `/dev/shm/v3codex-p34-strlen-table-fixed-gate.ziiJKF` matches every object
   and the final compiler; it measured 50.44/1327.02/93.20 seconds
   wall/user/system.  No profiler, cachegrind, or build process remains.
+
+- **P32-L91 (CORRECTED BROAD ORACLE AND LATE-CLEANUP INTERFERENCE).** The
+  first L90 broad timings predated discovery of the PA29 miscompile and are
+  retained only as directional history.  Two clean builds with the corrected,
+  inception-matching compiler measured 32.37/876.27/48.90 and
+  32.23/875.79/48.87 seconds wall/user/system: 32.30 wall and 924.92 aggregate
+  CPU on average.  Against L85's last stable host references, the provisional
+  wall ratios are 1.516x GCC and 1.514x Clang; CPU ratios are 1.580x and
+  1.535x.  A same-revision GCC refresh used 580.11 CPU seconds but suffered a
+  31.51-second scheduler tail, while the Clang refresh was an outlying 647.30
+  CPU seconds.  Neither distorted wall lane replaces the stable denominator.
+
+  A fresh 199 Hz all-32 profile recorded 184K samples with zero loss and
+  927.38 task-clock seconds.  The transformed compiler's libc `strlen` share
+  falls from about 14 seconds in the prior profile to about 0.2 seconds.
+  Residual absolute time is led by `Lexer::Peek` at about 99 seconds,
+  `Lexer::Run` at 78, `PhysicalCursor::Next` at 42, the macro `Token` move at
+  27, `TranslationCursor::Next` at 26, and `AppendUTF8` at 21.
+
+  The token-move comparison found four unused local stores introduced by
+  late inlining.  Running the existing dead-slot cleanup callee-first shrank
+  the body from 48 to 44 LowIR instructions, after which the existing hinted
+  policy reduced its calls 37 -> 1.  This apparently useful cleanup was
+  destructive interference with the inliner: final output grew by 743 LowIR
+  instructions in `macro_processor.cpp`, complete text grew 1,920 bytes, and
+  the broad lane measured 33.11 seconds wall/924.30 CPU versus production's
+  32.30/924.92 mean.  Samples were redistributed into callers without
+  reducing work.  The scheduling probe is removed and has no contract or
+  test.
+
+- **P32-L92 (READONLY POINTER-TABLE PUBLICATION RETAINED).** The remaining
+  `Lexer::Run` cluster was the same 13-way loop after `strlen` removal: local
+  pointer initialization, indexed loads, frame-resident loop state, and
+  `memcmp` still consumed about 23 profile seconds.  The retained extension
+  reuses L90's complete-initialization, dominance, readonly, and nonescape
+  proof.  It publishes a readonly pointer aggregate alongside the length
+  aggregate, redirects every modeled variable-indexed pointer load, deletes
+  the now-dead local stores, and runs dead-code/slot cleanup only on changed
+  functions.  It does not recognize a source function, table spelling, or
+  string contents.  All L90 safety rejections remain unchanged.
+
+  `Lexer::Run` shrinks 12,139 -> 11,770 bytes and tokenizer text falls 370
+  bytes.  The complete compiler grows 13,840 text bytes because it contains
+  the generic publication mechanism.  Only `pp_tokenizer`, two template-heavy
+  sources, and the two pass implementation objects change in the full build.
+  Three clean production lanes measured 32.37/925.17, 32.23/924.66, and
+  32.72/928.38 seconds wall/aggregate CPU, averaging 32.44/926.07.  Two
+  candidate lanes measured 32.10/925.10 and 32.03/927.12, averaging
+  32.065/926.11: repeated wall improves 1.16% while total CPU is flat.  This is
+  retained as a measured critical-path/work-removal increment, not claimed as
+  an aggregate-CPU reduction.  Against the last stable host wall references,
+  the provisional ratios are 1.505x GCC and 1.503x Clang.
+
+  Attribution supports the critical-path result: a fresh 199 Hz profile has
+  zero lost samples and 919.75 task-clock seconds versus production's 927.38;
+  `Lexer::Run` falls about 78.36 -> 75.05 seconds.  PA37's student contract now
+  states readonly pointer and length publication.  Control
+  `527-readonly-byte-strlen` requires only the O0 local-store/call baseline,
+  indexed readonly pointer/length relationships, absence of eligible local
+  initialization, all safety fallbacks, and O0/O1 behavior.  It does not
+  compare a complete LowIR program, aggregate contents, symbol spelling,
+  register choice, native layout, or hash.
+
+  PA37 passes 187/187, PA38 passes 46/46, and through-PA38 passes
+  5,453/5,453.  `lowir_opt.cpp` remains exactly 3,000 lines; the PA38 audit
+  passes with the 36 established warnings.  Fresh all-32 O1 inception under
+  `/dev/shm/v3codex-p34-pointer-table-inception.1x3Kwp` matches every object
+  and final compiler in 50.19/1328.19/93.57 seconds wall/user/system.  No
+  profiler, cachegrind, or build process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
