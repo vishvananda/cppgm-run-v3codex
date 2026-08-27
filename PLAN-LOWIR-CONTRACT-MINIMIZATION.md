@@ -405,6 +405,15 @@ token-safe LowIR subset, either reject that spelling at its owning GNU
 extension boundary with a documented test or separately justify a robust
 string encoding.  Do not silently lose it during serialization.
 
+The retained contract uses nonempty ASCII alphanumeric/underscore/dot names.
+PA13 checks global-only parsing, rejection, and O0--O3 preservation; PA32
+checks the valid source producer plus unsafe-name and conflicting-redeclaration
+rejection. PA37 reuses the GNU section reducer at every optimization level and
+checks that both direct and replayed objects place `section_alias` in
+`cppgmsec`, with the custom section's relocation targeting that symbol, before
+checking byte equality. No quoted metadata, function-section fact, target
+segment, or `section_segment` state was added.
+
 ### L7. Close the contract and prevent regrowth
 
 1. Resolve every `ablate` ledger row to `keep` or `remove` with evidence.

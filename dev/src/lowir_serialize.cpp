@@ -164,6 +164,8 @@ void write_global_metadata(std::ostream & out, GlobalStorageMode storage,
   if(storage == GSM_READONLY) metadata.item("storage", "readonly");
   else if(storage == GSM_THREAD_LOCAL)
     metadata.item("storage", "thread_local");
+  if(symbol.section_name.valid())
+    metadata.item("section", program.strings.get(symbol.section_name));
   write_symbol_metadata(metadata, symbol, program);
   metadata.finish();
 }

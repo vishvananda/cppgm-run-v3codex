@@ -125,6 +125,19 @@ bool is_power_of_two(std::size_t value)
   return value && !(value & (value - 1));
 }
 
+bool is_token_safe_section_name(const std::string & value)
+{
+  if(value.empty()) return false;
+  for(std::size_t i = 0; i < value.size(); ++i) {
+    const unsigned char c = static_cast<unsigned char>(value[i]);
+    const bool alphanumeric = (c >= 'A' && c <= 'Z') ||
+                              (c >= 'a' && c <= 'z') ||
+                              (c >= '0' && c <= '9');
+    if(!alphanumeric && c != '_' && c != '.') return false;
+  }
+  return true;
+}
+
 std::size_t parse_positive_size(const std::string & text)
 {
   if(text.empty() || text[0] == '-') throw ParseError("expected positive integer");
@@ -423,6 +436,12 @@ private:
       else if(value == "weak") out.binding = SBM_WEAK;
       else throw ParseError("invalid binding metadata");
     } else if(key == "object") out.object_symbol = strings_->intern(value);
+    else if(key == "section") {
+      if(function_symbol) throw ParseError("section metadata requires a global");
+      if(!is_token_safe_section_name(value))
+        throw ParseError("invalid global section name");
+      out.section_name = strings_->intern(value);
+    }
     else if(key == "tls_for") {
       if(!function_symbol) throw ParseError("tls_for metadata requires a function");
       out.tls_for_spelling = !value.empty() && value[0] == '@' ?

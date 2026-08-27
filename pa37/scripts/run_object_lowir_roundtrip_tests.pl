@@ -119,6 +119,45 @@ sub object_summary {
   return join("", @lines);
 }
 
+sub tool_output {
+  my (@cmd) = @_;
+  open(my $fh, "-|", @cmd) or return undef;
+  local $/;
+  my $data = <$fh>;
+  return undef unless close($fh);
+  return defined($data) ? $data : "";
+}
+
+sub gnu_section_relationship_error {
+  my ($path, $label) = @_;
+  my $sections = tool_output("readelf", "-SW", $path);
+  return "$label: unable to inspect ELF sections\n" unless defined $sections;
+  my ($section_index) = $sections =~
+    /^\s*\[\s*(\d+)\]\s+cppgmsec\s+PROGBITS\b/m;
+  return "$label: object has no cppgmsec PROGBITS section\n"
+    unless defined $section_index;
+
+  my $symbols = tool_output("readelf", "-sW", $path);
+  return "$label: unable to inspect ELF symbols\n" unless defined $symbols;
+  my ($symbol_section) = $symbols =~
+    /^\s*\d+:\s+\S+\s+\d+\s+\S+\s+\S+\s+\S+\s+(\d+)\s+section_alias\s*$/m;
+  return "$label: section_alias is absent from the ELF symbol table\n"
+    unless defined $symbol_section;
+  return "$label: section_alias is not owned by cppgmsec\n"
+    unless $symbol_section == $section_index;
+
+  my $relocations = tool_output("readelf", "-rW", $path);
+  return "$label: unable to inspect ELF relocations\n"
+    unless defined $relocations;
+  my ($section_relocations) = $relocations =~
+    /Relocation section '\.relacppgmsec'[^\n]*\n(.*?)(?=\nRelocation section |\z)/s;
+  return "$label: cppgmsec has no relocation section\n"
+    unless defined $section_relocations;
+  return "$label: cppgmsec relocation does not target section_alias\n"
+    unless $section_relocations =~ /\bsection_alias\b/;
+  return undef;
+}
+
 sub safe_name {
   my ($path) = @_;
   $path =~ s/[^A-Za-z0-9]/_/g;
@@ -184,6 +223,15 @@ sub check_mode {
                                $lowir,
                                $source);
   return $emit_error if defined $emit_error;
+  if($source =~ /gnu-section-attribute/) {
+    my $lowir_text = read_bytes($lowir);
+    my ($metadata) = $lowir_text =~
+      /^global \@section_alias\b[^\n]*\[([^\]]+)\]\s*=\s*addr \@section_alias$/m;
+    return "serialized LowIR lost the section_alias global relationship: $source $level_name\n"
+      unless defined $metadata;
+    return "serialized LowIR lost section=cppgmsec: $source $level_name\n"
+      unless $metadata =~ /(?:^|,\s*)section=cppgmsec(?:,|$)/;
+  }
   my $from_lowir_error = run_command($app,
                                      "-c",
                                      @debug_flags,
@@ -192,6 +240,15 @@ sub check_mode {
                                      $from_lowir,
                                      $lowir);
   return $from_lowir_error if defined $from_lowir_error;
+
+  if($source =~ /gnu-section-attribute/) {
+    my $direct_relationship = gnu_section_relationship_error(
+      $direct, "$source $level_name direct");
+    return $direct_relationship if defined $direct_relationship;
+    my $replayed_relationship = gnu_section_relationship_error(
+      $from_lowir, "$source $level_name replayed");
+    return $replayed_relationship if defined $replayed_relationship;
+  }
 
   my $direct_bytes = read_bytes($direct);
   my $from_lowir_bytes = read_bytes($from_lowir);

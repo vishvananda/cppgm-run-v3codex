@@ -162,9 +162,10 @@ declare global @shared_state : ptr [binding=weak]
 declare global @__external_rtti__int : ptr [binding=strong, object=_ZTIi]
 declare global @ro_table : ptr [storage=readonly]
 declare global @tls_state : i64 [storage=thread_local]
+declare global @placed_state : i64 [section=.cppgm_data]
 declare function @user_entry() -> i64 [role=entry]
 declare function @puts(%fmt : ptr) -> i32 [arity=variadic, linkage=c]
-global @lookup_table : ptr [storage=readonly] = zero
+global @lookup_table : ptr [storage=readonly, section=cppgm_ro] = zero
 global @tls_counter : i64 [storage=thread_local] = 7
 function @main() -> i64 [role=entry, binding=strong, keep_alias=yes] {
   ...
@@ -183,12 +184,19 @@ function @boot() -> void [role=init, binding=strong] {
 The currently defined top-level metadata keys are `role`, `linkage`, `binding`, `object`,
 `tls_for` (functions only), `keep_alias`, `prefer_local`, `object_root`, `force_inline`
 (functions only), `inline_hint` (functions only), `no_inline` (functions only), and
-`storage` (globals only).
+`storage` and `section` (globals only).
 
 The currently defined global `storage` values are:
 
 - `readonly`
 - `thread_local`
+
+`section=<name>` places a declared or defined global in a named ELF section.
+The first public form is intentionally token-safe: `<name>` must be nonempty
+and contain only ASCII letters, digits, `_`, and `.`. It does not accept a
+quoted name, whitespace, commas, hyphens, target segment syntax, or function
+placement. A declaration and definition of the same source object must agree
+on the section name before LowIR is produced.
 
 `storage=thread_local` is semantic TLS storage intent. Backend-specific descriptor
 sections and relocation forms are lower-layer object-format details. When a thread-local

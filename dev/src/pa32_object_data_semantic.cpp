@@ -9,6 +9,24 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+namespace
+{
+
+bool IsTokenSafeElfSectionName(const std::string& name)
+{
+	if (name.empty()) return false;
+	for (std::size_t i = 0; i < name.size(); ++i)
+	{
+		const unsigned char c = static_cast<unsigned char>(name[i]);
+		const bool alphanumeric = (c >= 'A' && c <= 'Z') ||
+			(c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+		if (!alphanumeric && c != '_' && c != '.') return false;
+	}
+	return true;
+}
+
+}
+
 void SemanticAnalyzer::ApplyVariableObjectAttributes(
 	NodeId declaration, BindingId binding)
 {
@@ -44,10 +62,16 @@ void SemanticAnalyzer::ApplyVariableObjectAttributes(
 			throw std::runtime_error("section attribute requires a string");
 		std::string section;
 		if (!DecodeNarrowStringLiteralSequence(arena_->SemanticPayload(argument),
-			&section) || section.empty())
+			&section) || !IsTokenSafeElfSectionName(section))
 			throw std::runtime_error("invalid section attribute name");
-		record.object_section_name = program_->names.Intern(section);
-		canonical.object_section_name = record.object_section_name;
+		const NameId section_name = program_->names.Intern(section);
+		if ((record.object_section_name != 0 &&
+				record.object_section_name != section_name) ||
+			(canonical.object_section_name != 0 &&
+				canonical.object_section_name != section_name))
+			throw std::runtime_error("conflicting section attributes");
+		record.object_section_name = section_name;
+		canonical.object_section_name = section_name;
 	}
 }
 

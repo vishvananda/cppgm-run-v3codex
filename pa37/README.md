@@ -121,6 +121,13 @@ in LowIR or derived again by the object-lowering layer from LowIR. The direct
 followed by `cppgm++ -c -O<level>` on that LowIR file should therefore match
 for the same source, flags, and optimization level.
 
+This durability rule includes PA32 global section placement. A token-safe GNU
+section attribute is serialized as global `section=<name>` metadata and must
+survive `-O0` through `-O3`. The replayed object must keep the global in the
+same named ELF section and keep relocations originating in that section aimed
+at the same symbols; direct/replayed byte equality alone is not the feature
+definition.
+
 LowIR top-level declaration/definition order is a presentation convention, not
 a dependency order. Reference outputs and canonical dumps use the order defined
 in `../pa13/lowir.md`: `declare global`, `declare function`, `global`, then
@@ -518,6 +525,8 @@ source-language clauses.
   `.t` harness cases; a selected `.t` test expands to its numbered `.t.1`,
   `.t.2`, ... source files when those sidecars exist. The harness checks
   no-debug objects at `-O0`, `-O1`, `-O2`, and `-O3`. A
+  GNU-section reducer additionally checks the global-section and relocation
+  relationships in both objects rather than relying only on byte equality. A
   `default-maximum-optimization` case also checks that omitting `-O` matches
   explicit `-O3`.
 
