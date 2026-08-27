@@ -341,8 +341,7 @@ struct BlockPresentationName
 struct Parameter
 {
 	enum Capture : std::uint8_t { CAPTURE_DEFAULT, CAPTURE_NOCAPTURE } capture;
-	enum Access : std::uint8_t { ACCESS_DEFAULT, ACCESS_READ, ACCESS_WRITE,
-		ACCESS_READWRITE } access;
+	enum Access : std::uint8_t { ACCESS_DEFAULT, ACCESS_READ, ACCESS_WRITE } access;
 	enum Alias : std::uint8_t { ALIAS_DEFAULT, ALIAS_NOALIAS } alias;
 	lowir_model::StringId name;
 	LowType type;

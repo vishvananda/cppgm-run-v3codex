@@ -34,7 +34,7 @@ if (scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests(
-	$root, qr/(?:pointer-difference-strength-reduction|readonly-scalar-storage|volatile-access-markers).*\.cpp$/);
+	$root, qr/(?:pointer-difference-strength-reduction|readonly-scalar-storage|volatile-access-markers|builtin-memory-access-defaults).*\.cpp$/);
 die "No PA15 focused LowIR controls found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -111,6 +111,22 @@ for my $test (@tests)
 			   $member !~ /^\s+store volatile i32 [^,]+, %\w+$/m;
 		die "$test: ordinary neighboring member store became volatile\n"
 			if $member !~ /^\s+store i32 [^,]+, %\w+$/m;
+		next;
+	}
+	if ($test =~ /builtin-memory-access-defaults/) {
+		my ($destination, $source) = $lowir =~
+			/^declare function \@\S+\(%\S+ : ptr \[([^\]]*)\], %\S+ : ptr \[([^\]]*)\], %\S+ : i64\) -> ptr \[[^\n]*\bobject=cppgm_builtin_memmove\b[^\n]*\]$/m;
+		die "$test: generated LowIR has no structured memmove declaration\n"
+			if !defined($destination) || !defined($source);
+		die "$test: memmove destination lost nocapture\n"
+			if $destination !~ /(?:^|, )capture=nocapture(?:, |$)/;
+		die "$test: conservative memmove destination access was not omitted\n"
+			if $destination =~ /(?:^|, )access=/;
+		die "$test: memmove source lost nocapture or read-only access\n"
+			if $source !~ /(?:^|, )capture=nocapture(?:, |$)/ ||
+			   $source !~ /(?:^|, )access=read(?:, |$)/;
+		die "$test: removed access=readwrite spelling remains in generated LowIR\n"
+			if $lowir =~ /\baccess=readwrite\b/;
 		next;
 	}
 	die "$test: no PA15 focused predicate selected\n";

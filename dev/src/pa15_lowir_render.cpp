@@ -109,8 +109,7 @@ void WriteParameter(std::ostream& output, const TypedProgram& program,
 		{
 			if (separator) output << ", ";
 			output << "access=" << (parameter.access == Parameter::ACCESS_READ ?
-				"read" : parameter.access == Parameter::ACCESS_WRITE ?
-				"write" : "readwrite");
+				"read" : "write");
 			separator = true;
 		}
 		if (parameter.alias == Parameter::ALIAS_NOALIAS)

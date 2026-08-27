@@ -526,7 +526,6 @@ private:
       if(value == "none") out.access = PAM_NONE;
       else if(value == "read") out.access = PAM_READ;
       else if(value == "write") out.access = PAM_WRITE;
-      else if(value == "readwrite") out.access = PAM_READWRITE;
       else throw ParseError("invalid parameter access metadata");
     } else if(key == "alias" && value == "noalias") out.alias = PALM_NOALIAS;
     else throw ParseError("invalid parameter metadata");

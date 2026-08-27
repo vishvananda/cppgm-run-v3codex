@@ -259,8 +259,7 @@ enum ParamAccessMode
   PAM_DEFAULT,
   PAM_NONE,
   PAM_READ,
-  PAM_WRITE,
-  PAM_READWRITE
+  PAM_WRITE
 };
 
 enum ParamAliasMode

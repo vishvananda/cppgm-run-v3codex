@@ -291,8 +291,6 @@ void AdaptParameterFacts(const Parameter& source,
 		target->metadata.access = lowir_model::PAM_READ;
 	else if (source.access == Parameter::ACCESS_WRITE)
 		target->metadata.access = lowir_model::PAM_WRITE;
-	else if (source.access == Parameter::ACCESS_READWRITE)
-		target->metadata.access = lowir_model::PAM_READWRITE;
 	if (source.alias == Parameter::ALIAS_NOALIAS)
 		target->metadata.alias = lowir_model::PALM_NOALIAS;
 }

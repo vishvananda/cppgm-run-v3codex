@@ -607,7 +607,9 @@ The currently defined access values are:
 - `none`
 - `read`
 - `write`
-- `readwrite`
+
+Omission means the callee may both read and write through the incoming pointer and has no
+explicit spelling.
 
 The currently defined alias values are:
 
@@ -623,7 +625,6 @@ The intended meaning is semantic, not host-ABI-specific:
 - `none`: the callee does not dereference the incoming pointer
 - `read`: the callee only reads through the incoming pointer
 - `write`: the callee only writes through the incoming pointer
-- `readwrite`: the callee may both read and write through the incoming pointer
 - `noalias`: this incoming pointer is disjoint from every other pointer
   parameter on the same boundary that also carries `alias=noalias`
 

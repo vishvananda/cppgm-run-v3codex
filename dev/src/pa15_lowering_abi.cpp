@@ -2297,9 +2297,8 @@ void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
 			parameter->alias = Parameter::ALIAS_NOALIAS;
 		}
 		else if (memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMMOVE &&
-			index < 2)
-			parameter->access = index == 0 ?
-				Parameter::ACCESS_READWRITE : Parameter::ACCESS_READ;
+			index == 1)
+			parameter->access = Parameter::ACCESS_READ;
 		return;
 	}
 	if (kind == BUILTIN_FUNCTION_STRLEN && index == 0)
@@ -2317,8 +2316,7 @@ void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
 	else if (kind == BUILTIN_FUNCTION_MEMMOVE && index < 2)
 	{
 		parameter->capture = Parameter::CAPTURE_NOCAPTURE;
-		parameter->access = index == 0 ? Parameter::ACCESS_READWRITE :
-			Parameter::ACCESS_READ;
+		if (index == 1) parameter->access = Parameter::ACCESS_READ;
 	}
 }
 

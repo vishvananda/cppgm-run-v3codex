@@ -253,6 +253,10 @@ This PA15 milestone supports the following:
   `load volatile` and `store volatile` at the LowIR boundary, including local,
   pointer-indirect, and class-member access; the marker belongs to the access,
   while an adjacent nonvolatile member access remains ordinary
+- recognized memory builtins preserve non-capture and narrow pointer-access
+  facts on their generated declarations; a `memmove` destination uses omitted
+  access metadata for the conservative read/write default, while its source is
+  explicitly read-only
 - local scalar objects, scalar/function references, function pointers/references, and bounded
   arrays in the supported PA12 procedural type subset; an omitted array bound is inferred
   from its initializer, missing elements are zero-initialized, and excess elements are

@@ -94,7 +94,6 @@ void write_parameter_metadata(std::ostream & out, const ParameterMetadata & valu
   case PAM_NONE: metadata.item("access", "none"); break;
   case PAM_READ: metadata.item("access", "read"); break;
   case PAM_WRITE: metadata.item("access", "write"); break;
-  case PAM_READWRITE: metadata.item("access", "readwrite"); break;
   }
   if(value.alias == PALM_NOALIAS) metadata.item("alias", "noalias");
   metadata.finish();
