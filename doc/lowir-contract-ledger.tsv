@@ -1,0 +1,110 @@
+category	surface	producer	consumer	owner	property_test	disposition	evidence
+type	void	semantic lowering;explicit LowIR	parser;validator;CY86;native	pa13/README.md	pa13/tests/spec/100-ret0.t	keep	function and return boundary
+type	i1	semantic lowering;explicit LowIR	parser;optimizer;native	pa13/README.md	pa13/tests/spec/100-if-else.t	keep	control and scalar value
+type	i8	semantic lowering;explicit LowIR	parser;optimizer;native	pa13/README.md	pa13/tests/spec/200-integer-width-conversions.t	keep	signed byte value
+type	u8	semantic lowering;explicit LowIR	parser;optimizer;native	pa13/README.md	pa13/tests/spec/200-unsigned-int-ops.t	keep	unsigned byte value
+type	i16	semantic lowering;explicit LowIR	parser;optimizer;native	pa13/README.md	pa13/tests/spec/200-integer-width-conversions.t	keep	signed narrow value
+type	u16	semantic lowering;explicit LowIR	parser;optimizer;native	pa13/README.md	pa13/tests/spec/200-unsigned-int-ops.t	keep	unsigned narrow value
+type	i32	semantic lowering;explicit LowIR	parser;optimizer;native;host ABI	pa13/README.md	pa13/tests/spec/200-integer-width-conversions.t	keep	signed ABI scalar
+type	u32	semantic lowering;explicit LowIR	parser;optimizer;native	pa13/README.md	pa13/tests/spec/200-unsigned-int-ops.t	keep	unsigned ABI scalar
+type	i64	semantic lowering;explicit LowIR	parser;optimizer;CY86;native	pa13/README.md	pa13/tests/spec/100-local-arith.t	keep	primary integer scalar
+type	i128	semantic lowering;explicit LowIR	parser;optimizer;native	pa34/README.md	cppgm.tests/course/pa37/o1/300-i128-zext-add-carry.t	keep	wide integer semantics
+type	f32	semantic lowering;explicit LowIR	parser;optimizer;native	pa13/README.md	pa13/tests/spec/100-f32-global.t	keep	binary32 semantics
+type	f64	semantic lowering;explicit LowIR	parser;optimizer;native	pa13/README.md	pa13/tests/spec/100-f64-arith-cmp.t	keep	binary64 semantics
+type	f80	semantic lowering;explicit LowIR	parser;optimizer;native;host ABI	pa13/README.md	pa13/tests/spec/200-f80-direct-call.t	keep	x87 storage and boundary semantics
+type	ptr	semantic lowering;explicit LowIR	parser;optimizer;native;object	pa13/README.md	pa13/tests/spec/100-global-variable.t	keep	address values
+type	obj<bytesxalign>	semantic lowering;explicit LowIR	parser;ABI lowering;native	pa13/README.md	pa13/tests/spec/100-small-direct-object-argument.t	keep	direct object boundary
+instruction	const	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/100-local-arith.t	keep	literal materialization
+instruction	copy	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/200-copy-instruction.t	keep	value transfer
+instruction	phi	slot promotion;explicit LowIR	CFG;inliner;optimizer;native phi lowering	pa13/README.md	cppgm.tests/course/pa13/400-phi-control-flow.t	keep	non-derivable merge value
+instruction	addr	semantic lowering;explicit LowIR	address folding;native;object	pa13/README.md	pa13/tests/spec/100-global-variable.t	keep	symbol and slot address
+instruction	load	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/100-global-variable.t	keep	memory read
+instruction	load volatile	volatile semantic lowering;explicit LowIR	DCE;GVN;slot promotion;MIR;native	pa15/README.md	cppgm.tests/course/pa15/controls/541-volatile-access-markers.cpp	keep	observable access
+instruction	store	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/100-global-variable.t	keep	memory write
+instruction	store volatile	volatile semantic lowering;explicit LowIR	DCE;GVN;slot promotion;MIR;native	pa15/README.md	cppgm.tests/course/pa15/controls/541-volatile-access-markers.cpp	keep	observable access
+instruction	atomic_load	atomic semantic lowering;explicit LowIR	CY86 model;native	pa13/README.md	pa13/tests/spec/200-atomic-load-store.t	keep	atomic read contract
+instruction	atomic_store	atomic semantic lowering;explicit LowIR	CY86 model;native	pa13/README.md	pa13/tests/spec/200-atomic-load-store.t	keep	atomic write contract
+instruction	atomic_exchange	atomic semantic lowering;explicit LowIR	CY86 model;native	pa13/README.md	pa13/tests/spec/200-atomic-exchange.t	keep	atomic exchange contract
+instruction	atomic_compare_exchange	atomic semantic lowering;explicit LowIR	CY86 model;native	pa13/README.md	pa13/tests/spec/200-atomic-compare-exchange-success.t	keep	atomic conditional update
+instruction	atomic_add_fetch	atomic semantic lowering;explicit LowIR	CY86 model;native	pa13/README.md	pa13/tests/spec/200-atomic-add-fetch.t	keep	atomic read-modify-write
+instruction	atomic_thread_fence	atomic semantic lowering;explicit LowIR	memory ordering;native	pa13/README.md	pa13/tests/spec/200-atomic-fences.t	keep	thread fence semantics
+instruction	atomic_signal_fence	atomic semantic lowering;explicit LowIR	memory ordering;native	pa13/README.md	pa13/tests/spec/200-atomic-fences.t	keep	signal fence semantics
+instruction	index	semantic lowering;explicit LowIR	address optimization;CY86;native	pa13/README.md	pa13/tests/spec/100-index-slot.t	keep	scaled address operation
+instruction	unary	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/200-unary-ops.t	keep	scalar unary family;decay variant ablate
+instruction	binary	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/200-binary-int-ops.t	keep	scalar arithmetic family
+instruction	cmp	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/200-compare-predicates.t	keep	typed comparison
+instruction	convert	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/200-integral-float-conversions.t	keep	typed conversion
+instruction	select	explicit LowIR only	dormant converter;DCE;MIR CMOV;native	pa13/README.md	cppgm.tests/course/pa37/o1/505-select-preservation.t	remove	no production producer;branch plus phi is sufficient
+instruction	va_start	variadic lowering;explicit LowIR	native varargs	pa29/README.md	pa29/tests/behavior/800-reactive-spill-va-start-register-save.t	keep	variadic ABI state
+instruction	va_arg	variadic lowering;explicit LowIR	native varargs	pa29/README.md	pa29/tests/behavior/900-variadic-f64-register-save.t	keep	variadic ABI access
+instruction	stack_alloc	dynamic storage lowering;explicit LowIR	frame planning;native	pa34/README.md	pa34/tests/compile/700-builtin-alloca-reactive-spill.t	keep	dynamic stack storage
+instruction	call	semantic lowering;explicit LowIR	inliner;effects analysis;ABI;native	pa13/README.md	pa13/tests/spec/100-simple-call.t	keep	call boundary
+instruction	copyobj	object lowering;explicit LowIR	copy forwarding;MIR;native	pa13/README.md	pa13/tests/spec/100-copyobj.t	keep	nonoverlapping object copy
+instruction	zeroinit	object lowering;explicit LowIR	MIR;native	pa13/README.md	pa13/tests/spec/100-zeroinit.t	keep	object zero initialization
+instruction	eh_try	exception lowering;explicit LowIR	EH CFG;CY86;native	pa13/README.md	pa13/tests/spec/100-eh-same-function-catch.t	keep	EH region entry
+instruction	eh_cleanup	exception lowering;explicit LowIR	EH CFG;CY86;native	pa13/README.md	pa13/tests/spec/100-eh-cleanup-resume.t	keep	cleanup target
+instruction	eh_cleanup clause	exception lowering;explicit LowIR	LSDA;native	pa26/README.md	cppgm.tests/course/pa31/370-lsda-distinct-cleanup-landings.t	keep	landing-pad clause
+instruction	eh_catch	exception lowering;explicit LowIR	LSDA;native	pa26/README.md	pa13/tests/spec/100-eh-same-function-catch.t	keep	typed catch clause
+instruction	eh_filter	exception lowering;explicit LowIR	LSDA;native	pa26/README.md	pa26/tests/general/200-source-catch-miss-cleans-outer-scope.t	keep	exception filter clause
+instruction	eh_catch_all	exception lowering;explicit LowIR	LSDA;native	pa26/README.md	pa26/tests/general/200-source-catch-ellipsis.t	keep	catch-all clause
+instruction	eh_end	exception lowering;explicit LowIR	EH CFG;CY86;native	pa13/README.md	pa13/tests/spec/100-eh-end-normal.t	keep	EH region exit
+instruction	throw	exception lowering;explicit LowIR	EH runtime;native	pa26/README.md	pa26/tests/general/100-source-try-catch-int.t	keep	throw semantics
+instruction	exception	exception lowering;explicit LowIR	landing-pad lowering;native	pa13/README.md	pa13/tests/spec/100-eh-same-function-catch.t	keep	exception object value
+instruction	exception_selector	exception lowering;explicit LowIR	landing-pad lowering;native	pa26/README.md	cppgm.tests/course/pa31/380-lsda-distinct-catch-actions.t	keep	selector value
+instruction	resume	exception lowering;explicit LowIR	EH CFG;CY86;native	pa13/README.md	pa13/tests/spec/100-eh-cleanup-resume.t	keep	resume unwinding
+instruction	jump	semantic lowering;explicit LowIR	CFG;CY86;native	pa13/README.md	pa13/tests/spec/100-while-break.t	keep	unconditional edge
+instruction	branch	semantic lowering;explicit LowIR	CFG;CY86;native	pa13/README.md	pa13/tests/spec/100-if-else.t	keep	conditional edges
+instruction	switch	semantic lowering;explicit LowIR	CFG;CY86;native	pa13/README.md	pa13/tests/spec/200-switch-terminator.t	keep	multiway edges
+instruction	return	semantic lowering;explicit LowIR	CFG;CY86;native	pa13/README.md	pa13/tests/spec/100-ret0.t	keep	function exit
+metadata	role	semantic/runtime lowering;explicit LowIR	startup;EH;runtime;RTTI;native	pa13/README.md	pa13/tests/spec/100-startup-shutdown-hooks.t	keep	values classified in role rows
+role	entry	source main lowering;explicit LowIR	entry selection;startup	pa13/README.md	pa13/tests/spec/100-ret0.t	keep	program entry
+role	init	global initialization lowering;explicit LowIR	startup ordering	pa13/README.md	pa13/tests/spec/100-startup-shutdown-hooks.t	keep	startup hook
+role	fini	global finalization lowering;explicit LowIR	shutdown ordering	pa13/README.md	pa13/tests/spec/100-startup-shutdown-hooks.t	keep	shutdown hook
+role	eh_top	explicit LowIR only	optional CY86 override	pa13/README.md	MISSING	ablate	no source producer or exercised override
+role	eh_value	explicit LowIR only	optional CY86 override	pa13/README.md	MISSING	ablate	no source producer or exercised override
+role	eh_type	none	transport only	pa13/README.md	MISSING	remove	no producer or behavioral consumer
+role	eh_unhandled	explicit LowIR only	optional CY86 override	pa13/README.md	MISSING	ablate	no source producer or exercised override
+role	eh_allocate_exception	exception lowering	EH runtime mapping;native	pa26/README.md	pa26/tests/general/100-source-try-catch-int.t	keep	active runtime import
+role	eh_begin_catch	exception lowering	EH runtime mapping;native	pa26/README.md	pa26/tests/general/100-source-try-catch-int.t	keep	active runtime import
+role	eh_call_unexpected	none	transport only	pa13/README.md	MISSING	remove	no producer or behavioral consumer
+role	eh_current_exception_type	none	transport only	pa13/README.md	MISSING	remove	no producer or behavioral consumer
+role	eh_end_catch	exception lowering	EH runtime mapping;native	pa26/README.md	pa26/tests/general/100-source-try-catch-int.t	keep	active runtime import
+role	eh_rethrow	exception lowering	EH runtime mapping;native	pa26/README.md	pa26/tests/general/100-source-rethrow-through-function.t	keep	active runtime import
+role	eh_throw	exception lowering	EH runtime mapping;native	pa26/README.md	pa26/tests/general/100-throw-function-decays-to-pointer.t	keep	active runtime import
+role	eh_personality	exception lowering	LSDA;host EH;native	pa26/README.md	pa26/tests/general/100-source-try-catch-int.t	keep	active personality import
+role	eh_resume	exception lowering	EH runtime mapping;native	pa26/README.md	pa13/tests/spec/100-eh-cleanup-resume.t	keep	active runtime import
+role	allocate_memory	new-expression lowering	allocation runtime mapping;native	pa17/README.md	pa17/tests/general/300-class-new-expression-default-constructor.t	keep	active runtime import
+role	free_memory	delete-expression lowering	allocation runtime mapping;native	pa17/README.md	pa17/tests/general/400-delete-array-expression.t	keep	active runtime import
+role	terminate	exception/lifecycle lowering	EH termination policy;native	pa26/README.md	cppgm.tests/course/pa13/500-terminate-role-metadata.t	keep	active runtime import
+role	pure_virtual	virtual dispatch lowering	pure-virtual runtime mapping;native	pa28/README.md	pa28/tests/general/100-multibase-destructor-primary-pure-slot-concrete-call.t	keep	active runtime import
+role	dynamic_cast	RTTI lowering	RTTI runtime mapping;native	pa26/README.md	pa26/tests/general/100-dynamic-cast-success.t	keep	active runtime import
+role	bad_cast	RTTI lowering	RTTI runtime mapping;native	pa26/README.md	pa26/tests/general/100-bad-dynamic-cast-reference.t	keep	active runtime import
+role	bad_typeid	RTTI lowering	RTTI runtime mapping;native	pa28/README.md	pa28/tests/general/100-typeid-nonprimary-view.t	keep	active runtime import
+role	rtti_class	RTTI lowering	RTTI object mapping;native	pa26/README.md	pa26/tests/general/100-typeid-type.t	keep	active RTTI object
+role	rtti_si	RTTI lowering	RTTI object mapping;native	pa27/README.md	pa27/tests/general/100-dynamic-cast-void.t	keep	active RTTI object
+role	rtti_vmi	RTTI lowering	RTTI object mapping;native	pa28/README.md	pa28/tests/general/100-multibase-inherited-virtual-slot-identity.t	keep	active RTTI object
+role	rtti_data	RTTI lowering	RTTI object mapping;native	pa26/README.md	pa26/tests/general/100-throw-function-decays-to-pointer.t	keep	active RTTI object
+role	unreachable	builtin lowering	role-indexed CFG cleanup;native call	pa13/README.md	cppgm.tests/course/pa13/500-unreachable-role-metadata.t	replace	represent control flow with first-class terminator
+metadata	linkage=default|c|cpp	semantic lowering;explicit LowIR	native symbol and call ABI	pa13/README.md	pa13/tests/spec/200-linkage-metadata-smoke.t	keep	cpp spelling is redundant and scheduled for canonicalization
+metadata	binding=default|internal|strong|weak	semantic lowering;explicit LowIR	reachability;ELF binding;relocations	pa13/README.md	pa13/tests/spec/200-binding-metadata-smoke.t	keep	object binding is non-derivable
+metadata	object=<name>	ABI lowering;explicit LowIR	ELF symbol spelling;linking	pa13/README.md	pa13/tests/spec/300-symbol-object-metadata-smoke.t	keep	external object identity
+metadata	tls_for=<global>	TLS lowering;explicit LowIR	TLS wrapper emission	pa13/README.md	pa13/tests/spec/200-thread-local-wrapper-metadata-smoke.t	keep	wrapper-to-object relationship
+metadata	keep_alias=yes|no	semantic ownership lowering;explicit LowIR	ELF alias retention	pa13/README.md	pa13/tests/spec/300-object-alias-smoke.t	keep	no spelling is redundant and scheduled for canonicalization
+metadata	prefer_local=yes|no	semantic visibility lowering;explicit LowIR	ELF relocation/binding selection	pa13/README.md	pa13/tests/spec/300-symbol-object-metadata-smoke.t	keep	no spelling is redundant and scheduled for canonicalization
+metadata	object_root=yes|no	lifecycle/semantic demand lowering;explicit LowIR	function reachability and pruning	pa13/README.md	cppgm.tests/course/pa37/object-roundtrip/490-lifecycle-base-entry-inline.cpp	keep	language-required emission
+metadata	trivial_lifecycle=yes|no	lifecycle lowering	force-inline candidate discovery	pa16/README.md	cppgm.tests/course/pa37/object-roundtrip/490-lifecycle-base-entry-inline.cpp	replace	normalize to force_inline plus independent object_root
+metadata	force_inline=yes|no	semantic policy lowering;explicit LowIR	mandatory inliner	pa13/README.md	cppgm.tests/course/pa37/object-roundtrip/420-force-inline-ordered-blocks.cpp	keep	active inlining policy
+metadata	inline_hint=yes|no	attribute/lowering;explicit LowIR	inliner;O1 lifetime-bounded load reuse	pa13/README.md	cppgm.tests/course/pa37/controls/526-late-inline-hint-load-reuse.t	keep	active optimization policy
+metadata	no_inline=yes|no	attribute/lowering;explicit LowIR	inliner exclusion	pa13/README.md	cppgm.tests/course/pa37/controls/520-inline-limit-once-cap.t	keep	active source policy
+metadata	storage=default|writable|readonly|thread_local	semantic lowering;explicit LowIR	readonly folding;TLS;ELF placement	pa13/README.md	pa13/tests/spec/200-global-storage-metadata-smoke.t	keep	writable spelling is redundant; readonly and TLS are active
+metadata	arity=fixed|variadic|prototype_relaxed	semantic lowering;explicit LowIR	call validation;varargs ABI	pa13/README.md	pa13/tests/spec/200-variadic-function-arity.t	remove	remove relaxed and explicit fixed; retain variadic distinction
+metadata	effects=default|readnone|readonly|readwrite	builtin/function lowering;explicit LowIR	memory barriers;load reuse	pa13/README.md	pa13/tests/spec/200-function-effect-metadata-smoke.t	keep	readwrite spelling redundant; non-default facts active
+metadata	unwind=default|may|no	function lowering;explicit LowIR	EH edge and call cleanup	pa13/README.md	pa13/tests/spec/200-function-effect-metadata-smoke.t	keep	may spelling redundant; nounwind active
+metadata	return=default|returns|noreturn	function lowering;explicit LowIR	CFG continuation cleanup;native	pa13/README.md	pa13/tests/spec/200-function-effect-metadata-smoke.t	keep	returns spelling redundant; noreturn active
+metadata	pass=direct|indirect_result|by_address|reference|decay	ABI/source lowering;explicit LowIR	call ABI and object address materialization	pa13/README.md	pa13/tests/spec/200-call-boundary-metadata.t	ablate	retain proven object modes; ablate source-origin modes and explicit direct
+metadata	capture=default|nocapture|maycapture	builtin boundary lowering;explicit LowIR	signature identity only	pa13/README.md	pa13/tests/spec/200-parameter-capture-metadata-smoke.t	ablate	no active optimization consumer
+metadata	access=default|none|read|write|readwrite	builtin boundary lowering;explicit LowIR	signature identity only	pa13/README.md	pa13/tests/spec/200-parameter-access-metadata-smoke.t	ablate	no active optimization consumer
+metadata	alias=default|noalias	boundary lowering;explicit LowIR	staged-copy disjointness proof	pa13/README.md	pa13/tests/spec/200-parameter-alias-metadata-smoke.t	keep	active noalias consumer
+metadata	projection=none|array_element|field|base_subobject|reference_field	address lowering;explicit LowIR	expression keys;scaled index;table folding	pa13/README.md	pa13/tests/spec/200-index-projection-metadata-smoke.t	ablate	retain active array/field; ablate unconsumed source-origin kinds
+metadata	section_segment	internal PA15 only	transport through PA30 and MIR	pa30/README.md	MISSING	remove	no producer or Linux target consumer
+debug	!dbg(file,line,column)	semantic source locations;explicit LowIR	line table;object roundtrip	pa13/README.md	pa13/tests/spec/100-function-and-instruction-debug-locations.t	keep	object-visible source mapping

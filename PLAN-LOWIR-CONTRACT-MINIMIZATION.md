@@ -133,7 +133,7 @@ serialized LowIR.
 | Surface | Current evidence | Planned replacement |
 | --- | --- | --- |
 | `select` / `IK_SELECT` / `MI_CMOV` vertical slice | The only possible optimizer producer is unwired. The attempted if-conversion regressed the frozen workload by 1.1--1.6%. Only the two select-specific handwritten fixtures exercise it. Branch plus `phi` already expresses the behavior. | Remove the public instruction, dormant converter, dedicated MIR opcode/encoding, stats, docs, grammar, and select-only fixtures. Keep ordinary branch/phi conditional behavior tests. |
-| `trivial_lifecycle` | It has 180 generated reference occurrences, but its only production consumer is `force_inline || (trivial_lifecycle && !no_inline)`. Retention is already independent in `object_root`. | At the semantic-to-LowIR boundary set `force_inline=yes` when the lifecycle helper is trivial and not `no_inline`; preserve `object_root` independently; then remove the field and spelling. |
+| `trivial_lifecycle` | It has 224 checked-in reference occurrences across assignment-local and shared copies, but its only production consumer is `force_inline || (trivial_lifecycle && !no_inline)`. Retention is already independent in `object_root`. | At the semantic-to-LowIR boundary set `force_inline=yes` when the lifecycle helper is trivial and not `no_inline`; preserve `object_root` independently; then remove the field and spelling. |
 | `arity=prototype_relaxed` | No source producer, one handwritten smoke input, and no native variadic treatment. The documentation says it exists for a future producer. | Remove the enum, parser/serializer spelling, docs, and smoke fixture. Keep only `fixed` and `variadic`. |
 | `section_segment` | No producer and no Linux/ELF consumer. It is merely copied through LowIR, binary object, and MIR records. | Remove the field from every model and internal serialization. Do not add `section_segment=` without a supported target. |
 | Explicit conservative/default spellings | `arity=fixed`, `effects=readwrite`, `unwind=may`, `return=returns`, `pass=direct`, `capture=maycapture`, `access=readwrite`, `linkage=cpp`, and `key=no` mean the same thing as omission. Several are never emitted; the rest only exercise transport. | Canonicalize them to omission and remove public spellings or enum states that no active consumer needs. Retain non-default facts such as `readonly`, `noreturn`, `nounwind`, and `nocapture` only when independently justified. |
@@ -196,7 +196,8 @@ pushed.  Do not combine an uncertain ablation with a high-confidence removal.
    section placement, reference/by-address boundaries, and debug locations.
 6. Record the current public token census.  The known starting facts include:
    - no source/optimizer-produced `select`;
-   - 180 refs with `trivial_lifecycle` but only one policy consumer;
+   - 224 checked-in reference occurrences of `trivial_lifecycle` across
+     assignment-local and shared copies, but only one policy consumer;
    - no generated `prototype_relaxed`;
    - no producer or target consumer for `section_segment`;
    - among explicit conservative spellings, only `effects=readwrite`,
