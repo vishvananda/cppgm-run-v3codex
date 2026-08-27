@@ -98,10 +98,19 @@ for my $test (@tests)
 	die "$test: O1 did not reuse the dominating hot-definition load\n"
 		if cell_load_count($o1_hot) != 1;
 
-	my $ordinary = function_body(
-		$test, $o1, 'retain_ordinary_dose');
-	die "$test: O1 applied the hot-definition dose to an ordinary body\n"
-		if cell_load_count($ordinary) != 2;
+	my $o0_bounded = function_body(
+		$test, $o0, 'reuse_lifetime_bounded');
+	my $bounded = function_body(
+		$test, $o1, 'reuse_lifetime_bounded');
+	die "$test: O0 did not preserve the ordinary two-load baseline\n"
+		if cell_load_count($o0_bounded) != 2;
+	die "$test: O1 did not reuse a lifetime-bounded ordinary load\n"
+		if cell_load_count($bounded) != 1;
+
+	my $extended = function_body(
+		$test, $o1, 'retain_lifetime_extension');
+	die "$test: O1 lengthened an ordinary load value's lifetime\n"
+		if cell_load_count($extended) != 2;
 
 	my $store = function_body($test, $o1, 'retain_store_barrier');
 	die "$test: O1 reused a load across a writing store\n"

@@ -119,6 +119,7 @@ endef
 
 define run_inline_control_bucket
 	@if [ -d "$(1)" ] && find "$(1)" -type f -name '*.t' | grep -q .; then \
+		set -e; \
 		perl ../scripts/check_lowir_inline_limit.pl $(LOWIROPT_APP) $(CPPGM_DRIVER_APP) "$(1)"; \
 		perl ../scripts/check_lowir_optimizer_stats.pl $(LOWIROPT_APP) "$(1)"; \
 		perl ../scripts/check_lowir_boolean_phi_controls.pl $(LOWIROPT_APP) $(CPPGM_DRIVER_APP) "$(1)"; \

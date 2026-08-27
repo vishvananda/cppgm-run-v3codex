@@ -18,7 +18,8 @@ public:
 
   bool eliminate_redundant_loads(
     lowir_model::Function * function,
-    lowir_analysis::FunctionAnalysis * analysis, Stats * stats);
+    lowir_analysis::FunctionAnalysis * analysis, Stats * stats,
+    bool preserve_value_lifetimes = false);
 
 private:
   lowir_model::FunctionBoundaryMetadata call_boundary(

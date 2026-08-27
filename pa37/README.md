@@ -375,8 +375,11 @@ running optimizing transforms.
   dominating nonvolatile scalar load in an explicitly `inline_hint=yes`
   definition when it reads the same typed location and no intervening store,
   writing call, atomic operation, exceptional transfer, or other memory
-  barrier can change it; ordinary definitions keep the cheaper local O1 dose,
-  while `readnone` and `readonly` nonthrowing calls preserve valid load facts
+  barrier can change it; an ordinary definition may reuse the same load only
+  when the dominating value's final original presentation-order use is no
+  earlier than the redundant load's final use, so the rewrite does not extend
+  the value's layout lifetime; `readnone` and `readonly` nonthrowing calls
+  preserve valid load facts
 
 `-O2` must include all `-O1` scalar cleanup and additionally support these
 conservative memory, loop, and interprocedural transforms:

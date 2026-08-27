@@ -2956,7 +2956,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - post_prune_inline_started).count());
   }
-  // At O1, defer cross-block load reuse for explicitly hot definitions until
+  // At O1, defer cross-block load reuse until
   // every inlining wave has finished.  Running it earlier changes the size
   // model used by the late inliners and can turn a local load reduction into
   // substantial caller growth.  The O2/O3 pipeline already ran this pass in
@@ -2965,10 +2965,9 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     MemoryGVNSession late_memory_gvn(program);
     for(std::size_t i = 0; i < program.functions.size(); ++i) {
       Function & function = program.functions[i];
-      if(!function.metadata.inline_hint) continue;
       lowir_analysis::FunctionAnalysis analysis(function, stats);
       if(late_memory_gvn.eliminate_redundant_loads(
-           &function, &analysis, stats)) {
+           &function, &analysis, stats, !function.metadata.inline_hint)) {
         timed_function_pass(simplify_values, &function, stats,
           &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
           &simplify_arena);

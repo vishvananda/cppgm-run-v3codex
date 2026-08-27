@@ -211,6 +211,30 @@ std::vector<unsigned char> find_escaped_slots(
   return escaped;
 }
 
+std::vector<std::size_t> layout_last_uses(const Function & function)
+{
+  std::vector<std::size_t> result(function.value_names.size(), kNoIndex);
+  std::size_t position = 0;
+  const auto record = [&result, &position](const Operand & operand) {
+    if(operand.kind == Operand::OP_TEMP && operand.value < result.size())
+      result[operand.value] = position;
+  };
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function.blocks[block].instructions.size(); ++index) {
+      const Instruction & instruction =
+        function.blocks[block].instructions[index];
+      record(instruction.first);
+      record(instruction.second);
+      record(instruction.third);
+      for(std::size_t argument = 0;
+          argument < instruction.args.size(); ++argument)
+        record(instruction.args[argument]);
+      ++position;
+    }
+  return result;
+}
+
 struct LocationKey
 {
   AddressRootKind root_kind;
@@ -669,16 +693,15 @@ void MemoryGVNSession::touch_symbol(lowir_model::SymbolId symbol)
 }
 
 bool MemoryGVNSession::eliminate_redundant_loads(
-    Function * function, lowir_analysis::FunctionAnalysis * analysis,
-    Stats * stats)
+    Function * function, lowir_analysis::FunctionAnalysis * analysis, Stats * stats,
+    bool preserve_value_lifetimes)
 {
   const std::chrono::steady_clock::time_point started =
-    stats ? std::chrono::steady_clock::now() :
-            std::chrono::steady_clock::time_point();
+    stats ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   if(stats) ++stats->memory_gvn_runs;
   if(function->blocks.empty()) return false;
-  const lowir_eh_context::Context eh_context =
-    lowir_eh_context::analyze(*function, analysis->graph());
+  const std::vector<std::size_t> final_uses = preserve_value_lifetimes ? layout_last_uses(*function) : std::vector<std::size_t>();
+  const lowir_eh_context::Context eh_context = lowir_eh_context::analyze(*function, analysis->graph());
   if(eh_context.has_eh && stats) {
     ++stats->memory_gvn_eh_functions;
     stats->memory_gvn_eh_barriers += eh_context.barrier_count;
@@ -693,16 +716,14 @@ bool MemoryGVNSession::eliminate_redundant_loads(
 
   begin_function();
   const std::vector<AddressFact> addresses = derive_addresses(*function);
-  const std::vector<unsigned char> escaped_slots =
-    find_escaped_slots(*function, addresses);
+  const std::vector<unsigned char> escaped_slots = find_escaped_slots(*function, addresses);
   LocationMap locations;
   std::vector<LocationKey> location_order;
   collect_load_locations(*function, addresses, escaped_slots,
     global_storage_, &locations, &location_order);
 
   std::vector<MemoryClass> classes;
-  std::vector<std::size_t> first_slot_class(
-    function->slot_names.size(), kNoIndex);
+  std::vector<std::size_t> first_slot_class(function->slot_names.size(), kNoIndex);
   for(std::size_t index = 0; index < location_order.size(); ++index) {
     LocationInfo & info = locations.find(location_order[index])->second;
     if(info.load_count < 2) continue;
@@ -764,12 +785,9 @@ bool MemoryGVNSession::eliminate_redundant_loads(
     [this](const Instruction & instruction) {
       return call_boundary(instruction);
     }, &definitions);
-  const std::vector<lowir_analysis::EdgeList> & frontiers =
-    analysis->dominance_frontier();
-  std::vector<std::vector<std::size_t> > block_merges(
-    function->blocks.size());
-  place_memory_merges(
-    definitions, frontiers, &classes, &block_merges, stats);
+  const std::vector<lowir_analysis::EdgeList> & frontiers = analysis->dominance_frontier();
+  std::vector<std::vector<std::size_t> > block_merges(function->blocks.size());
+  place_memory_merges(definitions, frontiers, &classes, &block_merges, stats);
   if(eh_class != kNoIndex && !classes[eh_class].enabled) {
     if(stats) {
       ++stats->memory_gvn_eh_skips;
@@ -786,10 +804,8 @@ bool MemoryGVNSession::eliminate_redundant_loads(
     (unknown_class == kNoIndex ? 0 : 1) -
     (eh_class == kNoIndex ? 0 : 1);
 
-  const lowir_analysis::DominatorTree & dominators =
-    analysis->dominator_tree();
-  const std::vector<BlockEvent> events = dominator_events(
-    dominators, analysis->dominator_children());
+  const lowir_analysis::DominatorTree & dominators = analysis->dominator_tree();
+  const std::vector<BlockEvent> events = dominator_events(dominators, analysis->dominator_children());
   std::vector<std::size_t> versions(classes.size(), 0);
   std::size_t next_version = 0;
   std::vector<VersionChange> version_changes;
@@ -831,8 +847,7 @@ bool MemoryGVNSession::eliminate_redundant_loads(
         assign_version(block_merges[block][merge]);
     if(eh_class != kNoIndex && eh_context.entry_barriers[block])
       assign_version(eh_class);
-    std::vector<Instruction> & instructions =
-      function->blocks[block].instructions;
+    std::vector<Instruction> & instructions = function->blocks[block].instructions;
     for(std::size_t index = 0; index < instructions.size(); ++index) {
       Instruction & instruction = instructions[index];
       if(stats) ++stats->instruction_visits;
@@ -848,8 +863,7 @@ bool MemoryGVNSession::eliminate_redundant_loads(
       if(instruction.kind == Instruction::IK_LOAD &&
          !instruction.volatile_access && !instruction.debug_location.present() &&
          scalar_load_type(instruction.type)) {
-        const std::size_t memory_class = load_class(
-          instruction, addresses, locations);
+        const std::size_t memory_class = load_class(instruction, addresses, locations);
         if(memory_class != kNoIndex && classes[memory_class].enabled) {
           const std::size_t unknown_version =
             ((classes[memory_class].kind == MCK_GLOBAL &&
@@ -866,9 +880,17 @@ bool MemoryGVNSession::eliminate_redundant_loads(
           const auto inserted = key_ids.emplace(key, heads.size());
           if(inserted.second) heads.push_back(kNoIndex);
           const std::size_t key_id = inserted.first->second;
-          if(heads[key_id] != kNoIndex) {
-            instruction = load_replacement(
-              instruction, available[heads[key_id]].value);
+          bool reusable = heads[key_id] != kNoIndex;
+          if(reusable && preserve_value_lifetimes) {
+            const Operand & available_value = available[heads[key_id]].value;
+            reusable = available_value.kind == Operand::OP_TEMP &&
+              available_value.value < final_uses.size() &&
+              instruction.dest < final_uses.size() &&
+              final_uses[available_value.value] != kNoIndex &&
+              final_uses[available_value.value] >= final_uses[instruction.dest];
+          }
+          if(reusable) {
+            instruction = load_replacement(instruction, available[heads[key_id]].value);
             changed = true;
             if(stats) {
               ++stats->memory_gvn_loads_eliminated;
@@ -892,8 +914,7 @@ bool MemoryGVNSession::eliminate_redundant_loads(
           boundary.effects != lowir_model::CFXM_READONLY;
       }
       if(instruction.kind == Instruction::IK_STORE) {
-        const AddressFact store = operand_address(
-          instruction.second, addresses);
+        const AddressFact store = operand_address(instruction.second, addresses);
         if(store.root_kind == ARK_SLOT || store.root_kind == ARK_GLOBAL)
           visit_store_classes(store, instruction.type.storage_size, classes,
             first_slot_class, symbol_epochs_, function_epoch_,
