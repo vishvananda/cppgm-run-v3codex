@@ -9,9 +9,9 @@ minor native-positive quality increment; immediate-call merge sources may
 donate their frame homes as a minor MIR-quality increment; direct immediate
 comparisons for large switches are the latest performance landing;
 odd-save paired recoloring is the latest performance landing; scaled-index
-multiplier factoring is the latest critical-path landing; the provisional
-direct full-source O1 wall gaps are about 1.519x GCC and 1.496x Clang against
-the immediately preceding host references, with a source-matched refresh due
+multiplier factoring is the latest critical-path landing; source-matched
+exact-final full-source O1 wall gaps are about 1.533x GCC and 1.492x Clang,
+so GCC remains binding
 
 Date: 2026-08-27
 
@@ -33,9 +33,11 @@ P32 attacks the residual in two measured classes:
 2. remove distributed construction, move, initialization, and helper traffic
    that remains visible across the frontend and LowIR optimizer.
 
-The exit criterion is an honest same-revision native wall ratio of at most
-**1.50x against both GCC O1 and Clang O1** on the frozen workload.  The host
-references and the self compiler must be built from the same source revision.
+The frozen translation unit remains the fast diagnostic and attribution
+workload.  The exit criterion is an honest same-revision clean full-source O1
+wall ratio of at most **1.50x against both GCC O1 and Clang O1**.  The host
+references and the self compiler must be built from the same candidate source
+revision.
 Generated text, data, relocations, section layout, and observable behavior must
 agree; compiler-dependent numeric spelling of otherwise identical local
 symbols is not a semantic difference.  This target is not relaxed if one
@@ -538,11 +540,22 @@ EH rejection, and deterministic ordering.
 
 Landing gate for an allocation/inlining policy:
 
+- the primary performance quantity is the same-source ratio, not the self
+  numerator alone: for each candidate compute `self(candidate) / GCC(candidate)`
+  and `self(candidate) / Clang(candidate)`, then compare those ratios with the
+  corresponding production ratios; candidate preparation time is never a
+  denominator;
 - at least 0.5% exact frozen Ir improvement or a repeated 0.5% native-user
-  improvement with matching attribution; a source-independent compiler-wide
-  transform may instead use a repeated 0.5% full-source aggregate-CPU
-  improvement when mean 32-way wall time also improves and the frozen median
-  regresses by less than 0.5%;
+  improvement with matching attribution may advance a candidate quickly, but
+  a credible source-independent transform that changes compiler source cannot
+  be rejected from self-only timing when it is close to the noise band; build
+  at least the currently binding same-source host denominator and decide from
+  repeated wall plus aggregate-CPU ratios;
+- a source-independent compiler-wide transform may instead clear the gate with
+  a repeated 0.5% improvement in either same-source full-build ratio when the
+  other ratio does not regress, or by reaching the 1.50x exit ceiling against
+  both hosts; require both host denominators before landing, though a clearly
+  non-improving repeat against the binding host is sufficient to stop a probe;
 - no increase in whole-object scalar movement unless smaller dynamic work
   explains and pays for it;
 - no tested workload regresses by more than 1% exact Ir without an explicit
@@ -812,6 +825,22 @@ current compiler.
    size.
 5. Run three rotating native samples for direction.
 6. Use one native software `task-clock` profile for attribution when needed.
+
+The self-only samples in steps 5--6 are a fast screen, not the final relative
+performance metric.  They may reject an unsound candidate, one with no final
+native mechanism, or one whose generated work regresses well outside noise.
+When a sound, general source-changing candidate has a credible static
+population and its self result is close, construct a host compiler from that
+exact candidate source.  Compare
+`mean(candidate self) / mean(candidate host)` with
+`mean(production self) / mean(production host)` separately for GCC and Clang.
+Use the binding GCC lane first while GCC remains above 1.50x; if its repeated
+wall and aggregate-CPU ratios do not improve, the candidate cannot close the
+two-host objective and Clang need not consume another lane.  If GCC improves,
+build Clang before retaining the change.  Natural host cost from implementing
+a genuine documented compiler feature belongs in the denominator; artificial
+work whose purpose is only to slow the hosts is not an optimization and is
+inadmissible.
 
 Use a clean full-source PA39 O1 build as a second native timing oracle.  This
 oracle times a finished compiler binary as `CXX`; the shorter candidate
@@ -3057,6 +3086,104 @@ inception lane while another build or profiler is active.
   inception under `/dev/shm/v3codex-p34-scaled-index-inception.1fv9ep`
   matches every object and the final compiler in 50.93/1323.78/93.81 seconds
   wall/user/system.  No Cachegrind, profiler, or inception process remains.
+
+- **P32-L97 (SOURCE-MATCHED SCALED-INDEX REBASELINE).** Commit `58204585`
+  is pushed to `origin/v3opt`.  Fresh exact-revision O1 host compilers prepared
+  with outer, inner, and object parallelism all 32: GCC took
+  29.87/520.84/51.77 seconds wall/user/system under
+  `/dev/shm/v3codex-p34-scaled-host-gcc.2IT8TM`, and Clang took
+  30.28/605.80/38.43 under
+  `/dev/shm/v3codex-p34-scaled-host-clang.UdBzeL`.  Their sequential clean
+  full-source lanes measured 21.04/543.30/44.40 and
+  21.62/560.34/44.95 seconds, respectively.
+
+  L96's three-lane directional average included two compiler binaries from
+  immediately before the final constant-spelling repair.  Although that
+  repair does not change the optimized hot native bodies, it does change the
+  compiler executable, so it is not used in the exact-revision ratio.  The
+  final binary's prior 32.34/871.74/49.44 lane and two fresh lanes at
+  32.06/869.68/49.28 and 32.34/871.41/49.21 average 32.247 seconds wall and
+  920.253 aggregate CPU.  The resulting direct ratios are 1.533x GCC and
+  1.492x Clang by wall, and 1.566x GCC and 1.520x Clang by aggregate CPU.
+  Clang is below the wall target; GCC remains binding.  At this GCC sample the
+  self ceiling is 31.560 seconds, requiring another 0.687 seconds or 2.13%
+  of self wall time.  No source workload was changed for any lane, every lane
+  used a fresh object/bin root, and no profiler or inception lane overlapped.
+
+- **P32-L98 (EXACT-FINAL FULL-SOURCE ATTRIBUTION).** A fresh 199 Hz
+  `task-clock` profile of the exact-final scaled-index compiler recorded
+  917.9245 aggregate event seconds, about 182K samples, and zero lost samples
+  under `/dev/shm/v3codex-p34-scaled-final-profile.mlL3hL/self.data`.
+  Approximate absolute costs are 97.5 seconds in `Lexer::Peek`, 74.2 in
+  `Lexer::Run`, 39.3 in `PhysicalCursor::Next`, 26.0 in the macro `Token`
+  move, 25.8 in `TranslationCursor::Next`, and 20.1 in `AppendUTF8`.
+  Relative to the structurally closer Clang profile, the combined
+  `Peek`/translation excess is only about 11 seconds, while `Run` is about
+  25.6 seconds high and physical-next about 14 seconds high.  The next target
+  is therefore the `Run`/physical movement body rather than isolated `Peek`.
+  The completed profile remains as evidence; no recording, profiler,
+  Cachegrind, or build process remains active.
+
+- **P32-L99 (BOUNDED CALL-CROSSING LOCAL-PHI PROBE REJECTED STATICALLY).** A
+  generic diagnostic admitted a local integer phi to a call-preserved
+  register only when there was no caller-side assignment and the value had at
+  least three uses.  On the tokenizer it found three candidates, promoted one,
+  and rejected two as busy.  `Lexer::Run` gained two preserved colors, lost
+  only three MIR instructions and one load/store pair, but grew 281 native
+  bytes; tokenizer text grew 280 bytes.  The static result has no credible
+  runtime mechanism, so this probe is rejected without timing under the
+  corrected ratio protocol.  All code and telemetry are removed and no
+  student contract or test is retained.
+
+- **P32-L100 (ADJACENT FRAME-UPDATE PROBE AND RATIO-GATE CORRECTION).** A
+  generic native cleanup folded an exact temporary-frame
+  load/immediate-ALU/store-back chain into a memory-destination update after
+  proving binding/type identity, nonvolatility, exact bridge use count, and
+  scratch-register liveness.  It reached the hot `Run` induction update:
+  `Run` lost eight MIR instructions and 23 native bytes, tokenizer text lost
+  42 bytes, and complete compiler text lost 15,760 bytes despite the new
+  implementation.  PA29 passed 291/291.  The explicit O1/all-32 candidate at
+  `/dev/shm/v3codex-p34-frame-update-candidate.9m0AqE` has SHA-256
+  `e978b53cef9690f6c0b6a28e107f9930fd98550e5a658a64b0fd7278aa2864f6`.
+
+  Two candidate full-source self lanes measured 32.65/873.96/49.62 and
+  32.24/871.70/49.79 seconds wall/user/system; the adjacent exact-final
+  production repeat measured 32.36/872.87/49.48.  That self-only result was
+  initially treated as a rejection, which was the wrong metric for a change
+  that also alters the source compiled by the hosts.  A candidate-source GCC
+  compiler was therefore prepared under
+  `/dev/shm/v3codex-p34-frame-update-host-gcc.RoH9QF`, and its clean lane under
+  `/dev/shm/v3codex-p34-frame-update-full-gcc.1AR7cY` measured
+  20.78/544.01/44.31 seconds.  Candidate means are 32.445 wall and 922.535
+  aggregate CPU, giving 1.561x wall and 1.568x CPU versus same-source GCC.
+  The production ratios are 1.533x and 1.566x.  Thus this particular probe
+  still loses under the corrected metric: GCC wall became faster, and the CPU
+  ratio also worsened slightly.  Because GCC is binding and both hosts must
+  pass, no Clang lane is needed.  The implementation is removed; no contract
+  or property is retained, and no profiler, Cachegrind, inception, or build
+  process remains.
+
+- **P32-L101 (RATIO-AWARE REJECTION REPLAY QUEUE).** Rejections based only on
+  a candidate self compiler were re-audited.  Correctness failures, probes
+  with no final native change, source/workload-specific rewrites, and large
+  generated-work regressions remain closed without denominator timing.  The
+  highest-value replay is L21's converted Boolean-phi threading: it passed
+  PA37/PA38 and inception, removed 281 `Run` MIR instructions, 80 loads, 108
+  stores, and 699 native bytes, but was rejected on essentially flat frozen
+  self timing without a candidate-source host denominator.  Second is
+  L73/L79's definition-pointer representation, whose current full-source self
+  result was flat (-0.02% aggregate CPU) and whose same-source host ratios were
+  never measured.  The broad deferred fixed-result division form from L72 and
+  unused-result dynamic-copy lowering from L23 are secondary replays because
+  they have real compiler-wide populations but worse self/layout evidence.
+  The immediate-return phi (L59), exact-value underflow scheduling (L22/L32),
+  scratch-carried immediate-call phi (L76), and narrow load fusion (L77) are
+  lower priority: their final mechanisms or populations are small and their
+  later full-source self screens were neutral-to-negative.  L53 has already
+  been superseded by the retained odd-save paired recoloring; L88 changes only
+  a build-time policy knob, not candidate source, so its denominator did not
+  move; L86/L95 and the new L99 had no material native mechanism; unsound L19
+  and the broad L77 form remain permanently closed.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
