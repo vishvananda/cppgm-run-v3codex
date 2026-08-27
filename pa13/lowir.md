@@ -153,7 +153,6 @@ declare global @name
 declare global @name : <type>
 declare function @name(%a : i64, %b : ptr) -> i64
 declare function @printf(%fmt : ptr [pass=decay]) -> i32 [arity=variadic]
-declare function @legacy() -> i64 [arity=prototype_relaxed]
 ```
 
 Top-level declarations and definitions may also carry explicit symbol metadata:
@@ -344,7 +343,6 @@ declare function @printf(%fmt : ptr [pass=decay]) -> i32 [arity=variadic, effect
 function @sum(%count : i64) -> i64 [arity=variadic, effects=readwrite] {
   ...
 }
-declare function @legacy() -> i64 [arity=prototype_relaxed]
 declare function @trap() -> void [effects=readnone, unwind=no, return=noreturn]
 ```
 
@@ -359,15 +357,11 @@ The currently defined arity values are:
 
 - `fixed`
 - `variadic`
-- `prototype_relaxed`
 
 `fixed` is the default and is normally omitted. `variadic` means the function accepts at least
-its declared parameter prefix plus any later variadic arguments. `prototype_relaxed` means the
-boundary does not promise strict fixed-arity checking at the call site; the current structural
-validator treats it as accepting at least its declared parameter prefix, like a more weakly
-specified variadic boundary. The current C++ emit path still only produces `fixed` or
-`variadic`; the `prototype_relaxed` spelling exists so LowIR can carry that boundary mode
-explicitly once an upstream frontend models it truthfully.
+its declared parameter prefix plus any later variadic arguments. LowIR does not reserve an
+additional arity mode for a hypothetical source boundary; a new mode requires a real producer,
+consumer, and property test.
 
 The currently defined call-effect values are:
 

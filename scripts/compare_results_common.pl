@@ -705,7 +705,7 @@ sub parse_lowir_function_metadata_suffix
 			if ($key eq 'arity')
 			{
 				return (0, "unknown function arity mode '$value'")
-					if $value !~ /^(?:fixed|variadic|prototype_relaxed)$/;
+					if $value !~ /^(?:fixed|variadic)$/;
 				$metadata{arity} = $value;
 			}
 			elsif ($key eq 'effects')
@@ -1141,7 +1141,7 @@ sub validate_lowir_instruction
 			my $sig = $state->{signatures}{$callee};
 			push @$errors, "$context call \@$callee expects return type $sig->{ret}, got $ret_type"
 				if $sig->{ret} ne $ret_type;
-			if ($sig->{arity} eq 'variadic' || $sig->{arity} eq 'prototype_relaxed')
+			if ($sig->{arity} eq 'variadic')
 			{
 				push @$errors, "$context call \@$callee expects at least " .
 					scalar(@{$sig->{params}}) . " argument(s), got " . scalar(@args)
@@ -1172,7 +1172,7 @@ sub validate_lowir_instruction
 			{
 				push @$errors, "$context indirect global call \@$callee signature return type $call_sig->{ret} does not match call result type $ret_type"
 					if $call_sig->{ret} ne $ret_type;
-				if ($call_sig->{arity} eq 'variadic' || $call_sig->{arity} eq 'prototype_relaxed')
+				if ($call_sig->{arity} eq 'variadic')
 				{
 					push @$errors, "$context indirect global call \@$callee expects at least " .
 						scalar(@{$call_sig->{params}}) . " argument(s), got " . scalar(@args)
@@ -1206,7 +1206,7 @@ sub validate_lowir_instruction
 			my $sig = $state->{signatures}{$callee};
 			push @$errors, "$context call \@$callee expects return type $sig->{ret}, got void"
 				if $sig->{ret} ne 'void';
-			if ($sig->{arity} eq 'variadic' || $sig->{arity} eq 'prototype_relaxed')
+			if ($sig->{arity} eq 'variadic')
 			{
 				push @$errors, "$context call \@$callee expects at least " .
 					scalar(@{$sig->{params}}) . " argument(s), got " . scalar(@args)
@@ -1237,7 +1237,7 @@ sub validate_lowir_instruction
 			{
 				push @$errors, "$context indirect global call \@$callee signature return type $call_sig->{ret} does not match call result type void"
 					if $call_sig->{ret} ne 'void';
-				if ($call_sig->{arity} eq 'variadic' || $call_sig->{arity} eq 'prototype_relaxed')
+				if ($call_sig->{arity} eq 'variadic')
 				{
 					push @$errors, "$context indirect global call \@$callee expects at least " .
 						scalar(@{$call_sig->{params}}) . " argument(s), got " . scalar(@args)
@@ -1272,7 +1272,7 @@ sub validate_lowir_instruction
 		{
 			push @$errors, "$context indirect call signature return type $call_sig->{ret} does not match call result type $ret_type"
 				if $call_sig->{ret} ne $ret_type;
-			if ($call_sig->{arity} eq 'variadic' || $call_sig->{arity} eq 'prototype_relaxed')
+			if ($call_sig->{arity} eq 'variadic')
 			{
 				push @$errors, "$context indirect call expects at least " .
 					scalar(@{$call_sig->{params}}) . " argument(s), got " . scalar(@args)
@@ -1302,7 +1302,7 @@ sub validate_lowir_instruction
 		{
 			push @$errors, "$context indirect call signature return type $call_sig->{ret} does not match call result type void"
 				if $call_sig->{ret} ne 'void';
-			if ($call_sig->{arity} eq 'variadic' || $call_sig->{arity} eq 'prototype_relaxed')
+			if ($call_sig->{arity} eq 'variadic')
 			{
 				push @$errors, "$context indirect call expects at least " .
 					scalar(@{$call_sig->{params}}) . " argument(s), got " . scalar(@args)

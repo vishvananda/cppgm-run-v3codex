@@ -273,8 +273,7 @@ enum ParamAliasMode
 enum CallArityMode
 {
   CAM_FIXED,
-  CAM_VARIADIC,
-  CAM_PROTOTYPE_RELAXED
+  CAM_VARIADIC
 };
 
 enum CallEffectsMode

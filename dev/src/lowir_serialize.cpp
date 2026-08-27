@@ -127,8 +127,6 @@ void write_boundary_metadata(MetadataWriter & metadata,
   switch(value.arity) {
   case CAM_FIXED: break;
   case CAM_VARIADIC: metadata.item("arity", "variadic"); break;
-  case CAM_PROTOTYPE_RELAXED:
-    metadata.item("arity", "prototype_relaxed"); break;
   }
   switch(value.effects) {
   case CFXM_DEFAULT: break;
