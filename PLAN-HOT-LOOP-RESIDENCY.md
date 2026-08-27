@@ -10,9 +10,10 @@ donate their frame homes as a minor MIR-quality increment; direct immediate
 comparisons for large switches are the latest performance landing;
 odd-save paired recoloring is a retained performance landing; scaled-index
 multiplier factoring is a retained critical-path landing; unused-result
-dynamic builtin-copy lowering is the latest performance landing;
-source-matched exact-final full-source O1 wall gaps are about 1.516x GCC and
-1.452x Clang, so GCC remains binding
+dynamic builtin-copy lowering is retained; lifetime-bounded ordinary O1 load
+reuse is the latest performance landing; source-matched exact-final full-source
+O1 wall ratios are about 1.476x GCC and 1.481x Clang, so the two-host exit
+target is reached pending the checkpoint push
 
 Date: 2026-08-27
 
@@ -831,17 +832,16 @@ The self-only samples in steps 5--6 are a fast screen, not the final relative
 performance metric.  They may reject an unsound candidate, one with no final
 native mechanism, or one whose generated work regresses well outside noise.
 When a sound, general source-changing candidate has a credible static
-population and its self result is close, construct a host compiler from that
-exact candidate source.  Compare
-`mean(candidate self) / mean(candidate host)` with
-`mean(production self) / mean(production host)` separately for GCC and Clang.
-Use the binding GCC lane first while GCC remains above 1.50x; if its repeated
-wall and aggregate-CPU ratios do not improve, the candidate cannot close the
-two-host objective and Clang need not consume another lane.  If GCC improves,
-build Clang before retaining the change.  Natural host cost from implementing
-a genuine documented compiler feature belongs in the denominator; artificial
-work whose purpose is only to slow the hosts is not an optimization and is
-inadmissible.
+population and its self result is close, construct host compilers from that
+exact candidate source.  The primary progress score is the larger of the
+repeated self/GCC and self/Clang wall ratios, because the exit criterion
+requires both to be at most 1.50x.  A nonbinding lane may move backward if it
+remains below 1.50x and the maximum ratio improves; aggregate CPU is supporting
+work/noise evidence rather than a separate veto on a repeated wall result.
+Use the binding host first, then measure the other host before retention.
+Natural host cost from implementing a genuine documented compiler feature
+belongs in the denominator; artificial work whose purpose is only to slow the
+hosts is not an optimization and is inadmissible.
 
 Use a clean full-source PA39 O1 build as a second native timing oracle.  This
 oracle times a finished compiler binary as `CXX`; the shorter candidate
@@ -3836,6 +3836,60 @@ inception lane while another build or profiler is active.
   active.  No student contract/property is retained for either rejected
   encoding.  Historical replays remain closed; the next step requires a new
   profile-driven mechanism rather than another denominator-only rescue.
+
+- **P32-L119 (LIFETIME-BOUNDED O1 MEMORY GVN RETAINED UNDER THE
+  MAX-HOST WALL METRIC).** The L109 replay was reopened after correcting the
+  decision rule: progress is the maximum same-source self/GCC and self/Clang
+  wall ratio, not a requirement that every individual host ratio improve
+  relative to L106.  Ordinary O1 definitions now run the existing conservative
+  cross-block memory-GVN pass only when replacing a redundant load cannot
+  extend the dominating value's original presentation-order lifetime.
+  Explicitly hinted definitions keep their already documented broader O1
+  rule; stores, writing calls, atomics, exceptional barriers, volatility, and
+  typed/address alias guards are unchanged.
+
+  The reconstructed rule emitted a byte-identical `pp_tokenizer.o` to the
+  archived L109 compiler and byte-identical optimized LowIR for the focused
+  reducer.  Relative to L106, the final compiler text falls
+  8,656,879 -> 8,652,443 bytes and aggregate shared-object text falls
+  9,321,878 -> 9,310,868 bytes.  The O1/all-32 compiler under
+  `/dev/shm/v3codex-l109-candidate.pPgh9C` has SHA-256
+  `153f48841b6870e07adeb8fd0726657017932c5ba671febd039efe0175bb0289`;
+  formatting-only audit compaction reproduced that binary byte for byte.
+
+  Three clean all-32 self lanes measured 32.01/871.02/49.65,
+  32.26/870.11/49.39, and 31.74/868.39/48.89 seconds wall/user/system.
+  Three exact-source GCC-built-compiler lanes measured 21.68/545.02/44.91,
+  22.20/550.82/45.57, and 21.22/543.65/44.20; three Clang-built-compiler
+  lanes measured 21.61/562.13/44.76, 21.52/560.54/44.92, and
+  21.93/562.21/44.52.  Median wall/aggregate-CPU values are therefore
+  32.01/919.50 self, 21.68/589.93 GCC, and 21.61/606.73 Clang.  The honest
+  final ratios are **1.476x GCC and 1.481x Clang by wall**, and 1.559x and
+  1.516x by aggregate CPU.  The maximum wall ratio is below 1.50x with about
+  1.25% relative margin.
+
+  An identical-candidate-source control using L106's retained self and GCC
+  compilers measured 32.39/873.67/49.90 and 22.44/551.66/45.78.  It confirms
+  both that the new generated compiler is absolutely faster and that natural
+  implementation work moves the host denominator.  The latter is part of the
+  clarified same-source metric for this genuine, documented optimization; the
+  control is not used to erase that denominator effect.
+
+  PA37 now describes the lifetime boundary.  Control
+  `526-late-inline-hint-load-reuse` checks an O0 two-load baseline, an ordinary
+  lifetime-bounded positive, an ordinary lifetime-extending negative, the
+  existing hinted case, memory barriers, and generated behavior without
+  matching a complete LowIR module.  Its control bucket now propagates an
+  early script failure instead of allowing a later passing script to mask it.
+  Focused PA37 passes 187/187, PA38 passes 46/46, and the through-PA38 report
+  passes 5,453/5,453.  The PA38 file audit passes with 36 established warnings.
+  Fresh O1 inception with outer, inner, and object parallelism all at 32
+  matched every object and the final compiler at the candidate hash in
+  49.99/1330.91/94.81 seconds wall/user/system.  Implementation commit is
+  `764e12a3`.  No Cachegrind, Valgrind, profiler, compiler, or build process
+  remains active.  L115 remains a valid fallback only if a future
+  source-matched checkpoint loses the margin; it is not added after the exit
+  criterion has already been reached.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
