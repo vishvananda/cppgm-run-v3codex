@@ -429,34 +429,33 @@ private:
       out.tls_for_spelling = !value.empty() && value[0] == '@' ?
         strings_->intern_range(value, 1, value.size() - 1) :
         strings_->intern(value);
-    } else if(key == "keep_alias") out.keep_internal_alias = yes_no(value);
+    } else if(key == "keep_alias") out.keep_internal_alias = yes_flag(value);
     else if(key == "prefer_local") {
-      out.prefer_local_object_binding = yes_no(value);
+      out.prefer_local_object_binding = yes_flag(value);
       if(out.prefer_local_object_binding && out.binding == SBM_DEFAULT)
         out.binding = SBM_STRONG;
     }
-    else if(key == "object_root") out.object_output_root = yes_no(value);
+    else if(key == "object_root") out.object_output_root = yes_flag(value);
     else if(key == "trivial_lifecycle") {
       if(!function_symbol) throw ParseError("trivial_lifecycle metadata requires a function");
-      out.object_trivial_lifecycle = yes_no(value);
+      out.object_trivial_lifecycle = yes_flag(value);
     } else if(key == "force_inline") {
       if(!function_symbol) throw ParseError("force_inline metadata requires a function");
-      out.force_inline = yes_no(value);
+      out.force_inline = yes_flag(value);
     } else if(key == "inline_hint") {
       if(!function_symbol) throw ParseError("inline_hint metadata requires a function");
-      out.inline_hint = yes_no(value);
+      out.inline_hint = yes_flag(value);
     } else if(key == "no_inline") {
       if(!function_symbol) throw ParseError("no_inline metadata requires a function");
-      out.no_inline = yes_no(value);
+      out.no_inline = yes_flag(value);
     }
     else throw ParseError("unknown symbol metadata: " + key);
   }
 
-  bool yes_no(const std::string & value)
+  bool yes_flag(const std::string & value)
   {
     if(value == "yes") return true;
-    if(value == "no") return false;
-    throw ParseError("metadata flag must be yes or no");
+    throw ParseError("metadata flag must be yes");
   }
 
   GlobalStorageMode parse_storage(const std::string & value)

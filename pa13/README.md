@@ -176,6 +176,8 @@ register assignment, or debugger behavior.
 Conservative/default states use omission rather than a second explicit
 spelling. For example, omitted function arity is fixed; `arity=variadic`
 records the non-default behavior that a later call validator must preserve.
+Boolean metadata is likewise a presence flag: `key=yes` records the feature
+and omission means false; `key=no` is not a second spelling.
 
 The `role` family includes the entry/init/fini and exception roles as well as
 the allocation, deallocation, termination, pure-virtual, dynamic-cast,

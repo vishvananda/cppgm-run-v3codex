@@ -274,42 +274,46 @@ The `object` metadata key carries an explicit backend/object symbol spelling for
 symbol. This is the textual carrier for cases where later object emission must use a concrete
 host/object name such as `puts`, `_ZTIi`, or a local mangled helper name.
 
-The `keep_alias` metadata key is a `yes`/`no` flag. `keep_alias=yes` requests that later object
-emission keep the LowIR-internal symbol spelling available as an alias even when `object=...`
-spells a different exported/backend name.
+The `keep_alias=yes` metadata flag requests that later object emission keep the LowIR-internal
+symbol spelling available as an alias even when `object=...` spells a different
+exported/backend name. Omission means false; there is no `keep_alias=no` spelling.
 
-The `prefer_local` metadata key is a `yes`/`no` flag. `prefer_local=yes` records that later
-object emission should prefer a local/private binding when that is legal, even if an explicit
-`object=...` spelling is also present.
+The `prefer_local=yes` metadata flag records that later object emission should prefer a
+local/private binding when that is legal, even if an explicit `object=...` spelling is also
+present. Omission means false; there is no `prefer_local=no` spelling.
 
-The `object_root` metadata key is a `yes`/`no` flag. `object_root=yes` records that the
-definition is a language-required object-emission root even when no LowIR instruction refers
-to it, as for a member emitted by an explicit template-instantiation definition.
+The `object_root=yes` metadata flag records that the definition is a language-required
+object-emission root even when no LowIR instruction refers to it, as for a member emitted by
+an explicit template-instantiation definition. Omission means false; there is no
+`object_root=no` spelling.
 
-The `trivial_lifecycle` metadata key is a `yes`/`no` flag for top-level
-function declarations and definitions. `trivial_lifecycle=yes` records that the
+The `trivial_lifecycle=yes` metadata flag on top-level function declarations and definitions
+records that the
 function is a semantically trivial C++ lifecycle helper, such as a trivial
 constructor or destructor wrapper. Object lowering may use this fact to remove
 otherwise unreferenced weak lifecycle wrappers after the frontend has serialized
-the LowIR boundary.
+the LowIR boundary. Omission means false; there is no `trivial_lifecycle=no` spelling.
 
-The `force_inline` metadata key is a `yes`/`no` flag for top-level function
-declarations and definitions. `force_inline=yes` records that eligible direct
+The `force_inline=yes` metadata flag on top-level function declarations and definitions
+records that eligible direct
 same-program calls must be expanded during object preparation at every
 optimization level. It does not relax call-boundary, ABI, type, recursion, or
 control-flow safety checks. Canonical `lowiropt -O0` preserves this metadata
-without performing the object-preparation transform.
+without performing the object-preparation transform. Omission means false; there is no
+`force_inline=no` spelling.
 
-The `inline_hint` metadata key is a `yes`/`no` flag for top-level function
-declarations and definitions. `inline_hint=yes` records a source-language
+The `inline_hint=yes` metadata flag on top-level function declarations and definitions
+records a source-language
 preference for inlining eligible direct calls. It may increase a bounded
 profitability limit, but does not require substitution, change linkage, make
-the definition an object root, or override `no_inline=yes`.
+the definition an object root, or override `no_inline=yes`. Omission means false; there is no
+`inline_hint=no` spelling.
 
-The `no_inline` metadata key is a `yes`/`no` flag for top-level function
-declarations and definitions. `no_inline=yes` prevents optional inlining of
+The `no_inline=yes` metadata flag on top-level function declarations and definitions prevents
+optional inlining of
 calls to that function. It does not make the function an object-emission root,
-change its symbol binding, or suppress other semantics-preserving transforms.
+change its symbol binding, or suppress other semantics-preserving transforms. Omission means
+false; there is no `no_inline=no` spelling.
 
 `alias object <object-symbol> = @target` records an additional object-file symbol spelling
 that must resolve to the same emitted top-level LowIR function or global as `@target`.
