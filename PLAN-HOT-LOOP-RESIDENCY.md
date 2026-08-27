@@ -3994,6 +3994,25 @@ inception lane while another build or profiler is active.
   file audit, byte-identity inception gate, commit, and push follow as the
   checkpoint for L121-L122.
 
+- **P32-L123 (POST-INTERFERENCE CUMULATIVE CHECKPOINT).** Predicate repair
+  commit `042a8ead`, loop-carried forwarding commit `92382f8e`, and the
+  token-identical optimizer-orchestration compaction in `486390e6` pass the
+  post-compaction PA37 188/188 and PA38 45/45 focused suites and root
+  through-PA38 at 5,465/5,465.  The PA38 development-file audit has zero fatal
+  findings and the established 36 advisories; `lowir_opt.cpp` is 2,995 lines.
+
+  Fresh isolated O1 inception under
+  `/dev/shm/v3codex-final-inception.BWEjjn`, with outer, inner, and object
+  parallelism all at 32, prepared self in 17.90/453.13/43.29 seconds and
+  completed the inception/object comparison in 33.24/862.66/50.43 seconds
+  wall/user/system.  Every object and the final compiler match.  Both compiler
+  stages retain SHA-256
+  `8b6952075632e689e99e8a7f502e1f3c00b9cfa6d280e07e0e33c3653b69bbd4`,
+  proving that the audit-only token-preserving compaction did not change the
+  measured binary.  No profiler, Cachegrind, Valgrind, compiler, or build
+  process remains active.  L122's 1.486x maximum same-source wall ratio is the
+  final performance result for this batch.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
