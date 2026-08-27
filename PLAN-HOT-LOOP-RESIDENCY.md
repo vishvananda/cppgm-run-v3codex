@@ -3439,6 +3439,105 @@ inception lane while another build or profiler is active.
   generated-code regressions, were unsound/source-shaping, or were superseded
   by retained narrower work.
 
+- **P32-L109 (LIFETIME-BOUNDED O1 MEMORY-GVN REPLAY REJECTED AFTER BOTH
+  HOST DENOMINATORS).** The earlier P30-L69 policy was recovered from its
+  archived compiler rather than approximated.  Ordinary O1 functions ran the
+  conservative memory-GVN pass, but a redundant load was replaced only when
+  the dominating value's final presentation-order use was at least as late as
+  the removed load's final use.  This preserved the old rule's protection
+  against lengthening a carrier lifetime.  PA37 passed 187/187.  The finished
+  all-32 O1 compiler at
+  `/dev/shm/v3codex-p34-lifetime-gvn-ratio.9Uf0zH/bin/selfhost/cppgm++-self`
+  has SHA-256
+  `7920566281aa2ab6cab966f551fe09f0c910721a742c48b7546e6bb6d42e2314`;
+  complete text fell 8,656,879 -> 8,650,819 bytes (-6,060).  Every retained
+  self and host timing lane reproduced that candidate hash.
+
+  Three ordinary-aggregate self lanes measured 31.65/866.56/49.14,
+  32.47/869.22/49.65, and 33.27/873.19/50.36 seconds wall/user/system.  The
+  last wall result had 78,806 involuntary context switches and is a scheduler
+  tail, while its aggregate work remains valid; a separate
+  34.53/931.81/54.97 lane is excluded entirely because aggregate work rose
+  7.3%.  The exact-source GCC compiler under
+  `/dev/shm/v3codex-p34-lifetime-gvn-gcc-prep.kCo5zl` produced ordinary lanes
+  at 21.69/546.91/45.63, 20.93/542.67/44.99, and
+  21.14/544.41/44.99; its 23.31/553.94/46.46 lane is excluded because both
+  wall and aggregate work rose.  The two usable self wall samples average
+  32.060 seconds against GCC's 21.253, or 1.508x, while all three aggregate
+  self samples average 919.373 CPU seconds against 589.867, or 1.559x.
+
+  That marginal GCC result did not survive the required second host.  The
+  exact-source Clang compiler under
+  `/dev/shm/v3codex-p34-lifetime-gvn-clang-prep.7W5OvL` produced ordinary
+  lanes at 21.55/563.79/44.30 and 22.10/565.31/44.96, averaging 21.825 wall
+  and 609.180 CPU; a 23.32/584.05/47.12 aggregate outlier is excluded.  The
+  candidate is therefore about 1.469x Clang by wall and 1.509x by aggregate
+  CPU.  CPU ratios improve only 0.2--0.4%, below the 0.5% landing threshold,
+  while Clang wall ratio regresses from L106's 1.452x point.  The
+  implementation is removed and no student contract/property is retained.
+
+- **P32-L110 (SIGN-EXTENDED IMM8 REPLAY STILL REJECTED BY THE CORRECTED
+  METRIC).** P32-L33's PA29 encoder rule was reconstructed with the original
+  exact-width guard: 16-, 32-, and 64-bit integer ALU immediates and memory
+  comparisons selected opcode `83` only when the operation-width value
+  equaled the sign extension of its low byte.  PA29 passed 291/291 and PA38
+  passed 46/46.  The all-32 O1 compiler at
+  `/dev/shm/v3codex-p34-imm8-ratio.R2zcEa/bin/selfhost/cppgm++-self` has
+  SHA-256
+  `b2a668eb95095980903086da1d581fa282c2854902072a0e6e8c976fcd7ddae4`;
+  complete text fell 8,656,879 -> 8,558,503 bytes (-98,376) and the file
+  shrank 98,304 bytes.  Thus the replay preserved the historical large,
+  source-independent density effect rather than merely adding host work.
+
+  Two ordinary-aggregate self lanes measured 32.79/868.16/49.48 and
+  31.73/867.84/49.45 seconds wall/user/system, averaging 917.465 aggregate
+  CPU.  The first had a 76,015-context-switch scheduler tail, so 31.73 is the
+  usable wall point; a 34.15/890.21/51.99 lane is excluded because aggregate
+  work also rose.  The exact-source GCC compiler under
+  `/dev/shm/v3codex-p34-imm8-gcc-prep.siAioX` produced ordinary lanes at
+  20.84/542.95/44.82 and 20.74/543.66/45.00, averaging 20.790 wall and
+  588.215 CPU.  A 22.34/580.75/48.71 lane is excluded as a 7% aggregate-work
+  outlier.  Every usable lane reproduced the candidate hash.
+
+  The resulting 1.526x wall and 1.560x aggregate-CPU ratios do not improve
+  L106's binding 1.516x/1.562x point by the required amount; the large density
+  win still has no runtime payoff at the current frameless layout.  GCC is
+  already non-improving, so no Clang lane is consumed.  The implementation is
+  removed and no student contract/property is retained.
+
+- **P32-L111 (FORWARDED-ADDRESS COMPOSITION REPLAY REJECTED BY
+  SAME-SOURCE RATIO).** The remaining lower-priority P32-L51 candidate was
+  reconstructed at the existing bounded frame-forwarding boundary.  When a
+  proved delayed frame reload fed only the address of the immediately
+  following scalar load or store, native emission substituted the intact
+  forwarding carrier into that address and omitted the intermediate move.
+  Other register dependencies, non-address consumers, and nonadjacent uses
+  retained the ordinary forwarded move.  PA29 passed 291/291 and PA38 passed
+  46/46.
+
+  The all-32 O1 compiler at
+  `/dev/shm/v3codex-p34-forwarded-address-ratio.S6MWAQ/bin/selfhost/cppgm++-self`
+  has SHA-256
+  `d275709cf84f07b6cbe34575a95edca03a846032eb4e05bf8279470c5081ffdf`;
+  complete text fell 8,656,879 -> 8,640,559 bytes (-16,320), closely
+  reproducing L51's historical 16,744-byte broad effect.  Two self lanes
+  measured 32.29/870.27/49.59 and 32.99/870.90/50.25 seconds
+  wall/user/system, averaging 32.640 wall and 920.505 aggregate CPU.  The
+  exact-source GCC compiler under
+  `/dev/shm/v3codex-p34-forwarded-address-gcc-prep.EL6IfX` produced lanes at
+  21.13/545.29/44.79 and 21.15/545.74/45.21, averaging 21.140 wall and
+  590.515 CPU.  Every lane reproduced the candidate hash.
+
+  Candidate ratios are therefore 1.544x wall and 1.559x aggregate CPU.
+  Aggregate ratio improves L106 by only about 0.2%, while the binding wall
+  ratio regresses about 1.8%.  GCC is decisively non-improving, so no Clang
+  lane is consumed.  The implementation is removed and no student
+  contract/property is retained.  This closes the old self-only rejection
+  set with material current native effects: smaller P30 residency and narrow
+  normalization/compare probes either have deterministic compiler-work
+  regressions below this population, were later screened on the broad oracle,
+  or failed correctness and do not warrant denominator-only rescue attempts.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
