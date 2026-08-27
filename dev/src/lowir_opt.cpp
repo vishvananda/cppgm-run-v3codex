@@ -2751,11 +2751,10 @@ void cleanup_readonly_string_table_rewrites(LowirProgram & program,
 
 }  // namespace
 
-void optimize(LowirProgram & program, int level, Stats * stats,
-  const InlinePolicyOverrides * inline_limits)
+void optimize(LowirProgram & program, int level, Stats * stats, const InlinePolicyOverrides * inline_limits)
 {
-  if(level < 0 || level > 3) throw std::logic_error(
-    "invalid LowIR optimization level");
+  if(level < 0 || level > 3)
+    throw std::logic_error("invalid LowIR optimization level");
   std::chrono::steady_clock::time_point started;
   if(stats) {
     started = std::chrono::steady_clock::now();
@@ -2766,9 +2765,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
   if(level == 0) {
     if(stats) {
       stats->output_instructions = stats->input_instructions;
-      stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-          std::chrono::steady_clock::now() - started).count());
+      stats->elapsed_nanoseconds = static_cast<std::uint64_t>(std::chrono::duration_cast<
+        std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
     }
     return;
   }
@@ -2776,30 +2774,22 @@ void optimize(LowirProgram & program, int level, Stats * stats,
   SimplifyScratch simplify_arena;
   DceScratch dce_scratch;
   CleanupCfgScratch cfg_scratch;
-  const std::chrono::steady_clock::time_point unreachable_started = stats ?
-    std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+  const std::chrono::steady_clock::time_point unreachable_started = stats ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   const std::vector<unsigned char> noreturn_symbols = noreturn_symbol_index(program);
   std::vector<unsigned char> unreachable_changed(program.functions.size(), 0);
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
-    unreachable_changed[i] = eliminate_unreachable_edges(
-      &program.functions[i], stats) ? 1 : 0;
-    unreachable_changed[i] = (truncate_noreturn_continuations(
-      &program.functions[i], noreturn_symbols, stats) ? 1 : 0) ||
-      unreachable_changed[i];
+    unreachable_changed[i] = eliminate_unreachable_edges(&program.functions[i], stats) ? 1 : 0;
+    unreachable_changed[i] = (truncate_noreturn_continuations(&program.functions[i], noreturn_symbols, stats) ? 1 : 0) || unreachable_changed[i];
   }
-  if(stats) stats->unreachable_nanoseconds = static_cast<std::uint64_t>(
-    std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::steady_clock::now() - unreachable_started).count());
+  if(stats) stats->unreachable_nanoseconds = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - unreachable_started).count());
   std::vector<unsigned char> prepared_oversized_symbols(program.symbol_names.size(), 0);
   std::vector<std::size_t> original_instruction_counts(program.functions.size(), 0);
   std::vector<unsigned char> post_cfg_values_changed(program.functions.size(), 0);
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     std::size_t original_instructions = 0;
-    for(std::size_t b = 0; b < program.functions[i].blocks.size(); ++b)
-      original_instructions += program.functions[i].blocks[b].instructions.size();
+    for(std::size_t b = 0; b < program.functions[i].blocks.size(); ++b) original_instructions += program.functions[i].blocks[b].instructions.size();
     original_instruction_counts[i] = original_instructions;
-    if(original_instructions > 40 &&
-       !program.functions[i].metadata.prefer_local_object_binding)
+    if(original_instructions > 40 && !program.functions[i].metadata.prefer_local_object_binding)
       prepared_oversized_symbols[program.functions[i].symbol] = 1;
     post_cfg_values_changed[i] =
       (prepare_for_inlining(
@@ -2811,29 +2801,23 @@ void optimize(LowirProgram & program, int level, Stats * stats,
   const InlineCallGraph call_graph = analyze_inline_call_graph(program, stats);
   std::chrono::steady_clock::time_point inline_started;
   if(stats) inline_started = std::chrono::steady_clock::now();
-  const std::size_t inline_rewrites = inline_o1_calls(
-    program, call_graph, prepared_oversized_symbols, original_instruction_counts,
-    &inlined_symbols, stats, inline_limits);
+  const std::size_t inline_rewrites = inline_o1_calls(program, call_graph, prepared_oversized_symbols, original_instruction_counts, &inlined_symbols, stats, inline_limits);
   for(std::size_t i = 0; i < program.functions.size(); ++i)
   if(stats) {
-    stats->inline_changed_callers =
-      std::count(inlined_symbols.begin(), inlined_symbols.end(), 1);
+    stats->inline_changed_callers = std::count(inlined_symbols.begin(), inlined_symbols.end(), 1);
     stats->rewrites += inline_rewrites;
-    stats->inline_nanoseconds += static_cast<std::uint64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now() - inline_started).count());
+    stats->inline_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<
+      std::chrono::nanoseconds>(std::chrono::steady_clock::now() - inline_started).count());
   }
   if(level >= 2) {
     std::vector<unsigned char> ipa_rewritten_symbols(program.symbol_names.size(), 0);
-    const std::chrono::steady_clock::time_point ipa_started = stats ?
-      std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+    const std::chrono::steady_clock::time_point ipa_started = stats ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
     const std::size_t ipa_rewrites = specialize_interprocedural_arguments(
       program, call_graph, &ipa_rewritten_symbols, stats);
     if(stats) {
       stats->rewrites += ipa_rewrites;
-      stats->ipa_nanoseconds += static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-          std::chrono::steady_clock::now() - ipa_started).count());
+      stats->ipa_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<
+        std::chrono::nanoseconds>(std::chrono::steady_clock::now() - ipa_started).count());
     }
     post_cfg_values_changed.resize(program.functions.size(), 0);
     inlined_symbols.resize(program.symbol_names.size(), 0);
@@ -2846,8 +2830,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
             &dce_scratch, &cfg_scratch) ||
           post_cfg_values_changed[i];
   }
-  optimize_function_bodies(
-    program, level, boundaries, inlined_symbols, post_cfg_values_changed,
+  optimize_function_bodies(program, level, boundaries, inlined_symbols,
+    post_cfg_values_changed,
     stats, simplify_arena, dce_scratch, cfg_scratch);
   if(level >= 1) {
     const std::chrono::steady_clock::time_point late_inline_started = stats ?
@@ -2887,11 +2871,9 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       std::chrono::steady_clock::now();
     const InlineCallGraph partial_call_graph = analyze_inline_call_graph(program, 0);
     collect_partial_inline_census(program, partial_call_graph, stats);
-    stats->partial_inline_census_nanoseconds =
-      static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-          std::chrono::steady_clock::now() -
-            partial_census_started).count());
+    stats->partial_inline_census_nanoseconds = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - partial_census_started).count());
   }
   lowir_model::FunctionPruningSummary pruning =
     lowir_model::prune_unreachable_weak_functions(program);
