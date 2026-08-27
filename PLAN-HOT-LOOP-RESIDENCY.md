@@ -3185,6 +3185,45 @@ inception lane while another build or profiler is active.
   move; L86/L95 and the new L99 had no material native mechanism; unsound L19
   and the broad L77 form remain permanently closed.
 
+- **P32-L102 (CONVERTED BOOLEAN-PHI REPLAY REJECTED BY SAME-SOURCE RATIO).**
+  L21's PA37 transform was reconstructed on the exact-final tree.  It extended
+  the retained loop-local Boolean-phi threading through a private
+  single-predecessor bridge containing a widening/truncating integer
+  conversion and either a direct truth branch or a zero/one comparison.
+  Truncation and comparisons to one required every incoming value to be a
+  local comparison result or literal zero/one; shared bridges, loop-carried
+  inputs, calls, EH, target phis, and additional uses retained the merge.
+
+  Later landings reduced but did not erase the current population.
+  `Lexer::Run` fell from 2,753 to 2,648 MIR instructions, scalar loads/stores
+  from 453/433 to 400/374, call loads/stores from 79/62 to 69/28, and native
+  size from `0x2d94` to `0x2cb2` (-226 bytes); tokenizer primary text fell
+  29,227 -> 29,001 bytes.  PA37 passed 187/187 and PA38 passed 46/46.
+
+  The first reconstruction used a whole-function comparison-definition scan.
+  Its candidate compiler hash was
+  `945043d603167dc999130686df21794b27f48378e762eba2e14ec831cce4de9e`.
+  Two clean self lanes measured 32.33/876.18/49.44 and
+  32.08/877.56/49.66 seconds wall/user/system.  After excluding one obvious
+  23.08/599.16/50.23 GCC outlier, two stable same-source GCC lanes measured
+  20.94/545.26/44.35 and 21.21/545.24/44.79.  Their ratios were about 1.528x
+  wall, a 0.30% apparent improvement, but 1.571x aggregate CPU, a 0.32%
+  regression.  The mixed signal did not clear the ratio gate.
+
+  A cheaper form proved comparison results by scanning only the small incoming
+  predecessor block, retaining identical generated code.  Its compiler hash
+  was `769e3bd09066e1d3274c0eda9bf9f2b6c320a1f5ecd9dd4519a7b3fa9887e80a`.
+  Self lanes at 32.02/872.76/49.06 and 32.27/874.38/49.08 average 32.145 wall
+  and 922.640 aggregate CPU.  Same-source GCC lanes at
+  20.78/542.57/44.25 and 21.06/542.56/44.49 average 20.920 wall and 586.935
+  CPU.  The resulting 1.537x wall and 1.572x CPU ratios both worsen the
+  production 1.533x/1.566x point.  GCC remains binding, so no Clang lane was
+  consumed.  This replay demonstrates why both same-source wall and CPU
+  ratios are required: the conclusion is no longer based on a flat self-only
+  screen, but the corrected metric still rejects this candidate.  All
+  implementation code is removed; no new contract/property is retained, and
+  no profiler, Cachegrind, inception, or build process remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
