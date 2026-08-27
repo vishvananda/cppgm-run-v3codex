@@ -2,6 +2,7 @@
 
 #include "lowir_eh_context.h"
 #include "lowir_opt.h"
+#include "lowir_optimizer_support.h"
 
 #include <algorithm>
 #include <chrono>
@@ -20,6 +21,7 @@ using lowir_model::Function;
 using lowir_model::Instruction;
 using lowir_model::LowType;
 using lowir_model::Operand;
+using optimizer_support::combine_hash;
 
 const std::size_t kNoIndex = static_cast<std::size_t>(-1);
 const std::size_t kMaximumClasses = 4096;
@@ -276,12 +278,6 @@ struct MemoryKey
       type_alignment == other.type_alignment;
   }
 };
-
-void combine_hash(std::size_t * seed, std::size_t value)
-{
-  *seed ^= value + static_cast<std::size_t>(0x9e3779b9U) +
-    (*seed << 6) + (*seed >> 2);
-}
 
 struct LocationKeyHash
 {

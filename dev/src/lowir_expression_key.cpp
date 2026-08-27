@@ -1,5 +1,7 @@
 #include "lowir_expression_key.h"
 
+#include "lowir_optimizer_support.h"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +13,7 @@ namespace {
 using lowir_model::Instruction;
 using lowir_model::LowOperation;
 using lowir_model::Operand;
+using optimizer_support::combine_hash;
 
 bool commutative(LowOperation operation)
 {
@@ -70,12 +73,6 @@ ExpressionOperandKey operand_key(const Operand & operand)
     key.int_high = operand.int_high;
   }
   return key;
-}
-
-void combine_hash(std::size_t * seed, std::size_t value)
-{
-  *seed ^= value + static_cast<std::size_t>(0x9e3779b9U) +
-    (*seed << 6) + (*seed >> 2);
 }
 
 }  // namespace

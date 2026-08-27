@@ -2,8 +2,18 @@
 
 #include "lowir_model.h"
 
+#include <cstddef>
+
 namespace lowir_opt {
 namespace optimizer_support {
+
+// The exact hash combiner used by LowIR optimizer keys.  Key field choice and
+// ordering remain with each key owner; this helper defines only the mixer.
+inline void combine_hash(std::size_t * seed, std::size_t value)
+{
+  *seed ^= value + static_cast<std::size_t>(0x9e3779b9U) +
+    (*seed << 6) + (*seed >> 2);
+}
 
 // Exact identity of a LowIR operand that denotes a load/store location.
 // This intentionally accepts only temporaries, slots, and globals; global

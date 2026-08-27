@@ -2,6 +2,7 @@
 
 #include "lowir_model.h"
 #include "lowir_opt.h"
+#include "lowir_optimizer_support.h"
 
 #include <algorithm>
 #include <cmath>
@@ -21,6 +22,7 @@ using lowir_model::Function;
 using lowir_model::Instruction;
 using lowir_model::InstructionDebugLocation;
 using lowir_model::Operand;
+using optimizer_support::combine_hash;
 
 struct ResumeKey
 {
@@ -41,12 +43,9 @@ struct ResumeKeyHash
   std::size_t operator()(const ResumeKey & key) const
   {
     std::size_t result = static_cast<std::uint32_t>(key.file);
-    result ^= key.line + static_cast<std::size_t>(0x9e3779b9U) +
-      (result << 6) + (result >> 2);
-    result ^= key.column + static_cast<std::size_t>(0x9e3779b9U) +
-      (result << 6) + (result >> 2);
-    result ^= key.context + static_cast<std::size_t>(0x9e3779b9U) +
-      (result << 6) + (result >> 2);
+    combine_hash(&result, key.line);
+    combine_hash(&result, key.column);
+    combine_hash(&result, key.context);
     return result;
   }
 };
@@ -86,12 +85,6 @@ void redirect_instruction_targets(Instruction * instruction,
     for(std::size_t i = 1; i < instruction->args.size(); i += 2)
       redirect_target(&instruction->args[i], replacements);
   }
-}
-
-void combine_hash(std::size_t * seed, std::size_t value)
-{
-  *seed ^= value + static_cast<std::size_t>(0x9e3779b9U) +
-    (*seed << 6) + (*seed >> 2);
 }
 
 bool same_type(const lowir_model::LowType & left,

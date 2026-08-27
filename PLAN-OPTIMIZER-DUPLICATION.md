@@ -536,6 +536,32 @@ This plan is complete only when:
   private-log captures on the baseline and candidate have every deterministic
   optimizer counter identical, including all D0 counts and the peak above.
   Retain.
+- **D1-H (EXACT HASH COMBINE, RETAINED).** On the tree based on `3f7745df`,
+  `lowir_optimizer_support.h::combine_hash` now owns only the exact LowIR key
+  mixer.  Cleanup/tail identity, expression GVN/PRE keys, and memory-GVN keys
+  retain their own field selection and ordering; the three direct debug-key
+  expressions use the same primitive.  The sole remaining optimizer
+  `0x9e3779b9` expression is the shared body (native host-EH has a separate
+  one-shot two-field key and remains outside this LowIR family).  Historical
+  LowIR properties, PA37, PA38, `git diff --check`, and the default
+  zero-fatal/36-warning audit pass with no fixture movement; the tight report
+  remains at 14 warnings because its six-line matcher never reported the
+  short mixer bodies.  Candidate compiler SHA-256 is `992804fc...`; text is
+  unchanged at 8,640,083 bytes.  Reverse/interleaved same-source all-32 O1
+  lanes are candidate 31.54/32.00 seconds wall and old 31.93/32.23;
+  aggregate CPU means are 909.28/908.76 seconds (+0.06%).  Exact candidate
+  GCC lanes are 21.44/21.30 wall and 589.29/599.55 CPU; Clang lanes are
+  21.64/21.60 wall and 609.73/609.27 CPU.  Means are self 31.770/909.28, GCC
+  21.370/594.42, and Clang 21.620/609.50 seconds wall/CPU, or 1.487x and
+  1.469x wall; the primary maximum remains within the 1.493x normal budget.
+  GCC benchmark compiler SHA/text is `842b15a9...`/5,787,680; Clang is
+  `7fcbb888...`/5,026,953.  Direct private-log captures cover the same 215
+  TUs.  The candidate has 33 fewer input and three fewer output instructions,
+  155 fewer optimizer instruction visits, 104 fewer block visits, two fewer
+  CFG builds, four fewer dominator and loop builds, five fewer simplify runs,
+  two fewer DCE and slot runs, and one fewer remove/promote run; CFG,
+  forward/local-slot, small-object, and dead-store run counts are unchanged,
+  as is the 10,229,916-byte peak.  Retain.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
