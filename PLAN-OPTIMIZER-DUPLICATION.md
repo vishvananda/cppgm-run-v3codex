@@ -562,6 +562,24 @@ This plan is complete only when:
   two fewer DCE and slot runs, and one fewer remove/promote run; CFG,
   forward/local-slot, small-object, and dead-store run counts are unchanged,
   as is the 10,229,916-byte peak.  Retain.
+- **D1-N1 (LOWIR OPERAND-IDENTITY RENAME, REJECTED).** A naming-only trial
+  changed cleanup's full identity to `same_presentation_operand` and scalar
+  rules' narrower predicate to `same_scalar_value_operand`, including all
+  callers.  Focused properties, PA37, PA38, and the zero-fatal/36-warning
+  audit passed; compiler text stayed 8,640,083 bytes.  The executable hash
+  changed to `c2afe336...`, and stripped old/new executables were not equal,
+  so timing was required.  The first two lanes exceeded the hard ratio and a
+  three-lane repeat confirmed it.  Candidate versus pre-change self means on
+  the identical renamed source were 32.007 versus 31.967 seconds wall and
+  904.76 versus 905.40 aggregate CPU, so self execution did not regress.
+  Exact-source GCC, however, improved to 21.007 seconds wall, making the
+  candidate/GCC ratio 1.524x; Clang's lanes were 21.54/21.71/25.26 seconds
+  and do not set the maximum.  The disproportionate GCC code-layout gain
+  makes this a relative regression under the corrected metric.  The rename
+  is reverted rather than using the unchanged self time to cover the hard
+  failure.  The semantic distinction remains frozen in the D0 ledger; a
+  shorter or structurally neutral naming form may be reconsidered only after
+  separate measurement restores the ratio.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
