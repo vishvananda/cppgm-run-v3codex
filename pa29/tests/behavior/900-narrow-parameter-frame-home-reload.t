@@ -36,7 +36,7 @@ function @lookup(%a : i32, %b : i32, %c : i32, %d : i32, %e : i32, %level : i32)
   block ^entry:
     call void @side_effect()
     %table = addr @table
-    %data = unary decay ptr %table
+    %data = copy ptr %table
     %offset = binary mul i64 %level, 8
     %entry = index i8 %data, %offset
     %value = load i64 %entry

@@ -187,9 +187,7 @@ bool scalar_identity_may_share_frame_home(const Instruction & instruction)
         instruction.type.kind <= lowir_model::LTK_I64) ||
        instruction.type.kind == lowir_model::LTK_PTR))
     return false;
-  return instruction.kind == Instruction::IK_COPY ||
-    (instruction.kind == Instruction::IK_UNARY &&
-     instruction.op.kind == lowir_model::LowOperation::LOP_DECAY);
+  return instruction.kind == Instruction::IK_COPY;
 }
 
 void extend_shared_storage_liveness(

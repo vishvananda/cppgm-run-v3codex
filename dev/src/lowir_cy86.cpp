@@ -829,7 +829,6 @@ void FunctionEmitter::EmitUnary(const Instruction & ins)
     out_.Instruction("ieq" + width + " z8 x" + width + " 0");
     out_.Instruction("move64 x64 0"); out_.Instruction("move8 x8 z8");
   } else if(ins.op.kind == LowOperation::LOP_BITNOT) out_.Instruction("not" + width + " x" + width + " x" + width);
-  else if(ins.op.kind == LowOperation::LOP_DECAY) {}
   else if(ins.op.kind == LowOperation::LOP_BSWAP) out_.Instruction("bswap" + width + " x" + width + " x" + width);
   else throw ParseError("unsupported unary operator");
   StoreScalarTemp(ins.dest, instruction_result_type(ins), 'x');
@@ -1004,7 +1003,7 @@ void FunctionEmitter::EmitCall(const Instruction & ins)
     out_.Instruction("move64 " + callee + " x64");
   }
 
-  if(extras && !direct) {
+  if(extras) {
     const std::size_t first_arg_index = large_return ? 1 : 0;
     for(std::size_t i = 0; i < ins.args.size(); ++i) {
       const std::size_t abi_index = first_arg_index + i;

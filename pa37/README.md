@@ -185,7 +185,7 @@ running optimizing transforms.
 - constant folding for scalar `copy`, `unary`, `binary`, `cmp`, and `convert`
   instructions with known constant operands
 - algebraic identities such as `x + 0`, `x - 0`, `x * 1`, `x & -1`, redundant
-  `unary decay`, identity `convert`, a zero-element `index` through a pointer
+  scalar `copy`, identity `convert`, a zero-element `index` through a pointer
   temporary, and compares whose operands are known to be identical
 - local and executable-edge-aware copy and constant propagation
 - local and executable-edge-aware pure-expression reuse for eligible `addr`,

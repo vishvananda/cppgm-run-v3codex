@@ -1815,11 +1815,6 @@ private:
     }
     if(!is_integer_or_pointer(instruction.type))
       throw std::runtime_error("integer selector received non-integer unary operation");
-    if(instruction.op.kind == LowOperation::LOP_DECAY) {
-      emit_copy(instruction, out,
-        result_is_immediate_return(block, instruction_index, instruction.dest));
-      return;
-    }
     const MirOperand source = resolve(instruction.first);
     const LowType result_type = instruction.op.kind == LowOperation::LOP_NOT ?
       lowir_model::builtin_lowir_type(lowir_model::LTK_I64) : instruction.type;

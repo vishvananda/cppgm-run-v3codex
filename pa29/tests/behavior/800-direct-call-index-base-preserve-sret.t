@@ -51,17 +51,17 @@ function @make_function_symbol_identity(%ret : ptr [pass=indirect_result], %qual
     call void @SymbolIdentity__SymbolIdentity(%ret)
     %t1 = load i32 $qualified_name
     %t2 = index i8 [projection=field] %ret, 0
-    %t3 = unary decay ptr %t2
+    %t3 = copy ptr %t2
     %t4 = index i64 [projection=array_element] %t3, 0
     store i64 %t1, %t4
     %t5 = load i32 $display_name
     %t6 = index i8 [projection=field] %ret, 0
-    %t7 = unary decay ptr %t6
+    %t7 = copy ptr %t6
     %t8 = index i64 [projection=array_element] %t7, 1
     store i64 %t5, %t8
     %t9 = load i32 $key
     %t10 = index i8 [projection=field] %ret, 0
-    %t11 = unary decay ptr %t10
+    %t11 = copy ptr %t10
     %t12 = index i64 [projection=array_element] %t11, 2
     store i64 %t9, %t12
     %t13 = load ptr $options
@@ -144,7 +144,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t29 = addr $binding
     %t30 = index i8 [projection=field] %t29, 320
     %t31 = index i8 [projection=field] %t30, 0
-    %t32 = unary decay ptr %t31
+    %t32 = copy ptr %t31
     %t33 = index i32 [projection=array_element] %t32, 0
     store i32 7, %t33
     %t34 = addr $binding

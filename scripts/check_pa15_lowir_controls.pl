@@ -34,7 +34,7 @@ if (scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests(
-	$root, qr/(?:pointer-difference-strength-reduction|readonly-scalar-storage|volatile-access-markers|builtin-memory-access-defaults).*\.cpp$/);
+	$root, qr/(?:pointer-difference-strength-reduction|readonly-scalar-storage|volatile-access-markers|builtin-memory-access-defaults|ordinary-pointer-decay).*\.cpp$/);
 die "No PA15 focused LowIR controls found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -127,6 +127,21 @@ for my $test (@tests)
 			   $source !~ /(?:^|, )access=read(?:, |$)/;
 		die "$test: removed access=readwrite spelling remains in generated LowIR\n"
 			if $lowir =~ /\baccess=readwrite\b/;
+		next;
+	}
+	if ($test =~ /ordinary-pointer-decay/) {
+		die "$test: generated LowIR retained removed decay syntax\n"
+			if $lowir =~ /\bunary\s+decay\b|\bpass=decay\b/;
+		my $array = function_body($test, $lowir, 'array_decay');
+		die "$test: array decay did not produce an ordinary pointer address\n"
+			if $array !~ /^\s+%\w+ = addr \@\w+$/m;
+		die "$test: subscript after array decay did not use pointer indexing\n"
+			if $array !~ /^\s+%\w+ = index i32(?: \[projection=array_element\])? %\w+, 2$/m;
+		my $function = function_body($test, $lowir, 'function_decay');
+		die "$test: function decay did not produce an ordinary function address\n"
+			if $function !~ /^\s+%\w+ = addr \@\w+$/m;
+		die "$test: function pointer produced by decay was not callable\n"
+			if $function !~ /^\s+%\w+ = call i32 %\w+\(4\) as \(/m;
 		next;
 	}
 	die "$test: no PA15 focused predicate selected\n";

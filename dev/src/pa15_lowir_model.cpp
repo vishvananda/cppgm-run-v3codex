@@ -44,7 +44,6 @@ const char* LowOperationText(LowOperation operation)
 	case LOW_OP_FPTOUI: return "fptoui";
 	case LOW_OP_FPTRUNC: return "fptrunc";
 	case LOW_OP_FPEXT: return "fpext";
-	case LOW_OP_DECAY: return "decay";
 	case LOW_OP_NONE: break;
 	}
 	throw std::logic_error("missing PA15 LowIR operation");

@@ -210,8 +210,7 @@ enum LowOperation : std::uint8_t
 	LOW_OP_FPTOSI,
 	LOW_OP_FPTOUI,
 	LOW_OP_FPTRUNC,
-	LOW_OP_FPEXT,
-	LOW_OP_DECAY
+	LOW_OP_FPEXT
 };
 
 enum IndexProjection : std::uint8_t
@@ -347,10 +346,10 @@ struct Parameter
 	enum Alias : std::uint8_t { ALIAS_DEFAULT, ALIAS_NOALIAS } alias;
 	lowir_model::StringId name;
 	LowType type;
-	bool reference, decay, indirect_result, by_address;
+	bool reference, indirect_result, by_address;
 
 	Parameter() : capture(CAPTURE_DEFAULT), access(ACCESS_DEFAULT),
-		alias(ALIAS_DEFAULT), reference(false), decay(false), indirect_result(false),
+		alias(ALIAS_DEFAULT), reference(false), indirect_result(false),
 		by_address(false) {}
 };
 

@@ -296,10 +296,6 @@ bool commutative(LowOperation op)
 
 bool fold_unary(const Instruction & ins, Operand * result)
 {
-  if(ins.op.kind == LowOperation::LOP_DECAY && ins.type.kind == lowir_model::LTK_PTR) {
-    *result = ins.first;
-    return true;
-  }
   if(ins.first.kind != Operand::OP_INTEGER || !ins.first.has_int_value ||
      !is_integer_type(ins.type)) return false;
   if(lowir_model::lowir_type_bit_width(ins.type) > 64) {

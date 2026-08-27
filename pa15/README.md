@@ -283,6 +283,9 @@ This PA15 milestone supports the following:
   two pointers into the same array is exactly divisible by the element size,
   a positive power-of-two size may be lowered as an arithmetic right shift,
   while other element sizes retain signed division
+- array-to-pointer and function-to-pointer decay produce an ordinary LowIR
+  `ptr` using the existing address, index, parameter, or `copy ptr` operations;
+  do not add a decay-specific unary operation or parameter-passing annotation
 - scoped and unscoped enums, enum constants, enum promotion/comparison, and
   enum lowering
 - built-in casts over the supported scalar, function, reference, and pointer

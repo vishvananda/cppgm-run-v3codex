@@ -1950,6 +1950,10 @@ sub validate_lowir_text
 	push @errors, "removed unreachable role in generated LowIR"
 		if !$options->{allow_legacy_unreachable_role} &&
 		   $data =~ /\brole\s*=\s*unreachable\b/;
+	push @errors, "removed decay surface in generated LowIR"
+		if !$options->{allow_legacy_decay_surface} &&
+		   ($data =~ /\bpass\s*=\s*decay\b/ ||
+		    $data =~ /^\s*%[A-Za-z0-9_]+\s*=\s*unary\s+decay\s+ptr\b/m);
 
 	my @tops = ($data =~ /^(?:declare\s+(?:function|global)|function|global)\s+@([A-Za-z0-9_]+)\b/gm);
 	my %top_count;
@@ -2110,6 +2114,7 @@ sub lowir_metadata_item_ignored_for_compare
 	return 1 if $key eq 'role' && $value =~ /^(?:allocate_memory|free_memory|terminate|pure_virtual|dynamic_cast|bad_cast|bad_typeid|rtti_class|rtti_si|rtti_vmi|rtti_data)$/;
 	return 1 if $key =~ /^(?:linkage|binding|object|tls_for|keep_alias|prefer_local|trivial_lifecycle|force_inline|inline_hint|no_inline)$/;
 	return 1 if $key =~ /^(?:effects|unwind|return|capture|access|alias|projection)$/;
+	return 1 if $key eq 'pass' && $value eq 'decay';
 	return 1 if $key eq 'storage' && $value =~ /^(?:readonly|writable)$/;
 	return 0;
 }
@@ -2746,6 +2751,53 @@ sub canonicalize_lowir_unreachable_role_for_compare
 	return join("\n\n", @retained) . (scalar(@retained) ? "\n" : "");
 }
 
+sub canonicalize_lowir_decay_for_compare
+{
+	my ($data) = @_;
+	my @entries = split_lowir_top_level_entries($data);
+	for my $entry (@entries)
+	{
+		next if $entry !~ /^(?:declare\s+)?function /;
+		my @lines = split(/\n/, $entry, -1);
+		my %aliases;
+		my @retained;
+		for my $line (@lines)
+		{
+			if ($line =~ /^\s*%([A-Za-z0-9_]+)\s*=\s*unary\s+decay\s+ptr\s+(\S+)(?:\s+!dbg\([^\n]*\))?\s*$/)
+			{
+				$aliases{$1} = $2;
+				next;
+			}
+			push @retained, $line;
+		}
+		for(my $iteration = 0;
+		    $iteration < scalar(keys(%aliases)); ++$iteration)
+		{
+			my $changed = 0;
+			for my $name (keys(%aliases))
+			{
+				my $operand = $aliases{$name};
+				if ($operand =~ /^%([A-Za-z0-9_]+)$/ &&
+				    exists($aliases{$1}))
+				{
+					$aliases{$name} = $aliases{$1};
+					$changed = 1;
+				}
+			}
+			last if !$changed;
+		}
+		for my $line (@retained)
+		{
+			for my $name (keys(%aliases))
+			{
+				$line =~ s/%\Q$name\E\b/$aliases{$name}/ge;
+			}
+		}
+		$entry = join("\n", @retained);
+	}
+	return join("\n\n", @entries) . (scalar(@entries) ? "\n" : "");
+}
+
 sub remove_lowir_metadata_item
 {
 	my ($entry, $key, $value) = @_;
@@ -2788,6 +2840,7 @@ sub canonicalize_lowir_pair_for_compare
 		$ref_data, $my_data);
 	$ref_data = canonicalize_lowir_trivial_lifecycle_for_compare($ref_data);
 	$ref_data = canonicalize_lowir_unreachable_role_for_compare($ref_data);
+	$ref_data = canonicalize_lowir_decay_for_compare($ref_data);
 	my ($ref_functions, $my_functions) =
 		paired_lowir_function_symbol_maps($ref_data, $my_data);
 	my ($ref_globals, $my_globals) =
@@ -3207,7 +3260,8 @@ sub compare_lowir_text
 		$source_file,
 		{ strict_presentation_order => 1,
 		  allow_legacy_trivial_lifecycle => 1,
-		  allow_legacy_unreachable_role => 1 });
+		  allow_legacy_unreachable_role => 1,
+		  allow_legacy_decay_surface => 1 });
 	return (0, "ERROR: invalid reference LowIR: $ref_error") if !$ref_valid;
 	my ($my_valid, $my_error) = validate_lowir_text(
 		$my_data,

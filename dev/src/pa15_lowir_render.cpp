@@ -70,7 +70,7 @@ void WriteParameter(std::ostream& output, const TypedProgram& program,
 {
 	output << '%' << program.strings.get(parameter.name) << " : ";
 	WriteType(output, parameter.type);
-	if (parameter.reference || parameter.decay || parameter.indirect_result ||
+	if (parameter.reference || parameter.indirect_result ||
 		parameter.by_address ||
 		parameter.capture != Parameter::CAPTURE_DEFAULT ||
 		parameter.access != Parameter::ACCESS_DEFAULT ||
@@ -81,11 +81,6 @@ void WriteParameter(std::ostream& output, const TypedProgram& program,
 		if (parameter.reference)
 		{
 			output << "pass=reference";
-			separator = true;
-		}
-		else if (parameter.decay)
-		{
-			output << "pass=decay";
 			separator = true;
 		}
 		else if (parameter.indirect_result)

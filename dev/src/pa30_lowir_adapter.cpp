@@ -279,8 +279,6 @@ void AdaptParameterFacts(const Parameter& source,
 	target->type = AdaptType(source.type);
 	if (source.reference)
 		target->metadata.passing = lowir_model::PPM_REFERENCE;
-	else if (source.decay)
-		target->metadata.passing = lowir_model::PPM_DECAY;
 	else if (source.indirect_result)
 		target->metadata.passing = lowir_model::PPM_INDIRECT_RESULT;
 	else if (source.by_address)
@@ -491,11 +489,10 @@ lowir_model::LowOperation AdaptOperation(LowOperation source)
 		lowir_model::LowOperation::LOP_FPTOSI,
 		lowir_model::LowOperation::LOP_FPTOUI,
 		lowir_model::LowOperation::LOP_FPTRUNC,
-		lowir_model::LowOperation::LOP_FPEXT,
-		lowir_model::LowOperation::LOP_DECAY
+		lowir_model::LowOperation::LOP_FPEXT
 	};
 	static_assert(sizeof(operations) / sizeof(operations[0]) ==
-		static_cast<std::size_t>(LOW_OP_DECAY) + 1,
+		static_cast<std::size_t>(LOW_OP_FPEXT) + 1,
 		"typed and compact LowIR operation tables must stay synchronized");
 	const std::size_t index = static_cast<std::size_t>(source);
 	if (index >= sizeof(operations) / sizeof(operations[0]))

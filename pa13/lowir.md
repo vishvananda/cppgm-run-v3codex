@@ -152,7 +152,7 @@ The declaration/definition split is explicit:
 declare global @name
 declare global @name : <type>
 declare function @name(%a : i64, %b : ptr) -> i64
-declare function @printf(%fmt : ptr [pass=decay]) -> i32 [arity=variadic]
+declare function @printf(%fmt : ptr) -> i32 [arity=variadic]
 ```
 
 Top-level declarations and definitions may also carry explicit symbol metadata:
@@ -163,7 +163,7 @@ declare global @__external_rtti__int : ptr [binding=strong, object=_ZTIi]
 declare global @ro_table : ptr [storage=readonly]
 declare global @tls_state : i64 [storage=thread_local]
 declare function @user_entry() -> i64 [role=entry]
-declare function @puts(%fmt : ptr [pass=decay]) -> i32 [arity=variadic, linkage=c]
+declare function @puts(%fmt : ptr) -> i32 [arity=variadic, linkage=c]
 global @lookup_table : ptr [storage=readonly] = zero
 global @tls_counter : i64 [storage=thread_local] = 7
 function @main() -> i64 [role=entry, binding=strong, keep_alias=yes] {
@@ -319,7 +319,7 @@ again.
 Functions may also carry explicit call-boundary metadata after the return type:
 
 ```text
-declare function @printf(%fmt : ptr [pass=decay]) -> i32 [arity=variadic, effects=readonly]
+declare function @printf(%fmt : ptr) -> i32 [arity=variadic, effects=readonly]
 function @sum(%count : i64) -> i64 [arity=variadic] {
   ...
 }
@@ -556,7 +556,7 @@ Parameters may also carry explicit passing metadata after the parameter type:
 function @helper(%ret : ptr [pass=indirect_result],
                  %obj : ptr [pass=by_address],
                  %ref : ptr [pass=reference],
-                 %arr : ptr [pass=decay],
+                 %arr : ptr,
                  %buf : ptr [capture=nocapture, access=read, alias=noalias],
                  %x : i64) -> void {
   ...
@@ -571,7 +571,6 @@ The currently defined pass values are:
 - `indirect_result`
 - `by_address`
 - `reference`
-- `decay`
 
 Omission means ordinary direct-value passing and has no explicit spelling.
 
@@ -599,7 +598,6 @@ The intended meaning is semantic, not host-ABI-specific:
 - `indirect_result`: this pointer names caller-owned result storage
 - `by_address`: this parameter is an indirect object/value boundary
 - `reference`: this parameter is a reference boundary
-- `decay`: this parameter came from array/function decay
 - `nocapture`: the callee does not retain the incoming pointer value beyond the call
 - `read`: the callee only reads through the incoming pointer
 - `write`: the callee only writes through the incoming pointer
@@ -702,7 +700,8 @@ The intended convention is:
 - complete object return-by-value may also use an explicit leading destination pointer
   `ptr [pass=indirect_result]` when the source boundary is itself indirect
 - source-level references use `ptr [pass=reference]`
-- decayed array/function parameters use `ptr [pass=decay]`
+- array/function decay is represented by an ordinary `ptr`; LowIR does not
+  retain the source-level origin of an already-lowered pointer value
 - variadic functions use explicit `arity=variadic` metadata on the function declaration or
   definition
 - complete object locals may be represented by addressable storage rather than scalar
@@ -1019,9 +1018,10 @@ For runnable adapters such as PA13 `lowir2cy86`, a good implementation strategy 
 - keep the operation as a first-class LowIR unary op rather than expanding it during C++
   lowering, so later native/object backends can choose the best lowering directly
 
-`unary decay ptr` is a semantic identity on pointers. It exists to mark the point where an
-array or function entity decays into a pointer view, instead of forcing later passes to
-reconstruct that fact from surrounding address arithmetic alone.
+Array-to-pointer and function-to-pointer decay use the ordinary pointer value
+produced by `addr`, `index`, a parameter, or `copy ptr`. There is no decay-specific
+unary operation: once the source construct has become a `ptr`, its source-level
+origin does not change LowIR behavior.
 
 In the PA13 `lowir2cy86` scaffold, these operations may use a principled single-threaded
 interpretation:

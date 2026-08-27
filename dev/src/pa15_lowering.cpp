@@ -1166,17 +1166,9 @@ private:
 		Emit(address);
 		return result;
 	}
-
 	Operand DecayAddress(const Operand& address)
 	{
-		const Operand result = Temp(LowPtr());
-		Instruction decay(Instruction::UNARY);
-		decay.dest = result.id;
-		decay.op = LOW_OP_DECAY;
-		decay.type = LowPtr();
-		decay.first = address;
-		Emit(decay);
-		return result;
+		return address;
 	}
 
 	Operand IndexAddress(const LowType& element, const Operand& base,
@@ -1208,8 +1200,7 @@ private:
 				return AddressOfStorage(LowerStorage(node));
 			return record.kind == DUMP_CONDITIONAL_EXPRESSION || record.kind ==
 				DUMP_SUBSCRIPT_EXPRESSION || record.kind == DUMP_CALL_EXPRESSION ?
-				LowerStorage(node) :
-				DecayAddress(AddressOfStorage(LowerStorage(node)));
+				LowerStorage(node) : AddressOfStorage(LowerStorage(node));
 		}
 		return LowerValue(node, LowPtr());
 	}
@@ -1448,8 +1439,7 @@ private:
 				AddressOfStorage(LowerStorage(node)) :
 				(record.kind == DUMP_CONDITIONAL_EXPRESSION ||
 				 record.kind == DUMP_CALL_EXPRESSION) ?
-				LowerStorage(node) :
-				DecayAddress(AddressOfStorage(LowerStorage(node)));
+				LowerStorage(node) : AddressOfStorage(LowerStorage(node));
 		else if (record.kind == DUMP_LITERAL)
 		{
 			const LowType type = LowerType(record.type);
@@ -1488,12 +1478,12 @@ private:
 			else if (record.binding != kNoBinding && record.binding < function_symbols_.size() &&
 				function_symbols_[record.binding] != kNoLowId)
 			{
-				result = DecayAddress(AddressOfStorage(Operand(Operand::FUNCTION,
-					function_symbols_[record.binding], LowPtr())));
+				result = AddressOfStorage(Operand(Operand::FUNCTION,
+					function_symbols_[record.binding], LowPtr()));
 			}
 			else if (IsFunctionType(record.type))
 			{
-				result = DecayAddress(LowerStorage(node));
+				result = LowerStorage(node);
 			}
 			else
 			{

@@ -30,7 +30,7 @@ instruction	atomic_add_fetch	atomic semantic lowering;explicit LowIR	CY86 model;
 instruction	atomic_thread_fence	atomic semantic lowering;explicit LowIR	memory ordering;native	pa13/README.md	pa13/tests/spec/200-atomic-fences.t	keep	thread fence semantics
 instruction	atomic_signal_fence	atomic semantic lowering;explicit LowIR	memory ordering;native	pa13/README.md	pa13/tests/spec/200-atomic-fences.t	keep	signal fence semantics
 instruction	index	semantic lowering;explicit LowIR	address optimization;CY86;native	pa13/README.md	pa13/tests/spec/100-index-slot.t	keep	scaled address operation
-instruction	unary	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/200-unary-ops.t	keep	scalar unary family;decay variant ablate
+instruction	unary	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/200-unary-ops.t	keep	scalar unary family retained; redundant decay identity removed
 instruction	binary	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/200-binary-int-ops.t	keep	scalar arithmetic family
 instruction	cmp	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/200-compare-predicates.t	keep	typed comparison
 instruction	convert	semantic lowering;explicit LowIR	optimizer;CY86;native	pa13/README.md	pa13/tests/spec/200-integral-float-conversions.t	keep	typed conversion
@@ -102,7 +102,7 @@ metadata	arity=fixed|variadic|prototype_relaxed	semantic lowering;explicit LowIR
 metadata	effects=default|readnone|readonly|readwrite	builtin/function lowering;explicit LowIR	memory barriers;load reuse	pa13/README.md	pa13/tests/spec/200-function-effect-metadata-smoke.t	keep	readwrite spelling redundant; non-default facts active
 metadata	unwind=default|may|no	function lowering;explicit LowIR	EH edge and call cleanup	pa13/README.md	pa13/tests/spec/200-function-effect-metadata-smoke.t	keep	may spelling redundant; nounwind active
 metadata	return=default|returns|noreturn	function lowering;explicit LowIR	CFG continuation cleanup;native	pa13/README.md	pa13/tests/spec/200-function-effect-metadata-smoke.t	keep	returns spelling redundant; noreturn active
-metadata	pass=direct|indirect_result|by_address|reference|decay	ABI/source lowering;explicit LowIR	call ABI and object address materialization	pa13/README.md	pa13/tests/spec/200-call-boundary-metadata.t	ablate	retain proven object modes; ablate source-origin modes and explicit direct
+metadata	pass=indirect_result|by_address|reference	ABI/source lowering;explicit LowIR	call ABI and object address materialization	pa13/README.md	cppgm.tests/course/pa13/controls/retained-call-boundary-metadata.lowir	ablate	direct and decay spellings removed; retained modes have structural and CY86 behavior coverage; reference remains a separate ablation
 metadata	capture=default|nocapture|maycapture	builtin boundary lowering;explicit LowIR	signature identity only	pa13/README.md	pa13/tests/spec/200-parameter-capture-metadata-smoke.t	ablate	no active optimization consumer
 metadata	access=default|read|write	builtin boundary lowering;explicit LowIR	signature identity only	pa13/README.md	pa13/tests/spec/200-parameter-access-metadata-smoke.t	ablate	unproduced none and redundant readwrite spellings removed; active read/write values remain for the family ablation
 metadata	alias=default|noalias	boundary lowering;explicit LowIR	staged-copy disjointness proof	pa13/README.md	pa13/tests/spec/200-parameter-alias-metadata-smoke.t	keep	active noalias consumer

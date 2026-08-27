@@ -75,6 +75,11 @@ test: $(TEST_DEPS)
 			"$(COURSE_CONTROL_TEST_ROOT)"; \
 		perl ../scripts/check_pa13_removed_parameter_metadata.pl \
 			$(LOWIROPT_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
+		perl ../scripts/check_pa13_removed_instructions.pl \
+			$(LOWIROPT_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
+		perl ../scripts/check_pa13_call_boundary_metadata.pl \
+			$(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) \
+			"$(COURSE_CONTROL_TEST_ROOT)"; \
 	fi
 endif
 
@@ -101,6 +106,9 @@ CHECK_RUN = case "$(TEST)" in \
 	$(COURSE_CONTROL_TEST_ROOT)/*unreachable*) perl ../scripts/check_pa13_unreachable_terminator.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(COURSE_CONTROL_TEST_ROOT)" ;; \
 	$(COURSE_CONTROL_TEST_ROOT)/*removed-unreachable-role*) perl ../scripts/check_pa13_unreachable_terminator.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(COURSE_CONTROL_TEST_ROOT)" ;; \
 	$(COURSE_CONTROL_TEST_ROOT)/*removed-access-none*) perl ../scripts/check_pa13_removed_parameter_metadata.pl $(LOWIROPT_APP) "$(TEST)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*removed-pass-decay*) perl ../scripts/check_pa13_removed_parameter_metadata.pl $(LOWIROPT_APP) "$(TEST)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*removed-unary-decay*) perl ../scripts/check_pa13_removed_instructions.pl $(LOWIROPT_APP) "$(TEST)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*retained-call-boundary-metadata*) perl ../scripts/check_pa13_call_boundary_metadata.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(TEST)" ;; \
 	*) scripts/run_all_tests.pl $(CPPGM_TEST_APP) check "$(TEST)" ;; \
 esac
 CHECK_COMPARE = case "$(TEST)" in \

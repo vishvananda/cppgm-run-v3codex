@@ -108,8 +108,6 @@ protected:
 					derived.LowerType(source_parameters[p]);
 				parameter.reference =
 					derived.IsReferenceType(source_parameters[p]);
-				parameter.decay = p != 0 && derived.IsArrayType(
-					derived.program_.bindings[helper.members[p - 1]].type);
 				if (derived.output_.retain_local_names)
 					parameter.name = derived.output_.strings.intern(p == 0 ?
 						std::string("this") : derived.program_.names.Get(

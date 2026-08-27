@@ -1,4 +1,4 @@
-declare function @puts(%s : ptr [pass=decay]) -> i32 [linkage=c, binding=strong]
+declare function @puts(%s : ptr) -> i32 [linkage=c, binding=strong]
 declare global @shared_state : ptr [binding=weak]
 
 function @helper() -> i64 [binding=internal] {

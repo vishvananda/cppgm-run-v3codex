@@ -81,8 +81,7 @@ struct LowOperation
     LOP_FPTOSI,
     LOP_FPTOUI,
     LOP_FPTRUNC,
-    LOP_FPEXT,
-    LOP_DECAY
+    LOP_FPEXT
   } kind;
 
   LowOperation() : kind(LOP_NONE) {}
@@ -236,8 +235,7 @@ enum ParamPassingMode
   PPM_DIRECT,
   PPM_INDIRECT_RESULT,
   PPM_BY_ADDRESS,
-  PPM_REFERENCE,
-  PPM_DECAY
+  PPM_REFERENCE
 };
 
 enum ParamCaptureMode

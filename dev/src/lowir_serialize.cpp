@@ -76,7 +76,6 @@ void write_parameter_metadata(std::ostream & out, const ParameterMetadata & valu
   case PPM_INDIRECT_RESULT: metadata.item("pass", "indirect_result"); break;
   case PPM_BY_ADDRESS: metadata.item("pass", "by_address"); break;
   case PPM_REFERENCE: metadata.item("pass", "reference"); break;
-  case PPM_DECAY: metadata.item("pass", "decay"); break;
   }
   switch(value.capture) {
   case PCM_DEFAULT: break;

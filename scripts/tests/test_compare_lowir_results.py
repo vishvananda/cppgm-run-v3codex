@@ -226,6 +226,39 @@ function @trap() -> void {
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unknown parameter access mode 'none'", result.stdout)
 
+    def test_lowir_sanity_rejects_removed_pass_decay(self):
+        generated = REFERENCE.replace(
+            "%left : i64", "%left : ptr [pass=decay]", 1
+        )
+        result = self.compare(REFERENCE, generated)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("removed decay surface", result.stdout)
+
+    def test_lowir_sanity_rejects_removed_unary_decay(self):
+        generated = REFERENCE.replace(
+            "%sum = binary add i64 %left, %right",
+            "%decayed = unary decay ptr nullptr\n"
+            "    %sum = binary add i64 %left, %right",
+        )
+        result = self.compare(REFERENCE, generated)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("removed decay surface", result.stdout)
+
+    def test_relaxed_compare_erases_legacy_unary_decay(self):
+        reference = REFERENCE.replace(
+            "%sum = binary add i64 %left, %right",
+            "%pointer = copy ptr nullptr\n"
+            "    %decayed = unary decay ptr %pointer\n"
+            "    %sum = binary add i64 %left, %right",
+        )
+        generated = REFERENCE.replace(
+            "%sum = binary add i64 %left, %right",
+            "%pointer = copy ptr nullptr\n"
+            "    %sum = binary add i64 %left, %right",
+        )
+        result = self.compare(reference, generated)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
     def test_relaxed_compare_retains_nontrivial_calls(self):
         reference = REFERENCE.replace(
             "%sum = binary add i64 %left, %right",

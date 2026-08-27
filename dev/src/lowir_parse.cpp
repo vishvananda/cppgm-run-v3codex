@@ -54,8 +54,7 @@ LowOperation::Kind operation_kind(const std::string & text)
     {"fptosi", LowOperation::LOP_FPTOSI},
     {"fptoui", LowOperation::LOP_FPTOUI},
     {"fptrunc", LowOperation::LOP_FPTRUNC},
-    {"fpext", LowOperation::LOP_FPEXT},
-    {"decay", LowOperation::LOP_DECAY}
+    {"fpext", LowOperation::LOP_FPEXT}
   };
   for(std::size_t i = 0; i < sizeof(operations) / sizeof(operations[0]); ++i)
     if(text == operations[i].first) return operations[i].second;
@@ -510,7 +509,6 @@ private:
       if(value == "indirect_result") out.passing = PPM_INDIRECT_RESULT;
       else if(value == "by_address") out.passing = PPM_BY_ADDRESS;
       else if(value == "reference") out.passing = PPM_REFERENCE;
-      else if(value == "decay") out.passing = PPM_DECAY;
       else throw ParseError("invalid parameter pass metadata");
     } else if(key == "capture") {
       if(value == "nocapture") out.capture = PCM_NOCAPTURE;
@@ -1471,7 +1469,6 @@ private:
   void validate_operation_types(const Instruction & ins)
   {
     if(ins.kind == Instruction::IK_UNARY) {
-      if(ins.op.kind == LowOperation::LOP_DECAY && ins.type.kind != LTK_PTR) throw ParseError("decay requires ptr");
       if(ins.op.kind == LowOperation::LOP_BSWAP && ins.type.kind != LTK_I16 && ins.type.kind != LTK_U16 &&
          ins.type.kind != LTK_I32 && ins.type.kind != LTK_U32 &&
          ins.type.kind != LTK_I64) throw ParseError("invalid bswap type");
@@ -1725,7 +1722,6 @@ const char * lowir_operation_text(LowOperation operation)
   case LowOperation::LOP_FPTOUI: return "fptoui";
   case LowOperation::LOP_FPTRUNC: return "fptrunc";
   case LowOperation::LOP_FPEXT: return "fpext";
-  case LowOperation::LOP_DECAY: return "decay";
   }
   throw ParseError("invalid compact LowIR operation identity");
 }
