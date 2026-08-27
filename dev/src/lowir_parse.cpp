@@ -516,8 +516,7 @@ private:
       if(value == "nocapture") out.capture = PCM_NOCAPTURE;
       else throw ParseError("invalid parameter capture metadata");
     } else if(key == "access") {
-      if(value == "none") out.access = PAM_NONE;
-      else if(value == "read") out.access = PAM_READ;
+      if(value == "read") out.access = PAM_READ;
       else if(value == "write") out.access = PAM_WRITE;
       else throw ParseError("invalid parameter access metadata");
     } else if(key == "alias" && value == "noalias") out.alias = PALM_NOALIAS;

@@ -218,6 +218,14 @@ function @trap() -> void {
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("removed unreachable role", result.stdout)
 
+    def test_lowir_sanity_rejects_removed_access_none(self):
+        generated = REFERENCE.replace(
+            "%left : i64", "%left : ptr [access=none]", 1
+        )
+        result = self.compare(REFERENCE, generated)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unknown parameter access mode 'none'", result.stdout)
+
     def test_relaxed_compare_retains_nontrivial_calls(self):
         reference = REFERENCE.replace(
             "%sum = binary add i64 %left, %right",

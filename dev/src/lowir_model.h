@@ -249,7 +249,6 @@ enum ParamCaptureMode
 enum ParamAccessMode
 {
   PAM_DEFAULT,
-  PAM_NONE,
   PAM_READ,
   PAM_WRITE
 };

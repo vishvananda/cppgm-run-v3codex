@@ -84,7 +84,6 @@ void write_parameter_metadata(std::ostream & out, const ParameterMetadata & valu
   }
   switch(value.access) {
   case PAM_DEFAULT: break;
-  case PAM_NONE: metadata.item("access", "none"); break;
   case PAM_READ: metadata.item("access", "read"); break;
   case PAM_WRITE: metadata.item("access", "write"); break;
   }

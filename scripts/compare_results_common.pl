@@ -569,7 +569,7 @@ sub parse_lowir_parameter_metadata_suffix
 		elsif ($key eq 'access')
 		{
 			return (0, "unknown parameter access mode '$value'")
-				if $value !~ /^(?:none|read|write|readwrite)$/;
+				if $value !~ /^(?:read|write|readwrite)$/;
 			$metadata{access} = $value;
 		}
 		elsif ($key eq 'alias')

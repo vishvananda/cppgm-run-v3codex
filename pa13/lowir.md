@@ -584,7 +584,6 @@ no explicit spelling.
 
 The currently defined access values are:
 
-- `none`
 - `read`
 - `write`
 
@@ -602,7 +601,6 @@ The intended meaning is semantic, not host-ABI-specific:
 - `reference`: this parameter is a reference boundary
 - `decay`: this parameter came from array/function decay
 - `nocapture`: the callee does not retain the incoming pointer value beyond the call
-- `none`: the callee does not dereference the incoming pointer
 - `read`: the callee only reads through the incoming pointer
 - `write`: the callee only writes through the incoming pointer
 - `noalias`: this incoming pointer is disjoint from every other pointer

@@ -1,0 +1,6 @@
+declare function @observe(%value : ptr [access=none]) -> void
+
+function @main() -> i64 [role=entry] {
+  block ^entry:
+    return i64 0
+}
