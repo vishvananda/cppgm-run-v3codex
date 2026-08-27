@@ -3591,6 +3591,48 @@ inception lane while another build or profiler is active.
   behavior, and no compiler, make, profiler, Cachegrind, or Valgrind process
   remains active.
 
+- **P32-L113 (ADJACENT 16-BYTE SCALAR-TRANSFER PROBE REJECTED BY
+  SAME-SOURCE RATIO).** Exact-final profiles showed that self still used four
+  scalar memory operations for adjacent 64-bit cursor fields where Clang used
+  one unaligned vector load and store.  A source-independent native probe
+  recognized two adjacent nonvolatile integer/pointer loads whose only uses
+  were ordered adjacent stores, with exact liveness, alias-point, CFG, and
+  reserved-scratch-clobber checks.  Separate `load_bytes16` and
+  `store_bytes16` pseudos kept the read and write at their original semantic
+  positions instead of moving a copy across possible aliasing work.
+
+  A current full-source census found 5,069 adjacent load pairs in 174
+  translation units and 80 conservatively proved transfers across 205 final
+  MIR files.  The generated programs lost 167 MIR lines and 1,216 aggregate
+  text bytes; `Lexer::Peek` changed its two-load/two-store field transfer to
+  `movdqu` and shrank 12 bytes.  The implementation itself outweighed that
+  density win: complete compiler text grew 8,656,879 -> 8,668,127 bytes.
+  PA29 passed 291/291 and PA38 passed 46/46.  The explicit O1/all-32 candidate
+  prepared in 17.97 seconds at
+  `/dev/shm/v3codex-pair16-candidate.kSNPrC/bin/selfhost/cppgm++-self`,
+  SHA-256
+  `621db7ee5f1844547060dec45d945c538ef3ed4fc5c1dc696c897f1fd85c4dac`.
+
+  Two successful self lanes measured 32.13/872.57/49.14 and
+  32.83/873.99/49.36 seconds wall/user/system.  The second had a 79,342
+  involuntary-context-switch scheduler tail, while both give ordinary
+  aggregate work averaging 922.53 CPU seconds.  An earlier compile-complete
+  lane is excluded entirely because the candidate had accidentally been
+  inferred as `CPPGM_HOST_CXX` and native linking failed; the corrected lanes
+  explicitly used `CPPGM_HOST_CXX=g++` and produced the candidate hash above.
+
+  The exact-source GCC compiler prepared with all three job levels at 32 in
+  29.57 seconds under `/dev/shm/v3codex-pair16-gcc-prep.NbS08w`.  Its first
+  lane at 23.21/554.34/46.35 had both a large scheduler tail and elevated
+  aggregate work and is excluded.  The clean repeat measured
+  21.00/542.43/45.01 seconds and reproduced the candidate hash.  The usable
+  ratios are therefore about 1.530x wall and 1.570x aggregate CPU, both worse
+  than L106's retained 1.516x/1.562x GCC point.  GCC benefits more from the
+  added source and the small target-code saving does not pay for the analysis,
+  so no Clang lane is warranted.  The implementation is removed; no student
+  contract/property is retained for rejected behavior, and no compiler,
+  profiler, Cachegrind, or Valgrind process remains active.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
