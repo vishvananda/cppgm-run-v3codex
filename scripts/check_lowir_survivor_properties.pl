@@ -98,7 +98,7 @@ if(scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:385-branch-boolean-conversion|386-negated-boolean-compare|387-duplicate-block-loads|388-staged-copy-forwarding|389-aggregate-slot-scalar-replacement|390-sink-cold-blocks|391-inline-growth-budget-boundary|392-inline-trivial-leaf-budget-exempt|392-sink-cold-only-definitions|395-truncate-noreturn-continuation|475-inline-discardable-size-cap|476-inline-single-call-caller-budget|490-inline-hint-late-nonleaf|506-nonzero-underflow-predicate|507-adjacent-noalias-scalar-copy|508-fully-overwritten-zero-init|509-shared-loop-inline-policy|510-cold-path-discounted-inlining|511-phi-integrity-survivors|528-nonzero-underflow-value-proof|540-volatile-access-preservation)\.t$/);
+	qr/(?:385-branch-boolean-conversion|386-negated-boolean-compare|387-duplicate-block-loads|388-staged-copy-forwarding|389-aggregate-slot-scalar-replacement|390-sink-cold-blocks|391-inline-growth-budget-boundary|392-inline-trivial-leaf-budget-exempt|392-sink-cold-only-definitions|395-truncate-noreturn-continuation|475-inline-discardable-size-cap|476-inline-single-call-caller-budget|490-inline-hint-late-nonleaf|506-nonzero-underflow-predicate|507-adjacent-noalias-scalar-copy|508-fully-overwritten-zero-init|509-shared-loop-inline-policy|510-cold-path-discounted-inlining|511-phi-integrity-survivors|528-nonzero-underflow-value-proof|529-loop-carried-store-forwarding|540-volatile-access-preservation)\.t$/);
 die "No LowIR survivor-property tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -348,6 +348,24 @@ for my $test (@tests)
 			$test, $o1, 'retain_different_nonzero_value');
 		die "$test: O1 confused distinct nonzero and decremented values\n"
 			if $guard !~ /^\s+%\w+ = cmp uge u32 /m;
+		next;
+	}
+	if($test =~ /529-loop-carried-store-forwarding/) {
+		my $baseline = function_body(
+			$test, $o0, 'forward_exact_store');
+		my $positive = function_body(
+			$test, $o1, 'forward_exact_store');
+		die "$test: O0 lost the loop-header load baseline\n"
+			if $baseline !~ /block \^header:.*?^\s+%\w+ = load i64 \@cell$/ms;
+		die "$test: O1 did not replace the loop-header load with a phi\n"
+			if $positive !~ /block \^header:\n\s+%\w+ = phi i64 /m ||
+			   $positive =~ /block \^header:.*?^\s+%\w+ = load i64 \@cell$/ms;
+		for my $name ('retain_ordinary_exact_store',
+				'retain_different_store', 'retain_post_store_call') {
+			my $guard = function_body($test, $o1, $name);
+			die "$test: O1 forwarded an unproved backedge store in $name\n"
+				if $guard !~ /block \^header:.*?^\s+%\w+ = load i64 \@cell$/ms;
+		}
 		next;
 	}
 	if($test =~ /507-adjacent-noalias-scalar-copy/) {

@@ -385,6 +385,15 @@ running optimizing transforms.
   earlier than the redundant load's final use, so the rewrite does not extend
   the value's layout lifetime; `readnone` and `readonly` nonthrowing calls
   preserve valid load facts
+- in an explicitly `inline_hint=yes` definition, forwarding a nonvolatile
+  scalar load at a natural-loop header through a typed `phi` when the loop has
+  one ordinary preheader and every backedge ends by storing a locally computed
+  value to that exact location; the initial load moves to the preheader and
+  each stored value becomes its backedge input, so the header does not reload
+  a value that was just stored. An ordinary definition, a missing or
+  conditional store, a volatile access, an exceptional loop, a different
+  address or type, or any operation after the store that could change memory
+  keeps the original header load
 
 `-O2` must include all `-O1` scalar cleanup and additionally support these
 conservative memory, loop, and interprocedural transforms:

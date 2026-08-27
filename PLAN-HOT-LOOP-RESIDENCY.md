@@ -3944,6 +3944,56 @@ inception lane while another build or profiler is active.
   self reloads it immediately.  Test this as generic loop-carried exact-store
   forwarding, not as a source rewrite or field-specific rule.
 
+- **P32-L122 (HINTED LOOP-CARRIED EXACT-STORE FORWARDING RETAINED;
+  WALL TARGET RESTORED).** The remaining `Lexer::Peek` header reload was the
+  predicted generic loop case: every ordinary backedge stored a locally
+  computed value to the exact nonvolatile scalar location and then jumped
+  directly to the header, yet the header loaded that location again.  O1 now
+  moves the initial load to the unique ordinary preheader and replaces the
+  header load with a typed `phi` whose backedge inputs are the exact stored
+  values.  The bounded rule rejects exceptional loops, volatile or mismatched
+  addresses/types, missing or conditional stores, values not defined in the
+  latch, and any instruction after the store other than the header jump.  It
+  performs at most one rewrite per definition.
+
+  A broad implementation was a useful destructive-interference control.  Even
+  after a cheap latch-shape preflight, it added loop analysis to ordinary
+  definitions, grew compiler text by about 21 KiB, and changed reverse-order
+  same-source wall from a 31.885-second baseline mean to a 32.435-second
+  candidate mean (+1.73%) while aggregate CPU was flat (908.295 -> 907.690
+  seconds).  That policy is rejected.  The retained rule is limited to the
+  existing student-visible `inline_hint=yes` contract.  It fires twice in
+  `pp_tokenizer.cpp`, removes the target reload, shrinks `Lexer::Peek`
+  323 -> 315 bytes, and grows complete compiler text only
+  8,621,687 -> 8,640,083 bytes for the implementation.
+
+  Reverse-order identical-source lanes using the L121 compiler measured
+  32.40/858.13/49.29 and 31.61/855.94/48.94 seconds wall/user/system; retained
+  candidate lanes measured 31.44/852.74/49.09 and 32.35/853.08/48.71.  Mean
+  self wall/aggregate CPU therefore improves 32.005/906.150 ->
+  31.895/901.810 seconds.  Exact-candidate-source GCC lanes measured
+  21.17/544.37/44.91 and 21.75/545.54/44.51; Clang lanes measured
+  22.53/565.47/44.10 and 21.63/564.04/43.85.  The resulting mean ratios are
+  **1.486x GCC** and **1.445x Clang** by wall, and **1.529x GCC** and
+  **1.481x Clang** by aggregate CPU.  The primary maximum same-source wall
+  ratio is again below 1.50x.
+
+  The all-32 candidate compiler under
+  `/dev/shm/v3codex-loop-hint.ceoADi` and every retained timing lane produced
+  SHA-256
+  `8b6952075632e689e99e8a7f502e1f3c00b9cfa6d280e07e0e33c3653b69bbd4`.
+  The exact-source GCC and Clang host preparations are respectively
+  `/dev/shm/v3codex-loop-hint-gcc-prep.mx92EW` and
+  `/dev/shm/v3codex-loop-hint-clang-prep.Q5SiyN`; timed workloads kept
+  `CPPGM_HOST_CXX=g++` and outer, inner, and object parallelism at 32.
+  PA37's README describes the constrained transformation.  Control
+  `529-loop-carried-store-forwarding` checks the O0 load baseline, O1
+  load-to-phi structure, ordinary-definition policy, address and post-store
+  barriers, and executable result without matching a complete program.
+  Focused PA37 passes 188/188 and PA38 passes 45/45.  The cumulative report,
+  file audit, byte-identity inception gate, commit, and push follow as the
+  checkpoint for L121-L122.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,

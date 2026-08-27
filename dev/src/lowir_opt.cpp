@@ -2688,6 +2688,8 @@ void optimize_function_bodies(
       }
     }
     hoist_loop_invariants(&program, &function, &analysis, level, stats);
+    if(level >= 1)
+      forward_loop_carried_store_loads(&function, &analysis, stats);
     if(level >= 2 &&
        memory_gvn.eliminate_redundant_loads(&function, &analysis, stats)) {
       timed_function_pass(simplify_values, &function, stats,
@@ -2998,6 +3000,11 @@ void optimize(LowirProgram & program, int level, Stats * stats,
         &simplify_arena);
       timed_dce(&program.functions[i], boundaries, stats, &dce_scratch);
       timed_cfg(&program.functions[i], stats, &cfg_scratch, &analysis);
+    }
+    if(inlined_symbols[program.functions[i].symbol]) {
+      lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
+      forward_loop_carried_store_loads(
+        &program.functions[i], &analysis, stats);
     }
     fold_edge_known_branches(&program.functions[i], stats, &cfg_scratch);
   }

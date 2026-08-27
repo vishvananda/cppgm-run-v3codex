@@ -231,7 +231,215 @@ void collect_function_facts(const Function & function,
     }
 }
 
+bool same_storage_operand(const Operand & left, const Operand & right)
+{
+  if(left.kind != right.kind) return false;
+  if(left.kind == Operand::OP_TEMP) return left.value == right.value;
+  if(left.kind == Operand::OP_SLOT) return left.slot == right.slot;
+  if(left.kind == Operand::OP_GLOBAL)
+    return left.symbol == right.symbol &&
+      left.address_binding == right.address_binding;
+  return false;
+}
+
+bool loop_load_prefix_safe(const std::vector<Instruction> & instructions,
+                           std::size_t stop)
+{
+  for(std::size_t index = 0; index < stop; ++index) {
+    const Instruction::Kind kind = instructions[index].kind;
+    if(kind != Instruction::IK_PHI && kind != Instruction::IK_CONST &&
+       kind != Instruction::IK_COPY && kind != Instruction::IK_ADDR &&
+       kind != Instruction::IK_INDEX && kind != Instruction::IK_UNARY &&
+       kind != Instruction::IK_BINARY && kind != Instruction::IK_CMP &&
+       kind != Instruction::IK_CONVERT)
+      return false;
+  }
+  return true;
+}
+
+bool local_value_defined_before(const std::vector<Instruction> & instructions,
+                                lowir_model::ValueId value,
+                                std::size_t stop)
+{
+  for(std::size_t index = 0; index < stop; ++index)
+    if(instructions[index].dest.valid() &&
+       instructions[index].dest == value)
+      return true;
+  return false;
+}
+
+bool has_loop_store_latch_shape(const Function & function)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    if(instructions.size() < 2 ||
+       instructions.back().kind != Instruction::IK_JUMP)
+      continue;
+    const Instruction & store = instructions[instructions.size() - 2];
+    if(store.kind == Instruction::IK_STORE && !store.volatile_access &&
+       store.first.kind == Operand::OP_TEMP)
+      return true;
+  }
+  return false;
+}
+
+std::size_t forward_loop_carried_store_loads_impl(
+    Function * function, lowir_analysis::FunctionAnalysis * analysis,
+    Stats * stats)
+{
+  if(!function->metadata.inline_hint ||
+     !has_loop_store_latch_shape(*function)) return 0;
+  const lowir_analysis::LoopForest & forest = analysis->loop_forest();
+  if(forest.loops.empty()) return 0;
+  const lowir_analysis::Graph & graph = analysis->graph();
+  const lowir_analysis::DominatorTree & dominators =
+    analysis->dominator_tree();
+  std::vector<std::size_t> definition_block(
+    function->value_names.size(), kNoIndex);
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      const lowir_model::ValueId value =
+        function->blocks[block].instructions[index].dest;
+      if(value.valid()) definition_block[value] = block;
+    }
+
+  // One rewrite per function bounds both phi growth and the compile-time scan.
+  for(std::size_t loop_index = 0;
+      loop_index < forest.loops.size(); ++loop_index) {
+    const lowir_analysis::NaturalLoop & loop = forest.loops[loop_index];
+    if(loop.has_eh || loop.preheader == kNoIndex || loop.latches.empty() ||
+       loop.header >= function->blocks.size() ||
+       loop.preheader >= function->blocks.size())
+      continue;
+    const std::vector<Instruction> & preheader_instructions =
+      function->blocks[loop.preheader].instructions;
+    if(preheader_instructions.empty() ||
+       preheader_instructions.back().kind != Instruction::IK_JUMP ||
+       preheader_instructions.back().first.kind != Operand::OP_LABEL ||
+       preheader_instructions.back().first.block !=
+         function->blocks[loop.header].id)
+      continue;
+
+    std::vector<Instruction> & header =
+      function->blocks[loop.header].instructions;
+    for(std::size_t load_index = 0;
+        load_index < header.size(); ++load_index) {
+      const Instruction & load = header[load_index];
+      if(load.kind != Instruction::IK_LOAD || !load.dest.valid() ||
+         load.volatile_access || load.debug_location.present() ||
+         load.type.kind == lowir_model::LTK_INVALID ||
+         load.type.kind == lowir_model::LTK_VOID ||
+         load.type.kind == lowir_model::LTK_OBJECT ||
+         !loop_load_prefix_safe(header, load_index))
+        continue;
+      if(load.first.kind == Operand::OP_TEMP) {
+        const std::uint32_t address = load.first.value;
+        if(address >= definition_block.size()) continue;
+        const std::size_t definition = definition_block[address];
+        if(definition != kNoIndex &&
+           !dominators.dominates(definition, loop.preheader))
+          continue;
+      } else if(load.first.kind != Operand::OP_SLOT &&
+                load.first.kind != Operand::OP_GLOBAL)
+        continue;
+
+      struct Incoming
+      {
+        std::size_t predecessor;
+        Operand value;
+      };
+      std::vector<Incoming> incoming;
+      incoming.reserve(graph.predecessors[loop.header].size());
+      bool eligible = true;
+      std::size_t outside = 0;
+      for(std::size_t edge = 0;
+          edge < graph.predecessors[loop.header].size(); ++edge) {
+        const std::size_t predecessor =
+          graph.predecessors[loop.header][edge];
+        if(predecessor == loop.preheader) {
+          ++outside;
+          incoming.push_back(Incoming{predecessor, Operand()});
+          continue;
+        }
+        if(!loop.contains(predecessor)) { eligible = false; break; }
+        const std::vector<Instruction> & latch =
+          function->blocks[predecessor].instructions;
+        if(latch.size() < 2 ||
+           latch.back().kind != Instruction::IK_JUMP ||
+           latch.back().first.kind != Operand::OP_LABEL ||
+           latch.back().first.block != function->blocks[loop.header].id) {
+          eligible = false;
+          break;
+        }
+        const Instruction & store = latch[latch.size() - 2];
+        if(store.kind != Instruction::IK_STORE || store.volatile_access ||
+           store.first.kind != Operand::OP_TEMP ||
+           !same_storage_operand(store.second, load.first) ||
+           !lowir_model::same_lowir_type(store.type, load.type) ||
+           !local_value_defined_before(
+             latch, store.first.value, latch.size() - 2)) {
+          eligible = false;
+          break;
+        }
+        incoming.push_back(Incoming{predecessor, store.first});
+      }
+      if(!eligible || outside != 1 ||
+         incoming.size() != graph.predecessors[loop.header].size())
+        continue;
+
+      Instruction initial_load = load;
+      initial_load.dest = lowir_model::append_lowir_fresh_generated_value(
+        *function, load.type);
+      Instruction phi;
+      phi.kind = Instruction::IK_PHI;
+      phi.dest = load.dest;
+      phi.type = load.type;
+      phi.args.reserve(incoming.size() * 2);
+      for(std::size_t edge = 0; edge < incoming.size(); ++edge) {
+        Operand label;
+        label.kind = Operand::OP_LABEL;
+        label.block = function->blocks[incoming[edge].predecessor].id;
+        phi.args.push_back(label);
+        if(incoming[edge].predecessor == loop.preheader) {
+          Operand initial;
+          initial.kind = Operand::OP_TEMP;
+          initial.value = initial_load.dest;
+          phi.args.push_back(initial);
+        } else
+          phi.args.push_back(incoming[edge].value);
+      }
+
+      std::vector<Instruction> rebuilt;
+      rebuilt.reserve(header.size());
+      std::size_t index = 0;
+      while(index < header.size() &&
+            header[index].kind == Instruction::IK_PHI)
+        rebuilt.push_back(std::move(header[index++]));
+      rebuilt.push_back(std::move(phi));
+      for(; index < header.size(); ++index)
+        if(index != load_index)
+          rebuilt.push_back(std::move(header[index]));
+      header.swap(rebuilt);
+      std::vector<Instruction> & preheader =
+        function->blocks[loop.preheader].instructions;
+      preheader.insert(preheader.end() - 1, std::move(initial_load));
+      if(stats) ++stats->rewrites;
+      return 1;
+    }
+  }
+  return 0;
+}
+
 }  // namespace
+
+bool forward_loop_carried_store_loads(
+    Function * function, lowir_analysis::FunctionAnalysis * analysis,
+    Stats * stats)
+{
+  return forward_loop_carried_store_loads_impl(function, analysis, stats) != 0;
+}
 
 bool hoist_loop_invariants(lowir_model::Program * program,
                            Function * function,
