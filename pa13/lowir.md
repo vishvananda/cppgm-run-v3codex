@@ -598,7 +598,9 @@ Omission means ordinary direct-value passing and has no explicit spelling.
 The currently defined capture values are:
 
 - `nocapture`
-- `maycapture`
+
+Omission means the callee may retain or otherwise capture the incoming pointer value and has
+no explicit spelling.
 
 The currently defined access values are:
 
@@ -618,7 +620,6 @@ The intended meaning is semantic, not host-ABI-specific:
 - `reference`: this parameter is a reference boundary
 - `decay`: this parameter came from array/function decay
 - `nocapture`: the callee does not retain the incoming pointer value beyond the call
-- `maycapture`: the callee may retain or otherwise capture the incoming pointer value
 - `none`: the callee does not dereference the incoming pointer
 - `read`: the callee only reads through the incoming pointer
 - `write`: the callee only writes through the incoming pointer

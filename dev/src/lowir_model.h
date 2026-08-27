@@ -251,8 +251,7 @@ enum ParamPassingMode
 enum ParamCaptureMode
 {
   PCM_DEFAULT,
-  PCM_NOCAPTURE,
-  PCM_MAYCAPTURE
+  PCM_NOCAPTURE
 };
 
 enum ParamAccessMode

@@ -88,7 +88,6 @@ void write_parameter_metadata(std::ostream & out, const ParameterMetadata & valu
   switch(value.capture) {
   case PCM_DEFAULT: break;
   case PCM_NOCAPTURE: metadata.item("capture", "nocapture"); break;
-  case PCM_MAYCAPTURE: metadata.item("capture", "maycapture"); break;
   }
   switch(value.access) {
   case PAM_DEFAULT: break;

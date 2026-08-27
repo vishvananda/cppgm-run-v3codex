@@ -9,7 +9,7 @@ function @helper(%fn : ptr, %p : ptr [capture=nocapture]) -> void {
     return void
 }
 
-function @main(%p : ptr [capture=maycapture]) -> i64 {
+function @main(%p : ptr) -> i64 {
   block ^entry:
     call void @sink(%p)
     return i64 0

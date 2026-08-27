@@ -521,7 +521,6 @@ private:
       else throw ParseError("invalid parameter pass metadata");
     } else if(key == "capture") {
       if(value == "nocapture") out.capture = PCM_NOCAPTURE;
-      else if(value == "maycapture") out.capture = PCM_MAYCAPTURE;
       else throw ParseError("invalid parameter capture metadata");
     } else if(key == "access") {
       if(value == "none") out.access = PAM_NONE;
