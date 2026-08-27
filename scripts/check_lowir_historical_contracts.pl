@@ -100,6 +100,27 @@ for my $test (@tests)
 	die "$test: O2 retained the induction multiply\n"
 		if $o2_strength =~ /^\s+%\w+ = binary mul i64 %\w+, 8$/m;
 
+	my $o0_scaled = function_body($test, $o0, 'factor_scaled_index');
+	my $o1_scaled = function_body($test, $o1, 'factor_scaled_index');
+	die "$test: O0 lost the byte-scaled index baseline\n"
+		if $o0_scaled !~ /^\s+%scaled = binary mul i64 %index, 24$/m ||
+		   $o0_scaled !~ /^\s+%element = index i8 .* %base, %scaled$/m;
+	die "$test: O1 did not factor the multiplier into an address scale\n"
+		if $o1_scaled !~ /^\s+%scaled = binary mul i64 %index, 3$/m ||
+		   $o1_scaled !~
+		     /^\s+%element = index obj<8x1> .* %base, %scaled$/m;
+	my $multi = function_body($test, $o1, 'retain_multi_use_scale');
+	die "$test: multi-use index multiplier was unsafely factored\n"
+		if $multi !~ /^\s+%scaled = binary mul i64 %index, 24$/m ||
+		   $multi !~ /^\s+%element = index i8 .* %base, %scaled$/m;
+	my $unfactorable = function_body(
+		$test, $o1, 'retain_unfactorable_scale');
+	die "$test: unfactorable index multiplier changed representation\n"
+		if $unfactorable !~
+		   /^\s+%scaled = binary mul i64 %index, 3$/m ||
+		   $unfactorable !~
+		     /^\s+%element = index i8 .* %base, %scaled$/m;
+
 	my $o0_promote = function_body(
 		$test, $o0, 'promote_complete_object');
 	my $o1_promote = function_body(
@@ -135,6 +156,7 @@ for my $test (@tests)
 		   $escape !~ /^\s+%\w+ = addr \$scalar$/m ||
 		   $escape !~ /^\s+%\w+ = call i64 \@observe_scalar_slot\(/m;
 
+	compile_and_run($driver, $test, $directory, $o1_path);
 	compile_and_run($driver, $test, $directory, $o2_path);
 }
 

@@ -8,10 +8,10 @@ performance landing; the exact-cost 16-byte vector zero is retained as a
 minor native-positive quality increment; immediate-call merge sources may
 donate their frame homes as a minor MIR-quality increment; direct immediate
 comparisons for large switches are the latest performance landing;
-odd-save paired recoloring is the latest performance landing; readonly
-pointer-and-length record colocation is the latest critical-path landing; the
-paired-normalized full-source O1 wall gaps are provisionally about 1.495x GCC
-and 1.494x Clang against the last stable references
+odd-save paired recoloring is the latest performance landing; scaled-index
+multiplier factoring is the latest critical-path landing; the provisional
+direct full-source O1 wall gaps are about 1.519x GCC and 1.496x Clang against
+the immediately preceding host references, with a source-matched refresh due
 
 Date: 2026-08-27
 
@@ -762,6 +762,7 @@ P31/P32 worktree survivors:
 | adjacent single-use frame-compare forwarding | PA38 control `447-adjacent-frame-compare-forwarding` checks the direct register comparison, O0 frame baseline, multi-use guard, and generated behavior | owned focused structural/behavioral predicate; no complete MIR or instruction-sequence match |
 | post-inline hinted-definition load reuse | PA37 control `526-late-inline-hint-load-reuse` checks O0/O1 load-count relationships, the ordinary-dose negative, store/writing-call barriers, readonly-call preservation, and behavior | owned focused LowIR/behavioral predicate; no complete module or compiler-source match |
 | readonly indexed string-table publication and record colocation | PA37 control `527-readonly-byte-strlen` checks the O0 local-table/call baseline, a shared indexed record address for the O1 pointer and length loads, all safety rejections, and O0/O1 behavior | owned focused LowIR structural/behavioral predicate; no symbol spelling, aggregate contents, complete module, executable, or hash match |
+| scaled-index multiplier factoring | PA37 control `525-historical-lowir-contracts` checks the O0 byte-index baseline, the O1 equal-displacement multiplier/stride relationship, multi-use and unfactorable negatives, and O1/O2 behavior | owned focused LowIR structural/behavioral predicate; no complete module, native instruction sequence, register, executable, or hash match |
 
 #### Coverage closure map
 
@@ -777,6 +778,7 @@ checked-in outputs remain independent compatibility gates:
 | native copy, constant multiply, large-switch, and scratch-carried reload encoding | PA29 native goals 3, 8, and 15 plus its compact-MIR and large-switch implementation rules | PA29 controls `900`-`902`/`905`-`910` inspect only instruction families and local MIR operands, including fixed-copy size/alignment boundaries and immediate-versus-dynamic switch cases; the historical scratch reducer requires a positive diagnostic fact and integer/float-pressure behavior |
 | local-global and deferred parameter-address selection | PA29 required native behavior item 15 | controls `903` and the focused historical deferred-address pass check direct-storage/materialized-address and pre-/post-call carrier relationships plus behavior |
 | O1 LowIR survivor transforms and guards | PA37 O1 optimization-level bullets for underflow, adjacent noalias copies, full overwrite, shared loops, cold-path pricing, and phi repair | survivor-property pass over `506`-`511` plus O0 baselines and PA17/driver alias-source controls; only local relationships are inspected |
+| scaled index-address factoring | PA37 O1 multiplier/stride bullet | control `525-historical-lowir-contracts`; focused O0/O1 relationship, two conservative negatives, and generated behavior without complete-output matching |
 | historical readonly, strength, and small-object survivors | PA37 O1/O2 readonly, scalar-object, and counted-loop bullets | control `525-historical-lowir-contracts`; focused O0/O1/O2 predicates plus generated behavior, including the object-valued-copy guard and no complete LowIR comparison |
 | readonly byte-string lengths and indexed string records | PA37 O1 readonly-string bullets | control `527-readonly-byte-strlen`; direct and indexed positives, six indexed safety guards, shared-record structure, and generated O0/O1 behavior without complete-output or symbol-name matching |
 | diagnostic inliner controls and observational census | PA37 **Command Line** paragraphs for `--inline-limit` and `--stats` | controls `520`-`522`; predicates require only call presence/absence, repeatable-name acceptance, invalid-value rejection, record fields, and a nonzero eligible guarded-prefix contribution—not full output or exact counts |
@@ -2995,6 +2997,66 @@ inception lane while another build or profiler is active.
   `/dev/shm/v3codex-p34-string-record-inception.HNtzsM` matches every object
   and the final compiler in 50.23/1324.33/92.82 seconds wall/user/system.  No
   Cachegrind, profiler, or inception process remains.
+
+- **P32-L94 (DIRECT POST-RECORD HOST REBASELINE).** Same-revision O1 host
+  compilers prepared with explicit outer/inner/object parallelism of 32: GCC
+  in 29.86/519.27/51.14 and Clang in 30.57/606.46/38.50 seconds
+  wall/user/system.  Clean full-source lanes measured GCC
+  21.09/542.88/44.25 and Clang 21.41/560.50/44.67.  Against L93's two-lane
+  self mean of 32.265/924.170, the direct wall ratios are 1.530x GCC and
+  1.507x Clang; aggregate-CPU ratios are 1.574x and 1.527x.  GCC remains
+  binding: self needs 31.635 seconds, another 0.630 seconds or 1.95%, for the
+  1.50x wall exit.  Thus L93's paired normalization was useful directional
+  evidence but not an exit result.
+
+- **P32-L95 (FINAL DEAD-SLOT CLEANUP REJECTED STATICALLY).** The earlier
+  callee-first dead-slot probe changed late-inliner pricing and was destructive
+  interference.  A bounded follow-up ran the existing cleanup only after all
+  inlining decisions.  It correctly kept macro `Token` move calls at 37 while
+  removing four unused LowIR stores and reducing optimized macro output by
+  367 lines.  The native move body was nevertheless byte-for-byte unchanged:
+  native dead-store planning already suppresses that traffic.  The final-only
+  scheduling probe therefore has no runtime mechanism to measure and is
+  reverted without a broad lane or student contract.
+
+- **P32-L96 (SCALED-INDEX MULTIPLIER FACTORING RETAINED).** Current
+  `Lexer::Peek` repeatedly lowered a 24-byte fixed-queue element as
+  `index * 24`, then materialized the byte offset before each memory access.
+  Clang instead keeps the legal scale eight in the address and computes only
+  `index * 3`.  The retained generic PA37 transform finds a positive
+  single-use `i64` multiply feeding `index`, factors the exact byte
+  displacement between the multiplier and a conservative object stride of
+  two, four, or eight, and changes nothing when the multiply has another use,
+  no legal factor, or an unrepresentable quotient.  Modular byte displacement
+  is unchanged; no source function, container, capacity, or multiplier value
+  is recognized.
+
+  Native addressing now fuses the scale-eight part.  `Lexer::Peek` shrinks
+  433 -> 421 bytes, `Lexer::Run` 11,764 -> 11,668, and
+  `TranslationCursor::Next` 1,503 -> 1,487.  The generic implementation grows
+  complete compiler text 13,668 bytes.  The final O1/all-32 compiler prepared
+  in 17.87 seconds under `/dev/shm/v3codex-p34-scaled-index-final.oh9Hwg`
+  with hash `cbe8b322...c2ee`.  Three clean full-source lanes measured
+  31.73/868.36/48.73, 32.04/872.22/49.25, and 32.34/871.74/49.44 seconds
+  wall/user/system, averaging 32.037 wall and 919.913 aggregate CPU.  Against
+  L93's stable 32.265/924.170 mean, wall improves 0.71% and CPU 0.46%.  A
+  rotated retained pair at 32.66 and a scheduler-tail 34.72 seconds confirms
+  direction but is not substituted for the stable denominator.  Against
+  L94's immediately preceding host lanes, the provisional direct wall ratios
+  are 1.519x GCC and 1.496x Clang; a source-matched host refresh remains due,
+  and GCC still needs about 0.40 seconds.
+
+  PA37's contract describes only the equal-displacement multiplier/stride
+  property.  Control `525-historical-lowir-contracts` requires the O0
+  `*24`/byte-index baseline, the O1 `*3`/eight-byte relationship, unchanged
+  multi-use and unfactorable cases, and O1/O2 behavior.  It compares no
+  complete LowIR/MIR/native program, source workload, instruction sequence,
+  register, object, or hash.  PA37 passes 187/187, PA38 passes 46/46,
+  through-PA38 passes 5,453/5,453, and the PA38 audit has only the 36
+  established warnings; `lowir_opt.cpp` remains 3,000 lines.  Fresh all-32 O1
+  inception under `/dev/shm/v3codex-p34-scaled-index-inception.1fv9ep`
+  matches every object and the final compiler in 50.93/1323.78/93.81 seconds
+  wall/user/system.  No Cachegrind, profiler, or inception process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,

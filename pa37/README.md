@@ -196,6 +196,10 @@ running optimizing transforms.
   compared value is already known to be an `i64` boolean
 - local reassociation of repeated integer `add`, `mul`, `and`, `or`, and `xor`
   chains with constants
+- factoring a positive single-use integer multiplier between its arithmetic
+  value and an `index` element stride when this preserves the exact byte
+  displacement and exposes a two-, four-, or eight-byte address scale;
+  multi-use and unfactorable multipliers keep their original representation
 - control-flow cleanup, including folding known `branch` and `switch`
   selectors, removing unreachable blocks, bypassing trivial jump-only blocks,
   merging safe straight-line block pairs, and collapsing empty branch diamonds

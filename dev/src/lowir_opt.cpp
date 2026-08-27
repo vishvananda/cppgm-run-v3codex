@@ -62,7 +62,6 @@ public:
       next_block_size_(4096) {}
   PassArena(const PassArena &) = delete;
   PassArena & operator=(const PassArena &) = delete;
-
   ~PassArena()
   {
     for(std::size_t i = 0; i < block_count_; ++i)
@@ -2671,6 +2670,7 @@ void optimize_function_bodies(
       timed_dce(&function, boundaries, stats, &dce_scratch);
     if(level >= 1 && coalesce_adjacent_scalar_copies(&function, stats))
       timed_dce(&function, boundaries, stats, &dce_scratch);
+    if(level >= 1) factor_scaled_index_multipliers(&function, stats);
     if(level >= 2 && simplify_counted_loops(&function, &analysis, stats)) {
       timed_dce(&function, boundaries, stats, &dce_scratch);
       timed_cfg(&function, stats, &cfg_scratch, &analysis);

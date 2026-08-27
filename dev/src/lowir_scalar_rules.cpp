@@ -45,6 +45,73 @@ bool strength_reduce_binary(Instruction * ins, const LowType & type)
   return true;
 }
 
+bool factor_scaled_index_multipliers(Function * function, Stats * stats)
+{
+  std::vector<std::size_t> uses(function->value_names.size(), 0);
+  std::vector<Instruction *> definitions(function->value_names.size(), 0);
+  const auto record = [&uses](const Operand & operand) {
+    if(operand.kind == Operand::OP_TEMP && operand.value < uses.size())
+      ++uses[operand.value];
+  };
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      Instruction & ins = function->blocks[block].instructions[index];
+      if(ins.dest.valid() && ins.dest < definitions.size())
+        definitions[ins.dest] = &ins;
+      record(ins.first);
+      record(ins.second);
+      record(ins.third);
+      for(std::size_t arg = 0; arg < ins.args.size(); ++arg)
+        record(ins.args[arg]);
+    }
+
+  bool changed = false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      Instruction & ins = function->blocks[block].instructions[index];
+      if(ins.kind != Instruction::IK_INDEX ||
+         ins.type.storage_size == 0 || ins.type.storage_size >= 8 ||
+         ins.second.kind != Operand::OP_TEMP ||
+         ins.second.value >= definitions.size() ||
+         uses[ins.second.value] != 1) continue;
+      Instruction * multiply = definitions[ins.second.value];
+      if(!multiply || multiply->kind != Instruction::IK_BINARY ||
+         multiply->op.kind != LowOperation::LOP_MUL ||
+         multiply->type.kind != lowir_model::LTK_I64) continue;
+      Operand variable = multiply->first;
+      Operand constant = multiply->second;
+      if(variable.kind == Operand::OP_INTEGER) std::swap(variable, constant);
+      if(variable.kind != Operand::OP_TEMP ||
+         constant.kind != Operand::OP_INTEGER || !constant.has_int_value ||
+         constant.int_high != 0 || constant.int_value <= 0) continue;
+      const unsigned __int128 total =
+        static_cast<unsigned long long>(constant.int_value) *
+        static_cast<unsigned __int128>(ins.type.storage_size);
+      std::size_t scale = 8;
+      while(scale > ins.type.storage_size && total % scale != 0) scale /= 2;
+      if(scale <= ins.type.storage_size) continue;
+      const unsigned __int128 multiplier = total / scale;
+      if(multiplier == 0 || multiplier >
+         static_cast<unsigned long long>(std::numeric_limits<long long>::max()))
+        continue;
+      multiply->first = variable;
+      multiply->second = constant;
+      multiply->second.int_value = static_cast<long long>(multiplier);
+      multiply->second.has_spelling = false;
+      if(multiplier == 1) {
+        multiply->kind = Instruction::IK_COPY;
+        multiply->second = Operand();
+      }
+      ins.type.kind = lowir_model::LTK_OBJECT;
+      ins.type.storage_size = scale;
+      changed = true;
+      if(stats) ++stats->rewrites;
+    }
+  return changed;
+}
+
 // A readonly scalar global with a literal initializer always observes that
 // literal, so a typed direct load of it is the constant.
 ReadonlyGlobalIndex::ReadonlyGlobalIndex(
