@@ -3305,6 +3305,58 @@ inception lane while another build or profiler is active.
   code is removed; no student contract/property is retained.  L23's
   unused-result dynamic-copy lowering is the next ratio-aware replay.
 
+- **P32-L106 (UNUSED-RESULT DYNAMIC COPY RETAINED BY SAME-SOURCE
+  RATIO).** L23's PA29 lowering was reconstructed from its archived compiler
+  rather than approximated.  A direct three-argument call whose callee carries
+  canonical `cppgm_builtin_memcpy` object metadata and whose returned pointer
+  is unused now becomes a zero-operand `copy_bytes_dynamic` MIR operation
+  after ordinary SysV argument staging.  Native emission moves the runtime
+  count from `rdx` to `rcx` and emits `rep movsb`; its MIR use/definition facts
+  model only the `rdi`/`rsi`/`rdx` inputs and `rdi`/`rsi`/`rcx` writes instead
+  of a full call boundary.  Used results, indirect or unmarked calls, and
+  other argument shapes remain calls.  The rule is native instruction
+  selection at both O0 and O1.  On the existing PA16 builtin-memory fixture,
+  the reconstructed O0 object was byte-for-byte identical to the archived L23
+  compiler's output.
+
+  On the exact-final full compiler, direct `memcpy@plt` calls fall from 898 to
+  27 while `rep movsb` sites rise from 1,896 to 2,768.  Complete compiler text
+  grows only 7,920,354 -> 7,923,410 bytes (+3,056).  The all-32 O1 compiler at
+  `/dev/shm/v3codex-p34-dyncopy-final.znFOCf` has SHA-256
+  `373a2118518095629a874cc1589fb6d904c54505f4a78ca7ad48a06719eca5dc`;
+  a fresh inception comparison matched every object and the final compiler in
+  35.26/876.76/51.02 seconds wall/user/system.  Outer, inner, and object
+  parallelism were all explicitly 32.
+
+  Two stable exact-final self lanes measured 32.16/873.87/50.18 and
+  31.99/874.19/49.94 seconds, averaging 32.075 wall and 924.090 aggregate CPU.
+  A 33.07/873.87/49.85 lane is excluded as a scheduler-tail outlier: aggregate
+  work matched the retained lanes but involuntary context switches rose to
+  78,219 versus 67,936 and 69,323.  The exact-source GCC compiler under
+  `/dev/shm/v3codex-p34-dyncopy-final-gcc-prep.whHw9H` produced lanes at
+  21.18/547.27/45.10 and 21.13/545.61/45.19, averaging 21.155 wall and
+  591.585 CPU.  The exact-source Clang compiler under
+  `/dev/shm/v3codex-p34-dyncopy-final-clang-prep.rtBlyZ` produced lanes at
+  22.45/564.33/45.85 and 21.72/564.07/45.88, averaging 22.085 wall and
+  610.065 CPU.  Final ratios are therefore 1.516x GCC and 1.452x Clang by
+  wall, and 1.562x GCC and 1.515x Clang by aggregate CPU.  All four improve
+  production's 1.533x/1.492x wall and 1.566x/1.520x CPU ratios, reversing the
+  old self-only rejection.  GCC remains binding; at this denominator the
+  1.50x ceiling is 31.733 seconds, another 0.343 seconds or 1.07% of self
+  wall.
+
+  PA29 now describes the high-level unused-result builtin rule and runtime
+  count boundary.  Control `915-unused-result-builtin-memcpy` checks O0/O1
+  behavior, the eligible dynamic-copy relationship, retained used-result and
+  unmarked calls, and a sentinel immediately beyond the runtime copy count.
+  It compares no complete program or MIR, register assignment, frame layout,
+  instruction bytes, executable, or hash.  Focused PA29 is 291/291, PA37 is
+  187/187, PA38 is 46/46, and the through-PA38 report is 5,453/5,453.  The
+  PA38 file audit passes with the 36 established warnings; both touched
+  3,000-line native files remain at their cap.  No profiler, Cachegrind, or
+  build process remains active.  O1 P22b's block-local frame-load forwarding
+  is the next strongest same-source replay.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,

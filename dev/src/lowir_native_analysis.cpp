@@ -2,6 +2,7 @@
 
 #include "lowir_native.h"
 #include "lowir_native_forward_edge_analysis.h"
+#include "lowir_native_memcpy.h"
 
 #include <algorithm>
 #include <array>
@@ -18,8 +19,12 @@ using lowir_model::LowOperation;
 using lowir_model::Operand;
 
 unsigned instruction_clobber_mask(const Instruction & instruction,
-                                  bool direct_memory_index = false)
+                                  bool direct_memory_index = false,
+                                  bool inline_unused_memcpy = false)
 {
+  if(inline_unused_memcpy)
+    return register_mask(XR_RCX) | register_mask(XR_RSI) |
+      register_mask(XR_RDI);
   const bool wide = instruction.type.kind == lowir_model::LTK_I128;
   if(wide && (instruction.kind == Instruction::IK_CONST ||
               instruction.kind == Instruction::IK_COPY))
@@ -140,6 +145,16 @@ void note_instruction_operands(FunctionFacts & facts,
   note_operand(facts, instruction.third, position);
   for(std::size_t i = 0; i < instruction.args.size(); ++i)
     note_operand(facts, instruction.args[i], position);
+}
+
+unsigned analyzed_instruction_clobber_mask(
+    const Instruction & instruction, const FunctionFacts & facts,
+    lowir_model::SymbolId memcpy_symbol, bool direct_memory_index)
+{
+  return instruction_clobber_mask(
+    instruction, direct_memory_index,
+    memcpy_detail::is_inline_unused_call(
+      instruction, facts.uses, memcpy_symbol));
 }
 
 bool direct_memory_index_use(const FunctionFacts & facts,
@@ -578,7 +593,8 @@ bool register_was_clobbered_before(const FunctionFacts & facts,
 }
 
 FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
-                               Stats * stats, int optimization_level)
+                               Stats * stats, int optimization_level,
+                               lowir_model::SymbolId memcpy_symbol)
 {
   FunctionFacts facts;
   const std::size_t value_count = function.value_names.size();
@@ -720,8 +736,8 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
       const bool direct_index = direct_memory_index_use(facts, instructions, j);
       if(direct_index)
         facts.mark(instruction.dest, FunctionFacts::VF_DIRECT_MEMORY_INDEX);
-      const unsigned clobbers =
-        instruction_clobber_mask(instruction, direct_index);
+      const unsigned clobbers = analyzed_instruction_clobber_mask(
+        instruction, facts, memcpy_symbol, direct_index);
       for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg)
         if(clobbers & (1u << reg)) {
           clobber_positions[reg].push_back(position);
@@ -790,8 +806,8 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
         const lowir_model::ValueId value = operands[operand]->value;
         facts.last_use[value] = std::max(facts.last_use[value], block_start + j);
         for(std::size_t k = comparison + 1; k < j; ++k) {
-          const unsigned clobbers = instruction_clobber_mask(
-            instructions[k],
+          const unsigned clobbers = analyzed_instruction_clobber_mask(
+            instructions[k], facts, memcpy_symbol,
             facts.has(instructions[k].dest,
                       FunctionFacts::VF_DIRECT_MEMORY_INDEX));
           facts.live_across_clobbers[value] |= clobbers;

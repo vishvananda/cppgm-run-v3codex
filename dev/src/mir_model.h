@@ -320,8 +320,9 @@ struct Instruction
     // dead temporary copy.
     MI_CALL,
     MI_CALL_INDIRECT,
-    // Bulk-memory operands name logical address registers. The encoder owns
-    // any parallel moves required by the concrete x86 string instruction.
+    // Fixed bulk-memory operands name logical address registers. A dynamic
+    // copy has no operands: it consumes the SysV rdi/rsi/rdx argument
+    // carriers directly. The encoder owns the concrete string-register moves.
     MI_COPY_BYTES,
     MI_ZERO_BYTES,
     MI_EH_PUSH,

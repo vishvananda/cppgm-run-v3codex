@@ -606,6 +606,16 @@ To complete PA29, implement these goals:
    The lowering may reverse the setup order or stage one address in reserved
    scratch; generated behavior must remain correct at both O0 and O1.
 
+   A direct three-argument call to the canonical builtin `memcpy` may become
+   a dynamic `copy_bytes` machine operation when its returned pointer is
+   unused.  After ordinary ABI argument setup, that operation consumes the
+   destination, source, and runtime byte count from their calling-convention
+   carriers and copies exactly that many bytes.  A call whose result is used,
+   an indirect call, an ordinary unmarked function, or a call with a different
+   argument shape remains a call.  This rule applies at O0 as part of native
+   instruction selection as well as at optimized levels; it does not prescribe
+   register allocation, frame layout, or surrounding MIR.
+
    A fixed 16-byte zero may avoid string-operation setup with a cleared
    reserved vector scratch and one unaligned store.  This direct form must be
    smaller than the corresponding setup for every address-register choice,
@@ -884,6 +894,10 @@ strategies include:
   chunks and a scalar tail, extending that direct form through 64 bytes for
   operations with at least eight-byte declared alignment; keep larger or more
   weakly aligned copies on the compact string-operation path
+- lower a direct canonical three-argument builtin `memcpy` with an unused
+  returned pointer to a dynamic `copy_bytes` operation after normal ABI
+  argument staging, while retaining calls for used results and unmarked or
+  incompatible callees
 - carry a sole-use load's typed frame, global, dereference, or indexed address
   into an immediately following legal integer right operand, keeping its
   address inputs live until the consuming instruction

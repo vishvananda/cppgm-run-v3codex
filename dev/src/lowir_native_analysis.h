@@ -139,7 +139,9 @@ bool register_was_clobbered_before(const FunctionFacts & facts,
                                    X64Register reg, std::size_t position);
 FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
                                Stats * stats = 0,
-                               int optimization_level = 0);
+                               int optimization_level = 0,
+                               lowir_model::SymbolId memcpy_symbol =
+                                 lowir_model::SymbolId());
 StorageFacts analyze_storage(
     const lowir_model::LowirFunction & function,
     const FunctionFacts & function_facts,

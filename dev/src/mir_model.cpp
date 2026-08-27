@@ -283,8 +283,10 @@ std::string instruction_text(const Instruction & instruction,
 {
   std::ostringstream out;
   if(instruction.opcode == Instruction::MI_COPY_BYTES) {
-    out << "copy_bytes " << instruction.byte_count << 'x'
-        << instruction.byte_alignment;
+    if(instruction.byte_count)
+      out << "copy_bytes " << instruction.byte_count << 'x'
+          << instruction.byte_alignment;
+    else out << "copy_bytes_dynamic";
     render_operands(out, instruction, program, function, true);
     return out.str();
   }

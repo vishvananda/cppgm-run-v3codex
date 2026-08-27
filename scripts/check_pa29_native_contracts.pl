@@ -440,6 +440,54 @@ for my $test (@tests)
 			if $o1_body !~ /^\s+copy_bytes 4x4, /m;
 		next;
 	}
+	if($test =~ /unused-result-builtin-memcpy/) {
+		my $eligible = function_body($test, $mir, 'eligible_copy');
+		die "$test: eligible unused builtin call lost its dynamic copy\n"
+			if $eligible !~ /^\s+copy_bytes_dynamic\s*$/m;
+		die "$test: eligible unused builtin call retained a direct call\n"
+			if $eligible =~ /^\s+call\s+\@memory_copy\b/m;
+		my $used = function_body($test, $mir, 'used_result_copy');
+		die "$test: used builtin result did not retain its call\n"
+			if $used !~ /^\s+call\s+\@memory_copy\b/m ||
+			   $used =~ /^\s+copy_bytes_dynamic\s*$/m;
+		my $ordinary = function_body($test, $mir, 'ordinary_unused_copy');
+		die "$test: unmarked unused-result function did not retain its call\n"
+			if $ordinary !~ /^\s+call\s+\@ordinary_copy\b/m ||
+			   $ordinary =~ /^\s+copy_bytes_dynamic\s*$/m;
+
+		my $o1_mir_path = "$directory/test-o1.mir";
+		my $o1_program = "$directory/test-o1.program";
+		my $o1_status = run_command_capture(
+			cmd => [$app, '-O1', '--dump-machine-ir', $o1_mir_path,
+				'-o', $o1_program, $test],
+			stdout => "$directory/compile-o1.stdout",
+			stderr => "$directory/compile-o1.stderr",
+			timeout => 30,
+		);
+		die "$test: O1 control compile failed\n" .
+			read_file("$directory/compile-o1.stderr", 0) if $o1_status != 0;
+		my $o1_run = run_command_capture(
+			cmd => [$o1_program],
+			stdout => "$directory/program-o1.stdout",
+			stderr => "$directory/program-o1.stderr",
+			timeout => 30,
+		);
+		die "$test: O1 generated program returned $o1_run, expected 0\n"
+			if $o1_run != 0;
+		my $o1_mir = read_file($o1_mir_path, 0);
+		my $o1_eligible = function_body(
+			$test, $o1_mir, 'eligible_copy');
+		die "$test: O1 eligible call lost its dynamic copy\n"
+			if $o1_eligible !~ /^\s+copy_bytes_dynamic\s*$/m;
+		my $o1_used = function_body($test, $o1_mir, 'used_result_copy');
+		die "$test: O1 used builtin result did not retain its call\n"
+			if $o1_used !~ /^\s+call\s+\@memory_copy\b/m;
+		my $o1_ordinary = function_body(
+			$test, $o1_mir, 'ordinary_unused_copy');
+		die "$test: O1 unmarked function did not retain its call\n"
+			if $o1_ordinary !~ /^\s+call\s+\@ordinary_copy\b/m;
+		next;
+	}
 	if($test =~ /cost-directed-small-zeroinit/) {
 		my $body = function_body($test, $mir, 'main');
 		die "$test: fixed zero lost its documented 16-byte operation\n"

@@ -240,6 +240,10 @@ RegisterMask instruction_uses(
     uses |= exact_call_arguments && instruction.call_argument_registers_known ?
       instruction.call_argument_register_mask : kCallArguments;
     break;
+  case MirInstruction::MI_COPY_BYTES:
+    if(!instruction.byte_count)
+      uses |= gpr_bit(XR_RDI) | gpr_bit(XR_RSI) | gpr_bit(XR_RDX);
+    break;
   case MirInstruction::MI_EH_PUSH:
     // The compact handler record snapshots the callee-saved machine state.
     uses |= gpr_bit(XR_RBX) | gpr_bit(XR_RBP) | gpr_bit(XR_R12) |

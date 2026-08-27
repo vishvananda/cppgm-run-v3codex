@@ -1076,6 +1076,12 @@ bool prepare_explicit_operands(CodeBuffer & out,
     return true;
   }
   if(instruction.opcode == mir_model::MirInstruction::MI_COPY_BYTES) {
+    if(!instruction.byte_count) {
+      require_operands(instruction, 0);
+      emit_register_move(out, XR_RCX, XR_RDX);
+      out.byte(0xf3); out.byte(0xa4);
+      return true;
+    }
     if(emit_small_copy_bytes(out, instruction, function)) return true;
     require_operands(instruction, 2);
     const X64Register destination = require_register(instruction.operands[0]);

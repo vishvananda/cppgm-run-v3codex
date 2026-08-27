@@ -22,6 +22,7 @@
 #include "lowir_native_location_planning.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_memory_lowering.h"
+#include "lowir_native_memcpy.h"
 #include "lowir_native_movement_stats.h"
 #include "lowir_native_parameter_lowering.h"
 #include "lowir_native_phi_lowering.h"
@@ -46,8 +47,7 @@ namespace lowir_native { namespace {
 using lowir_model::Instruction; using lowir_model::LowOperation; using lowir_model::LowType; using lowir_model::Operand;
 using mir_model::MirInstruction; using mir_model::MirOperand;
 using abi::FunctionSignature; using abi::FunctionSignatureIndex;
-using analysis::FunctionFacts; using analysis::StorageFacts;
-using analysis::analyze_function; using analysis::analyze_storage; using analysis::register_mask;
+using analysis::FunctionFacts; using analysis::StorageFacts; using analysis::analyze_function; using analysis::analyze_storage; using analysis::register_mask;
 using analysis::register_was_clobbered_before; using allocation::RegisterPool; using allocation::XmmPool;
 using allocation::is_callee_saved; using namespace build; using namespace selection;
 class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
@@ -95,10 +95,10 @@ public:
                   lowir_native::Stats * stats,
                   allocation::AllocationDecisionLog * decisions)
     : program_(program), source_(source), pointer_globals_(pointer_globals),
-      tls_wrappers_(tls_wrappers), strlen_symbol_(strlen_detail::builtin_symbol(program)),
+      tls_wrappers_(tls_wrappers), strlen_symbol_(strlen_detail::builtin_symbol(program)), memcpy_symbol_(memcpy_detail::builtin_symbol(program)),
       signatures_(signatures), optimization_level_(optimization_level),
       stats_(stats),
-      facts_(analyze_function(source, stats, optimization_level)),
+      facts_(analyze_function(source, stats, optimization_level, memcpy_symbol_)),
       control_flow_(source), decision_log_(decisions), registers_(decisions),
       xmms_(decisions), live_locations_(stats), generated_frame_names_(source),
       position_(0)
@@ -224,11 +224,10 @@ private:
   const lowir_model::LowirFunction & source_;
   const std::vector<unsigned char> & pointer_globals_;
   const std::vector<lowir_model::SymbolId> & tls_wrappers_;
-  const lowir_model::SymbolId strlen_symbol_;
+  const lowir_model::SymbolId strlen_symbol_, memcpy_symbol_;
   const FunctionSignatureIndex & signatures_;
   int optimization_level_;
-  lowir_native::Stats * stats_;
-  FunctionFacts facts_;
+  lowir_native::Stats * stats_; FunctionFacts facts_;
   StorageFacts storage_facts_;
   analysis::ControlFlowQueries control_flow_;
   mir_model::MirFunction target_;
@@ -2575,6 +2574,7 @@ private:
       set_value_location(instruction.args[i].value, home);
     }
     const bool direct = instruction.first.kind == Operand::OP_GLOBAL;
+    const bool inline_unused_memcpy = memcpy_detail::is_inline_unused_call(instruction, facts_.uses, memcpy_symbol_);
     MirOperand indirect_target = reg_operand(XR_R10);
     if(!direct) {
       MirOperand pointer_cell;
@@ -2629,7 +2629,7 @@ private:
       append_move(out, reg_operand(XR_RAX),
                   immediate(static_cast<long long>(abi::xmm_register_count(plan))));
     }
-    if(direct) {
+    if(inline_unused_memcpy) out.push_back(machine_instruction(MirInstruction::MI_COPY_BYTES)); else if(direct) {
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
       call.call_encoding = strlen_detail::call_encoding(
         optimization_level_, instruction, parameters, variadic, strlen_symbol_);
