@@ -580,6 +580,38 @@ This plan is complete only when:
   failure.  The semantic distinction remains frozen in the D0 ledger; a
   shorter or structurally neutral naming form may be reconsidered only after
   separate measurement restores the ratio.
+- **D1-T1 (ROLE-NEUTRAL OPERAND VIEW, RETAINED).** On the tree based on
+  `499eaa3d`, `lowir_optimizer_support.h` adds allocation-free const/mutable
+  `all_operand_count`/`all_operand_at` access in serialized
+  first/second/third/args order.  Its contract explicitly excludes operand
+  role interpretation; phi value/label pairs and slot-position-sensitive
+  escape logic remain specialized.  The first migration covers only
+  slot-forwarding's complete temp-use census and its two complete alias
+  rewrite loops.  Focused survivor properties, PA37, PA38, `git diff --check`,
+  and the default zero-fatal/36-warning audit pass; the tight report remains
+  14 warnings.  Candidate SHA-256/text is `be44056a...`/8,638,931, a 1,152-byte
+  text reduction.  Reverse/interleaved same-source all-32 O1 lanes are
+  candidate 31.40/31.86 seconds wall and old 31.66/31.68; aggregate CPU means
+  are 903.78/906.18 seconds (-0.26%).  Exact candidate GCC lanes are
+  21.55/20.94 wall and 593.04/588.19 CPU; Clang lanes are 21.37/21.48 wall and
+  606.30/607.14 CPU.  Means are self 31.630/903.78, GCC 21.245/590.615, and
+  Clang 21.425/606.72 seconds wall/CPU, or 1.489x and 1.476x wall; the primary
+  maximum stays within the 1.493x normal budget.  GCC benchmark compiler
+  SHA/text is `ad7a823f...`/5,787,104; Clang is
+  `27db9476...`/5,026,473.  Direct 215-TU counters show 115 fewer input, 161
+  fewer output, 7,238 fewer visited instructions, 49 fewer block visits, and
+  240 fewer CFG-edge visits; peak analysis storage is unchanged.  Parsing the
+  three inline accessors adds three functions and correspondingly tiny pass
+  run deltas (at most 18 slot runs and 13 CFG runs), but total optimizer work
+  falls rather than hiding added work behind the source reduction.  Retain.
+- **D-C1 (FIRST CUMULATIVE CHECKPOINT).** The retained D1 storage, hash, and
+  traversal increments pass root `make test-report-through-pa38` at
+  5,465/5,465 and the default audit at zero fatal findings/36 established
+  warnings.  A fresh isolated explicit-O1 inception used outer, inner, and
+  object parallelism all at 32 under
+  `/dev/shm/v3codex-optdup-d1-cumulative-inception.8INvjG`; every object and
+  final `cppgm++` match.  No stale compiler, profiler, Valgrind, or Cachegrind
+  process preceded the run.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

@@ -1,6 +1,7 @@
 #include "lowir_slot_forward_o1.h"
 
 #include "lowir_opt.h"
+#include "lowir_optimizer_support.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -104,13 +105,11 @@ bool local_slot_forward(Function * function, Stats * stats)
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
-      const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k)
-        if(operands[k]->kind == Operand::OP_TEMP)
-          note_use(operands[k]->value, i);
-      for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_TEMP)
-          note_use(ins.args[k].value, i);
+      for(std::size_t k = 0;
+          k < optimizer_support::all_operand_count(ins); ++k) {
+        const Operand & operand = optimizer_support::all_operand_at(ins, k);
+        if(operand.kind == Operand::OP_TEMP) note_use(operand.value, i);
+      }
     }
   bool changed = false;
   // Epoch-stamped slot values and load aliases: the per-block vector
@@ -134,15 +133,13 @@ bool local_slot_forward(Function * function, Stats * stats)
     std::size_t kept = 0;
     for(std::size_t j = 0; j < original_size; ++j) {
       Instruction & ins = instructions[j];
-      Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k)
-        if(operands[k]->kind == Operand::OP_TEMP &&
-           alias_stamp[operands[k]->value] == alias_epoch)
-          *operands[k] = aliases[operands[k]->value];
-      for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_TEMP &&
-           alias_stamp[ins.args[k].value] == alias_epoch)
-          ins.args[k] = aliases[ins.args[k].value];
+      for(std::size_t k = 0;
+          k < optimizer_support::all_operand_count(ins); ++k) {
+        Operand & operand = optimizer_support::all_operand_at(ins, k);
+        if(operand.kind == Operand::OP_TEMP &&
+           alias_stamp[operand.value] == alias_epoch)
+          operand = aliases[operand.value];
+      }
       // Taking a slot's address or storing through an indirect pointer can
       // change a previously recorded slot value.  Inlining commonly exposes
       // exactly this shape, so retaining the old value here would turn a real
@@ -335,11 +332,11 @@ bool forward_single_store_slots(Function * function, Stats * stats)
         if(stats) ++stats->rewrites;
         continue;
       } else {
-        Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-        for(std::size_t k = 0; k < 3; ++k)
-          *operands[k] = resolve_alias(*operands[k]);
-        for(std::size_t k = 0; k < ins.args.size(); ++k)
-          ins.args[k] = resolve_alias(ins.args[k]);
+        for(std::size_t k = 0;
+            k < optimizer_support::all_operand_count(ins); ++k) {
+          Operand & operand = optimizer_support::all_operand_at(ins, k);
+          operand = resolve_alias(operand);
+        }
       }
       if(kept != j) instructions[kept] = std::move(ins);
       ++kept;
