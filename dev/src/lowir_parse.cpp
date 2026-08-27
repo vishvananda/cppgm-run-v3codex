@@ -469,8 +469,7 @@ private:
   {
     static const std::pair<const char *, SymbolRole> roles[] = {
       {"entry", SR_ENTRY}, {"init", SR_INIT}, {"fini", SR_FINI},
-      {"eh_top", SR_EH_TOP}, {"eh_value", SR_EH_VALUE},
-      {"eh_unhandled", SR_EH_UNHANDLED}, {"eh_allocate_exception", SR_EH_ALLOCATE_EXCEPTION},
+      {"eh_allocate_exception", SR_EH_ALLOCATE_EXCEPTION},
       {"eh_begin_catch", SR_EH_BEGIN_CATCH},
       {"eh_end_catch", SR_EH_END_CATCH}, {"eh_rethrow", SR_EH_RETHROW},
       {"eh_throw", SR_EH_THROW}, {"eh_personality", SR_EH_PERSONALITY},
@@ -1067,29 +1066,20 @@ private:
       const std::string & name = lowir_symbol_name(program_, item.symbol);
       add_top(name);
       functions_[name] = FunctionInfo{&item.params, &item.return_type, &item.boundary};
-      validate_function_role(item.metadata.role);
     }
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       const Function & item = program_.functions[i];
       const std::string & name = lowir_symbol_name(program_, item.symbol);
       add_top(name);
       functions_[name] = FunctionInfo{&item.params, &item.return_type, &item.boundary};
-      validate_function_role(item.metadata.role);
     }
   }
 
   void validate_global_role(SymbolRole role)
   {
-    if(role != SR_NONE && role != SR_EH_TOP && role != SR_EH_VALUE &&
-       role != SR_RTTI_CLASS && role != SR_RTTI_SI &&
+    if(role != SR_NONE && role != SR_RTTI_CLASS && role != SR_RTTI_SI &&
        role != SR_RTTI_VMI && role != SR_RTTI_DATA)
       throw ParseError("function role on global");
-  }
-
-  void validate_function_role(SymbolRole role)
-  {
-    if(role == SR_EH_TOP || role == SR_EH_VALUE)
-      throw ParseError("global role on function");
   }
 
   void validate_roles_and_tls()

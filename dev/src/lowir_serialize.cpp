@@ -14,9 +14,6 @@ const char * role_name(SymbolRole role)
   case SR_ENTRY: return "entry";
   case SR_INIT: return "init";
   case SR_FINI: return "fini";
-  case SR_EH_TOP: return "eh_top";
-  case SR_EH_VALUE: return "eh_value";
-  case SR_EH_UNHANDLED: return "eh_unhandled";
   case SR_EH_ALLOCATE_EXCEPTION: return "eh_allocate_exception";
   case SR_EH_BEGIN_CATCH: return "eh_begin_catch";
   case SR_EH_END_CATCH: return "eh_end_catch";

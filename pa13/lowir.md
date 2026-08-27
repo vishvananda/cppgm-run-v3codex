@@ -164,7 +164,7 @@ declare global @ro_table : ptr [storage=readonly]
 declare global @tls_state : i64 [storage=thread_local]
 declare function @user_entry() -> i64 [role=entry]
 declare function @puts(%fmt : ptr [pass=decay]) -> i32 [arity=variadic, linkage=c]
-global @exc_top : ptr [role=eh_top, storage=readonly] = zero
+global @lookup_table : ptr [storage=readonly] = zero
 global @tls_counter : i64 [storage=thread_local] = 7
 function @main() -> i64 [role=entry, binding=strong, keep_alias=yes] {
   ...
@@ -206,7 +206,6 @@ The currently defined role values are:
   - `entry`
   - `init`
   - `fini`
-  - `eh_unhandled`
   - `eh_allocate_exception`
   - `eh_begin_catch`
   - `eh_end_catch`
@@ -223,8 +222,6 @@ The currently defined role values are:
   - `bad_typeid`
   - `unreachable`
 - global roles:
-  - `eh_top`
-  - `eh_value`
   - `rtti_class`
   - `rtti_si`
   - `rtti_vmi`
@@ -776,13 +773,9 @@ The preferred convention is role-driven:
 If present as definitions, backend adapters such as PA13 `lowir2cy86` should run the
 `init` hook before the `entry` function and the `fini` hook after it.
 
-Later hosted/EH lowering may also introduce reserved runtime-support roles:
+Later hosted/EH lowering may also introduce reserved function runtime-support roles:
 
-- globals:
-  - `eh_top`
-  - `eh_value`
 - functions:
-  - `eh_unhandled`
   - `eh_allocate_exception`
   - `eh_begin_catch`
   - `eh_end_catch`
@@ -790,6 +783,10 @@ Later hosted/EH lowering may also introduce reserved runtime-support roles:
   - `eh_throw`
   - `eh_personality`
   - `eh_resume`
+
+The PA13 CY86 scaffold owns its private exception-handler stack, exception-value storage,
+and unhandled-exception fallback. LowIR programs express exception flow through the EH
+operations below and do not name or replace that scaffold through symbol roles.
 
 For compatibility with earlier handwritten LowIR and pre-role test cases, the legacy
 spellings `@main`, `@__cppgm_init`, and `@__cppgm_fini` are still accepted when no explicit

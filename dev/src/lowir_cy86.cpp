@@ -234,7 +234,7 @@ public:
         stats_->instructions += emitter.InstructionCount();
       }
     }
-    if(uses_eh_ && !eh_unhandled_.valid()) EmitDefaultUnhandled();
+    if(uses_eh_) EmitDefaultUnhandled();
     for(std::size_t i = 0; i < program_.globals.size(); ++i) EmitGlobal(program_.globals[i]);
     if(uses_eh_) EmitDefaultEhGlobals();
     std::string result = out_.Take();
@@ -263,16 +263,15 @@ public:
 
   std::string EhTopLabel() const
   {
-    return !eh_top_.valid() ? "g____cppgm_eh_top" : SymbolLabel(eh_top_);
+    return "g____cppgm_eh_top";
   }
   std::string EhValueLabel() const
   {
-    return !eh_value_.valid() ? "g____cppgm_eh_value" : SymbolLabel(eh_value_);
+    return "g____cppgm_eh_value";
   }
   std::string EhUnhandledLabel() const
   {
-    return !eh_unhandled_.valid() ? "fn____cppgm_eh_unhandled" :
-      SymbolLabel(eh_unhandled_);
+    return "fn____cppgm_eh_unhandled";
   }
 
 private:
@@ -285,16 +284,12 @@ private:
   SymbolId entry_;
   SymbolId init_;
   SymbolId fini_;
-  SymbolId eh_top_;
-  SymbolId eh_value_;
-  SymbolId eh_unhandled_;
   bool uses_eh_;
   std::size_t eh_label_counter_;
   std::size_t atomic_label_counter_;
 
   void FindRoles();
   SymbolId FindSymbol(const std::string & name) const;
-  bool HasGlobal(SymbolId symbol) const;
   void RecordRole(SymbolId symbol, SymbolRole role);
   void DetectEh();
   void EmitStart();
@@ -315,39 +310,15 @@ SymbolId ProgramEmitter::FindSymbol(const std::string & name) const
   return SymbolId();
 }
 
-bool ProgramEmitter::HasGlobal(SymbolId symbol) const
-{
-  if(!symbol.valid()) return false;
-  for(std::size_t i = 0; i < program_.global_declarations.size(); ++i)
-    if(program_.global_declarations[i].symbol == symbol) return true;
-  for(std::size_t i = 0; i < program_.globals.size(); ++i)
-    if(program_.globals[i].symbol == symbol) return true;
-  return false;
-}
-
 void ProgramEmitter::RecordRole(SymbolId symbol, SymbolRole role)
 {
   if(role == SR_ENTRY) entry_ = symbol;
   else if(role == SR_INIT) init_ = symbol;
   else if(role == SR_FINI) fini_ = symbol;
-  else if(role == SR_EH_TOP) eh_top_ = symbol;
-  else if(role == SR_EH_VALUE) eh_value_ = symbol;
-  else if(role == SR_EH_UNHANDLED) eh_unhandled_ = symbol;
 }
 
 void ProgramEmitter::FindRoles()
 {
-  for(std::size_t i = 0; i < program_.global_declarations.size(); ++i)
-    RecordRole(program_.global_declarations[i].symbol,
-      program_.global_declarations[i].metadata.role);
-  for(std::size_t i = 0; i < program_.globals.size(); ++i)
-    RecordRole(program_.globals[i].symbol, program_.globals[i].metadata.role);
-  for(std::size_t i = 0; i < program_.function_declarations.size(); ++i) {
-    const FunctionDeclaration & function = program_.function_declarations[i];
-    if(function.metadata.role != SR_ENTRY && function.metadata.role != SR_INIT &&
-       function.metadata.role != SR_FINI)
-      RecordRole(function.symbol, function.metadata.role);
-  }
   for(std::size_t i = 0; i < program_.functions.size(); ++i)
     RecordRole(program_.functions[i].symbol, program_.functions[i].metadata.role);
   const SymbolId main_symbol = FindSymbol("main");
@@ -466,12 +437,8 @@ void ProgramEmitter::EmitDefaultUnhandled()
 
 void ProgramEmitter::EmitDefaultEhGlobals()
 {
-  if(!eh_top_.valid() && !HasGlobal(FindSymbol("__cppgm_eh_top"))) {
-    out_.Label("g____cppgm_eh_top"); out_.Instruction("data64 0"); out_.Blank();
-  }
-  if(!eh_value_.valid() && !HasGlobal(FindSymbol("__cppgm_eh_value"))) {
-    out_.Label("g____cppgm_eh_value"); out_.Instruction("data64 0"); out_.Blank();
-  }
+  out_.Label("g____cppgm_eh_top"); out_.Instruction("data64 0"); out_.Blank();
+  out_.Label("g____cppgm_eh_value"); out_.Instruction("data64 0"); out_.Blank();
 }
 
 FunctionEmitter::FunctionEmitter(ProgramEmitter & owner, const Function & function,
