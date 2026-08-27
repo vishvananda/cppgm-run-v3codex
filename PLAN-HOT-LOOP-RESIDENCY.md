@@ -3758,6 +3758,38 @@ inception lane while another build or profiler is active.
   closed including every sound item with a material current native effect;
   further work is fresh profile-driven optimization.
 
+- **P32-L117 (WEAKLY ALIGNED 64-BYTE DIRECT COPY STILL REJECTED BY
+  SAME-SOURCE RATIO).** The exact-final macro `Token` move constructor owns
+  about 34 aggregate profile seconds under self and ends in a 61-byte weakly
+  aligned `rep movsb`.  This is the precise population exercised by L44/L48's
+  old weak-copy expansion, which had only self-side native timing.  Because
+  L106's dynamic-copy interference tests did not alter this fixed tail, the
+  one-line upper-bound policy received its missing candidate-source GCC lane.
+
+  Admitting every fixed copy through 64 bytes to the existing reserved-XMM
+  vector chunks removed the constructor's string operation.  The constructor
+  grew 215 -> 258 bytes and `macro_processor.o` text grew 195,395 -> 196,187
+  bytes, while complete compiler text changed only 8,656,879 -> 8,656,751
+  bytes after distributed offsets.  The O1/all-32 pre-change-compiler
+  candidate at `/dev/shm/v3codex-weak64-candidate.ulI3XF` has SHA-256
+  `c53e5dd3f4f974e61a471bbf84e3f1990b285ea0723a624b56d71d6f1f5e3e80`.
+
+  Its full-source self lane measured 32.07/876.11/49.78 seconds
+  wall/user/system.  The exact-source GCC compiler under
+  `/dev/shm/v3codex-weak64-gcc-prep.2q5wYs` measured
+  21.01/547.88/44.97 seconds.  Both generated compiler SHA-256
+  `07f26564c25918ba3b24ae5709989ddee09353a3f5e010b82cd48fdab6f8d05a`.
+  The resulting ratios are about 1.526x wall and 1.5626x aggregate CPU,
+  neither better than L106's 1.516x/1.5621x point.
+
+  The implementation is removed; the existing student-visible weak-alignment
+  compact fallback is unchanged, so no contract or property edit is needed.
+  Restored PA38 is 46/46, and no compiler, profiler, Cachegrind, Valgrind, or
+  build process remains active.  Together with L116 this supplies the last
+  missing denominators for old probes that have a credible current hot native
+  population.  The historical replay queue is closed; further candidates
+  must come from a new source-independent mechanism or new attribution.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
