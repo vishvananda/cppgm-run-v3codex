@@ -28,6 +28,11 @@ my ($app, $root) = @ARGV;
 my @tests = collect_tests($root, qr/partial-inline-census.*\.t$/);
 die "No optimizer-census tests found under $root\n" if !@tests;
 my @required_fields = qw(
+	value_index_builds
+	value_index_instruction_visits
+	value_index_operand_visits
+	value_index_allocations
+	value_index_peak_bytes
 	partial_inline_census_direct_calls
 	partial_inline_census_eligible_calls
 	partial_inline_census_eligible_callees
@@ -65,7 +70,7 @@ for my $test (@tests)
 	for my $field (@required_fields)
 	{
 		next if $field eq 'partial_inline_census_direct_calls';
-		die "$test: guarded-prefix fixture did not contribute to $field\n"
+		die "$test: optimizer fixture did not contribute to $field\n"
 			if $values{$field} == 0;
 	}
 }

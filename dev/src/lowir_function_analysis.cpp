@@ -1,9 +1,11 @@
 #include "lowir_function_analysis.h"
 
 #include "lowir_opt.h"
+#include "lowir_optimizer_support.h"
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -11,6 +13,10 @@ namespace lowir_analysis {
 namespace {
 
 const std::size_t kNoBlock = static_cast<std::size_t>(-1);
+const std::uint64_t kMissingValueDefinition =
+  std::numeric_limits<std::uint64_t>::max();
+const std::uint64_t kParameterValueDefinition =
+  kMissingValueDefinition - 1;
 
 void add_edge(Graph * graph, std::size_t from,
               const lowir_model::Operand & target, lowir_opt::Stats * stats)
@@ -46,6 +52,90 @@ std::size_t evaluate_dominator(
 }
 
 }  // namespace
+
+ValueIndex::ValueIndex(const lowir_model::Function & function,
+                       lowir_opt::Stats * stats)
+  : definitions_(function.value_names.size(), kMissingValueDefinition),
+    uses_(function.value_names.size(), 0)
+{
+  for(std::size_t parameter = 0;
+      parameter < function.params.size(); ++parameter) {
+    const std::uint32_t value = function.params[parameter].value;
+    if(value < definitions_.size())
+      definitions_[value] = kParameterValueDefinition;
+  }
+
+  std::size_t instruction_visits = 0;
+  std::size_t operand_visits = 0;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function.blocks[block].instructions.size(); ++index) {
+      const lowir_model::Instruction & instruction =
+        function.blocks[block].instructions[index];
+      ++instruction_visits;
+      if(instruction.dest.valid() && instruction.dest < definitions_.size())
+        definitions_[instruction.dest] =
+          (static_cast<std::uint64_t>(block) << 32) |
+          static_cast<std::uint64_t>(index);
+      const std::size_t operand_count =
+        lowir_opt::optimizer_support::all_operand_count(instruction);
+      for(std::size_t operand_index = 0;
+          operand_index < operand_count; ++operand_index) {
+        // Phi args serialize as label/value pairs.  Labels are control-flow
+        // roles, not value uses, and deliberately stay out of this census.
+        if(instruction.kind == lowir_model::Instruction::IK_PHI &&
+           operand_index >= 3 && ((operand_index - 3) & 1) == 0)
+          continue;
+        ++operand_visits;
+        const lowir_model::Operand & operand =
+          lowir_opt::optimizer_support::all_operand_at(
+            instruction, operand_index);
+        if(operand.kind == lowir_model::Operand::OP_TEMP &&
+           operand.value < uses_.size())
+          ++uses_[operand.value];
+      }
+    }
+
+  if(stats) {
+    ++stats->value_index_builds;
+    stats->value_index_instruction_visits += instruction_visits;
+    stats->value_index_operand_visits += operand_visits;
+    if(!definitions_.empty()) stats->value_index_allocations += 2;
+    stats->value_index_peak_bytes = std::max(
+      stats->value_index_peak_bytes,
+      definitions_.capacity() * sizeof(definitions_[0]) +
+        uses_.capacity() * sizeof(uses_[0]));
+  }
+}
+
+std::size_t ValueIndex::size() const { return definitions_.size(); }
+
+ValueDefinition ValueIndex::definition(lowir_model::ValueId value) const
+{
+  ValueDefinition result;
+  result.block = 0;
+  result.instruction = 0;
+  const std::uint32_t id = value;
+  if(id >= definitions_.size() ||
+     definitions_[id] == kMissingValueDefinition) {
+    result.kind = ValueDefinition::MISSING;
+    return result;
+  }
+  if(definitions_[id] == kParameterValueDefinition) {
+    result.kind = ValueDefinition::PARAMETER;
+    return result;
+  }
+  result.kind = ValueDefinition::INSTRUCTION;
+  result.block = static_cast<std::uint32_t>(definitions_[id] >> 32);
+  result.instruction = static_cast<std::uint32_t>(definitions_[id]);
+  return result;
+}
+
+std::size_t ValueIndex::use_count(lowir_model::ValueId value) const
+{
+  const std::uint32_t id = value;
+  return id < uses_.size() ? uses_[id] : 0;
+}
 
 EdgeList::EdgeList() : first_(0), second_(0), size_(0) {}
 

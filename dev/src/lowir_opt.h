@@ -39,6 +39,11 @@ struct Stats
   std::size_t instruction_visits = 0;
   std::size_t block_visits = 0;
   std::size_t cfg_edge_visits = 0;
+  std::size_t value_index_builds = 0;
+  std::size_t value_index_instruction_visits = 0;
+  std::size_t value_index_operand_visits = 0;
+  std::size_t value_index_allocations = 0;
+  std::size_t value_index_peak_bytes = 0;
   std::size_t cfg_analysis_builds = 0;
   std::size_t cfg_analysis_reuses = 0;
   std::size_t cfg_analysis_invalidations = 0;

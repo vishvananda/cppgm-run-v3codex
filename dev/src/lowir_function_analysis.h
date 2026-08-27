@@ -3,6 +3,7 @@
 #include "lowir_model.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 namespace lowir_opt {
@@ -65,6 +66,39 @@ struct LoopForest
   std::vector<NaturalLoop> loops;
   std::vector<std::size_t> innermost_loop;
   std::size_t backedges;
+};
+
+struct ValueDefinition
+{
+  enum Kind
+  {
+    MISSING,
+    PARAMETER,
+    INSTRUCTION
+  };
+
+  Kind kind;
+  std::size_t block;
+  std::size_t instruction;
+};
+
+// Definition locations and use counts for one immutable function shape.
+// The index needs no CFG and distinguishes parameters from missing SSA
+// definitions.  Instruction-content rewrites may retain it only while value,
+// block, instruction, and operand-use topology remain unchanged.
+class ValueIndex
+{
+public:
+  ValueIndex(const lowir_model::Function & function,
+             lowir_opt::Stats * stats);
+
+  std::size_t size() const;
+  ValueDefinition definition(lowir_model::ValueId value) const;
+  std::size_t use_count(lowir_model::ValueId value) const;
+
+private:
+  std::vector<std::uint64_t> definitions_;
+  std::vector<std::size_t> uses_;
 };
 
 Graph build_graph(const lowir_model::Function & function,

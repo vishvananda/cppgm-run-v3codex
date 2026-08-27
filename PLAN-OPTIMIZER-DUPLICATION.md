@@ -226,8 +226,9 @@ Exit when every proposed merge has a stated semantic boundary and baseline.
 3. Rename remaining broad `same_operand` functions to state whether they mean
    full presentation identity, scalar value identity, or MIR identity.  A
    rename may precede consolidation and is preferable to a false abstraction.
-4. Preserve specialized phi traversal, where even `args` are values and odd
-   `args` are predecessor labels; do not feed labels to value-use accounting.
+4. Preserve specialized phi traversal, where even `args` are predecessor
+   labels and odd `args` are values; do not feed labels to value-use
+   accounting.
 
 Exit when exact primitives have one owner, differently scoped predicates have
 distinct names, optimized LowIR properties are unchanged, and the tight audit
@@ -612,6 +613,44 @@ This plan is complete only when:
   `/dev/shm/v3codex-optdup-d1-cumulative-inception.8INvjG`; every object and
   final `cppgm++` match.  No stale compiler, profiler, Valgrind, or Cachegrind
   process preceded the run.
+- **D2-V1 (IMMUTABLE VALUE INDEX, FIRST CONSUMER RETAINED).** On the tree based
+  on `15770b5e`, `lowir_function_analysis` now owns a CFG-independent immutable
+  definition/use index.  Its public result distinguishes missing, parameter,
+  and instruction definitions; its compact private definition location keeps
+  the old one-word-per-value representation.  Use accounting visits the
+  fixed operands and non-phi args, but only the value half of serialized phi
+  label/value pairs.  The first and only consumer in this increment is the
+  scaled-index multiplier factorization in `lowir_scalar_rules`; it retains
+  the index only while instruction/value/use topology is unchanged.  PA37 now
+  documents observational index-cost fields, and the generic stats property
+  requires their presence and a positive workload without requiring exact
+  values or implementation layout.  The existing historical-contract control
+  continues to check the positive factorization plus multi-use and
+  unfactorable rejection shapes structurally and behaviorally.  Both focused
+  properties pass; `make test-pa37` passes 188/188, `make test-pa38` passes
+  45/45, `git diff --check` is clean, and the default audit remains zero-fatal
+  with 36 established warnings.  A private-log exact-source comparison covers
+  all 215 translation units: old and candidate emit byte-identical objects and
+  every pre-existing deterministic optimizer counter is identical.  The new
+  fields report 124,242 builds, 1,441,222 scanned instructions, 4,620,666
+  scanned value-operand positions, and 247,816 allocations.  The 72,160-byte
+  maximum is exactly the two value-sized vectors already allocated by the
+  replaced local scan, so allocation count and peak scratch do not rise; the
+  existing 10,229,916-byte promotion peak is also unchanged.  Candidate
+  SHA-256/text is `634887b3...`/8,640,175, a 1,244-byte text increase over
+  `be44056a...`/8,638,931.  Reverse/interleaved all-32 same-source lanes are
+  candidate 32.03/32.05 seconds wall and old 31.78/32.13; aggregate CPU means
+  are 906.10/904.89 seconds (+0.13%), and wall means differ by +0.27%, both
+  within the 0.5% repeat threshold.  Exact candidate-source GCC lanes are
+  29.70/29.59 seconds wall and 572.86/569.88 CPU; Clang lanes are 30.42/36.00
+  wall and 646.14/660.56 CPU.  Means are self 32.040/906.10, GCC
+  29.645/571.37, and Clang 33.210/653.35 seconds wall/CPU, or 1.081x and
+  0.965x wall.  Host wall utilization was lower and more variable than the D1
+  checkpoint, but the paired self execution and aggregate CPU comparison are
+  stable and non-regressing.  Self, GCC, and Clang benchmark compiler hashes
+  are `634887b3...`, `21674ae0...`, and `d36eac81...`; text is 8,640,175,
+  5,788,400, and 5,027,765 bytes respectively.  Retain this first consumer;
+  do not permit cross-pass reuse until a later mutation-bounded measurement.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

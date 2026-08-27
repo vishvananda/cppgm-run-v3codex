@@ -64,11 +64,15 @@ the corresponding eligibility limit and do not bypass recursion, EH,
 signature, `no_inline`, or growth-safety checks.
 
 `lowiropt --stats` writes one `pa37_opt_stats` diagnostic record to standard
-error.  In addition to the ordinary optimizer work counts, the record includes
-an entry-prefix census for direct calls whose callee has a side-effect-free
-path to an early return and at least one bailout edge.  The census is
-observational only: it does not enable partial inlining or otherwise change
-the optimized LowIR.  Tests may require the documented census fields and
+error.  In addition to the ordinary optimizer work counts, the record reports
+construction cost for any immutable value definition/use index: index builds,
+scanned instructions and value-operand positions, storage allocations, and
+peak transient bytes.  Parameters and missing definitions are distinct index
+states, and phi predecessor labels are not value uses.  The record also
+includes an entry-prefix census for direct calls whose callee has a
+side-effect-free path to an early return and at least one bailout edge.  These
+statistics are observational only: they do not enable partial inlining or
+otherwise change the optimized LowIR.  Tests may require documented fields and
 exercise a positive shape, but must not require exact counter or timing values.
 
 `--help` and `-h` print usage information and exit successfully.
