@@ -3538,6 +3538,59 @@ inception lane while another build or profiler is active.
   regressions below this population, were later screened on the broad oracle,
   or failed correctness and do not warrant denominator-only rescue attempts.
 
+- **P32-L112 (DYNAMIC-COPY SMALL-BUFFER INTERFERENCE PROBES REJECTED BY
+  SAME-SOURCE RATIO).** Exact-final task-clock profiles of the L106 compiler
+  and its source-matched GCC and Clang hosts were compared before another
+  native change.  The self profile charged about 34 seconds to the macro
+  `Token` move constructor.  Address-level comparison against the pre-L106
+  scaled-index compiler found the distinguishing instruction: the short-string
+  arm's runtime `length + 1` copy changed from `memcpy@plt` to L106's
+  `rdx`-to-`rcx`; `rep movsb` sequence.  This was a plausible destructive-
+  interference hypothesis, but the symbol attribution alone could also move
+  work formerly charged inside libc into the caller.
+
+  A sound source-independent probe therefore retained the ordinary call when
+  the dynamic count was formed directly as one plus a loaded value.  It made
+  no claim that the value was bounded: preserving the original call is always
+  conservative, and both native liveness analysis and selection used the same
+  predicate.  PA29 passed 291/291.  The all-32 O1 compiler at
+  `/dev/shm/v3codex-dyncopy-loaded-successor.eNiDov/bin/selfhost/cppgm++-self`
+  has SHA-256
+  `8ece171724231e3f7c71708ecfeb1f76c0b7f081b4c9bdca7f13bc8a91e9b6dd`.
+  It restored the hot constructor call and 470 compiler-wide calls: static
+  `rep movsb` sites fell 2,768 -> 2,298, `memcpy@plt` calls rose 27 -> 497,
+  and complete text grew only 8,656,879 -> 8,658,103 bytes.
+
+  Two ordinary-work self lanes measured 31.92/871.02/49.43 and
+  32.25/872.33/49.15 seconds wall/user/system, averaging 32.085 wall and
+  920.965 aggregate CPU.  A 33.69/903.60/52.52 lane is excluded because
+  aggregate work rose 3.8%.  The exact-source GCC compiler under
+  `/dev/shm/v3codex-dyncopy-loaded-gcc-prep.91gLrc` produced lanes at
+  20.89/542.84/44.35 and 21.06/543.71/44.76, averaging 20.975 wall and
+  587.830 CPU.  Candidate ratios are therefore 1.530x wall and 1.567x CPU,
+  both worse than L106's 1.516x/1.562x binding point.  GCC rejects the broad
+  hypothesis, so no Clang lane is warranted.
+
+  A final narrow screen preserved only loaded-successor copies in functions
+  explicitly marked nonthrowing.  It still restored the hot constructor but
+  only 49 compiler-wide calls (`rep movsb` 2,719, `memcpy@plt` 76).  The
+  all-32 compiler at
+  `/dev/shm/v3codex-dyncopy-nothrow-successor.D9sNOS/bin/selfhost/cppgm++-self`,
+  SHA-256
+  `2ef95f1412ee765e884ba906e9825f5385b25a3e55b188cfb46c7b66ffe7598a`,
+  measured 32.24/871.32/49.38 and 32.15/872.20/48.93 seconds.  Its 920.915
+  mean aggregate CPU is indistinguishable from adjacent production controls;
+  the production wall repeat had a scheduler tail and its second aggregate
+  repeat was itself an outlier.  Narrowing the already ratio-negative broad
+  population therefore supplied no measured work win that could justify
+  another host build.
+
+  Both probes are removed.  The apparent constructor-profile increase was
+  attribution movement, not evidence that preserving its call improves the
+  complete workload.  No student contract/property is retained for rejected
+  behavior, and no compiler, make, profiler, Cachegrind, or Valgrind process
+  remains active.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
