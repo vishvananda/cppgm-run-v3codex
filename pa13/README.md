@@ -161,7 +161,7 @@ Required metadata families:
   `keep_alias`, `prefer_local`, and global `storage`
 - function `object_root`, `force_inline`, `inline_hint`, and `no_inline`
 - function `arity`, `effects`, `unwind`, and `return`
-- parameter `pass`, `capture`, `access`, and `alias`
+- parameter `pass` and `alias`
 - index `projection`
 - function and instruction `!dbg(file, line, column)` locations with positive
   source line and column numbers

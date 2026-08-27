@@ -22,7 +22,7 @@ global @readonly_unterminated [storage=readonly, binding=internal] = {
 }
 global @escaped_table : ptr [binding=internal] = zero
 
-function @measure_bytes(%data : ptr [capture=nocapture, access=read]) -> i64
+function @measure_bytes(%data : ptr) -> i64
     [effects=readonly, unwind=no, binding=strong,
      object=cppgm_builtin_strlen, no_inline=yes] {
   block ^entry:

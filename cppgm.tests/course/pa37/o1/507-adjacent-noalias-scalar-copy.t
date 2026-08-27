@@ -1,6 +1,6 @@
 function @coalesce_noalias(
-    %source : ptr [capture=nocapture, access=read, alias=noalias],
-    %destination : ptr [capture=nocapture, access=write, alias=noalias]) -> void {
+    %source : ptr [alias=noalias],
+    %destination : ptr [alias=noalias]) -> void {
   block ^entry:
     %source8 = index i8 [projection=field] %source, 8
     %destination8 = index i8 [projection=field] %destination, 8
@@ -27,8 +27,8 @@ function @retain_aliasable(%source : ptr, %destination : ptr) -> void {
 }
 
 function @retain_volatile(
-    %source : ptr [capture=nocapture, access=read, alias=noalias],
-    %destination : ptr [capture=nocapture, access=write, alias=noalias]) -> void {
+    %source : ptr [alias=noalias],
+    %destination : ptr [alias=noalias]) -> void {
   block ^entry:
     %source8 = index i8 [projection=field] %source, 8
     %destination8 = index i8 [projection=field] %destination, 8

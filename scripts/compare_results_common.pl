@@ -1954,6 +1954,9 @@ sub validate_lowir_text
 		if !$options->{allow_legacy_decay_surface} &&
 		   ($data =~ /\bpass\s*=\s*decay\b/ ||
 		    $data =~ /^\s*%[A-Za-z0-9_]+\s*=\s*unary\s+decay\s+ptr\b/m);
+	push @errors, "removed capture/access parameter metadata in generated LowIR"
+		if !$options->{allow_legacy_capture_access} &&
+		   $data =~ /\b(?:capture|access)\s*=/;
 
 	my @tops = ($data =~ /^(?:declare\s+(?:function|global)|function|global)\s+@([A-Za-z0-9_]+)\b/gm);
 	my %top_count;
@@ -3261,7 +3264,8 @@ sub compare_lowir_text
 		{ strict_presentation_order => 1,
 		  allow_legacy_trivial_lifecycle => 1,
 		  allow_legacy_unreachable_role => 1,
-		  allow_legacy_decay_surface => 1 });
+		  allow_legacy_decay_surface => 1,
+		  allow_legacy_capture_access => 1 });
 	return (0, "ERROR: invalid reference LowIR: $ref_error") if !$ref_valid;
 	my ($my_valid, $my_error) = validate_lowir_text(
 		$my_data,

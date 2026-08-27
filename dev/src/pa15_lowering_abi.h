@@ -47,7 +47,7 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 void ApplyNativeRuntimeSymbolMetadata(
 	const pa15_lowir_detail::TypedProgram& program,
 	pa15_lowir_detail::Symbol* symbol);
-void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
+void ApplyBuiltinParameterAliasMetadata(pa15_lowir_detail::Parameter* parameter,
 	pa11::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind, std::size_t index);
 void ApplyLifecycleSymbolMetadata(const pa11::Program& program,

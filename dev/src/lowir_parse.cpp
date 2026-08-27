@@ -510,13 +510,6 @@ private:
       else if(value == "by_address") out.passing = PPM_BY_ADDRESS;
       else if(value == "reference") out.passing = PPM_REFERENCE;
       else throw ParseError("invalid parameter pass metadata");
-    } else if(key == "capture") {
-      if(value == "nocapture") out.capture = PCM_NOCAPTURE;
-      else throw ParseError("invalid parameter capture metadata");
-    } else if(key == "access") {
-      if(value == "read") out.access = PAM_READ;
-      else if(value == "write") out.access = PAM_WRITE;
-      else throw ParseError("invalid parameter access metadata");
     } else if(key == "alias" && value == "noalias") out.alias = PALM_NOALIAS;
     else throw ParseError("invalid parameter metadata");
   }
@@ -1165,10 +1158,6 @@ private:
       const bool pointer = param.type.kind == LTK_PTR;
       if(param.metadata.passing != PPM_DIRECT && !pointer)
         throw ParseError("non-direct passing requires ptr");
-      if(param.metadata.capture != PCM_DEFAULT && !pointer)
-        throw ParseError("capture metadata requires ptr");
-      if(param.metadata.access != PAM_DEFAULT && !pointer)
-        throw ParseError("access metadata requires ptr");
       if(param.metadata.alias != PALM_DEFAULT && !pointer)
         throw ParseError("alias metadata requires ptr");
       if(param.metadata.passing == PPM_INDIRECT_RESULT &&

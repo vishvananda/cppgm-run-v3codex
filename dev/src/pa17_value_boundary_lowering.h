@@ -205,7 +205,7 @@ protected:
 			parameter.reference = parameter_index < function_type.parameter_count &&
 				derived.IsReferenceType(source_parameters[parameter_index]);
 			parameter.by_address = by_address;
-			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
+			pa15_lowering_abi::ApplyBuiltinParameterAliasMetadata(
 				&parameter, builtin, memory_builtin, parameter_index);
 			if (copy_or_move_constructor && parameter_index < 2)
 				parameter.alias = pa15_lowir_detail::Parameter::ALIAS_NOALIAS;
@@ -231,7 +231,7 @@ protected:
 			parameter.reference =
 				derived.IsReferenceType(source_parameters[parameter_index]);
 			parameter.by_address = by_address;
-			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
+			pa15_lowering_abi::ApplyBuiltinParameterAliasMetadata(
 				&parameter, builtin, memory_builtin, parameter_index);
 			if (copy_or_move_constructor && parameter_index < 2)
 				parameter.alias = pa15_lowir_detail::Parameter::ALIAS_NOALIAS;

@@ -557,14 +557,13 @@ function @helper(%ret : ptr [pass=indirect_result],
                  %obj : ptr [pass=by_address],
                  %ref : ptr [pass=reference],
                  %arr : ptr,
-                 %buf : ptr [capture=nocapture, access=read, alias=noalias],
+                 %buf : ptr [alias=noalias],
                  %x : i64) -> void {
   ...
 }
 ```
 
-The currently defined parameter metadata keys are `pass`, `capture`, `access`,
-and `alias`.
+The currently defined parameter metadata keys are `pass` and `alias`.
 
 The currently defined pass values are:
 
@@ -573,21 +572,6 @@ The currently defined pass values are:
 - `reference`
 
 Omission means ordinary direct-value passing and has no explicit spelling.
-
-The currently defined capture values are:
-
-- `nocapture`
-
-Omission means the callee may retain or otherwise capture the incoming pointer value and has
-no explicit spelling.
-
-The currently defined access values are:
-
-- `read`
-- `write`
-
-Omission means the callee may both read and write through the incoming pointer and has no
-explicit spelling.
 
 The currently defined alias values are:
 
@@ -598,14 +582,11 @@ The intended meaning is semantic, not host-ABI-specific:
 - `indirect_result`: this pointer names caller-owned result storage
 - `by_address`: this parameter is an indirect object/value boundary
 - `reference`: this parameter is a reference boundary
-- `nocapture`: the callee does not retain the incoming pointer value beyond the call
-- `read`: the callee only reads through the incoming pointer
-- `write`: the callee only writes through the incoming pointer
 - `noalias`: this incoming pointer is disjoint from every other pointer
   parameter on the same boundary that also carries `alias=noalias`
 
-For the current LowIR subset, every explicitly spelled pass mode requires parameter type `ptr`.
-Capture, access, and alias metadata also currently require parameter type `ptr`.
+For the current LowIR subset, every explicitly spelled pass mode and alias
+metadata require parameter type `ptr`.
 `indirect_result` must appear on the first parameter and requires function return type `void`.
 
 Stack slot syntax:

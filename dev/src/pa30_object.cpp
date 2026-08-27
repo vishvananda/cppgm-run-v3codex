@@ -403,8 +403,6 @@ void WriteParameter(Writer& out, const lowir_model::Parameter& value,
 	out.String(lowir_model::lowir_parameter_name(program, value));
 	WriteType(out, value.type);
 	WriteEnum(out, value.metadata.passing);
-	WriteEnum(out, value.metadata.capture);
-	WriteEnum(out, value.metadata.access);
 	WriteEnum(out, value.metadata.alias);
 }
 
@@ -415,8 +413,6 @@ lowir_model::Parameter ReadParameter(Reader& in,
 	value.name = strings.intern(in.String());
 	value.type = ReadType(in);
 	value.metadata.passing = ReadEnum<lowir_model::ParamPassingMode>(in);
-	value.metadata.capture = ReadEnum<lowir_model::ParamCaptureMode>(in);
-	value.metadata.access = ReadEnum<lowir_model::ParamAccessMode>(in);
 	value.metadata.alias = ReadEnum<lowir_model::ParamAliasMode>(in);
 	return value;
 }

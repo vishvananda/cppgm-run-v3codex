@@ -72,8 +72,6 @@ void WriteParameter(std::ostream& output, const TypedProgram& program,
 	WriteType(output, parameter.type);
 	if (parameter.reference || parameter.indirect_result ||
 		parameter.by_address ||
-		parameter.capture != Parameter::CAPTURE_DEFAULT ||
-		parameter.access != Parameter::ACCESS_DEFAULT ||
 		parameter.alias != Parameter::ALIAS_DEFAULT)
 	{
 		output << " [";
@@ -91,19 +89,6 @@ void WriteParameter(std::ostream& output, const TypedProgram& program,
 		else if (parameter.by_address)
 		{
 			output << "pass=by_address";
-			separator = true;
-		}
-		if (parameter.capture == Parameter::CAPTURE_NOCAPTURE)
-		{
-			if (separator) output << ", ";
-			output << "capture=nocapture";
-			separator = true;
-		}
-		if (parameter.access != Parameter::ACCESS_DEFAULT)
-		{
-			if (separator) output << ", ";
-			output << "access=" << (parameter.access == Parameter::ACCESS_READ ?
-				"read" : "write");
 			separator = true;
 		}
 		if (parameter.alias == Parameter::ALIAS_NOALIAS)

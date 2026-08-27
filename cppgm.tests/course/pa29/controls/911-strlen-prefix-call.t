@@ -31,7 +31,7 @@ global @long_word [storage=readonly, binding=internal] = {
   i8 0
 }
 
-function @strlen(%data : ptr [capture=nocapture, access=read]) -> i64 [effects=readonly, unwind=no, binding=strong, object=cppgm_builtin_strlen] {
+function @strlen(%data : ptr) -> i64 [effects=readonly, unwind=no, binding=strong, object=cppgm_builtin_strlen] {
   block ^entry:
     jump ^test
 

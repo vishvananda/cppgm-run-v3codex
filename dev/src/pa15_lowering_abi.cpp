@@ -2263,7 +2263,7 @@ void ApplyNativeRuntimeSymbolMetadata(
 		symbol->runtime_role = Symbol::RUNTIME_ROLE_FREE_MEMORY;
 }
 
-void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
+void ApplyBuiltinParameterAliasMetadata(pa15_lowir_detail::Parameter* parameter,
 	pa11::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind, std::size_t index)
 {
@@ -2271,51 +2271,13 @@ void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
 	using pa15_lowir_detail::Parameter;
 	if (kind == BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC)
 	{
-		const bool comparison_parameter =
-			(memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCMP ||
-			 memory_kind == hosted_builtin::MEMORY_INTRINSIC_STRCMP) && index < 2;
-		const bool pointer_parameter = index == 0 || comparison_parameter ||
-			((memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCPY ||
-			  memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMMOVE) &&
-			 index == 1);
-		if (pointer_parameter)
-			parameter->capture = Parameter::CAPTURE_NOCAPTURE;
-		if (comparison_parameter ||
-			((memory_kind == hosted_builtin::MEMORY_INTRINSIC_STRLEN ||
-			 memory_kind == hosted_builtin::MEMORY_INTRINSIC_STRCHR ||
-			 memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCHR) && index == 0))
-			parameter->access = Parameter::ACCESS_READ;
-		else if ((memory_kind == hosted_builtin::MEMORY_INTRINSIC_BZERO ||
-			memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMSET) && index == 0)
-			parameter->access = Parameter::ACCESS_WRITE;
-		else if (memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCPY &&
-			index < 2)
-		{
-			parameter->access = index == 0 ?
-				Parameter::ACCESS_WRITE : Parameter::ACCESS_READ;
+		if (memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCPY && index < 2)
 			parameter->alias = Parameter::ALIAS_NOALIAS;
-		}
-		else if (memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMMOVE &&
-			index == 1)
-			parameter->access = Parameter::ACCESS_READ;
 		return;
 	}
-	if (kind == BUILTIN_FUNCTION_STRLEN && index == 0)
+	if (kind == BUILTIN_FUNCTION_MEMCPY && index < 2)
 	{
-		parameter->capture = Parameter::CAPTURE_NOCAPTURE;
-		parameter->access = Parameter::ACCESS_READ;
-	}
-	else if (kind == BUILTIN_FUNCTION_MEMCPY && index < 2)
-	{
-		parameter->capture = Parameter::CAPTURE_NOCAPTURE;
-		parameter->access = index == 0 ? Parameter::ACCESS_WRITE :
-			Parameter::ACCESS_READ;
 		parameter->alias = Parameter::ALIAS_NOALIAS;
-	}
-	else if (kind == BUILTIN_FUNCTION_MEMMOVE && index < 2)
-	{
-		parameter->capture = Parameter::CAPTURE_NOCAPTURE;
-		if (index == 1) parameter->access = Parameter::ACCESS_READ;
 	}
 }
 

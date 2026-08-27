@@ -238,19 +238,6 @@ enum ParamPassingMode
   PPM_REFERENCE
 };
 
-enum ParamCaptureMode
-{
-  PCM_DEFAULT,
-  PCM_NOCAPTURE
-};
-
-enum ParamAccessMode
-{
-  PAM_DEFAULT,
-  PAM_READ,
-  PAM_WRITE
-};
-
 enum ParamAliasMode
 {
   PALM_DEFAULT,
@@ -329,8 +316,6 @@ struct FunctionBoundaryMetadata
 struct ParameterMetadata
 {
   ParamPassingMode passing = PPM_DIRECT;
-  ParamCaptureMode capture = PCM_DEFAULT;
-  ParamAccessMode access = PAM_DEFAULT;
   ParamAliasMode alias = PALM_DEFAULT;
 };
 

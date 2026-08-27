@@ -283,12 +283,6 @@ void AdaptParameterFacts(const Parameter& source,
 		target->metadata.passing = lowir_model::PPM_INDIRECT_RESULT;
 	else if (source.by_address)
 		target->metadata.passing = lowir_model::PPM_BY_ADDRESS;
-	if (source.capture == Parameter::CAPTURE_NOCAPTURE)
-		target->metadata.capture = lowir_model::PCM_NOCAPTURE;
-	if (source.access == Parameter::ACCESS_READ)
-		target->metadata.access = lowir_model::PAM_READ;
-	else if (source.access == Parameter::ACCESS_WRITE)
-		target->metadata.access = lowir_model::PAM_WRITE;
 	if (source.alias == Parameter::ALIAS_NOALIAS)
 		target->metadata.alias = lowir_model::PALM_NOALIAS;
 }

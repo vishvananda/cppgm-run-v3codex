@@ -77,15 +77,6 @@ void write_parameter_metadata(std::ostream & out, const ParameterMetadata & valu
   case PPM_BY_ADDRESS: metadata.item("pass", "by_address"); break;
   case PPM_REFERENCE: metadata.item("pass", "reference"); break;
   }
-  switch(value.capture) {
-  case PCM_DEFAULT: break;
-  case PCM_NOCAPTURE: metadata.item("capture", "nocapture"); break;
-  }
-  switch(value.access) {
-  case PAM_DEFAULT: break;
-  case PAM_READ: metadata.item("access", "read"); break;
-  case PAM_WRITE: metadata.item("access", "write"); break;
-  }
   if(value.alias == PALM_NOALIAS) metadata.item("alias", "noalias");
   metadata.finish();
 }

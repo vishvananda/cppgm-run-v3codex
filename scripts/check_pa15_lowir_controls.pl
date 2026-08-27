@@ -34,7 +34,7 @@ if (scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests(
-	$root, qr/(?:pointer-difference-strength-reduction|readonly-scalar-storage|volatile-access-markers|builtin-memory-access-defaults|ordinary-pointer-decay).*\.cpp$/);
+	$root, qr/(?:pointer-difference-strength-reduction|readonly-scalar-storage|volatile-access-markers|builtin-memory-alias-boundaries|ordinary-pointer-decay).*\.cpp$/);
 die "No PA15 focused LowIR controls found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -113,20 +113,26 @@ for my $test (@tests)
 			if $member !~ /^\s+store i32 [^,]+, %\w+$/m;
 		next;
 	}
-	if ($test =~ /builtin-memory-access-defaults/) {
-		my ($destination, $source) = $lowir =~
-			/^declare function \@\S+\(%\S+ : ptr \[([^\]]*)\], %\S+ : ptr \[([^\]]*)\], %\S+ : i64\) -> ptr \[[^\n]*\bobject=cppgm_builtin_memmove\b[^\n]*\]$/m;
-		die "$test: generated LowIR has no structured memmove declaration\n"
-			if !defined($destination) || !defined($source);
-		die "$test: memmove destination lost nocapture\n"
-			if $destination !~ /(?:^|, )capture=nocapture(?:, |$)/;
-		die "$test: conservative memmove destination access was not omitted\n"
-			if $destination =~ /(?:^|, )access=/;
-		die "$test: memmove source lost nocapture or read-only access\n"
-			if $source !~ /(?:^|, )capture=nocapture(?:, |$)/ ||
-			   $source !~ /(?:^|, )access=read(?:, |$)/;
-		die "$test: removed access=readwrite spelling remains in generated LowIR\n"
-			if $lowir =~ /\baccess=readwrite\b/;
+	if ($test =~ /builtin-memory-alias-boundaries/) {
+		die "$test: generated LowIR has no ordinary three-parameter memcpy declaration\n"
+			if $lowir !~
+				/^declare function \@\S+\(%\S+ : ptr \[alias=noalias\], %\S+ : ptr \[alias=noalias\], %\S+ : i64\) -> ptr \[[^\n]*\bunwind=no\b[^\n]*\bobject=cppgm_builtin_memcpy\b[^\n]*\]$/m;
+		my ($memmove) = $lowir =~
+			/^(declare function \@\S+\(%\S+ : ptr, %\S+ : ptr, %\S+ : i64\) -> ptr \[[^\n]*\bunwind=no\b[^\n]*\bobject=cppgm_builtin_memmove\b[^\n]*\])$/m;
+		die "$test: generated LowIR has no ordinary three-parameter memmove declaration\n"
+			if !defined($memmove);
+		die "$test: generated memmove boundary retained removed pointer promises\n"
+			if $lowir =~ /\b(?:capture|access)=/;
+		die "$test: potentially overlapping memmove was marked noalias\n"
+			if $memmove =~ /\balias=noalias\b/;
+		my $copy = function_body($test, $lowir, 'copy_bytes');
+		die "$test: source call did not use the ordinary memcpy boundary\n"
+			if $copy !~
+				/^\s+%\w+ = call ptr \@\S+\(%\w+, %\w+, %\w+\)$/m;
+		my $move = function_body($test, $lowir, 'move_bytes');
+		die "$test: source call did not use the ordinary memmove boundary\n"
+			if $move !~
+				/^\s+%\w+ = call ptr \@\S+\(%\w+, %\w+, %\w+\)$/m;
 		next;
 	}
 	if ($test =~ /ordinary-pointer-decay/) {

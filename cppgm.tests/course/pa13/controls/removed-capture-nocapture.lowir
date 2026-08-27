@@ -1,0 +1,1 @@
+declare function @observe(%value : ptr [capture=nocapture]) -> void

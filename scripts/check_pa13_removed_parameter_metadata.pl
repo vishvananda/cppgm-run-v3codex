@@ -16,7 +16,8 @@ if (scalar(@ARGV) != 2)
 }
 
 my ($lowiropt, $root) = @ARGV;
-my @tests = collect_tests($root, qr/removed-(?:access-none|pass-decay)\.lowir$/);
+my @tests = collect_tests($root,
+	qr/removed-(?:access-(?:none|read|write)|capture-nocapture|pass-decay)\.lowir$/);
 die "No PA13 removed parameter-metadata controls found under $root\n"
 	if !@tests;
 

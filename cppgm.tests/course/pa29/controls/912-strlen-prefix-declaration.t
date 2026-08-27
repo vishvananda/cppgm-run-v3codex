@@ -1,4 +1,4 @@
-declare function @measure_bytes(%data : ptr [capture=nocapture, access=read]) -> i64 [effects=readonly, unwind=no, binding=strong, object=cppgm_builtin_strlen]
+declare function @measure_bytes(%data : ptr) -> i64 [effects=readonly, unwind=no, binding=strong, object=cppgm_builtin_strlen]
 
 function @ordinary_length(%data : ptr) -> i64 [binding=strong] {
   block ^entry:

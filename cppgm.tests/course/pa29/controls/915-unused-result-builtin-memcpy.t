@@ -17,8 +17,8 @@ global @destination [binding=internal] = {
 global @copy_count : i64 [storage=readonly, binding=internal] = 4
 
 function @memory_copy(
-    %destination : ptr [capture=nocapture, access=write, alias=noalias],
-    %source : ptr [capture=nocapture, access=read, alias=noalias],
+    %destination : ptr [alias=noalias],
+    %source : ptr [alias=noalias],
     %count : i64) -> ptr
     [unwind=no, binding=strong,
      object=cppgm_builtin_memcpy] {
