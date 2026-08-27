@@ -1847,8 +1847,8 @@ sub lowir_role_owner_kind
 {
 	my ($role) = @_;
 	return '' if !defined($role) || $role eq '';
-	return 'function' if $role =~ /^(?:entry|init|fini|eh_unhandled|eh_allocate_exception|eh_begin_catch|eh_call_unexpected|eh_current_exception_type|eh_end_catch|eh_rethrow|eh_throw|eh_personality|eh_resume|allocate_memory|free_memory|terminate|pure_virtual|dynamic_cast|bad_cast|bad_typeid|unreachable)$/;
-	return 'global' if $role =~ /^(?:eh_top|eh_value|eh_type|rtti_class|rtti_si|rtti_vmi|rtti_data)$/;
+	return 'function' if $role =~ /^(?:entry|init|fini|eh_unhandled|eh_allocate_exception|eh_begin_catch|eh_end_catch|eh_rethrow|eh_throw|eh_personality|eh_resume|allocate_memory|free_memory|terminate|pure_virtual|dynamic_cast|bad_cast|bad_typeid|unreachable)$/;
+	return 'global' if $role =~ /^(?:eh_top|eh_value|rtti_class|rtti_si|rtti_vmi|rtti_data)$/;
 	return '';
 }
 
