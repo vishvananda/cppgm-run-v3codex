@@ -243,8 +243,6 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 			output << " [projection=array_element]";
 		else if (instruction.projection == INDEX_PROJECTION_FIELD)
 			output << " [projection=field]";
-		else if (instruction.projection == INDEX_PROJECTION_BASE_SUBOBJECT)
-			output << " [projection=base_subobject]";
 		output << ' ';
 		WriteOperand(output, instruction.first, program, function);
 		output << ", ";

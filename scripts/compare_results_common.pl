@@ -1957,6 +1957,9 @@ sub validate_lowir_text
 	push @errors, "removed capture/access parameter metadata in generated LowIR"
 		if !$options->{allow_legacy_capture_access} &&
 		   $data =~ /\b(?:capture|access)\s*=/;
+	push @errors, "removed source-origin index projection in generated LowIR"
+		if !$options->{allow_legacy_source_origin_projection} &&
+		   $data =~ /\bprojection\s*=\s*(?:base_subobject|reference_field)\b/;
 
 	my @tops = ($data =~ /^(?:declare\s+(?:function|global)|function|global)\s+@([A-Za-z0-9_]+)\b/gm);
 	my %top_count;
@@ -3265,7 +3268,8 @@ sub compare_lowir_text
 		  allow_legacy_trivial_lifecycle => 1,
 		  allow_legacy_unreachable_role => 1,
 		  allow_legacy_decay_surface => 1,
-		  allow_legacy_capture_access => 1 });
+		  allow_legacy_capture_access => 1,
+		  allow_legacy_source_origin_projection => 1 });
 	return (0, "ERROR: invalid reference LowIR: $ref_error") if !$ref_valid;
 	my ($my_valid, $my_error) = validate_lowir_text(
 		$my_data,

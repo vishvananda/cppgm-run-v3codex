@@ -250,6 +250,26 @@ function @trap() -> void {
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("removed capture/access parameter metadata", result.stdout)
 
+    def test_relaxed_compare_rejects_generated_source_origin_projection(self):
+        generated = REFERENCE.replace(
+            "%sum = binary add i64 %left, %right",
+            "%projected = index i8 [projection=base_subobject] nullptr, 0\n"
+            "    %sum = binary add i64 %left, %right",
+        )
+        result = self.compare(REFERENCE, generated)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("removed source-origin index projection", result.stdout)
+
+    def test_relaxed_compare_accepts_legacy_source_origin_projection_reference(self):
+        reference = REFERENCE.replace(
+            "%sum = binary add i64 %left, %right",
+            "%projected = index i8 [projection=reference_field] nullptr, 0\n"
+            "    %sum = binary add i64 %left, %right",
+        )
+        generated = reference.replace(" [projection=reference_field]", "")
+        result = self.compare(reference, generated)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_lowir_sanity_rejects_removed_unary_decay(self):
         generated = REFERENCE.replace(
             "%sum = binary add i64 %left, %right",

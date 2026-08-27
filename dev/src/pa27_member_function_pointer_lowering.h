@@ -177,7 +177,6 @@ protected:
 		index.type = LowI8();
 		index.first = object;
 		index.second = adjustment;
-		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
 		derived.Emit(index);
 		return MemberPointerCallOperands(adjusted, callee);
 	}

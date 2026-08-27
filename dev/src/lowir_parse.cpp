@@ -807,8 +807,6 @@ private:
       const std::string & value = items[0].second;
       if(value == "array_element") out.index_projection = IPK_ARRAY_ELEMENT;
       else if(value == "field") out.index_projection = IPK_FIELD;
-      else if(value == "base_subobject") out.index_projection = IPK_BASE_SUBOBJECT;
-      else if(value == "reference_field") out.index_projection = IPK_REFERENCE_FIELD;
       else throw ParseError("invalid index projection");
     }
     out.first = operand();

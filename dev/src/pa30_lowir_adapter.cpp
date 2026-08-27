@@ -440,8 +440,6 @@ void AdaptProjection(IndexProjection source, lowir_model::Instruction* target)
 		target->index_projection = lowir_model::IPK_ARRAY_ELEMENT; break;
 	case INDEX_PROJECTION_FIELD:
 		target->index_projection = lowir_model::IPK_FIELD; break;
-	case INDEX_PROJECTION_BASE_SUBOBJECT:
-		target->index_projection = lowir_model::IPK_BASE_SUBOBJECT; break;
 	}
 }
 

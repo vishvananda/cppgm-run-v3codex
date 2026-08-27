@@ -838,11 +838,13 @@ lowering shape. The currently supported projection kinds are:
 
 - `array_element`
 - `field`
-- `base_subobject`
-- `reference_field`
 
-When omitted, `index` still means plain pointer arithmetic with no stronger semantic
-projection claim.
+`array_element` identifies scaled element addressing used by array and table
+transforms. `field` identifies a constant within-object byte projection used by
+the object-copy and zeroing transforms. When omitted, `index` means plain
+pointer arithmetic with no stronger optimization claim; already-lowered source
+origins such as base-subobject and reference-field selection have no separate
+LowIR spelling.
 
 `load volatile` and `store volatile` mark an observable access to a
 volatile-qualified object. Volatility is a property of the operation, not of

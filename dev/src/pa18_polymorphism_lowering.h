@@ -309,7 +309,6 @@ protected:
 		index.type = LowI8();
 		index.first = object;
 		index.second = Operand(offset, LowI64());
-		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
 		derived.Emit(index);
 		return projected;
 	}

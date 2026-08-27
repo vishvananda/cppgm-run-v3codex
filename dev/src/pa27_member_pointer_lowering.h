@@ -45,7 +45,6 @@ protected:
 		index.first = object;
 		index.second = Operand(static_cast<std::int64_t>(
 			application.base_projection_offset), LowI64());
-		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
 		derived.Emit(index);
 		return projected;
 	}

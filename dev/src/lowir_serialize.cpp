@@ -232,8 +232,6 @@ const char * projection_name(IndexProjectionKind projection)
   case IPK_NONE: return 0;
   case IPK_ARRAY_ELEMENT: return "array_element";
   case IPK_FIELD: return "field";
-  case IPK_BASE_SUBOBJECT: return "base_subobject";
-  case IPK_REFERENCE_FIELD: return "reference_field";
   }
   throw std::logic_error("invalid LowIR index projection");
 }

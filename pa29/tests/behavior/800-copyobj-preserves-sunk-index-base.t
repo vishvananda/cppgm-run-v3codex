@@ -29,7 +29,7 @@ function @copy_then_mark_base(%this : ptr) -> void {
   block ^entry:
     store ptr %this, $this
     %base = load ptr $this
-    %sub = index i8 [projection=base_subobject] %base, 0
+    %sub = index i8 %base, 0
     %src = addr @source
     %dst = addr @dest
     copyobj 24x8 %src, %dst

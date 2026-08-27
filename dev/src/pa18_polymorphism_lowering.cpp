@@ -2154,7 +2154,6 @@ private:
 		index.type = LowI8();
 		index.first = object;
 		index.second = Operand(static_cast<std::int64_t>(offset), LowI64());
-		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
 		Emit(index);
 		return projected;
 	}

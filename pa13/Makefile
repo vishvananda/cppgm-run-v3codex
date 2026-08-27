@@ -77,6 +77,9 @@ test: $(TEST_DEPS)
 			$(LOWIROPT_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
 		perl ../scripts/check_pa13_removed_instructions.pl \
 			$(LOWIROPT_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
+		perl ../scripts/check_pa13_index_projection_contract.pl \
+			$(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) \
+			"$(COURSE_CONTROL_TEST_ROOT)"; \
 		perl ../scripts/check_pa13_call_boundary_metadata.pl \
 			$(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) \
 			"$(COURSE_CONTROL_TEST_ROOT)"; \
@@ -109,6 +112,8 @@ CHECK_RUN = case "$(TEST)" in \
 	$(COURSE_CONTROL_TEST_ROOT)/*removed-capture-*) perl ../scripts/check_pa13_removed_parameter_metadata.pl $(LOWIROPT_APP) "$(TEST)" ;; \
 	$(COURSE_CONTROL_TEST_ROOT)/*removed-pass-decay*) perl ../scripts/check_pa13_removed_parameter_metadata.pl $(LOWIROPT_APP) "$(TEST)" ;; \
 	$(COURSE_CONTROL_TEST_ROOT)/*removed-unary-decay*) perl ../scripts/check_pa13_removed_instructions.pl $(LOWIROPT_APP) "$(TEST)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*index-projections*) perl ../scripts/check_pa13_index_projection_contract.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(TEST)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*-projection*) perl ../scripts/check_pa13_index_projection_contract.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(TEST)" ;; \
 	$(COURSE_CONTROL_TEST_ROOT)/*retained-call-boundary-metadata*) perl ../scripts/check_pa13_call_boundary_metadata.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(TEST)" ;; \
 	*) scripts/run_all_tests.pl $(CPPGM_TEST_APP) check "$(TEST)" ;; \
 esac

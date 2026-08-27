@@ -280,9 +280,7 @@ enum IndexProjectionKind
 {
   IPK_NONE,
   IPK_ARRAY_ELEMENT,
-  IPK_FIELD,
-  IPK_BASE_SUBOBJECT,
-  IPK_REFERENCE_FIELD
+  IPK_FIELD
 };
 
 struct SymbolMetadata
