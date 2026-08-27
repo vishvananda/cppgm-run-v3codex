@@ -295,7 +295,6 @@ enum CallReturnMode
 enum GlobalStorageMode
 {
   GSM_DEFAULT,
-  GSM_WRITABLE,
   GSM_READONLY,
   GSM_THREAD_LOCAL
 };
