@@ -811,7 +811,6 @@ void DiscardObjectOnlyPresentation(lowir_model::LowirProgram* program)
 		const lowir_model::SymbolMetadata& metadata) {
 		retain(metadata.object_symbol);
 		retain(metadata.tls_for_spelling);
-		retain(metadata.section_segment);
 		retain(metadata.section_name);
 	};
 	for (std::size_t i = 0; i < program->symbol_names.size(); ++i)

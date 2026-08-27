@@ -160,7 +160,6 @@ void make_internal_clone(Function * function, lowir_model::SymbolId symbol)
   function->metadata.object_symbol = lowir_model::StringId();
   function->metadata.tls_for_spelling = lowir_model::StringId();
   function->metadata.tls_for_symbol_id = lowir_model::SymbolId();
-  function->metadata.section_segment = lowir_model::StringId();
   function->metadata.section_name = lowir_model::StringId();
   function->metadata.keep_internal_alias = false;
   function->metadata.prefer_local_object_binding = false;

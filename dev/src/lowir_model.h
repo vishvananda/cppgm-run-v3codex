@@ -325,7 +325,6 @@ struct SymbolMetadata
   // program-wide symbol resolver publishes tls_for_symbol_id.
   StringId tls_for_spelling;
   SymbolId tls_for_symbol_id;
-  StringId section_segment;
   StringId section_name;
   bool keep_internal_alias = false;
   bool prefer_local_object_binding = false;

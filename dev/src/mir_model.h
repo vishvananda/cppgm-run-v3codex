@@ -60,7 +60,6 @@ struct GlobalDefinition
   bool readonly = false;
   bool thread_local_storage = false;
   lowir_model::SymbolId thread_local_wrapper_symbol;
-  lowir_model::StringId section_segment;
   lowir_model::StringId section_name;
   MachineType type;
   union { long long int_value; std::uint64_t literal_low; };

@@ -344,8 +344,6 @@ void WriteSymbolMetadata(Writer& out,
 	out.String(value.tls_for_symbol_id.valid() ?
 		lowir_model::lowir_symbol_name(program, value.tls_for_symbol_id) :
 		std::string());
-	out.String(value.section_segment.valid() ?
-		program.strings.get(value.section_segment) : std::string());
 	out.String(value.section_name.valid() ?
 		program.strings.get(value.section_name) : std::string());
 	out.Bool(value.keep_internal_alias);
@@ -366,13 +364,10 @@ lowir_model::SymbolMetadata ReadSymbolMetadata(
 	value.binding = ReadEnum<lowir_model::SymbolBindingMode>(in);
 	const std::string object_symbol = in.String();
 	const std::string tls_for = in.String();
-	const std::string section_segment = in.String();
 	const std::string section_name = in.String();
 	if (!object_symbol.empty())
 		value.object_symbol = strings.intern(object_symbol);
 	if (!tls_for.empty()) value.tls_for_spelling = strings.intern(tls_for);
-	if (!section_segment.empty())
-		value.section_segment = strings.intern(section_segment);
 	if (!section_name.empty())
 		value.section_name = strings.intern(section_name);
 	value.keep_internal_alias = in.Bool();

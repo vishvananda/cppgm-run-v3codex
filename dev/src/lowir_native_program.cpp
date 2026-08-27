@@ -43,8 +43,6 @@ mir_model::MirGlobalDefinition lower_global(
     target.object_symbol = source.metadata.object_symbol;
   target.readonly = source.storage == lowir_model::GSM_READONLY;
   target.thread_local_storage = source.storage == lowir_model::GSM_THREAD_LOCAL;
-  if(source.metadata.section_segment.valid())
-    target.section_segment = source.metadata.section_segment;
   if(source.metadata.section_name.valid())
     target.section_name = source.metadata.section_name;
   if(source.structured) {

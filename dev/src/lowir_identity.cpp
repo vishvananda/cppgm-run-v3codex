@@ -1184,7 +1184,6 @@ void remap_lowir_program_strings(Program & program,
   const auto remap_metadata = [&remap_string](SymbolMetadata & metadata) {
     remap_string(metadata.object_symbol);
     remap_string(metadata.tls_for_spelling);
-    remap_string(metadata.section_segment);
     remap_string(metadata.section_name);
   };
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
@@ -1265,7 +1264,6 @@ void discard_unreferenced_lowir_strings(Program & program)
   const auto retain_metadata = [&retain](const SymbolMetadata & metadata) {
     retain(metadata.object_symbol);
     retain(metadata.tls_for_spelling);
-    retain(metadata.section_segment);
     retain(metadata.section_name);
   };
 
