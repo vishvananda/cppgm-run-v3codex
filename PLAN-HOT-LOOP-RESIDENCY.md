@@ -3676,6 +3676,50 @@ inception lane while another build or profiler is active.
   closed; subsequent work returns to source-independent, profile-driven
   `Run`/cursor movement rather than re-testing obsolete self-only results.
 
+- **P32-L115 (STABLE-PARAMETER ADDRESS REPLAY REJECTED BY CONTROLLED
+  SAME-SOURCE RATIO).** The exact-final profile's next `Lexer::Run` cluster
+  kept a named-operator table base in a register under Clang but repeatedly
+  materialized and spilled it under self.  The older storage-only address
+  deferral could not safely represent that lifetime: simply widening it
+  reproduced PA29's `loop-invariant-parameter-across-call` failure by loading
+  from the parameter address where the pointer value was required.
+
+  A source-independent probe therefore proved a broader replay-safe use
+  class through identity copies and admitted only storage, call-argument,
+  pointer-value store, and scalar-return consumers.  Unsupported consumers
+  cleared the property through copy chains.  It also treated either an
+  original parameter register or a selected stable parameter home as a valid
+  constant-index base, materializing the pointer value at copy, call, store,
+  and return boundaries.  This repaired the historical failure without
+  weakening or shaping its fixture.  PA29 passed 291/291 and PA38 passed
+  46/46.
+
+  On `pp_tokenizer.cpp`, final MIR fell 11,079 -> 11,008 lines, object text
+  fell 30,266 -> 30,174 bytes, `Lexer::Run` shrank 96 bytes, and its frame
+  fell 512 -> 480 bytes.  Self-generation also reduced complete compiler text
+  8,659,687 -> 8,571,223 bytes while preserving the exact generated compiler
+  SHA-256
+  `6ba7ae4c5d89116f925e31143022c8f4b248ae8bdd7c30e3e088bcad1c565f9d`
+  across self and GCC lanes.  Thus the mechanism produced real general MIR
+  and density improvements; it was not a source-function recognizer.
+
+  The first all-32 self lane measured 32.77/870.11/48.98 seconds
+  wall/user/system and had lower CPU occupancy than the adjacent host lane.
+  Its clean repeat measured 32.01/868.04/49.33, or 917.37 aggregate CPU
+  seconds.  Exact-source GCC lanes measured 21.40/543.73/44.94 and
+  21.56/544.84/44.84 seconds, putting individual wall ratios on opposite
+  sides of the target and the two-run median at about 1.508x.  Aggregate work
+  was only slightly favorable at about 1.558x versus L106's 1.562x.
+
+  A stronger control then compiled the identical candidate source with L106's
+  pre-change self compiler.  It measured 32.00/869.64/48.65 seconds, or
+  918.29 aggregate CPU, against the candidate repeat's 32.01/917.37.  This
+  removes both source-size and GCC-denominator movement from the A/B: the
+  substantial density improvement is end-to-end neutral.  The implementation
+  is removed and PA38 remains 46/46.  No student contract/property is retained
+  for rejected behavior, and no compiler, profiler, Cachegrind, or Valgrind
+  process remains active.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
