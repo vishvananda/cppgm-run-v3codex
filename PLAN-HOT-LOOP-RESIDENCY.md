@@ -3224,6 +3224,33 @@ inception lane while another build or profiler is active.
   implementation code is removed; no new contract/property is retained, and
   no profiler, Cachegrind, inception, or build process remains.
 
+- **P32-L103 (DEFINITION-POINTER REPLAY REJECTED BY SAME-SOURCE RATIO).**
+  L73/L79's semantics-neutral PA37 representation was reconstructed on the
+  exact-final source.  The value simplifier stored pointers to instructions
+  only after each survivor reached its stable compacted prefix slot.  The
+  vectors cannot reallocate during the pass, later compaction cannot overwrite
+  an earlier prefix element, shrinking preserves prefix addresses, and the
+  pointer table expires before any later mutating pass.  PA37 passed 187/187;
+  `lowir_opt.cpp` was 2,981 lines during the probe.  Generated compiler text
+  fell 7,920,354 -> 7,918,850 bytes (-1,504), while the current 73 static
+  `strlen@plt` calls were unchanged.
+
+  The all-32 O1 candidate under
+  `/dev/shm/v3codex-p34-definition-pointer-ratio-candidate.XbSNGO` and every
+  full-source lane produced compiler SHA-256
+  `02572d808a986264b489dd608b906883a717c7dbc322898f9aecc3e9cfeb6b6f`.
+  Two self lanes measured 32.77/878.47/49.83 and
+  31.93/869.14/49.04 seconds wall/user/system, averaging 32.350 wall and
+  923.240 aggregate CPU.  The candidate-source GCC compiler prepared under
+  `/dev/shm/v3codex-p34-definition-pointer-ratio-host-gcc.EjhRXL`; its two
+  clean lanes measured 20.74/543.19/44.56 and 20.89/541.65/44.31, averaging
+  20.815 wall and 586.855 CPU.  Candidate ratios are therefore 1.554x wall
+  and 1.573x CPU, both worse than production's 1.533x and 1.566x.  GCC is
+  binding, so no Clang lane was consumed.  The missing same-source denominator
+  has now been supplied and does not rescue the old rejection.  All probe code
+  is removed, `lowir_opt.cpp` is restored to 3,000 lines, and no profiler,
+  Cachegrind, inception, or build process remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
