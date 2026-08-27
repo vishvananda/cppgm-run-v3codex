@@ -384,8 +384,7 @@ void AdaptSymbolFacts(const Symbol& source,
 	lowir_model::SymbolMetadata* symbol,
 	lowir_model::FunctionBoundaryMetadata* boundary)
 {
-	symbol->linkage = source.c_linkage ? lowir_model::LLM_C :
-		lowir_model::LLM_CPP;
+	if (source.c_linkage) symbol->linkage = lowir_model::LLM_C;
 	symbol->binding = source.internal_linkage ? lowir_model::SBM_INTERNAL :
 		source.weak_linkage ? lowir_model::SBM_WEAK : lowir_model::SBM_STRONG;
 	symbol->object_symbol = source.object_name;

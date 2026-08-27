@@ -254,11 +254,11 @@ host C++ runtime.
 The currently defined linkage values are:
 
 - `c`
-- `cpp`
 
-`cpp` is the ordinary default and is normally omitted. `c` makes an otherwise ordinary symbol
-explicitly C-linked in the printed LowIR. The current emit-LowIR path uses `linkage=c` where
-the semantic frontend already knows the symbol has C linkage, such as `extern "C"` imports.
+Omission means ordinary C++ language linkage and has no explicit spelling. `c` makes an
+otherwise ordinary symbol explicitly C-linked in the printed LowIR. The current emit-LowIR
+path uses `linkage=c` where the semantic frontend already knows the symbol has C linkage,
+such as `extern "C"` imports.
 
 The currently defined binding values are:
 

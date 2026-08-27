@@ -31,7 +31,6 @@ void note_operand_reference(const Operand& operand,
 void canonicalize_frontend_symbol(const Program& program, SymbolId symbol,
 	SymbolMetadata* metadata)
 {
-	if (metadata->linkage == LLM_CPP) metadata->linkage = LLM_DEFAULT;
 	if (metadata->binding == SBM_INTERNAL ||
 		!metadata->object_symbol.valid()) return;
 	if (lowir_symbol_spelling(program, symbol) == metadata->object_symbol)

@@ -148,7 +148,6 @@ void write_symbol_metadata(MetadataWriter & metadata,
   if(!value.inferred_legacy_role)
     metadata.item("role", role_name(value.role));
   if(value.linkage == LLM_C) metadata.item("linkage", "c");
-  else if(value.linkage == LLM_CPP) metadata.item("linkage", "cpp");
   if(value.binding == SBM_INTERNAL) metadata.item("binding", "internal");
   else if(value.binding == SBM_STRONG) metadata.item("binding", "strong");
   else if(value.binding == SBM_WEAK) metadata.item("binding", "weak");

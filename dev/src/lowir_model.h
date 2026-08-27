@@ -227,8 +227,7 @@ enum SymbolRole
 enum LanguageLinkageMode
 {
   LLM_DEFAULT,
-  LLM_C,
-  LLM_CPP
+  LLM_C
 };
 
 enum SymbolBindingMode

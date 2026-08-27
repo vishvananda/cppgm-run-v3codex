@@ -417,7 +417,6 @@ private:
     if(key == "role") out.role = parse_role(value);
     else if(key == "linkage") {
       if(value == "c") out.linkage = LLM_C;
-      else if(value == "cpp") out.linkage = LLM_CPP;
       else throw ParseError("invalid linkage metadata");
     } else if(key == "binding") {
       if(value == "internal") out.binding = SBM_INTERNAL;
