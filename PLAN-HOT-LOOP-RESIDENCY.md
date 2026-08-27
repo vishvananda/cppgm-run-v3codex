@@ -8,10 +8,11 @@ performance landing; the exact-cost 16-byte vector zero is retained as a
 minor native-positive quality increment; immediate-call merge sources may
 donate their frame homes as a minor MIR-quality increment; direct immediate
 comparisons for large switches are the latest performance landing;
-odd-save paired recoloring is the latest performance landing; scaled-index
-multiplier factoring is the latest critical-path landing; source-matched
-exact-final full-source O1 wall gaps are about 1.533x GCC and 1.492x Clang,
-so GCC remains binding
+odd-save paired recoloring is a retained performance landing; scaled-index
+multiplier factoring is a retained critical-path landing; unused-result
+dynamic builtin-copy lowering is the latest performance landing;
+source-matched exact-final full-source O1 wall gaps are about 1.516x GCC and
+1.452x Clang, so GCC remains binding
 
 Date: 2026-08-27
 
@@ -3632,6 +3633,48 @@ inception lane while another build or profiler is active.
   so no Clang lane is warranted.  The implementation is removed; no student
   contract/property is retained for rejected behavior, and no compiler,
   profiler, Cachegrind, or Valgrind process remains active.
+
+- **P32-L114 (REPEATED COLD-TAIL INLINE BUDGET REJECTED BY SAME-SOURCE
+  RATIO).** Exact-final self/GCC/Clang profiles and native symbol sizes showed
+  another plausible destructive-interference mechanism.  Self had inlined
+  six calls to `PhysicalCursor::Continuation` into `DecodeOne`, and then
+  inlined `DecodeOne` into `PhysicalCursor::Next`; Clang retained the
+  149-byte continuation as a separate function and GCC retained the larger
+  decoder.  A source-independent O1 probe therefore bounded repeated cloning
+  within one caller when the callee had both an ordinary path and a
+  cold/nonreturning tail.  It used only call-graph multiplicity, LowIR
+  instruction counts, and existing cold-path classification; it did not
+  recognize a source function, symbol, or workload.
+
+  A first broad version also blocked ordinary repeated helpers and failed one
+  PA37 compatibility control, so it was narrowed before timing to callees
+  whose full instruction count exceeded their cold-discounted cost.  The
+  narrowed form passed PA37 187/187 and PA38 46/46.  It retained the six
+  continuation calls, shrank `PhysicalCursor::Next` from 2,189 to 1,088 bytes
+  and `Lexer::Run` from 13,772 to 8,998 bytes in the diagnostic object, and
+  reduced complete compiler text from 8,656,879 to 8,571,980 bytes
+  (-84,899).  Thus this was a real compiler-wide density change, not a
+  source-specific shape match.
+
+  The explicit O1/all-32 candidate prepared in 17.92 seconds at
+  `/dev/shm/v3codex-repeat-cold-candidate.UscUDa/bin/selfhost/cppgm++-self`,
+  SHA-256
+  `78f0517c6f2900a2472bdac880bcdc601237ab9bf6db7f32a16532bf816910ab`.
+  Its valid full-source self lane measured 32.27/873.33/49.54 seconds
+  wall/user/system, or 922.87 aggregate CPU seconds.  The exact-source GCC
+  compiler under `/dev/shm/v3codex-repeat-cold-gcc-prep.Cn1ViE` completed the
+  same workload in 21.12/544.42/44.94 seconds, or 589.36 aggregate CPU
+  seconds, and reproduced the candidate hash.  Candidate ratios are therefore
+  about 1.528x wall and 1.566x aggregate CPU, both worse than L106's retained
+  1.516x/1.562x binding point.  The large text reduction lowers self aggregate
+  work only marginally while the added inliner analysis lowers GCC work more;
+  the corrected metric rejects it and no Clang lane is warranted.
+
+  The implementation is removed.  No student contract/property is retained
+  for rejected behavior, and no compiler, profiler, Cachegrind, or Valgrind
+  process remains active.  The historical ratio-sensitive replay queue stays
+  closed; subsequent work returns to source-independent, profile-driven
+  `Run`/cursor movement rather than re-testing obsolete self-only results.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
