@@ -1,6 +1,13 @@
 #include "lowir_scalar_rules.h"
 
+#include "lowir_function_analysis.h"
+
+#include <algorithm>
+#include <cstdint>
 #include <limits>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace lowir_opt {
 
@@ -61,6 +68,17 @@ ReadonlyGlobalIndex::ReadonlyGlobalIndex(
 
 namespace {
 
+bool compatible_strlen_signature(
+    const std::vector<lowir_model::Parameter> & params,
+    const LowType & result,
+    const lowir_model::FunctionBoundaryMetadata & boundary)
+{
+  return params.size() == 1 &&
+    params[0].type.kind == lowir_model::LTK_PTR &&
+    result.kind == lowir_model::LTK_I64 &&
+    boundary.arity == lowir_model::CAM_FIXED;
+}
+
 bool readonly_byte_string_length(
     const lowir_model::GlobalDefinition & global, std::size_t * length)
 {
@@ -99,12 +117,24 @@ ReadonlyByteStringIndex::ReadonlyByteStringIndex(
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
     const lowir_model::FunctionDeclaration & declaration =
       program.function_declarations[i];
-    if(declaration.metadata.object_symbol.valid() &&
+    if(compatible_strlen_signature(declaration.params,
+         declaration.return_type, declaration.boundary) &&
+       declaration.metadata.object_symbol.valid() &&
        program.strings.get(declaration.metadata.object_symbol) ==
          "cppgm_builtin_strlen") {
       strlen_symbol = declaration.symbol;
       break;
     }
+  }
+  for(std::size_t i = 0;
+      !strlen_symbol.valid() && i < program.functions.size(); ++i) {
+    const lowir_model::Function & function = program.functions[i];
+    if(compatible_strlen_signature(
+         function.params, function.return_type, function.boundary) &&
+       function.metadata.object_symbol.valid() &&
+       program.strings.get(function.metadata.object_symbol) ==
+         "cppgm_builtin_strlen")
+      strlen_symbol = function.symbol;
   }
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const lowir_model::GlobalDefinition & global = program.globals[i];
@@ -158,6 +188,472 @@ bool fold_readonly_byte_string_lengths(Function * function,
       changed = true;
       if(stats) ++stats->rewrites;
     }
+  return changed;
+}
+
+namespace {
+
+const std::size_t kNoInstruction = static_cast<std::size_t>(-1);
+
+struct DefinitionLocation
+{
+  const Instruction * instruction = 0;
+  std::size_t block = kNoInstruction;
+  std::size_t index = kNoInstruction;
+};
+
+struct SlotAddressFact
+{
+  bool known = false;
+  bool dynamic = false;
+  lowir_model::SlotId slot;
+  std::size_t offset = 0;
+  std::size_t stride = 0;
+  Operand index;
+};
+
+class TableAddressAnalysis
+{
+public:
+  TableAddressAnalysis(const Function & function,
+      const std::vector<DefinitionLocation> & definitions)
+    : definitions_(definitions), facts_(function.value_names.size()),
+      states_(function.value_names.size(), 0)
+  {}
+
+  SlotAddressFact resolve(lowir_model::ValueId value)
+  {
+    const std::uint32_t id = value;
+    if(id >= definitions_.size()) return SlotAddressFact();
+    if(states_[id] == 2) return facts_[id];
+    if(states_[id] == 1) return SlotAddressFact();
+    states_[id] = 1;
+    const Instruction * definition = definitions_[id].instruction;
+    SlotAddressFact fact;
+    if(definition && definition->kind == Instruction::IK_ADDR &&
+       definition->first.kind == Operand::OP_SLOT) {
+      fact.known = true;
+      fact.slot = definition->first.slot;
+    } else if(definition && definition->kind == Instruction::IK_COPY &&
+              definition->first.kind == Operand::OP_TEMP) {
+      fact = resolve(definition->first.value);
+    } else if(definition && definition->kind == Instruction::IK_INDEX &&
+              definition->first.kind == Operand::OP_TEMP) {
+      const SlotAddressFact base = resolve(definition->first.value);
+      const std::size_t scale = definition->type.storage_size;
+      if(base.known && !base.dynamic && scale != 0) {
+        if(definition->second.kind == Operand::OP_INTEGER &&
+           definition->second.has_int_value &&
+           definition->second.int_high == 0 &&
+           definition->second.int_value >= 0) {
+          const unsigned long long index = static_cast<unsigned long long>(
+            definition->second.int_value);
+          if(index <= (std::numeric_limits<std::size_t>::max() -
+                       base.offset) / scale) {
+            fact = base;
+            fact.offset += static_cast<std::size_t>(index) * scale;
+          }
+        } else if(definition->second.kind == Operand::OP_TEMP &&
+                  definition->index_projection ==
+                    lowir_model::IPK_ARRAY_ELEMENT) {
+          fact = base;
+          fact.dynamic = true;
+          fact.stride = scale;
+          fact.index = definition->second;
+        }
+      }
+    }
+    facts_[id] = fact;
+    states_[id] = 2;
+    return fact;
+  }
+
+private:
+  const std::vector<DefinitionLocation> & definitions_;
+  std::vector<SlotAddressFact> facts_;
+  std::vector<unsigned char> states_;
+};
+
+lowir_model::SymbolId direct_global_address_origin(
+    lowir_model::ValueId value,
+    const std::vector<DefinitionLocation> & definitions,
+    std::vector<lowir_model::SymbolId> * origins,
+    std::vector<unsigned char> * states)
+{
+  const std::uint32_t id = value;
+  if(id >= definitions.size()) return lowir_model::SymbolId();
+  if((*states)[id] == 2) return (*origins)[id];
+  if((*states)[id] == 1) return lowir_model::SymbolId();
+  (*states)[id] = 1;
+  const Instruction * definition = definitions[id].instruction;
+  lowir_model::SymbolId result;
+  if(definition && definition->kind == Instruction::IK_ADDR &&
+     definition->first.kind == Operand::OP_GLOBAL)
+    result = definition->first.symbol;
+  else if(definition && definition->kind == Instruction::IK_COPY &&
+          definition->first.kind == Operand::OP_TEMP)
+    result = direct_global_address_origin(definition->first.value,
+      definitions, origins, states);
+  (*origins)[id] = result;
+  (*states)[id] = 2;
+  return result;
+}
+
+bool table_pointer_load_origin(lowir_model::ValueId value,
+    const std::vector<DefinitionLocation> & definitions,
+    TableAddressAnalysis * addresses, SlotAddressFact * address)
+{
+  for(std::size_t steps = 0; steps <= definitions.size(); ++steps) {
+    const std::uint32_t id = value;
+    if(id >= definitions.size()) return false;
+    const Instruction * definition = definitions[id].instruction;
+    if(!definition) return false;
+    if(definition->kind == Instruction::IK_COPY &&
+       definition->first.kind == Operand::OP_TEMP) {
+      value = definition->first.value;
+      continue;
+    }
+    if(definition->kind != Instruction::IK_LOAD ||
+       definition->volatile_access ||
+       definition->type.kind != lowir_model::LTK_PTR ||
+       definition->first.kind != Operand::OP_TEMP)
+      return false;
+    *address = addresses->resolve(definition->first.value);
+    return address->known && address->dynamic;
+  }
+  return false;
+}
+
+bool location_dominates(std::size_t definition_block,
+    std::size_t definition_index, std::size_t use_block,
+    std::size_t use_index,
+    const lowir_analysis::DominatorTree & dominators)
+{
+  return definition_block == use_block ? definition_index < use_index :
+    dominators.dominates(definition_block, use_block);
+}
+
+struct TableUseLocation
+{
+  std::size_t block;
+  std::size_t index;
+};
+
+struct StringTableCandidate
+{
+  bool considered = false;
+  bool eligible = false;
+  std::size_t count = 0;
+  std::vector<std::size_t> lengths;
+  std::vector<TableUseLocation> stores;
+  std::vector<TableUseLocation> loads;
+  lowir_model::SymbolId length_symbol;
+};
+
+struct StringTableRewrite
+{
+  std::size_t block;
+  std::size_t index;
+  lowir_model::SlotId slot;
+  Operand element_index;
+};
+
+bool operand_uses_candidate_slot(const Operand & operand,
+    const std::vector<StringTableCandidate> & candidates,
+    TableAddressAnalysis * addresses, SlotAddressFact * fact)
+{
+  if(operand.kind != Operand::OP_TEMP) return false;
+  *fact = addresses->resolve(operand.value);
+  const std::uint32_t slot = fact->slot;
+  return fact->known && slot < candidates.size() &&
+    candidates[slot].considered;
+}
+
+lowir_model::SymbolId append_length_table(
+    lowir_model::LowirProgram * program, const std::vector<std::size_t> & lengths)
+{
+  const std::string prefix = "__o1_strlen_lengths_";
+  std::size_t suffix = program->symbol_names.size();
+  std::string name;
+  for(;; ++suffix) {
+    name = prefix + std::to_string(suffix);
+    bool used = false;
+    for(std::size_t i = 0; i < program->symbol_names.size(); ++i)
+      if(program->strings.get(program->symbol_names[i]) == name) {
+        used = true;
+        break;
+      }
+    if(!used) break;
+  }
+
+  lowir_model::GlobalDefinition table;
+  table.symbol = lowir_model::append_lowir_symbol(*program, name);
+  table.structured = true;
+  table.storage = lowir_model::GSM_READONLY;
+  table.metadata.binding = lowir_model::SBM_INTERNAL;
+  table.data_items.reserve(lengths.size());
+  const LowType & i64 = lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
+  for(std::size_t i = 0; i < lengths.size(); ++i) {
+    lowir_model::GlobalDefinition::DataItem item;
+    item.kind = lowir_model::GlobalDefinition::DataItem::ITEM_INTEGER;
+    item.type = i64;
+    item.literal_operand.kind = Operand::OP_INTEGER;
+    item.literal_operand.has_int_value = true;
+    item.literal_operand.int_value = static_cast<long long>(lengths[i]);
+    item.literal_operand.int_high = 0;
+    item.literal_operand.literal_type = i64;
+    table.data_items.push_back(item);
+  }
+  program->globals.push_back(std::move(table));
+  return program->globals.back().symbol;
+}
+
+Operand temporary_operand(lowir_model::ValueId value)
+{
+  Operand result;
+  result.kind = Operand::OP_TEMP;
+  result.value = value;
+  return result;
+}
+
+}  // namespace
+
+bool fold_readonly_byte_string_table_lengths(
+    lowir_model::LowirProgram * program,
+    const ReadonlyByteStringIndex & strings, Stats * stats)
+{
+  if(!strings.strlen_symbol.valid()) return false;
+  bool changed = false;
+  const LowType & pointer =
+    lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
+  const LowType & i64 = lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
+  const std::size_t pointer_size = pointer.storage_size;
+
+  for(std::size_t function_index = 0;
+      function_index < program->functions.size(); ++function_index) {
+    Function & function = program->functions[function_index];
+    std::vector<DefinitionLocation> definitions(function.value_names.size());
+    for(std::size_t block = 0; block < function.blocks.size(); ++block)
+      for(std::size_t index = 0;
+          index < function.blocks[block].instructions.size(); ++index) {
+        const Instruction & ins = function.blocks[block].instructions[index];
+        if(ins.dest.valid() &&
+           static_cast<std::uint32_t>(ins.dest) < definitions.size())
+        {
+          definitions[ins.dest].instruction = &ins;
+          definitions[ins.dest].block = block;
+          definitions[ins.dest].index = index;
+        }
+      }
+    TableAddressAnalysis addresses(function, definitions);
+    std::vector<StringTableCandidate> candidates(function.slot_names.size());
+    std::vector<StringTableRewrite> rewrites;
+
+    // First discover strlen calls reached through a variable-indexed local
+    // pointer table.  The complete initialization and non-escape proof below
+    // decides whether each discovered slot is actually eligible.
+    for(std::size_t block = 0; block < function.blocks.size(); ++block)
+      for(std::size_t index = 0;
+          index < function.blocks[block].instructions.size(); ++index) {
+        const Instruction & ins = function.blocks[block].instructions[index];
+        if(ins.kind != Instruction::IK_CALL || !ins.dest.valid() ||
+           ins.type.kind != lowir_model::LTK_I64 ||
+           ins.first.kind != Operand::OP_GLOBAL ||
+           ins.first.symbol != strings.strlen_symbol || ins.args.size() != 1 ||
+           ins.args[0].kind != Operand::OP_TEMP)
+          continue;
+        SlotAddressFact address;
+        if(!table_pointer_load_origin(ins.args[0].value, definitions,
+             &addresses, &address))
+          continue;
+        const std::uint32_t slot = address.slot;
+        if(slot >= candidates.size()) continue;
+        candidates[slot].considered = true;
+        rewrites.push_back(StringTableRewrite{
+          block, index, address.slot, address.index});
+      }
+    if(rewrites.empty()) continue;
+
+    for(std::size_t slot = 0; slot < candidates.size(); ++slot) {
+      StringTableCandidate & candidate = candidates[slot];
+      if(!candidate.considered) continue;
+      const LowType & type = lowir_model::lowir_slot_type(
+        function, lowir_model::SlotId(static_cast<std::uint32_t>(slot)));
+      if(pointer_size == 0 || type.kind != lowir_model::LTK_OBJECT ||
+         type.alignment < pointer.alignment ||
+         type.storage_size < pointer_size * 2 ||
+         type.storage_size % pointer_size != 0 ||
+         type.storage_size / pointer_size > 256)
+        continue;
+      candidate.count = type.storage_size / pointer_size;
+      candidate.lengths.resize(candidate.count);
+      candidate.stores.resize(candidate.count,
+        TableUseLocation{kNoInstruction, kNoInstruction});
+      candidate.eligible = true;
+    }
+
+    std::vector<lowir_model::SymbolId> global_origins(
+      function.value_names.size());
+    std::vector<unsigned char> global_origin_states(
+      function.value_names.size(), 0);
+
+    // Every use of an address derived from a candidate slot must remain an
+    // ordinary address copy/index, a known initialization store, or a dynamic
+    // pointer load.  Any escape or unmodelled access rejects the entire slot.
+    for(std::size_t block = 0; block < function.blocks.size(); ++block)
+      for(std::size_t index = 0;
+          index < function.blocks[block].instructions.size(); ++index) {
+        const Instruction & ins = function.blocks[block].instructions[index];
+        const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
+        for(std::size_t operand_index = 0; operand_index < 3; ++operand_index) {
+          const Operand & operand = *operands[operand_index];
+          if(operand.kind == Operand::OP_SLOT) {
+            const std::uint32_t slot = operand.slot;
+            if(slot < candidates.size() && candidates[slot].considered &&
+               !(ins.kind == Instruction::IK_ADDR && operand_index == 0))
+              candidates[slot].eligible = false;
+            continue;
+          }
+          SlotAddressFact address;
+          if(!operand_uses_candidate_slot(
+               operand, candidates, &addresses, &address))
+            continue;
+          StringTableCandidate & candidate = candidates[address.slot];
+          if(!candidate.eligible) continue;
+          const bool address_plumbing =
+            (ins.kind == Instruction::IK_COPY && operand_index == 0) ||
+            (ins.kind == Instruction::IK_INDEX && operand_index == 0);
+          if(address_plumbing) continue;
+          if(ins.kind == Instruction::IK_STORE && operand_index == 1 &&
+             !ins.volatile_access && !address.dynamic &&
+             ins.type.kind == lowir_model::LTK_PTR &&
+             address.offset % pointer_size == 0 &&
+             address.offset / pointer_size < candidate.count &&
+             ins.first.kind == Operand::OP_TEMP) {
+            const std::size_t element = address.offset / pointer_size;
+            TableUseLocation & store = candidate.stores[element];
+            const lowir_model::SymbolId global =
+              direct_global_address_origin(ins.first.value, definitions,
+                &global_origins, &global_origin_states);
+            const std::uint32_t global_index = global;
+            if(store.block != kNoInstruction || !global.valid() ||
+               global_index >= strings.known.size() ||
+               !strings.known[global_index]) {
+              candidate.eligible = false;
+              continue;
+            }
+            candidate.lengths[element] = strings.lengths[global_index];
+            store = TableUseLocation{block, index};
+            continue;
+          }
+          if(ins.kind == Instruction::IK_LOAD && operand_index == 0 &&
+             !ins.volatile_access && ins.type.kind == lowir_model::LTK_PTR &&
+             address.dynamic && address.offset == 0 &&
+             address.stride == pointer_size) {
+            candidate.loads.push_back(TableUseLocation{block, index});
+            continue;
+          }
+          candidate.eligible = false;
+        }
+        for(std::size_t argument = 0; argument < ins.args.size(); ++argument) {
+          SlotAddressFact address;
+          if(operand_uses_candidate_slot(
+               ins.args[argument], candidates, &addresses, &address))
+            candidates[address.slot].eligible = false;
+        }
+      }
+
+    bool need_dominators = false;
+    for(std::size_t slot = 0; slot < candidates.size(); ++slot)
+      if(candidates[slot].considered && candidates[slot].eligible) {
+        need_dominators = true;
+      }
+    if(!need_dominators) continue;
+    lowir_analysis::FunctionAnalysis analysis(function, stats);
+    const lowir_analysis::DominatorTree & dominators =
+      analysis.dominator_tree();
+    for(std::size_t slot = 0; slot < candidates.size(); ++slot) {
+      StringTableCandidate & candidate = candidates[slot];
+      if(!candidate.considered || !candidate.eligible) continue;
+      for(std::size_t element = 0; element < candidate.count; ++element)
+        if(candidate.stores[element].block == kNoInstruction)
+          candidate.eligible = false;
+      for(std::size_t load = 0;
+          load < candidate.loads.size() && candidate.eligible; ++load)
+        for(std::size_t element = 0; element < candidate.count; ++element)
+          if(!location_dominates(candidate.stores[element].block,
+               candidate.stores[element].index,
+               candidate.loads[load].block, candidate.loads[load].index,
+               dominators)) {
+            candidate.eligible = false;
+            break;
+          }
+      if(candidate.eligible)
+        candidate.length_symbol = append_length_table(
+          program, candidate.lengths);
+    }
+
+    std::vector<std::vector<StringTableRewrite> > rewrites_by_block(
+      function.blocks.size());
+    for(std::size_t i = 0; i < rewrites.size(); ++i)
+      if(candidates[rewrites[i].slot].eligible)
+        rewrites_by_block[rewrites[i].block].push_back(rewrites[i]);
+
+    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+      if(rewrites_by_block[block].empty()) continue;
+      std::vector<Instruction> replacement;
+      replacement.reserve(function.blocks[block].instructions.size() +
+        rewrites_by_block[block].size() * 2);
+      std::size_t rewrite_index = 0;
+      for(std::size_t index = 0;
+          index < function.blocks[block].instructions.size(); ++index) {
+        Instruction ins = std::move(
+          function.blocks[block].instructions[index]);
+        if(rewrite_index >= rewrites_by_block[block].size() ||
+           rewrites_by_block[block][rewrite_index].index != index) {
+          replacement.push_back(std::move(ins));
+          continue;
+        }
+        const StringTableRewrite & rewrite =
+          rewrites_by_block[block][rewrite_index++];
+        const lowir_model::SymbolId length_symbol =
+          candidates[rewrite.slot].length_symbol;
+
+        Instruction address;
+        address.kind = Instruction::IK_ADDR;
+        address.dest = lowir_model::append_lowir_fresh_generated_value(
+          function, pointer);
+        address.first.kind = Operand::OP_GLOBAL;
+        address.first.symbol = length_symbol;
+        address.debug_location = ins.debug_location;
+        replacement.push_back(address);
+
+        Instruction element;
+        element.kind = Instruction::IK_INDEX;
+        element.dest = lowir_model::append_lowir_fresh_generated_value(
+          function, pointer);
+        element.type = i64;
+        element.index_projection = lowir_model::IPK_ARRAY_ELEMENT;
+        element.first = temporary_operand(address.dest);
+        element.second = rewrite.element_index;
+        element.debug_location = ins.debug_location;
+        replacement.push_back(element);
+
+        ins.kind = Instruction::IK_LOAD;
+        ins.first = temporary_operand(element.dest);
+        ins.second = Operand();
+        ins.third = Operand();
+        ins.args.clear();
+        ins.call_params.clear();
+        ins.has_call_signature = false;
+        ins.volatile_access = false;
+        replacement.push_back(std::move(ins));
+        changed = true;
+        if(stats) ++stats->rewrites;
+      }
+      function.blocks[block].instructions.swap(replacement);
+    }
+  }
   return changed;
 }
 

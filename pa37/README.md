@@ -335,6 +335,14 @@ running optimizing transforms.
   argument is the direct address of `storage=readonly` structured byte data
   with a compiler-known first NUL byte; writable or unterminated data and a
   dynamically supplied pointer keep the call
+- replacing `strlen` of a variable-indexed element of a local pointer table
+  with an indexed load from a synthesized `storage=readonly` length table
+  when every local-table element is initialized exactly once with the direct
+  address of compiler-known NUL-terminated readonly byte data, every
+  initialization dominates the indexed load, and the local table does not
+  escape; partial initialization, writable or unterminated elements,
+  mutation, volatile access, and escaping or otherwise unmodelled table
+  addresses keep the call
 - removal of dead local-slot traffic for unused direct slot loads and for
   stores to direct local slots that have no remaining loads, escaping uses, or
   other non-store uses

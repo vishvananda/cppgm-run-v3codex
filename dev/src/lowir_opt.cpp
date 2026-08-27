@@ -2981,6 +2981,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     }
   }
   ReadonlyByteStringIndex byte_strings(program);
+  fold_readonly_byte_string_table_lengths(&program, byte_strings, stats);
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     if(fold_readonly_byte_string_lengths(
          &program.functions[i], byte_strings, stats)) {
@@ -2996,5 +2997,4 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     fold_edge_known_branches(&program.functions[i], stats, &cfg_scratch);
   finish_optimizer_stats(program, pruning, stats, started);
 }
-
 }  // namespace lowir_opt

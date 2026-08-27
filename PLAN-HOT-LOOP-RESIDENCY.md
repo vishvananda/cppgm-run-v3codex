@@ -2810,6 +2810,79 @@ inception lane while another build or profiler is active.
   instruction/movement body, not this single common-tail reload.  The source
   tree is restored and no profiler or build process remains.
 
+- **P32-L90 (INDEXED READONLY STRING-TABLE LENGTHS RETAINED).** Exact
+  task-clock attribution placed the largest `Lexer::Run` cluster in the
+  named-operator loop.  Final serialized LowIR showed the generic cause: a
+  local 13-element pointer table is completely initialized by direct addresses
+  of readonly NUL-terminated byte globals, then each variable-indexed pointer
+  is scanned by `strlen` before the same pointer is passed to `memcmp`.  GCC
+  leaves the local table but calls libc `strlen`; Clang additionally publishes
+  its pointer table as static data.  The retained PA37 transform does not
+  recognize either source routine or its string contents.  It proves from
+  LowIR alone that a local pointer table has complete, single, dominating
+  initialization by known readonly strings and no escape, mutation, volatile,
+  or unmodelled address use.  For an indexed element's ABI-designated
+  `strlen`, it publishes a parallel internal readonly `i64` length table and
+  replaces the scan with the corresponding indexed load.  Partial tables,
+  writable or unterminated elements, mutation, volatile loads, escapes, and
+  incompatible builtin signatures retain the call.
+
+  On the optimized tokenizer unit the pass fires once, removes the dynamic
+  `strlen`, and shrinks `Lexer::Run` 12,167 -> 12,139 bytes.  The complete
+  compiler grows 8,581,391 -> 8,619,307 text bytes because this is a new
+  conservative analysis, so static size was not used as the keep oracle.
+  The candidate compiler prepared with explicit outer, inner, and object
+  32-way settings in 18.24 seconds under
+  `/dev/shm/v3codex-p34-strlen-table.CCQ6qn`.  Its two clean full-source
+  O1/all-32 lanes measured 32.59/876.27/48.23 and
+  32.28/875.32/48.69 seconds wall/user/system, averaging 32.435 wall and
+  924.255 aggregate CPU.  A rotated source-matched run of landed production
+  under `/dev/shm/v3codex-p34-strlen-table-base-current.viYKJi` measured
+  32.81/880.85/48.66, or 929.51 CPU.  The confirmed improvement is therefore
+  1.14% wall and 0.57% aggregate CPU; it clears the repeated broad-oracle
+  threshold even though the frozen-unit/static signal is small.  Against the
+  L85 GCC and Clang references, the new measured means are 1.522x/1.521x wall
+  and 1.580x/1.534x aggregate CPU, respectively.
+
+  PA37 now documents the property at the student-facing optimizer surface.
+  Control `527-readonly-byte-strlen` checks the O0 baseline, the eligible
+  indexed-load relationship, a synthesized readonly length aggregate, and
+  O0/O1 native behavior.  Independent partial, writable, escaped,
+  unterminated, mutated, and volatile tables must retain `strlen`.  The
+  control derives only these local properties and does not compare a complete
+  LowIR program, string list, register choice, or hash.
+
+  The first fresh inception gate disagreed only on `pp_tokenizer.cpp`.  A
+  host/self stage census showed that the host-built optimizer recognized all
+  13 initializing stores while the self-built optimizer recognized none,
+  despite both seeing the same candidate and uses.  Changing constructors in
+  the optimizer source was tested only as a diagnostic, did not repair the
+  failure, and was reverted.  Compiling `lowir_scalar_rules.cpp` at O0 isolated
+  the disagreement to native output generated for the O1 version of
+  `operand_uses_candidate_slot`.
+
+  The reduced cause was an earlier PA29 bulk-copy lowering defect, not a
+  condition missing from the new transform.  When both copy addresses needed
+  setup, destination materialization could overwrite the parameter register
+  still needed to form an indexed source address.  Later frame-address folding
+  merely exposed the invalid setup order more clearly.  The generic native
+  fix now detects dependencies through known and deferred addresses, forms the
+  source first when necessary, and stages it in reserved scratch if the
+  destination also needs the source copy register.  PA29 documents this
+  preservation rule, and control `914-copyobj-indexed-parameter-order` checks
+  the reduced program's behavior at both O0 and O1 while requiring only that
+  the documented bulk operation survive.  It does not prescribe frame shape,
+  register assignment, address order, complete MIR, or source-program content.
+
+  After the PA29 fix, the O1 unit probe recognizes all 13 stores and its
+  optimized LowIR matches the host build.  Focused PA29 is 291/291, PA37 is
+  187/187, and PA38 is 46/46.  The through-PA38 report is 5,453/5,453 and the
+  PA38 development-file audit passes with the 36 pre-existing same-file
+  warnings.  A fresh all-32 O1 inception under
+  `/dev/shm/v3codex-p34-strlen-table-fixed-gate.ziiJKF` matches every object
+  and the final compiler; it measured 50.44/1327.02/93.20 seconds
+  wall/user/system.  No profiler, cachegrind, or build process remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,

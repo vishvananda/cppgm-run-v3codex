@@ -50,6 +50,15 @@ bool fold_readonly_global_loads(lowir_model::Function * function,
 bool fold_readonly_byte_string_lengths(lowir_model::Function * function,
     const ReadonlyByteStringIndex & strings, Stats * stats);
 
+// When a local pointer table is completely initialized with direct addresses
+// of known readonly byte strings, replace strlen of a variable-indexed table
+// element with an indexed load from a synthesized readonly length table.  The
+// local table remains in place for its other users; only the redundant scan is
+// removed.
+bool fold_readonly_byte_string_table_lengths(
+    lowir_model::LowirProgram * program,
+    const ReadonlyByteStringIndex & strings, Stats * stats);
+
 bool same_operand(const lowir_model::Operand & a,
                   const lowir_model::Operand & b);
 bool is_zero(const lowir_model::Operand & value);
