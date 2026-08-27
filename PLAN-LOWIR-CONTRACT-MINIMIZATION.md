@@ -1,6 +1,6 @@
 # Plan: Minimize the Public LowIR Contract
 
-Status: ready for implementation
+Status: complete (L0-L7 landed, audited, gated, timed, and pushed)
 
 Date: 2026-08-27
 
@@ -429,6 +429,18 @@ segment, or `section_segment` state was added.
 5. Mark this plan complete only when the model, parser, serializer, grammar,
    docs, ledger, and tests agree exactly on the supported surface.
 
+The closing audit is `make audit-lowir-contract`, also run by PA13. It checks
+the eight-column ledger schema and unique surfaces, requires every disposition
+to be resolved to `keep` or `remove`, and requires all 99 retained rows to name
+a semantic producer, a non-transport consumer, existing README ownership, and
+existing property tests. Its human-reviewed public-enum census checks 140
+textual model choices against parsing and serialization, with narrow exceptions
+for canonical omitted states and two existing exhaustive serializer fallbacks.
+It also checks all 20 parsed/serialized metadata keys and all 21 roles against
+the PA13 LowIR document and retained ledger ownership. The final ledger has 124
+rows and deliberately describes only explicit public spellings: internal
+default enum states are not mislabeled as `key=default` syntax.
+
 ## Testing requirements
 
 Tests describe implementable properties; they do not require a student's
@@ -508,8 +520,43 @@ make test-pa37
 make test-pa38
 make test-report-through-pa38
 perl scripts/cppgm_file_audit.pl --stage pa38 --paths dev
-make -j32 inception
+make -j32 inception INCEPTION_BUILD_JOBS=32 INCEPTION_OBJECT_BUILD_JOBS=32
 ```
+
+Completion record, 2026-08-27:
+
+- PA13 passed 122/122, PA15 121/121, PA29 51/51, PA37 21/21, and PA38
+  161/161.
+- `make test-report-through-pa38` passed 5,465/5,465.
+- The PA38 file audit passed with the established 36 nonfatal warnings, and
+  the contract audit passed with 124 rows and 99 retained facts.
+- Inception was run with the outer make, inner inception build, and object
+  build all explicitly set to 32 workers. The inception `cppgm++` matched.
+- Two reverse-order, fresh-output all-32 O1 rounds produced byte-identical
+  compiler binaries in every lane. Aggregate user+system CPU means were
+  920.84 seconds for self, 586.87 for GCC 15.2, and 607.78 for Clang 21.1.8:
+  self/GCC = **1.569x** and self/Clang = **1.515x**. Mean wall times were
+  32.57, 21.23, and 21.65 seconds respectively. The recent pre-section
+  confirmation was about 1.572x against GCC, so the retained contract program
+  did not regress the honest same-tree ratio.
+
+The apparently surprising absolute-time movement during this program does not
+show that removing LowIR facts added execution work. First, this was not a
+pure-deletion phase: the justified PA32 `section` fact added validation,
+serialization, and object-placement code. Relative to the last pre-section O1
+preparations, the final compiler text grew by 1,960 bytes when built by self
+and 1,404 bytes when built by GCC; the audit itself is not compiled into the
+compiler. Second, the all-source oracle changes its workload when compiler
+source changes, so both host denominators and the self numerator can move.
+Third, enum/field deletion and nearby source edits perturb struct alignment,
+switch lowering, inlining thresholds, function order, and instruction/cache
+layout. Those discontinuities can outweigh the dynamic cost of the deleted
+field without representing surviving LowIR work. Finally, parallel absolute
+wall and CPU times remain sensitive to frequency, memory-bandwidth contention,
+and cache warmth; a movement shared by self, GCC, and Clang but absent from the
+interleaved ratio is environmental evidence, not an optimization verdict.
+This is why the same-tree ratio and byte-identical output, not an isolated
+self or frozen-source wall time, are the final performance gate.
 
 Use the 32-way inception path for all future inception runs.  If an ablation is
 retained for performance, compare the self-built O1 all-32 time against the
