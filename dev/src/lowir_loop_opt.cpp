@@ -1,6 +1,7 @@
 #include "lowir_loop_opt.h"
 
 #include "lowir_opt.h"
+#include "lowir_optimizer_support.h"
 
 #include <algorithm>
 #include <chrono>
@@ -231,17 +232,6 @@ void collect_function_facts(const Function & function,
     }
 }
 
-bool same_storage_operand(const Operand & left, const Operand & right)
-{
-  if(left.kind != right.kind) return false;
-  if(left.kind == Operand::OP_TEMP) return left.value == right.value;
-  if(left.kind == Operand::OP_SLOT) return left.slot == right.slot;
-  if(left.kind == Operand::OP_GLOBAL)
-    return left.symbol == right.symbol &&
-      left.address_binding == right.address_binding;
-  return false;
-}
-
 bool loop_load_prefix_safe(const std::vector<Instruction> & instructions,
                            std::size_t stop)
 {
@@ -376,7 +366,8 @@ std::size_t forward_loop_carried_store_loads_impl(
         const Instruction & store = latch[latch.size() - 2];
         if(store.kind != Instruction::IK_STORE || store.volatile_access ||
            store.first.kind != Operand::OP_TEMP ||
-           !same_storage_operand(store.second, load.first) ||
+           !optimizer_support::same_storage_location(
+             store.second, load.first) ||
            !lowir_model::same_lowir_type(store.type, load.type) ||
            !local_value_defined_before(
              latch, store.first.value, latch.size() - 2)) {

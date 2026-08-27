@@ -2,6 +2,7 @@
 
 #include "lowir_function_analysis.h"
 #include "lowir_opt.h"
+#include "lowir_optimizer_support.h"
 #include "lowir_phi_edges.h"
 #include "lowir_scalar_rules.h"
 
@@ -81,17 +82,6 @@ bool block_has_phi(const Function & function, const Graph & graph,
     function.blocks[block].instructions;
   for(std::size_t i = 0; i < instructions.size(); ++i)
     if(instructions[i].kind == Instruction::IK_PHI) return true;
-  return false;
-}
-
-bool same_load_address(const Operand & left, const Operand & right)
-{
-  if(left.kind != right.kind) return false;
-  if(left.kind == Operand::OP_TEMP) return left.value == right.value;
-  if(left.kind == Operand::OP_SLOT) return left.slot == right.slot;
-  if(left.kind == Operand::OP_GLOBAL)
-    return left.symbol == right.symbol &&
-      left.address_binding == right.address_binding;
   return false;
 }
 
@@ -188,7 +178,8 @@ bool edge_establishes_nonzero(const Function & function,
     local_definition(incoming_block, tested.value);
   return original_load && original_load->kind == Instruction::IK_LOAD &&
     !original_load->volatile_access &&
-    same_load_address(original_load->first, reload->first) &&
+    optimizer_support::same_storage_location(
+      original_load->first, reload->first) &&
     lowir_model::same_lowir_type(original_load->type, reload->type) &&
     block_memory_stable_from(incoming_block, original_load);
 }

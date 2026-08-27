@@ -1,5 +1,7 @@
 #include "lowir_scalar_rules.h"
 
+#include "lowir_optimizer_support.h"
+
 #include "lowir_function_analysis.h"
 
 #include <algorithm>
@@ -951,17 +953,6 @@ bool rewrite_inverted_compare(Instruction * ins,
 
 namespace {
 
-bool same_load_address(const Operand & left, const Operand & right)
-{
-  if(left.kind != right.kind) return false;
-  if(left.kind == Operand::OP_TEMP) return left.value == right.value;
-  if(left.kind == Operand::OP_SLOT) return left.slot == right.slot;
-  if(left.kind == Operand::OP_GLOBAL)
-    return left.symbol == right.symbol &&
-      left.address_binding == right.address_binding;
-  return false;
-}
-
 bool keeps_memory(const Instruction & ins)
 {
   switch(ins.kind) {
@@ -1004,7 +995,8 @@ bool eliminate_duplicate_block_loads(Function * function, Stats * stats)
       if(ins.kind == Instruction::IK_LOAD && !ins.volatile_access) {
         bool matched = false;
         for(std::size_t i = 0; i < live.size() && !matched; ++i) {
-          if(!same_load_address(live[i].address, ins.first) ||
+          if(!optimizer_support::same_storage_location(
+               live[i].address, ins.first) ||
              !lowir_model::same_lowir_type(live[i].type, ins.type))
             continue;
           ins.kind = Instruction::IK_COPY;

@@ -485,27 +485,57 @@ This plan is complete only when:
   documentation only; no production code or test is changed.
 - **D0 (BASELINE FROZEN).** The documentation-only planning head is
   `74d1538e`; its compiler is byte-identical to `beec7ac7`.  A fresh 32-way
-  O1 all-source build with observational `--stats` compiled 204 translation
+  O1 all-source build with observational `--stats` compiled 215 translation
   units in 19.38 seconds wall (473.48 user, 45.24 system), reproduced compiler
   SHA-256 `8b6952075632e689e99e8a7f502e1f3c00b9cfa6d280e07e0e33c3653b69bbd4`,
   and reproduced 8,640,083 text bytes.  Because parallel stream insertion
-  interleaved the initial records, each exact compile command was rerun at
-  32-way parallelism with a private stderr file; all 204 records were then
-  parsed independently.  Aggregate O1 facts are: 119,035 functions,
-  2,689,132 input and 1,454,794 output instructions, 45,058,681 instruction
-  visits, 2,785,884 block visits, 9,040,686 CFG-edge visits, 89,832 CFG builds
-  / 156,780 reuses / 4,474 invalidations, 75,765 dominator builds / 137,750
-  reuses, 65,459 loop builds / 2,886 reuses, 318,084 simplify runs, 405,706
-  DCE runs, 437,539 CFG runs, 670,904 slot runs, 73,945 each forward/local
-  slot runs, 156,992 remove-slot runs, 127,952 promotion runs, and 119,035
-  each small-object/dead-store runs.  Summed optimizer `elapsed_ns` is
-  20,756,534,872; maximum per-TU promotion transient storage is 10,229,916
-  bytes.  Exact default and tight audit output is saved in
+  interleaved the initial records and three command lines, the authoritative
+  capture enumerates `INCEPTION_SOURCES_cppgm++` directly and gives all 215
+  compiles a private stderr file.  Aggregate O1 facts are: 124,273 functions,
+  2,801,277 input and 1,519,629 output instructions, 46,956,639 instruction
+  visits, 2,930,421 block visits, 9,487,042 CFG-edge visits, 93,746 CFG builds
+  / 163,693 reuses / 4,676 invalidations, 79,126 dominator builds / 143,813
+  reuses, 68,353 loop builds / 3,039 reuses, 332,009 simplify runs, 423,468
+  DCE runs, 456,866 CFG runs, 700,431 slot runs, 77,208 each forward/local
+  slot runs, 163,862 remove-slot runs, 133,607 promotion runs, and 124,273
+  each small-object/dead-store runs.  Maximum per-TU promotion transient
+  storage is 10,229,916 bytes.  Wall and internal nanosecond totals from a
+  stats-enabled parallel run are observational only because stderr contention
+  changes their scheduling.  Exact default and tight audit output is saved in
   `PLAN-OPTIMIZER-DUPLICATION-AUDIT-BASELINE.txt` (SHA-256
-  `e0336e1cdc5fe5e58d199b32ab57803932db4506f96dbdbfef258d650cb88508`).  The detailed matrix
-  above freezes every merge boundary, assignment owner, property coverage,
-  and disposition.  D0 is complete; no production code, test, or generated
-  fixture changed.
+  `e0336e1cdc5fe5e58d199b32ab57803932db4506f96dbdbfef258d650cb88508`).
+  The detailed matrix above freezes every merge boundary, assignment owner,
+  property coverage, and disposition.  D0 is complete; no production code,
+  test, or generated fixture changed.
+- **D1-S (EXACT STORAGE IDENTITY, RETAINED).** On the tree based on
+  `d6f27e46`, new `lowir_optimizer_support.h` gives the three identical PA37
+  storage predicates one inline owner named `same_storage_location`.  Its
+  documented truth table accepts only temp/value, slot/id, and
+  global/symbol-plus-address-binding identity; type, volatility, literals,
+  and general operand equality stay with their existing callers.  Boolean
+  predicate reuse, loop-carried exact-store forwarding, and duplicate-block
+  load elimination now call it; 26 duplicated implementation lines are gone.
+  No fixture or README changed because the existing PA37 structural
+  properties cover the unchanged contract.  Focused survivor properties pass
+  2/2; `make test-pa37` passes 21/21, `make test-pa38` passes 161/161,
+  `git diff --check` is clean, and the default audit remains zero-fatal/36
+  warnings.  The tight report falls from 15 to 14 warnings by removing the
+  loop/Boolean storage copy; its remaining scalar/Boolean match is the
+  intentionally separate memory-transparency switch.  Candidate self output
+  is byte-identical to the frozen compiler (SHA-256 `8b695207...`, text
+  8,640,083), as is every timed lane's rebuilt compiler.  Reverse/interleaved
+  same-source all-32 O1 lanes are old 32.41/31.33 seconds wall and candidate
+  31.22/31.23; aggregate CPU means are 903.96/903.40 seconds.  Because the
+  binaries are identical, the wall difference is scheduling noise.  Exact
+  candidate-source GCC lanes are 20.98/21.20 seconds wall and 588.31/590.66
+  CPU; Clang lanes are 25.57/22.55 wall and 619.75/613.34 CPU.  Candidate
+  means are self 31.225/903.40, GCC 21.090/589.485, and Clang
+  24.060/616.545 seconds wall/CPU: 1.481x self/GCC and 1.298x self/Clang wall,
+  with 1.481x the primary maximum.  GCC benchmark compiler SHA/text is
+  `7bca2106...`/5,787,308; Clang is `7fcbb888...`/5,026,953.  Direct 215-TU
+  private-log captures on the baseline and candidate have every deterministic
+  optimizer counter identical, including all D0 counts and the peak above.
+  Retain.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
