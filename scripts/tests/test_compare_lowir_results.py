@@ -270,6 +270,52 @@ function @trap() -> void {
         result = self.compare(reference, generated)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_relaxed_compare_pairs_legacy_decay_by_ignored_shape(self):
+        reference = """function @read_old(%value : ptr [pass=decay]) -> i32 {
+  block ^entry:
+    %loaded = load i32 %value
+    return i32 %loaded
+}
+
+function @observe_old(%value : ptr [pass=decay]) -> void {
+  block ^entry:
+    return void
+}
+
+function @main() -> i32 [role=entry] {
+  slot $value : i32
+
+  block ^entry:
+    %address = addr $value
+    call void @observe_old(%address)
+    %result = call i32 @read_old(%address)
+    return i32 %result
+}
+"""
+        generated = """function @observe_new(%value : ptr) -> void {
+  block ^entry:
+    return void
+}
+
+function @read_new(%value : ptr) -> i32 {
+  block ^entry:
+    %loaded = load i32 %value
+    return i32 %loaded
+}
+
+function @main() -> i32 [role=entry] {
+  slot $value : i32
+
+  block ^entry:
+    %address = addr $value
+    call void @observe_new(%address)
+    %result = call i32 @read_new(%address)
+    return i32 %result
+}
+"""
+        result = self.compare(reference, generated)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_lowir_sanity_rejects_removed_unary_decay(self):
         generated = REFERENCE.replace(
             "%sum = binary add i64 %left, %right",

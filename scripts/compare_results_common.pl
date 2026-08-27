@@ -2326,10 +2326,14 @@ sub lowir_function_shape_text
 	my ($entry) = @_;
 	my @lines = split(/\n/, $entry, -1);
 	# Drop the function-level [..] metadata (object=, binding=, role=, ...) from
-	# the header so the shape ignores volatile mangle/linkage details. Parameter
-	# brackets (e.g. [pass=reference]) sit inside the parens and are preserved.
+	# the header so the shape ignores volatile mangle/linkage details.
 	$lines[0] =~ s/((?:\s+\[[^\]]+\])+)\s*\{\s*$/ {/ if @lines;
 	my $text = join("\n", @lines);
+	# Apply the same ignored-metadata policy before structural pairing that the
+	# final relaxed comparison applies after pairing. Legacy source-origin facts
+	# must not make two otherwise unique function shapes look different.
+	$text =~ s/\s+\[([^\]]+)\]/canonicalize_lowir_metadata_group_for_compare($1)/ge;
+	$text =~ s/\s+\[([^\]]+)\]/canonicalize_lowir_metadata_group_for_compare($1)/ge;
 	# Mask every symbol reference (the function's own name, callees, globals) so
 	# two structurally identical functions match regardless of their mangled names.
 	$text =~ s/\@[^\s(),]+/\@<sym>/g;
