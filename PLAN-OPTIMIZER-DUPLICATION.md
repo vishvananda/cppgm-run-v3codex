@@ -729,6 +729,33 @@ This plan is complete only when:
   `/dev/shm/v3codex-optdup-d2-cumulative-inception.ZzvTLM`; every object and
   final `cppgm++` match.  No stale compiler, profiler, Valgrind, or Cachegrind
   process preceded the checkpoint.
+- **D2-P1 (GENERIC PROVENANCE MEMO, REJECTED).** On the tree based on
+  `02f97a00`, a non-template, non-virtual `ValueProvenanceMemo` moved the
+  immutable definition scan and unvisited/active/resolved state machine out of
+  both small-object walkers and the staged-copy walker.  Address facts, typed
+  aggregate offsets, raw byte offsets, negative-offset handling, and poison
+  rules remained in their three local policies.  Focused PA37 controls 388,
+  389, 524, and 525 pass; PA37 is 188/188, PA38 is 45/45,
+  `git diff --check` is clean, and the default/tight audits remain at zero
+  fatal findings with 36/14 warnings.  Exact candidate-source private logs
+  cover all 216 translation units: every non-timing optimizer counter matches,
+  all 216 objects match, and old/candidate self compilers link the same
+  `42df6d89...` output.  The candidate benchmark compiler is
+  `42df6d89...`/8,637,267 text bytes versus pre-change
+  `a460771a...`/8,637,371, a 104-byte text reduction with 464 additional data
+  bytes.  Three reverse/interleaved self lanes are candidate
+  33.16/31.63/32.18 seconds wall and 918.58/912.72/913.44 aggregate CPU,
+  versus old 31.89/32.01/32.36 wall and 915.85/917.37/913.95 CPU.  Means are
+  32.323/914.913 versus 32.087/915.723: wall regresses 0.738% while CPU
+  improves 0.088%.  Exact-source GCC lanes are 29.78/29.89 wall and
+  580.26/581.70 CPU; Clang lanes are 31.13/31.62 wall and 658.33/665.92 CPU.
+  Candidate ratios are 1.083x GCC and 1.030x Clang, but the maximum ratio is
+  worse than the old compiler's 1.076x on the same source.  GCC/Clang output
+  hashes/text are `a9f30dd1...`/5,787,376 and
+  `b339335b...`/5,027,065.  Reject under the confirmed greater-than-0.5% wall
+  rule and restore the three local walkers; sharing definition storage through
+  a future already-built index remains a distinct experiment only if it
+  eliminates work rather than adding a call boundary.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
