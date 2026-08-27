@@ -19,17 +19,7 @@ bool truncate_noreturn_continuations(
     const std::vector<unsigned char> & noreturn_symbols,
     Stats * stats = 0);
 
-class UnreachableRoleIndex
-{
-public:
-  explicit UnreachableRoleIndex(const lowir_model::LowirProgram & program);
-
-  bool eliminate_conditional_edges(lowir_model::Function * function,
-                                   Stats * stats) const;
-  std::size_t symbol_count() const;
-
-private:
-  std::vector<unsigned char> symbols_;
-};
+bool eliminate_unreachable_edges(lowir_model::Function * function,
+                                 Stats * stats = 0);
 
 }  // namespace lowir_opt

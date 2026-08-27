@@ -180,9 +180,13 @@ and omission means false; `key=no` is not a second spelling.
 
 The `role` family includes the entry/init/fini and exception roles as well as
 the allocation, deallocation, termination, pure-virtual, dynamic-cast,
-bad-cast, bad-typeid, unreachable, and RTTI runtime roles listed in
+bad-cast, bad-typeid, and RTTI runtime roles listed in
 `lowir.md`. Accept and validate those roles even when the CY86 adapter does not
 otherwise act on them.
+
+Undefined continuation is represented directly by the operand-free
+`unreachable` block terminator. It is not a callable runtime role. Like every
+terminator, it must be the final instruction in its block.
 
 You may keep a typed LowIR model internally, and the optional
 `dev/src/lowir_model.h` scaffold names the common program, symbol, type,

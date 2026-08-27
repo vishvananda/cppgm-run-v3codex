@@ -193,6 +193,31 @@ function @empty_ctor(%this : ptr) -> void [binding=weak, trivial_lifecycle=yes] 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("removed trivial_lifecycle metadata", result.stdout)
 
+    def test_relaxed_compare_normalizes_legacy_unreachable_call(self):
+        reference = """declare function @impossible() -> void [role=unreachable, effects=readnone, unwind=no, return=noreturn]
+
+function @trap() -> void {
+  block ^entry:
+    call void @impossible()
+    return void
+}
+"""
+        generated = """function @trap() -> void {
+  block ^entry:
+    unreachable
+}
+"""
+        result = self.compare(reference, generated)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_relaxed_compare_rejects_generated_unreachable_role(self):
+        generated = REFERENCE.replace(
+            ") -> i64 {", ") -> i64 [role=unreachable] {", 1
+        )
+        result = self.compare(REFERENCE, generated)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("removed unreachable role", result.stdout)
+
     def test_relaxed_compare_retains_nontrivial_calls(self):
         reference = REFERENCE.replace(
             "%sum = binary add i64 %left, %right",

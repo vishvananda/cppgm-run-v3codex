@@ -72,6 +72,7 @@ void mark_exact_forward_edge_values(FunctionFacts& facts,
 				note_edge(block, terminal.args[i]);
 		}
 		else if (terminal.kind != Instruction::IK_RETURN &&
+			terminal.kind != Instruction::IK_UNREACHABLE &&
 			terminal.kind != Instruction::IK_RESUME &&
 			terminal.kind != Instruction::IK_THROW && block + 1 < block_count)
 		{

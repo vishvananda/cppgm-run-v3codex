@@ -233,6 +233,9 @@ bool partial_prefix_instruction(const Instruction & instruction,
   case Instruction::IK_RESUME:
     *stop |= PIPS_EH;
     return false;
+  case Instruction::IK_UNREACHABLE:
+    *stop |= PIPS_OTHER;
+    return false;
   case Instruction::IK_ATOMIC_LOAD:
   case Instruction::IK_ATOMIC_THREAD_FENCE:
   case Instruction::IK_ATOMIC_SIGNAL_FENCE:

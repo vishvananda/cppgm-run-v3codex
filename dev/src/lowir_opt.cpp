@@ -2780,12 +2780,10 @@ void optimize(LowirProgram & program, int level, Stats * stats,
   CleanupCfgScratch cfg_scratch;
   const std::chrono::steady_clock::time_point unreachable_started = stats ?
     std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-  const UnreachableRoleIndex unreachable_roles(program);
-  if(stats) stats->unreachable_role_symbols = unreachable_roles.symbol_count();
   const std::vector<unsigned char> noreturn_symbols = noreturn_symbol_index(program);
   std::vector<unsigned char> unreachable_changed(program.functions.size(), 0);
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
-    unreachable_changed[i] = unreachable_roles.eliminate_conditional_edges(
+    unreachable_changed[i] = eliminate_unreachable_edges(
       &program.functions[i], stats) ? 1 : 0;
     unreachable_changed[i] = (truncate_noreturn_continuations(
       &program.functions[i], noreturn_symbols, stats) ? 1 : 0) ||

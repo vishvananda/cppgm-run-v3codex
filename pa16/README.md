@@ -92,9 +92,9 @@ functions, member functions, constructors, and destructors is in scope for the
 tested metadata path. Other explicit `noexcept(expr)` forms may lower
 conservatively without `unwind=no`.
 
-A declaration lowered for `__builtin_unreachable` carries the PA13
-`role=unreachable` symbol fact together with `effects=readnone`, `unwind=no`,
-and `return=noreturn`.
+A call to `__builtin_unreachable()` lowers directly to the PA13
+`unreachable` block terminator. It does not emit a synthetic function
+declaration or call.
 
 The backing array for each C++ string literal is emitted as an internal
 structured global with `storage=readonly`.  This records the source array's

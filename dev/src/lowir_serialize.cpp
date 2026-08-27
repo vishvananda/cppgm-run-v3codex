@@ -32,7 +32,6 @@ const char * role_name(SymbolRole role)
   case SR_RTTI_SI: return "rtti_si";
   case SR_RTTI_VMI: return "rtti_vmi";
   case SR_RTTI_DATA: return "rtti_data";
-  case SR_UNREACHABLE: return "unreachable";
   }
   throw std::logic_error("invalid LowIR symbol role");
 }
@@ -396,6 +395,7 @@ void write_instruction(std::ostream & out, const Instruction & ins,
     out << "return " << lowir_type_text(ins.type);
     if(ins.type.kind != LTK_VOID) { out << ' '; write_operand(out, ins.first, program, function); }
     break;
+  case Instruction::IK_UNREACHABLE: out << "unreachable"; break;
   case Instruction::IK_PHI:
     write_result(out, ins, program, function);
     out << " = phi " << lowir_type_text(ins.type) << " [";

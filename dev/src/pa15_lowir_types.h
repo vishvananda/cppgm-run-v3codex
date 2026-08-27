@@ -269,7 +269,8 @@ struct Instruction
 		BRANCH,
 		SWITCH,
 		RETURN_VALUE,
-		RETURN_VOID
+		RETURN_VOID,
+		UNREACHABLE
 	};
 	LowType type;
 	LowType source_type;
@@ -307,6 +308,7 @@ inline bool IsTerminator(const Instruction& instruction)
 		instruction.kind == Instruction::SWITCH ||
 		instruction.kind == Instruction::RETURN_VALUE ||
 		instruction.kind == Instruction::RETURN_VOID ||
+		instruction.kind == Instruction::UNREACHABLE ||
 		instruction.kind == Instruction::RESUME;
 }
 
@@ -480,8 +482,7 @@ struct Symbol
 		RUNTIME_ROLE_RTTI_CLASS,
 		RUNTIME_ROLE_RTTI_SI,
 		RUNTIME_ROLE_RTTI_VMI,
-		RUNTIME_ROLE_RTTI_DATA,
-		RUNTIME_ROLE_UNREACHABLE
+		RUNTIME_ROLE_RTTI_DATA
 	} runtime_role;
 	lowir_model::StringId name;
 	lowir_model::StringId object_name;

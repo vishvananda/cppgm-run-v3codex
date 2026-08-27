@@ -2970,6 +2970,7 @@ private:
       append_operand(jump, native_block_operand(source_, instruction.first));
       out.push_back(jump);
     } else if(instruction.kind == Instruction::IK_RETURN) emit_return(instruction, out);
+    else if(instruction.kind == Instruction::IK_UNREACHABLE) return;
     else if(eh::lower_marker(program_, source_, instruction, out)) return;
     else if(instruction.kind == Instruction::IK_EXCEPTION ||
             instruction.kind == Instruction::IK_EXCEPTION_SELECTOR)

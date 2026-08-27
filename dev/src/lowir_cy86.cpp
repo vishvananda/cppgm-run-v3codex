@@ -646,6 +646,7 @@ void FunctionEmitter::EmitInstruction(const Instruction & ins)
   case Instruction::IK_THROW: case Instruction::IK_EXCEPTION: case Instruction::IK_RESUME:
     EmitException(ins); break;
   case Instruction::IK_RETURN: EmitReturn(ins); break;
+  case Instruction::IK_UNREACHABLE: break;
   case Instruction::IK_PHI: break;
   default: throw ParseError("unsupported PA13 instruction in CY86 emitter");
   }

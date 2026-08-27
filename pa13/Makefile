@@ -3,11 +3,12 @@ CXX ?= g++
 CPPGM_HOST_CXX ?= $(CXX)
 CPPGM_STDLIB_FLAGS ?=
 CPPGM_TEST_APP ?= ../dev/$(TARGET)
+LOWIROPT_APP ?= ../dev/lowiropt
 REF_TEST_APP ?= $(CPPGM_TEST_APP)-ref
 DEBUGINFO_LOWIROPT_REF_APP ?= ../dev/lowiropt-ref
 DEBUGINFO_CPPGM_REF_APP ?= ../dev/cppgm++-ref
 DEBUGINFO_LOWIR2NATIVE_REF_APP ?= ../dev/lowir2native-ref
-TEST_DEPS ?= dev-shared-target cy86-target
+TEST_DEPS ?= dev-shared-target cy86-target lowiropt-target
 CY86_APP ?= ../dev/cy86
 COURSE_CONTROL_TEST_ROOT ?= course/pa13/controls
 CC_FLAGS = -std=gnu++11 -Wall -O3 $(CPPGM_STDLIB_FLAGS)
@@ -69,6 +70,9 @@ test: $(TEST_DEPS)
 	@if [ -d "$(COURSE_CONTROL_TEST_ROOT)" ]; then \
 		perl ../scripts/check_pa13_eh_defaults.pl $(CPPGM_TEST_APP) \
 			$(CY86_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
+		perl ../scripts/check_pa13_unreachable_terminator.pl \
+			$(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) \
+			"$(COURSE_CONTROL_TEST_ROOT)"; \
 	fi
 endif
 
@@ -91,7 +95,9 @@ ref-test-debuginfo:
 	@CPPGM_CPPGM_APP='$(DEBUGINFO_CPPGM_REF_APP)' scripts/run_all_tests.pl scripts/cppgm-lldb-line-o2.sh ref $(DEBUGINFO_EXECUTABLE_O2_TEST_ROOT)
 
 CHECK_RUN = case "$(TEST)" in \
-	$(COURSE_CONTROL_TEST_ROOT)/*) perl ../scripts/check_pa13_eh_defaults.pl $(CPPGM_TEST_APP) $(CY86_APP) "$(TEST)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*default-eh-*) perl ../scripts/check_pa13_eh_defaults.pl $(CPPGM_TEST_APP) $(CY86_APP) "$(TEST)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*unreachable*) perl ../scripts/check_pa13_unreachable_terminator.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(COURSE_CONTROL_TEST_ROOT)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*removed-unreachable-role*) perl ../scripts/check_pa13_unreachable_terminator.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(COURSE_CONTROL_TEST_ROOT)" ;; \
 	*) scripts/run_all_tests.pl $(CPPGM_TEST_APP) check "$(TEST)" ;; \
 esac
 CHECK_COMPARE = case "$(TEST)" in \
@@ -110,6 +116,9 @@ dev-shared-target:
 
 cy86-target:
 	@if [ "$(CPPGM_SKIP_DEV_REBUILD)" = "1" ] && [ -x $(CY86_APP) ]; then true; else $(MAKE) -C ../dev cy86 CXX=$(CXX) CPPGM_HOST_CXX=$(CPPGM_HOST_CXX); fi
+
+lowiropt-target:
+	@if [ "$(CPPGM_SKIP_DEV_REBUILD)" = "1" ] && [ -x $(LOWIROPT_APP) ]; then true; else $(MAKE) -C ../dev lowiropt CXX=$(CXX) CPPGM_HOST_CXX=$(CPPGM_HOST_CXX); fi
 
 debuginfo-lowiropt-target:
 	@if [ "$(CPPGM_SKIP_DEV_REBUILD)" = "1" ] && [ -x ../dev/lowiropt ]; then true; else $(MAKE) -C ../dev lowiropt CXX=$(CXX) CPPGM_HOST_CXX=$(CPPGM_HOST_CXX); fi

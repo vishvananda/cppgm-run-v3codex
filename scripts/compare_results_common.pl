@@ -1386,6 +1386,10 @@ sub validate_lowir_instruction
 	{
 		return 1;
 	}
+	if ($line =~ /^unreachable$/)
+	{
+		return 1;
+	}
 	if ($line =~ /^%([A-Za-z0-9_]+)\s*=\s*exception\s+($type_pattern)$/)
 	{
 		$state->{temps}{$1} = $2;
@@ -1943,6 +1947,9 @@ sub validate_lowir_text
 	push @errors, "removed trivial_lifecycle metadata in generated LowIR"
 		if !$options->{allow_legacy_trivial_lifecycle} &&
 		   $data =~ /\btrivial_lifecycle\s*=/;
+	push @errors, "removed unreachable role in generated LowIR"
+		if !$options->{allow_legacy_unreachable_role} &&
+		   $data =~ /\brole\s*=\s*unreachable\b/;
 
 	my @tops = ($data =~ /^(?:declare\s+(?:function|global)|function|global)\s+@([A-Za-z0-9_]+)\b/gm);
 	my %top_count;
@@ -2684,6 +2691,61 @@ sub canonicalize_lowir_trivial_lifecycle_for_compare
 	return join("\n\n", @entries) . (scalar(@entries) ? "\n" : "");
 }
 
+sub canonicalize_lowir_unreachable_role_for_compare
+{
+	my ($data) = @_;
+	my @entries = split_lowir_top_level_entries($data);
+	my %unreachable;
+	for my $entry (@entries)
+	{
+		if ($entry =~ /^(?:declare\s+)?function \@([A-Za-z0-9_]+)\([^\n]*\)\s+->\s+[^\n]*\[[^\]\n]*\brole=unreachable\b[^\]\n]*\]/)
+		{
+			$unreachable{$1} = 1;
+		}
+	}
+	return $data if scalar(keys(%unreachable)) == 0;
+
+	my @retained;
+	for my $entry (@entries)
+	{
+		if ($entry =~ /^(?:declare\s+)?function \@([A-Za-z0-9_]+)\b/ &&
+			exists($unreachable{$1}))
+		{
+			next;
+		}
+		my @lines = split(/\n/, $entry, -1);
+		my @normalized;
+		my $after_unreachable = 0;
+		for my $line (@lines)
+		{
+			if ($after_unreachable)
+			{
+				if ($line =~ /^\s+block \^/ || $line eq '}')
+				{
+					$after_unreachable = 0;
+					push @normalized, $line;
+				}
+				next;
+			}
+			my $matched = 0;
+			for my $name (keys(%unreachable))
+			{
+				if ($line =~ /^(\s*)call\s+void\s+\@\Q$name\E\(\)\s*(?:(!dbg\([^\n]*\)))?\s*$/)
+				{
+					push @normalized, $1 . 'unreachable' .
+						(defined($2) ? " $2" : '');
+					$after_unreachable = 1;
+					$matched = 1;
+					last;
+				}
+			}
+			push @normalized, $line if !$matched;
+		}
+		push @retained, join("\n", @normalized);
+	}
+	return join("\n\n", @retained) . (scalar(@retained) ? "\n" : "");
+}
+
 sub remove_lowir_metadata_item
 {
 	my ($entry, $key, $value) = @_;
@@ -2725,6 +2787,7 @@ sub canonicalize_lowir_pair_for_compare
 	$ref_data = canonicalize_lowir_reference_liveness_for_compare(
 		$ref_data, $my_data);
 	$ref_data = canonicalize_lowir_trivial_lifecycle_for_compare($ref_data);
+	$ref_data = canonicalize_lowir_unreachable_role_for_compare($ref_data);
 	my ($ref_functions, $my_functions) =
 		paired_lowir_function_symbol_maps($ref_data, $my_data);
 	my ($ref_globals, $my_globals) =
@@ -3143,7 +3206,8 @@ sub compare_lowir_text
 		$ref_data,
 		$source_file,
 		{ strict_presentation_order => 1,
-		  allow_legacy_trivial_lifecycle => 1 });
+		  allow_legacy_trivial_lifecycle => 1,
+		  allow_legacy_unreachable_role => 1 });
 	return (0, "ERROR: invalid reference LowIR: $ref_error") if !$ref_valid;
 	my ($my_valid, $my_error) = validate_lowir_text(
 		$my_data,

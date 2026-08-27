@@ -1211,6 +1211,7 @@ private:
       for(std::size_t i = 0; i < instructions.size() && !cold; ++i)
         cold = instructions[i].kind == Instruction::IK_THROW ||
           instructions[i].kind == Instruction::IK_RESUME ||
+          instructions[i].kind == Instruction::IK_UNREACHABLE ||
           (instructions[i].kind == Instruction::IK_CALL &&
            (instructions[i].call_boundary.returns ==
               lowir_model::CRM_NORETURN ||

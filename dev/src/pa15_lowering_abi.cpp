@@ -2147,8 +2147,10 @@ bool IsFunctionEmissionDemanded(const pa11::Program& program,
 {
 	using namespace pa11;
 	if (node.binding == kNoBinding) return false;
-	if (node.declaration_only) return true;
 	const BindingId binding = program.bindings[node.binding].canonical;
+	if (program.bindings[binding].builtin_function ==
+		BUILTIN_FUNCTION_UNREACHABLE) return false;
+	if (node.declaration_only) return true;
 	if (host_object_emission &&
 		IsTrivialLifecycleBinding(program, binding)) return false;
 	return !program.bindings[binding].inline_function ||
@@ -2217,11 +2219,7 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	switch (kind)
 	{
 	case BUILTIN_FUNCTION_STRLEN: symbol->effects = Symbol::EFFECTS_READONLY; break;
-	case BUILTIN_FUNCTION_UNREACHABLE:
-		symbol->effects = Symbol::EFFECTS_READNONE;
-		symbol->noreturn = true;
-		symbol->runtime_role = Symbol::RUNTIME_ROLE_UNREACHABLE;
-		break;
+	case BUILTIN_FUNCTION_UNREACHABLE: break;
 	case BUILTIN_FUNCTION_MEMCPY:
 	case BUILTIN_FUNCTION_MEMMOVE: symbol->effects = Symbol::EFFECTS_READWRITE; break;
 	case BUILTIN_FUNCTION_NANL:

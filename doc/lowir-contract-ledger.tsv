@@ -56,6 +56,7 @@ instruction	jump	semantic lowering;explicit LowIR	CFG;CY86;native	pa13/README.md
 instruction	branch	semantic lowering;explicit LowIR	CFG;CY86;native	pa13/README.md	pa13/tests/spec/100-if-else.t	keep	conditional edges
 instruction	switch	semantic lowering;explicit LowIR	CFG;CY86;native	pa13/README.md	pa13/tests/spec/200-switch-terminator.t	keep	multiway edges
 instruction	return	semantic lowering;explicit LowIR	CFG;CY86;native	pa13/README.md	pa13/tests/spec/100-ret0.t	keep	function exit
+instruction	unreachable	builtin lowering;explicit LowIR	CFG cleanup;CY86;native;object roundtrip	pa13/README.md	cppgm.tests/course/pa13/controls/unreachable-terminator.lowir	keep	undefined continuation is direct control flow, with source ownership in PA16 and serialized behavior in PA37
 metadata	role	semantic/runtime lowering;explicit LowIR	startup;EH;runtime;RTTI;native	pa13/README.md	pa13/tests/spec/100-startup-shutdown-hooks.t	keep	values classified in role rows
 role	entry	source main lowering;explicit LowIR	entry selection;startup	pa13/README.md	pa13/tests/spec/100-ret0.t	keep	program entry
 role	init	global initialization lowering;explicit LowIR	startup ordering	pa13/README.md	pa13/tests/spec/100-startup-shutdown-hooks.t	keep	startup hook
@@ -84,7 +85,7 @@ role	rtti_class	RTTI lowering	RTTI object mapping;native	pa26/README.md	pa26/tes
 role	rtti_si	RTTI lowering	RTTI object mapping;native	pa27/README.md	pa27/tests/general/100-dynamic-cast-void.t	keep	active RTTI object
 role	rtti_vmi	RTTI lowering	RTTI object mapping;native	pa28/README.md	pa28/tests/general/100-multibase-inherited-virtual-slot-identity.t	keep	active RTTI object
 role	rtti_data	RTTI lowering	RTTI object mapping;native	pa26/README.md	pa26/tests/general/100-throw-function-decays-to-pointer.t	keep	active RTTI object
-role	unreachable	builtin lowering	role-indexed CFG cleanup;native call	pa13/README.md	cppgm.tests/course/pa13/500-unreachable-role-metadata.t	replace	represent control flow with first-class terminator
+role	unreachable	none	none	pa13/README.md	cppgm.tests/course/pa13/controls/removed-unreachable-role.lowir	removed	replaced by the first-class unreachable terminator
 metadata	linkage=default|c|cpp	semantic lowering;explicit LowIR	native symbol and call ABI	pa13/README.md	pa13/tests/spec/200-linkage-metadata-smoke.t	keep	cpp spelling is redundant and scheduled for canonicalization
 metadata	binding=default|internal|strong|weak	semantic lowering;explicit LowIR	reachability;ELF binding;relocations	pa13/README.md	pa13/tests/spec/200-binding-metadata-smoke.t	keep	object binding is non-derivable
 metadata	object=<name>	ABI lowering;explicit LowIR	ELF symbol spelling;linking	pa13/README.md	pa13/tests/spec/300-symbol-object-metadata-smoke.t	keep	external object identity

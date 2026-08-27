@@ -219,8 +219,8 @@ running optimizing transforms.
   control would need repair;
   straight-line merging must preserve the
   serialized LowIR rule that every temporary definition precedes every use
-- removal of a conditional edge whose target begins with a call to the PA13
-  `role=unreachable` operation, when the other edge remains a normal successor
+- removal of a conditional edge whose target ends in the PA13 `unreachable`
+  terminator, when the other edge remains a normal successor
 - preservation of exceptional handler targets and exception-structure blocks
   while doing CFG cleanup
 - conservative inlining of small direct calls, including `unwind=no` callees
@@ -697,10 +697,9 @@ beside the cached body-shape summary. It should not require source-name lookup,
 rendered metadata parsing, a separate call graph, or an additional function
 scan.
 
-For unreachable-edge cleanup, build one dense bitmap indexed by `SymbolId` from
-the program's typed role metadata, then mark target blocks by `BlockId` within
-each function. This keeps the scan linear in symbols, blocks, and instructions
-without symbol-name or metadata-text lookups.
+For unreachable-edge cleanup, mark blocks by `BlockId` when their terminator is
+`unreachable`, then inspect conditional successor edges. This keeps the scan
+linear in blocks and instructions without symbol-name or metadata-text lookups.
 
 ### After PA37
 

@@ -214,8 +214,7 @@ enum SymbolRole
   SR_RTTI_CLASS,
   SR_RTTI_SI,
   SR_RTTI_VMI,
-  SR_RTTI_DATA,
-  SR_UNREACHABLE
+  SR_RTTI_DATA
 };
 
 enum LanguageLinkageMode
@@ -450,9 +449,11 @@ struct Instruction
     IK_BRANCH,
     IK_SWITCH,
     IK_RETURN,
-    // Kept at the end so existing serialized instruction identities remain
-    // stable.  args stores alternating OP_LABEL/typed-value operands.
-    IK_PHI
+    // Kept after the original instruction set so existing serialized
+    // instruction identities remain stable.  args stores alternating
+    // OP_LABEL/typed-value operands.
+    IK_PHI,
+    IK_UNREACHABLE
   } kind = IK_CONST;
 
   ValueId dest;

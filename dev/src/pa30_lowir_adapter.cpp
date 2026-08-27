@@ -436,8 +436,6 @@ void AdaptSymbolFacts(const Symbol& source,
 		symbol->role = lowir_model::SR_RTTI_VMI; break;
 	case Symbol::RUNTIME_ROLE_RTTI_DATA:
 		symbol->role = lowir_model::SR_RTTI_DATA; break;
-	case Symbol::RUNTIME_ROLE_UNREACHABLE:
-		symbol->role = lowir_model::SR_UNREACHABLE; break;
 	}
 }
 
@@ -774,6 +772,9 @@ void AdaptInstruction(const Instruction& source,
 	case Instruction::RETURN_VOID:
 		target.kind = lowir_model::Instruction::IK_RETURN;
 		target.type = lowir_model::builtin_lowir_type(lowir_model::LTK_VOID);
+		break;
+	case Instruction::UNREACHABLE:
+		target.kind = lowir_model::Instruction::IK_UNREACHABLE;
 		break;
 	}
 	if (source.kind == Instruction::EH_TRY ||

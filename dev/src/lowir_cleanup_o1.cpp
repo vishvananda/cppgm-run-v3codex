@@ -275,7 +275,7 @@ bool may_be_shared_cleanup_instruction(Instruction::Kind kind)
     kind != Instruction::IK_PHI &&
     kind != Instruction::IK_RESUME && kind != Instruction::IK_JUMP &&
     kind != Instruction::IK_BRANCH && kind != Instruction::IK_SWITCH &&
-    kind != Instruction::IK_RETURN;
+    kind != Instruction::IK_RETURN && kind != Instruction::IK_UNREACHABLE;
 }
 
 struct EhFrame
@@ -440,6 +440,7 @@ CleanupContexts analyze_cleanup_contexts(const Function & function)
           merge_label(instruction.args[arg], state);
         exits = true;
       } else if(instruction.kind == Instruction::IK_RETURN ||
+                instruction.kind == Instruction::IK_UNREACHABLE ||
                 instruction.kind == Instruction::IK_RESUME ||
                 instruction.kind == Instruction::IK_THROW ||
                 (instruction.kind == Instruction::IK_CALL &&
@@ -739,7 +740,8 @@ static std::vector<unsigned char> cold_block_mask(
         index < function.blocks[block].instructions.size(); ++index) {
       const Instruction & ins = function.blocks[block].instructions[index];
       if(ins.kind == Instruction::IK_THROW ||
-         ins.kind == Instruction::IK_RESUME)
+         ins.kind == Instruction::IK_RESUME ||
+         ins.kind == Instruction::IK_UNREACHABLE)
         raises = true;
       else if(ins.kind == Instruction::IK_JUMP ||
               ins.kind == Instruction::IK_BRANCH ||
@@ -825,6 +827,7 @@ static std::vector<unsigned char> raising_path_mask(
       const Instruction & ins = function.blocks[block].instructions[index];
       if(ins.kind == Instruction::IK_THROW ||
          ins.kind == Instruction::IK_RESUME ||
+         ins.kind == Instruction::IK_UNREACHABLE ||
          (ins.kind == Instruction::IK_CALL &&
           ins.first.kind == Operand::OP_GLOBAL &&
           static_cast<std::uint32_t>(ins.first.symbol) <

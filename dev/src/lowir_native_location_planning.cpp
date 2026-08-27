@@ -630,6 +630,7 @@ bool block_reaches_call(
     }
     if(!has_label_successor &&
        terminal.kind != lowir_model::Instruction::IK_RETURN &&
+       terminal.kind != lowir_model::Instruction::IK_UNREACHABLE &&
        terminal.kind != lowir_model::Instruction::IK_RESUME &&
        terminal.kind != lowir_model::Instruction::IK_THROW &&
        block + 1 < function.blocks.size())

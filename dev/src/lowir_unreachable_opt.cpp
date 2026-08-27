@@ -13,55 +13,24 @@ using lowir_model::Function;
 using lowir_model::Instruction;
 using lowir_model::LowirProgram;
 using lowir_model::Operand;
-using lowir_model::SymbolId;
-
-void mark_symbol(std::vector<unsigned char> * symbols, SymbolId symbol,
-                 lowir_model::SymbolRole role)
-{
-  if(role == lowir_model::SR_UNREACHABLE && symbol.valid() &&
-     static_cast<std::uint32_t>(symbol) < symbols->size())
-    (*symbols)[symbol] = 1;
-}
-
-bool is_unreachable_call(const Instruction & instruction,
-                         const std::vector<unsigned char> & symbols)
-{
-  return instruction.kind == Instruction::IK_CALL &&
-    instruction.first.kind == Operand::OP_GLOBAL &&
-    instruction.first.symbol.valid() &&
-    static_cast<std::uint32_t>(instruction.first.symbol) < symbols.size() &&
-    symbols[instruction.first.symbol] != 0;
-}
 
 }  // namespace
 
-UnreachableRoleIndex::UnreachableRoleIndex(const LowirProgram & program)
-  : symbols_(program.symbol_names.size(), 0)
-{
-  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
-    mark_symbol(&symbols_, program.function_declarations[i].symbol,
-                program.function_declarations[i].metadata.role);
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
-    mark_symbol(&symbols_, program.functions[i].symbol,
-                program.functions[i].metadata.role);
-}
-
-bool UnreachableRoleIndex::eliminate_conditional_edges(
-    Function * function, Stats * stats) const
+bool eliminate_unreachable_edges(Function * function, Stats * stats)
 {
   if(function->blocks.empty()) return false;
-  std::vector<unsigned char> marker_blocks;
+  std::vector<unsigned char> unreachable_blocks;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     const Block & block = function->blocks[i];
     if(!block.instructions.empty() &&
-       is_unreachable_call(block.instructions.front(), symbols_)) {
-      if(marker_blocks.empty())
-        marker_blocks.assign(function->next_block_id, 0);
-      marker_blocks[block.id] = 1;
-      if(stats) ++stats->unreachable_marker_blocks;
+       block.instructions.back().kind == Instruction::IK_UNREACHABLE) {
+      if(unreachable_blocks.empty())
+        unreachable_blocks.assign(function->next_block_id, 0);
+      unreachable_blocks[block.id] = 1;
+      if(stats) ++stats->unreachable_terminator_blocks;
     }
   }
-  if(marker_blocks.empty()) return false;
+  if(unreachable_blocks.empty()) return false;
   bool changed = false;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     Block & block = function->blocks[i];
@@ -72,12 +41,14 @@ bool UnreachableRoleIndex::eliminate_conditional_edges(
        terminator.third.kind != Operand::OP_LABEL ||
        !terminator.second.block.valid() || !terminator.third.block.valid() ||
        static_cast<std::uint32_t>(terminator.second.block) >=
-         marker_blocks.size() ||
+         unreachable_blocks.size() ||
        static_cast<std::uint32_t>(terminator.third.block) >=
-         marker_blocks.size())
+         unreachable_blocks.size())
       continue;
-    const bool true_unreachable = marker_blocks[terminator.second.block] != 0;
-    const bool false_unreachable = marker_blocks[terminator.third.block] != 0;
+    const bool true_unreachable =
+      unreachable_blocks[terminator.second.block] != 0;
+    const bool false_unreachable =
+      unreachable_blocks[terminator.third.block] != 0;
     if(true_unreachable == false_unreachable) continue;
     const Operand target = true_unreachable ? terminator.third : terminator.second;
     const lowir_model::InstructionDebugLocation debug =
@@ -100,13 +71,10 @@ std::vector<unsigned char> noreturn_symbol_index(const LowirProgram & program)
   std::vector<unsigned char> symbols(program.symbol_names.size(), 0);
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
     if(program.function_declarations[i].boundary.returns ==
-         lowir_model::CRM_NORETURN ||
-       program.function_declarations[i].metadata.role ==
-         lowir_model::SR_UNREACHABLE)
+         lowir_model::CRM_NORETURN)
       symbols[program.function_declarations[i].symbol] = 1;
   for(std::size_t i = 0; i < program.functions.size(); ++i)
-    if(program.functions[i].boundary.returns == lowir_model::CRM_NORETURN ||
-       program.functions[i].metadata.role == lowir_model::SR_UNREACHABLE)
+    if(program.functions[i].boundary.returns == lowir_model::CRM_NORETURN)
       symbols[program.functions[i].symbol] = 1;
   return symbols;
 }
@@ -200,13 +168,6 @@ bool truncate_noreturn_continuations(
     if(stats) { ++stats->unreachable_edges_removed; ++stats->rewrites; }
   }
   return changed;
-}
-
-std::size_t UnreachableRoleIndex::symbol_count() const
-{
-  std::size_t result = 0;
-  for(std::size_t i = 0; i < symbols_.size(); ++i) result += symbols_[i] != 0;
-  return result;
 }
 
 }  // namespace lowir_opt

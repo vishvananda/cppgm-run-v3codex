@@ -381,8 +381,8 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " duplicate_block_loads_removed="
 		 << stats.duplicate_block_loads_removed
 		 << " staged_copies_forwarded=" << stats.staged_copies_forwarded
-		 << " unreachable_role_symbols=" << stats.unreachable_role_symbols
-		 << " unreachable_marker_blocks=" << stats.unreachable_marker_blocks
+		 << " unreachable_terminator_blocks="
+		 << stats.unreachable_terminator_blocks
 		 << " unreachable_edges_removed=" << stats.unreachable_edges_removed
 		 << " inline_ns=" << stats.inline_nanoseconds
 		 << " ipa_ns=" << stats.ipa_nanoseconds

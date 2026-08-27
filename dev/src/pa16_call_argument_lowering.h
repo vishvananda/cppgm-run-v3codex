@@ -919,6 +919,14 @@ protected:
 			callee.binding >= derived.program_.bindings.size()) return false;
 		const BuiltinFunctionKind kind =
 			derived.program_.bindings[callee.binding].builtin_function;
+		if (kind == BUILTIN_FUNCTION_UNREACHABLE)
+		{
+			if (children.size() != 1)
+				throw std::logic_error("invalid unreachable intrinsic call");
+			derived.Emit(Instruction(Instruction::UNREACHABLE));
+			*result = Operand(0, LowVoid());
+			return true;
+		}
 		if (kind == BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC)
 		{
 			const hosted_builtin::MemoryIntrinsic& intrinsic =

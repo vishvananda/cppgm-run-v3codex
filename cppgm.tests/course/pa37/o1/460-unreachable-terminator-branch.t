@@ -1,4 +1,3 @@
-declare function @undefined_path() -> void [role=unreachable, effects=readnone, unwind=no, return=noreturn]
 declare function @ordinary_noreturn() -> void [effects=readnone, unwind=no, return=noreturn]
 
 function @drop_guard(%condition : i64) -> i64 [binding=strong, no_inline=yes] {
@@ -6,8 +5,7 @@ function @drop_guard(%condition : i64) -> i64 [binding=strong, no_inline=yes] {
     branch %condition, ^undefined, ^good
 
   block ^undefined:
-    call void @undefined_path()
-    jump ^good
+    unreachable
 
   block ^good:
     return i64 7

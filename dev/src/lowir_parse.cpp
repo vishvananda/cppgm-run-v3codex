@@ -476,7 +476,7 @@ private:
       {"dynamic_cast", SR_DYNAMIC_CAST}, {"bad_cast", SR_BAD_CAST},
       {"bad_typeid", SR_BAD_TYPEID}, {"rtti_class", SR_RTTI_CLASS},
       {"rtti_si", SR_RTTI_SI}, {"rtti_vmi", SR_RTTI_VMI},
-      {"rtti_data", SR_RTTI_DATA}, {"unreachable", SR_UNREACHABLE}
+      {"rtti_data", SR_RTTI_DATA}
     };
     for(std::size_t i = 0; i < sizeof(roles) / sizeof(roles[0]); ++i)
       if(value == roles[i].first) return roles[i].second;
@@ -712,6 +712,7 @@ private:
   {
     return kind == Instruction::IK_JUMP || kind == Instruction::IK_BRANCH ||
            kind == Instruction::IK_SWITCH || kind == Instruction::IK_RETURN ||
+           kind == Instruction::IK_UNREACHABLE ||
            kind == Instruction::IK_THROW || kind == Instruction::IK_RESUME;
   }
 
@@ -953,6 +954,7 @@ private:
     else if(op == "throw") {
       out.kind = Instruction::IK_THROW; out.type = type(); out.first = operand();
     } else if(op == "resume") out.kind = Instruction::IK_RESUME;
+    else if(op == "unreachable") out.kind = Instruction::IK_UNREACHABLE;
     else if(op == "jump") { out.kind = Instruction::IK_JUMP; out.first = operand(); }
     else if(op == "branch") parse_branch(out);
     else if(op == "switch") parse_switch(out);
@@ -1355,6 +1357,7 @@ private:
        ins.kind == Instruction::IK_BRANCH ||
        ins.kind == Instruction::IK_SWITCH ||
        ins.kind == Instruction::IK_RETURN ||
+       ins.kind == Instruction::IK_UNREACHABLE ||
        ins.kind == Instruction::IK_THROW ||
        ins.kind == Instruction::IK_RESUME)
       return true;

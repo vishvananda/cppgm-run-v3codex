@@ -1,5 +1,3 @@
-declare function @undefined_path() -> void
-    [role=unreachable, effects=readnone, unwind=no, return=noreturn]
 declare function @observe(%value : i64) -> void
 
 function @repair_fold_target_phi(%choose : i64) -> i64 [no_inline=yes] {
@@ -30,14 +28,13 @@ function @stale_phi_callee(%choose : i64) -> i64 [binding=internal] {
     branch %choose, ^dead, ^live
 
   block ^dead:
-    call void @undefined_path()
-    jump ^join
+    unreachable
 
   block ^live:
     jump ^join
 
   block ^join:
-    %result = phi i64 [^dead: 31, ^live: 47]
+    %result = phi i64 [^live: 47]
     return i64 %result
 }
 

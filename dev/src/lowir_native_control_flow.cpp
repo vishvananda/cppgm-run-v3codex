@@ -78,6 +78,7 @@ ControlFlowQueries::ControlFlowQueries(
 				AppendSuccessor(i, terminal.args[j], blocks);
 		}
 		else if (terminal.kind != Instruction::IK_RETURN &&
+			terminal.kind != Instruction::IK_UNREACHABLE &&
 			terminal.kind != Instruction::IK_RESUME &&
 			terminal.kind != Instruction::IK_THROW && i + 1 < function.blocks.size())
 		{

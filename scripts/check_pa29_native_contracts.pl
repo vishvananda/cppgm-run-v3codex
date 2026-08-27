@@ -553,6 +553,14 @@ for my $test (@tests)
 		}
 		next;
 	}
+	if($test =~ /unreachable-terminator/) {
+		my $body = function_body($test, $mir, 'guarded');
+		die "$test: guarded function lost its impossible control-flow block\n"
+			if $body !~ /^\s+block \^impossible\s*$/m;
+		die "$test: unreachable continuation became a synthetic native call\n"
+			if $body =~ /^\s+call\s+\@[^\n]*unreachable/m;
+		next;
+	}
 	die "$test: no native property predicate selected\n";
 }
 

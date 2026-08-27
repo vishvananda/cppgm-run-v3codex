@@ -111,6 +111,7 @@ bool predicate_keeps_memory(const Instruction & instruction)
   case Instruction::IK_BRANCH:
   case Instruction::IK_SWITCH:
   case Instruction::IK_RETURN:
+  case Instruction::IK_UNREACHABLE:
     return true;
   case Instruction::IK_LOAD:
     return !instruction.volatile_access;
