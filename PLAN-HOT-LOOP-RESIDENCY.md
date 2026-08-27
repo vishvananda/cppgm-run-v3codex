@@ -3275,6 +3275,36 @@ inception lane while another build or profiler is active.
   credible; do not replay obsolete variants merely because their historical
   numerator was close.
 
+- **P32-L105 (DEFERRED FIXED-RESULT DIVISION REPLAY REJECTED BY
+  SAME-SOURCE WALL RATIO).** L72's broad PA29 form was reconstructed from its
+  archived candidate rather than approximated.  When constant division was
+  not followed by an adjacent result move or return, it scanned the remainder
+  of the block, tracked the two fixed division results until redefinition, and
+  selected a result only when exactly one was read.  PA29 passed 291/291,
+  PA38 passed 46/46, and an all-32 O1 inception comparison matched every
+  object and the final compiler.  The candidate compiler under
+  `/dev/shm/v3codex-p34-live-div-ratio-candidate.HD7kJD` has SHA-256
+  `6ed4573654ea470576ef018e037e393da93e130ffa900e6e44c88e89df77475b`.
+  Complete text grew 91,280 bytes, while static native division fell from
+  4,662 to 354 signed operations and from 405 to 382 unsigned operations: a
+  real 4,331-operation target-code population, not a source-specific match.
+
+  Concurrent work elsewhere on this 32-CPU host contaminated several initial
+  lanes; those runs had much higher aggregate CPU and involuntary context
+  switching and are not included.  Two uncontended candidate self lanes
+  measured 32.01/869.52/48.83 and 32.59/871.21/49.87 seconds
+  wall/user/system, averaging 32.300 wall and 919.715 aggregate CPU.  The
+  candidate-source GCC compiler prepared under
+  `/dev/shm/v3codex-p34-live-div-gcc-prep.BypBwg`; two uncontended lanes
+  measured 21.02/544.67/47.25 and 21.04/543.07/45.28, averaging 21.030 wall
+  and 590.135 CPU.  The resulting 1.536x wall ratio is slightly worse than
+  production's binding 1.533x even though the 1.559x CPU ratio is slightly
+  better than 1.566x.  The target is explicitly wall-time parity, so the
+  mixed result does not retain a 91 KiB implementation with no measured self
+  wall benefit.  GCC remains binding and no Clang lane is needed.  All probe
+  code is removed; no student contract/property is retained.  L23's
+  unused-result dynamic-copy lowering is the next ratio-aware replay.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
