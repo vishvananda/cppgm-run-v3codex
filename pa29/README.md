@@ -601,6 +601,10 @@ To complete PA29, implement these goals:
    its scalar chunks directly from that frame operand; it need not materialize
    a temporary base address. The encoder must still preserve both logical
    addresses and any live scalar values that overlap its scratch registers.
+   When both bulk-copy addresses need setup, forming one address must not
+   overwrite a parameter or deferred carrier still needed to form the other.
+   The lowering may reverse the setup order or stage one address in reserved
+   scratch; generated behavior must remain correct at both O0 and O1.
 
    A fixed 16-byte zero may avoid string-operation setup with a cleared
    reserved vector scratch and one unaligned store.  This direct form must be

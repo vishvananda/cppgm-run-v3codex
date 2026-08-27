@@ -101,16 +101,39 @@ protected:
     const bool direct_source =
       direct_address_register(source, &source_register);
     X64Register destination_register = XR_RDI;
-    if (!direct_address_register(destination, &destination_register))
+    const bool direct_destination =
+      direct_address_register(destination, &destination_register);
+    bool materialized_source = false;
+    if (!direct_destination)
     {
       destination_register = direct_source && source_register == XR_RDI ?
         XR_R11 : XR_RDI;
+      // Address setup is destructive: materializing the destination in rdi
+      // must not overwrite a parameter or deferred carrier still needed to
+      // form the source address.  Reverse the setup when that is sufficient;
+      // use the reserved r10 scratch when both logical addresses depend on
+      // the other's copy register.
+      if (!direct_source &&
+          derived.address_depends_on_register(source,
+                                              destination_register))
+      {
+        source_register =
+          derived.address_depends_on_register(destination, XR_RSI) ?
+            XR_R10 : XR_RSI;
+        derived.emit_operand_address(out, source_register, source);
+        materialized_source = true;
+      }
       derived.emit_operand_address(out, destination_register, destination);
     }
-    if (!direct_source)
+    if (!direct_source && !materialized_source)
     {
       source_register = destination_register == XR_RSI ? XR_R11 : XR_RSI;
       derived.emit_operand_address(out, source_register, source);
+    }
+    else if(materialized_source && source_register == XR_R10)
+    {
+      append_move(out, reg_operand(XR_RSI), reg_operand(XR_R10));
+      source_register = XR_RSI;
     }
     append_object_copy(bytes, alignment, destination_register,
                        source_register, out);

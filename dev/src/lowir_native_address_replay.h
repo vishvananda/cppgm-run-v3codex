@@ -12,6 +12,21 @@ template <class Derived>
 class AddressReplay
 {
 protected:
+  bool address_depends_on_register(const lowir_model::Operand & operand,
+                                   X64Register reg) const
+  {
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    if(operand.kind != lowir_model::Operand::OP_TEMP) return false;
+    const std::uint32_t id = operand.value;
+    if(id >= lowerer.value_known_.size() ||
+       !lowerer.value_known_[id]) return false;
+    const ValueFact & value = lowerer.values_[id];
+    if(build::operand_uses_register(value.location, reg)) return true;
+    if(!value.deferred_address) return false;
+    return address_depends_on_register(value.deferred_address_base, reg) ||
+      address_depends_on_register(value.deferred_address_index, reg);
+  }
+
   bool is_frame_address(const lowir_model::Operand & operand) const
   {
     const Derived & lowerer = static_cast<const Derived &>(*this);

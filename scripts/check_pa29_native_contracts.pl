@@ -410,6 +410,36 @@ for my $test (@tests)
 			if index($code, "\xf3\xa4") < 0;
 		next;
 	}
+	if($test =~ /copyobj-indexed-parameter-order/) {
+		my $body = function_body($test, $mir, 'copy_indexed_parameter');
+		die "$test: indexed-parameter reducer lost its bulk copy\n"
+			if $body !~ /^\s+copy_bytes 4x4, /m;
+
+		my $o1_mir_path = "$directory/test-o1.mir";
+		my $o1_program = "$directory/test-o1.program";
+		my $o1_status = run_command_capture(
+			cmd => [$app, '-O1', '--dump-machine-ir', $o1_mir_path,
+				'-o', $o1_program, $test],
+			stdout => "$directory/compile-o1.stdout",
+			stderr => "$directory/compile-o1.stderr",
+			timeout => 30,
+		);
+		die "$test: O1 control compile failed\n" .
+			read_file("$directory/compile-o1.stderr", 0) if $o1_status != 0;
+		my $o1_run = run_command_capture(
+			cmd => [$o1_program],
+			stdout => "$directory/program-o1.stdout",
+			stderr => "$directory/program-o1.stderr",
+			timeout => 30,
+		);
+		die "$test: O1 generated program returned $o1_run, expected 0\n"
+			if $o1_run != 0;
+		my $o1_body = function_body(
+			$test, read_file($o1_mir_path, 0), 'copy_indexed_parameter');
+		die "$test: O1 indexed-parameter reducer lost its bulk copy\n"
+			if $o1_body !~ /^\s+copy_bytes 4x4, /m;
+		next;
+	}
 	if($test =~ /cost-directed-small-zeroinit/) {
 		my $body = function_body($test, $mir, 'main');
 		die "$test: fixed zero lost its documented 16-byte operation\n"
