@@ -651,6 +651,41 @@ This plan is complete only when:
   are `634887b3...`, `21674ae0...`, and `d36eac81...`; text is 8,640,175,
   5,788,400, and 5,027,765 bytes respectively.  Retain this first consumer;
   do not permit cross-pass reuse until a later mutation-bounded measurement.
+- **D2-V2 (COUNTED-LOOP VALUE INDEX, RETAINED).** On the tree based on
+  `9b318336`, counted-loop simplification is the second independent value-index
+  consumer.  It replaces a local definition-block vector, definition-index
+  vector, use-count vector, complete instruction scan, and two lookup helpers
+  with the same explicit missing/parameter/instruction result used by scaled
+  index factorization.  It still returns before building any value facts for a
+  loop-free function, and it does not reuse facts across a mutation boundary.
+  This removes 28 net production lines, one allocation, and one machine word
+  per value whenever the O2+ counted-loop pass has a loop to examine.  The
+  PA37 historical control still checks O2 induction strength reduction and
+  behavior; the focused control, PA37 188/188, PA38 45/45, `git diff --check`,
+  and the zero-fatal/36-warning default audit pass.  The tight report remains
+  at 14 warnings.  Exact O1 private-log builds cover 215 current translation
+  units: old and candidate objects are byte-identical, and every optimizer
+  counter, including the value-index fields and 10,229,916-byte promotion
+  peak, is identical because the migrated pass begins at O2.  On the PA37 O2
+  historical fixture, old/candidate value-index builds are 11/12, scanned
+  instructions 65/76, operand positions 202/237, and reported index
+  allocations 22/24, with the same 368-byte peak.  The added build's two
+  allocations replace the old pass's three same-length arrays, and the native
+  objects are identical.  Candidate SHA-256/text is `cb5a4452...`/8,637,627,
+  2,548 text bytes below D2-V1 and 1,304 below the D1 checkpoint.
+  Reverse/interleaved all-32 same-source lanes are candidate 32.37/31.44 and
+  old 31.63/31.89 seconds wall; means are 31.905/31.760 (+0.46%).  Aggregate
+  CPU means are 907.245/906.465 seconds (+0.09%).  A precautionary third
+  candidate lane was clean at 31.96 wall/900.79 CPU, but its following old
+  lane was excluded after thermal/load contamination raised aggregate CPU to
+  1,090.30 seconds despite the same 215 successful objects.  Exact-source GCC
+  lanes are 29.82/29.60 wall and 575.23/567.93 CPU; Clang lanes are
+  30.54/30.36 wall and 648.54/649.86 CPU.  Accepted means are self
+  31.905/907.245, GCC 29.710/571.58, and Clang 30.450/649.20 seconds wall/CPU,
+  or 1.074x and 1.048x wall.  Self, GCC, and Clang hashes/text are
+  `cb5a4452...`/8,637,627, `51b3518f...`/5,787,332, and
+  `763b24f4...`/5,026,821.  Retain; cross-pass reuse remains a separate next
+  experiment.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

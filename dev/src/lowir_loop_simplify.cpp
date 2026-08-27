@@ -45,33 +45,16 @@ bool pure_loop_instruction(const Instruction & instruction)
     kind == Instruction::IK_BRANCH;
 }
 
-void count_temp_use(const Operand & operand, std::vector<std::size_t> * uses)
-{
-  if(operand.kind == Operand::OP_TEMP) ++(*uses)[operand.value];
-}
-
-Instruction * definition(Function * function,
-                         const std::vector<std::size_t> & definition_block,
-                         const std::vector<std::size_t> & definition_index,
-                         lowir_model::ValueId value)
-{
-  const std::uint32_t id = value;
-  if(id >= definition_block.size() || definition_block[id] == kNoIndex)
-    return 0;
-  return &function->blocks[definition_block[id]].instructions[
-    definition_index[id]];
-}
-
 bool find_induction(Function * function,
                     const lowir_analysis::NaturalLoop & loop,
-                    const std::vector<std::size_t> & definition_block,
-                    const std::vector<std::size_t> & definition_index,
+                    const lowir_analysis::ValueIndex & values,
                     lowir_model::ValueId value, Induction * result)
 {
-  const std::uint32_t id = value;
-  if(id >= definition_block.size() ||
-     definition_block[id] != loop.header) return false;
-  const std::size_t phi_index = definition_index[id];
+  const lowir_analysis::ValueDefinition phi_definition =
+    values.definition(value);
+  if(phi_definition.kind != lowir_analysis::ValueDefinition::INSTRUCTION ||
+     phi_definition.block != loop.header) return false;
+  const std::size_t phi_index = phi_definition.instruction;
   Instruction & phi =
     function->blocks[loop.header].instructions[phi_index];
   if(phi.kind != Instruction::IK_PHI ||
@@ -100,11 +83,15 @@ bool find_induction(Function * function,
      updated.kind != Operand::OP_TEMP) return false;
   if(initial.int_high !=
      (initial.int_value < 0 ? ~UINT64_C(0) : UINT64_C(0))) return false;
-  Instruction * update = definition(
-    function, definition_block, definition_index, updated.value);
-  if(!update || update->kind != Instruction::IK_BINARY ||
-     update->type.kind != lowir_model::LTK_I64 ||
-     definition_block[updated.value] != loop.latches[0]) return false;
+  const lowir_analysis::ValueDefinition update_definition =
+    values.definition(updated.value);
+  if(update_definition.kind !=
+       lowir_analysis::ValueDefinition::INSTRUCTION ||
+     update_definition.block != loop.latches[0]) return false;
+  Instruction * update = &function->blocks[update_definition.block]
+    .instructions[update_definition.instruction];
+  if(update->kind != Instruction::IK_BINARY ||
+     update->type.kind != lowir_model::LTK_I64) return false;
   long long step = 0;
   if(update->op.kind == LowOperation::LOP_ADD &&
      update->first.kind == Operand::OP_TEMP &&
@@ -126,8 +113,8 @@ bool find_induction(Function * function,
   else return false;
   if(step == 0) return false;
   result->phi_instruction = phi_index;
-  result->update_block = definition_block[updated.value];
-  result->update_instruction = definition_index[updated.value];
+  result->update_block = update_definition.block;
+  result->update_instruction = update_definition.instruction;
   result->value = value;
   result->initial = initial.int_value;
   result->step = step;
@@ -247,27 +234,7 @@ bool simplify_counted_loops(Function * function,
 {
   const lowir_analysis::LoopForest & forest = analysis->loop_forest();
   if(forest.loops.empty()) return false;
-  std::vector<std::size_t> definition_block(
-    function->value_names.size(), kNoIndex);
-  std::vector<std::size_t> definition_index(
-    function->value_names.size(), kNoIndex);
-  std::vector<std::size_t> uses(function->value_names.size(), 0);
-  for(std::size_t block = 0; block < function->blocks.size(); ++block)
-    for(std::size_t instruction = 0;
-        instruction < function->blocks[block].instructions.size();
-        ++instruction) {
-      const Instruction & ins =
-        function->blocks[block].instructions[instruction];
-      if(ins.dest.valid()) {
-        definition_block[ins.dest] = block;
-        definition_index[ins.dest] = instruction;
-      }
-      count_temp_use(ins.first, &uses);
-      count_temp_use(ins.second, &uses);
-      count_temp_use(ins.third, &uses);
-      for(std::size_t arg = 0; arg < ins.args.size(); ++arg)
-        count_temp_use(ins.args[arg], &uses);
-    }
+  const lowir_analysis::ValueIndex values(*function, stats);
 
   bool changed = false;
   bool cfg_changed = false;
@@ -281,10 +248,14 @@ bool simplify_counted_loops(Function * function,
     if(header.empty() || header.back().kind != Instruction::IK_BRANCH ||
        header.back().first.kind != Operand::OP_TEMP) continue;
     Instruction & branch = header.back();
-    Instruction * compare = definition(function, definition_block,
-      definition_index, branch.first.value);
-    if(!compare || compare->kind != Instruction::IK_CMP ||
-       definition_block[branch.first.value] != loop.header ||
+    const lowir_analysis::ValueDefinition compare_definition =
+      values.definition(branch.first.value);
+    if(compare_definition.kind !=
+         lowir_analysis::ValueDefinition::INSTRUCTION ||
+       compare_definition.block != loop.header) continue;
+    Instruction * compare = &function->blocks[compare_definition.block]
+      .instructions[compare_definition.instruction];
+    if(compare->kind != Instruction::IK_CMP ||
        compare->first.kind != Operand::OP_TEMP ||
        compare->second.kind != Operand::OP_INTEGER ||
        !compare->second.has_int_value ||
@@ -293,8 +264,8 @@ bool simplify_counted_loops(Function * function,
          (compare->second.int_value < 0 ? ~UINT64_C(0) : UINT64_C(0)))
       continue;
     Induction induction;
-    if(!find_induction(function, loop, definition_block, definition_index,
-                       compare->first.value, &induction)) continue;
+    if(!find_induction(function, loop, values, compare->first.value,
+                       &induction)) continue;
     if(stats) ++stats->induction_variables;
 
     const std::size_t true_target = analysis->graph().find(branch.second.block);
@@ -307,7 +278,8 @@ bool simplify_counted_loops(Function * function,
     if(!true_inside) {
       condition = negate_compare(condition);
       exit = true_target;
-      if(condition != LowOperation::LOP_NONE && uses[compare->dest] == 1) {
+      if(condition != LowOperation::LOP_NONE &&
+         values.use_count(compare->dest) == 1) {
         compare->op.kind = condition;
         std::swap(branch.second, branch.third);
         changed = true;
