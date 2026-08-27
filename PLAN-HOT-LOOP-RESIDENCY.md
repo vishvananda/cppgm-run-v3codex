@@ -3720,6 +3720,44 @@ inception lane while another build or profiler is active.
   for rejected behavior, and no compiler, profiler, Cachegrind, or Valgrind
   process remains active.
 
+- **P32-L116 (CALL-CROSSING LOCAL-PHI REPLAY STILL REJECTED BY
+  SAME-SOURCE RATIO).** Fresh exact-final attribution gave old L99 one reason
+  for a ratio-aware replay that its static rejection lacked.  The 13-entry
+  string-comparison loop accounts for roughly one third of `Lexer::Run`, and
+  self carries its local loop state through the frame while leaving two
+  callee-saved registers unused.  This corrects the interim statement that
+  every historical candidate was already closed: L99 was the sole remaining
+  sound item with a now-proved hot native target and no source-matched host
+  denominator.
+
+  The original general boundary was reproduced: a bypassable local integer
+  phi that crosses a call, has at least three uses, and cannot use a
+  caller-saved register received an exact-interval callee-saved home only
+  when MIR liveness and clobber facts allowed it.  On `Lexer::Run` this
+  changed the preserve set from three to five registers, removed three MIR
+  instructions and one load/store pair, but grew the function 281 bytes and
+  tokenizer text 288 bytes.  Complete compiler text grew 8,656,879 ->
+  8,657,691 bytes.  PA29 passed 291/291 and PA38 passed 46/46.
+
+  The explicit O1/all-32 candidate prepared under
+  `/dev/shm/v3codex-local-phi-candidate.3wsLZF`; its pre-change-compiler
+  binary has SHA-256
+  `9d59edd4c6f3078f873b7924a73fe25337aae634e6f6638cdbeedc7426ec74a4`.
+  The full-source self lane measured 32.28/877.12/49.75 seconds
+  wall/user/system.  Its exact-source GCC compiler under
+  `/dev/shm/v3codex-local-phi-gcc-prep.X9iVX4` measured the same workload at
+  21.00/545.67/44.86 seconds.  Both generated the identical compiler SHA-256
+  `b85d21dfa49a1274cac0d365653ab0cdc7591cb467a9847975b8bf31bbf6a705`.
+
+  The resulting 1.537x wall and 1.570x aggregate-CPU ratios both regress
+  L106's 1.516x/1.562x point.  New attribution justified measuring L99, but
+  the corrected metric still rejects it.  The implementation is removed,
+  restored PA38 is 46/46, and no student contract/property is retained for
+  rejected behavior.  No compiler, profiler, Cachegrind, Valgrind, or build
+  process remains active.  The historical ratio-sensitive queue is now
+  closed including every sound item with a material current native effect;
+  further work is fresh profile-driven optimization.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
