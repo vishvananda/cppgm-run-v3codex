@@ -817,6 +817,36 @@ This plan is complete only when:
   the confirmed greater-than-0.5% wall rule.  A lower-overhead D3 boundary
   must keep scratch ownership local without adding a per-translation-unit
   heap allocation or a broad out-of-line call facade.
+- **D3-P1 (STACK-OWNED PIPELINE SESSION, RETAINED).** On the tree based on
+  `0f4a8227`, `OptimizerSession` groups boundary facts and reusable
+  simplify/DCE/CFG scratch on the existing stack, while one coarse final
+  pipeline phase leaves the public `optimize` entry at 87 lines.  Final
+  retained-body census and output-stat assignment moved to the existing
+  `lowir_driver_stats_report` owner, a once-per-translation-unit call.  No
+  optimizer transform or hot local-pass boundary crosses translation units.
+  `lowir_opt.cpp` is 2,999 lines, so this increment meets the `optimize`
+  target but deliberately leaves the final 2,600-line ownership split for a
+  separately measured step.  PA37 is 188/188, PA38 is 45/45,
+  `git diff --check` is clean, and the default audit remains zero-fatal with
+  36 established warnings.  Fresh exact-candidate-source private logs cover
+  all 215 translation units: every non-timing optimizer counter and all 215
+  objects match, and old/candidate self compilers link the same
+  `6c48f22e...` output.  The benchmark compiler grows from
+  `a460771a...`/8,637,371 to `6c48f22e...`/8,639,699 text bytes with unchanged
+  334,744-byte data.  Reverse/interleaved self lanes are candidate
+  31.50/31.31 seconds wall and 899.81/898.15 aggregate CPU, versus old
+  31.11/31.83 wall and 896.51/901.00 CPU.  Means are 31.405/898.980 versus
+  31.470/898.755: wall improves 0.207% and CPU regresses only 0.025%; mean
+  peak RSS falls from 230,870 to 229,936 KiB.  The two clean exact-source GCC
+  lanes are 29.64/29.44 wall and 570.32/567.78 CPU; Clang lanes are
+  30.45/30.37 wall and 646.86/644.75 CPU.  Candidate ratios improve to
+  1.063x GCC and 1.033x Clang from old 1.065x/1.035x.  GCC/Clang hashes and
+  text are `9a47847c...`/5,787,888 and `567b7ce3...`/5,027,457.  A GCC lane
+  at 37.50 wall/598.83 CPU and a mildly elevated 30.87/578.47 lane were
+  excluded and replaced by the two clean lanes rather than blended into the
+  denominator.  Retain: this establishes explicit lifetime ownership and
+  coarse phase structure without the allocation and hot facade rejected by
+  D3-S2.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

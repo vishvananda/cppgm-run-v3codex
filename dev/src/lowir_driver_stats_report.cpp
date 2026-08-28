@@ -1,5 +1,7 @@
 #include "lowir_driver_stats_report.h"
 
+#include "lowir_function_reachability.h"
+#include "lowir_inline_analysis.h"
 #include "lowir_opt.h"
 #include "lowir_prepare.h"
 #include "mir_model.h"
@@ -9,6 +11,46 @@
 
 namespace lowir_driver_stats_report
 {
+
+namespace
+{
+
+std::size_t InstructionCount(const lowir_model::Program& program)
+{
+	std::size_t result = 0;
+	for(std::size_t i = 0; i < program.functions.size(); ++i)
+		for(std::size_t j = 0; j < program.functions[i].blocks.size(); ++j)
+			result += program.functions[i].blocks[j].instructions.size();
+	return result;
+}
+
+}
+
+void FinalizeOptimizer(const lowir_model::Program& program,
+	const lowir_model::FunctionPruningSummary& pruning,
+	lowir_opt::Stats* stats, std::uint64_t elapsed_nanoseconds)
+{
+	if(!stats) return;
+	lowir_opt::collect_retained_inline_census(program, stats);
+	stats->inline_reachable_functions = pruning.reachable_functions;
+	stats->inline_pruned_functions = pruning.pruned_functions;
+	stats->inline_unreachable_weak_functions = pruning.unreachable_weak_functions;
+	stats->inline_unreachable_internal_functions =
+		pruning.unreachable_internal_functions;
+	stats->inline_retained_external_strong = pruning.retained_external_strong;
+	stats->inline_retained_address_or_relocation =
+		pruning.retained_address_or_relocation;
+	stats->inline_retained_direct_call = pruning.retained_direct_call;
+	stats->inline_retained_lifecycle = pruning.retained_lifecycle;
+	stats->inline_retained_object_output_root =
+		pruning.retained_object_output_root;
+	stats->inline_retained_object_output_root_weak =
+		pruning.retained_object_output_root_weak;
+	stats->inline_retained_object_output_root_internal =
+		pruning.retained_object_output_root_internal;
+	stats->output_instructions = InstructionCount(program);
+	stats->elapsed_nanoseconds = elapsed_nanoseconds;
+}
 
 void ReportOptimizer(std::ostream& output, const std::string& input,
 	const lowir_opt::Stats& stats)
