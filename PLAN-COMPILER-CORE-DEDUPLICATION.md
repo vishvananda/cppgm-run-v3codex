@@ -892,4 +892,5 @@ not reuse measurements from a different source tree.
   are exact for both.  Four pinned, ASLR-disabled GCC pairs have a -0.06-second
   median paired wall delta despite one isolated system outlier, with a fresh
   confirmation pair at -0.01 seconds.  Four Clang pairs have a +0.005-second
-  median paired delta.  Both are performance-neutral at the timing floor.
+  median paired delta.  Both are performance-neutral at the timing floor.  The
+  32-way C7 inception checkpoint matches every object and the final compiler.
