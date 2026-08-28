@@ -847,3 +847,45 @@ checkpoint where applicable, commit, and push state.
   5471/5471; layout and LowIR audits passed and the file audit remained
   zero-fatal/33-warning.  Performance: not applicable to this path-only batch.
   Push: with this ledger checkpoint.
+- `e6e1877a` — R3 recognition paths.  Moved the embedded grammar and recognizer
+  to `recognition/grammar_definition.h` and `recognizer.{h,cpp}` without symbol
+  changes.  PA6 passed 48/48 and all 18 output surfaces were exact.  The only
+  binary-content change was the embedded `__FILE__` basename
+  `pa6_recognizer.cpp` becoming `recognizer.cpp`; 32/32/32 inception matched.
+  Pushed.
+- `6f1c3782` — R3 recognition grammar identifiers.  Renamed the embedded
+  grammar definition and accessor and removed the PA-bearing raw-string
+  delimiter.  PA6 and all 18 output surfaces were exact.  The binary delta was
+  confined to local symbol names and the resulting build ID; after stripping
+  symbols and build ID it was byte-identical.  Pushed.
+- `2b807e0a` — R3 recognition namespace/API completion.  Moved the public API
+  and private recognizer into `cppgm::recognition`, and renamed `Stats` and the
+  private `Recognizer`.  PA6 and all output surfaces were exact; allocated
+  changes were limited to the expected private token-sink RTTI spelling.  The
+  cumulative report passed 5471/5471 and all audits retained their baselines.
+  Pushed.
+- `fd9c6db4` — R3 namespace-semantics paths.  Moved PA7 into
+  `namespace_semantics/analysis.{h,cpp}` with unchanged symbols and link order.
+  PA7 passed 43/43, all output surfaces were exact, and the binary change was
+  the `pa7_semantic.cpp` to `analysis.cpp` basename only; 32/32/32 inception
+  matched.  Pushed.
+- `7736b80f` — R3 namespace-semantics names.  Moved the stage into
+  `cppgm::namespace_semantics` and renamed its `Stats`, `TranslationUnit`,
+  private `Program`, and private `Parser`.  PA7 and all output surfaces were
+  exact; binary deltas were the expected internal manglings and token-sink
+  RTTI.  The cumulative report passed 5471/5471 and all audits retained their
+  baselines.  Pushed.
+- `3fcb5662` — R3 namespace-initialization paths.  Moved the driver, types,
+  internal model, program interface, model implementation, and parser into
+  `namespace_initialization/`.  PA8 passed 67/67 and all output surfaces were
+  exact; binary changes were exactly the three renamed source basenames.
+  32/32/32 inception matched.  Pushed.
+- `f6ced201` — R3 namespace-initialization names.  Replaced `cppgm::pa8` with
+  `cppgm::namespace_initialization` and renamed public `Stats`/`Program`,
+  internal `Model`, and `TranslationUnitParser`.  PA8 and all output surfaces
+  were exact; binary deltas were internal/API manglings and token-sink RTTI.
+  The closing R3 report passed 5471/5471, LowIR remained 124/99, the file audit
+  remained zero-fatal/33-warning, and fresh 32/32/32 inception matched.  Layout
+  counts fell from 215/428/426/72 to 203/415/421/68.  Performance: not
+  applicable to these independent early-tool path/name batches.  Push: with
+  this ledger checkpoint.
