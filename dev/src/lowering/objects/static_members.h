@@ -2,7 +2,7 @@
 #define CPPGM_LOWERING_OBJECTS_STATIC_MEMBERS_H
 
 #include "lowering/abi/itanium.h"
-#include "lowering/support/utilities.h"
+#include "lowering/abi/symbol_names.h"
 
 #include <stdexcept>
 #include <string>
@@ -15,7 +15,6 @@ namespace lowering
 using namespace semantic;
 using namespace semantic;
 using namespace lowering::ir;
-using namespace lowering::support;
 
 template <class Derived>
 class StaticMemberSymbolLowering
@@ -39,7 +38,7 @@ protected:
 					derived.stats_ ? &derived.stats_->semantic : 0) :
 				presentation_name;
 			derived.global_symbols_[canonical] = derived.InternSymbol(record,
-				Symbol::GLOBAL_SYMBOL, SanitizeSymbol(source_name),
+				Symbol::GLOBAL_SYMBOL, abi::NormalizeSymbolName(source_name),
 				lowering::abi::MangleVariable(
 					derived.program_, record,
 					derived.stats_ ? &derived.stats_->abi : 0,

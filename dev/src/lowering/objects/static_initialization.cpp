@@ -1,6 +1,6 @@
 #include "lowering/objects/static_initialization.h"
 
-#include "lowering/support/utilities.h"
+#include "lowering/core/source_types.h"
 #include "lowering/support/sequences.h"
 #include "preprocess/tokens/post_tokenizer.h"
 

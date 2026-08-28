@@ -5,7 +5,6 @@
 #include "semantic/type_view.h"
 #include "semantic/semantic.h"
 #include "lowering/api.h"
-#include "lowering/support/utilities.h"
 #include "pa30_lowir_adapter.h"
 #include "pa30_object.h"
 #include "pa30_elf_object.h"

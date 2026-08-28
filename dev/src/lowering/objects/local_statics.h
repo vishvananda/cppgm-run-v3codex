@@ -3,7 +3,7 @@
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"
-#include "lowering/support/utilities.h"
+#include "lowering/abi/symbol_names.h"
 #include "lowering/support/sequences.h"
 
 #include <stdexcept>
@@ -78,7 +78,7 @@ protected:
 			function_identity = "function_symbol_" +
 				HexLocalStaticSymbolComponent(object);
 		}
-		const std::string object_name = SanitizeSymbol(
+		const std::string object_name = abi::NormalizeSymbolName(
 			derived.program_.names.Get(
 				derived.program_.bindings[action.object].name));
 		std::string name = "__local_static__" + function_identity + "__";

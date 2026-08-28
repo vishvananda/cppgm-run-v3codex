@@ -5,7 +5,8 @@
 #include "lowering/expressions/conditionals.h"
 #include "lowering/abi/itanium.h"
 #include "lowering/presentation/local_names.h"
-#include "lowering/support/utilities.h"
+#include "lowering/abi/symbol_names.h"
+#include "lowering/objects/storage_facts.h"
 #include "lowering/support/identity_maps.h"
 #include "lowering/support/sequences.h"
 #include "lowering/expressions/scalar_unary.h"
@@ -575,7 +576,7 @@ private:
 		if (function_symbols_[record.binding] == kNoLowId)
 		{
 			const BindingRecord& binding = program_.bindings[record.binding];
-			const std::string base = SanitizeSymbol(
+			const std::string base = abi::NormalizeSymbolName(
 				presentation_names_.Apply(binding));
 			const std::uint32_t ordinal =
 				program_.bindings[record.binding].overload_ordinal;

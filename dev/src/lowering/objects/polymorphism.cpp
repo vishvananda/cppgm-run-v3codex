@@ -2,7 +2,7 @@
 
 #include "lowering/abi/itanium.h"
 #include "lowering/presentation/local_names.h"
-#include "lowering/support/utilities.h"
+#include "lowering/abi/symbol_names.h"
 #include "lowering/core/source_types.h"
 
 #include <limits>
@@ -18,7 +18,6 @@ namespace lowering
 using namespace semantic;
 using namespace semantic;
 using namespace lowering::ir;
-using namespace lowering::support;
 
 PolymorphismLoweringState::PolymorphismLoweringState()
 	: pure_virtual_symbol(kNoLowId), rtti_class_symbol(kNoLowId),
@@ -571,7 +570,7 @@ private:
 				position = spelling.find(marker, position))
 				spelling.erase(position, marker.size());
 		}
-		return SanitizeSymbol(spelling);
+		return abi::NormalizeSymbolName(spelling);
 	}
 
 	std::string LocalTypeEncoding(EntityId entity) const
@@ -790,7 +789,7 @@ private:
 	{
 		const TypeRecord& record = program_.types.Get(type);
 		if (record.kind == TYPE_FUNDAMENTAL)
-			return SanitizeSymbol(program_.RenderType(type));
+			return abi::NormalizeSymbolName(program_.RenderType(type));
 		return "type_" + lowering::abi::MangleType(program_, type);
 	}
 
@@ -1453,7 +1452,7 @@ private:
 			if (UsesExternalExceptionRtti(type))
 				state_.exception_rtti_symbols[type] = AddExternalRtti(
 					"__external_rtti__" +
-						SanitizeSymbol(program_.RenderType(type)),
+						abi::NormalizeSymbolName(program_.RenderType(type)),
 					"_ZTI" + lowering::abi::MangleType(program_, type));
 			if (!state_.thrown_type_demanded[type]) continue;
 			const std::string name =

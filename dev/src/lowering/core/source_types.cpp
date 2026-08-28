@@ -1,4 +1,5 @@
 #include "lowering/core/source_types.h"
+#include "lowir_model.h"
 
 #include <stdexcept>
 
@@ -10,6 +11,85 @@ namespace lowering
 using namespace semantic;
 using namespace semantic;
 using namespace lowering::ir;
+
+std::string NormalizeFloatingLiteral(const std::string& spelling,
+	const lowering::ir::LowType& type)
+{
+	std::string numeric = spelling;
+	if (numeric.empty() ||
+		!((numeric[0] >= '0' && numeric[0] <= '9') || numeric[0] == '.'))
+		return numeric;
+	static const char* const suffixes[] = {
+		"F128", "f128", "F32x", "f32x", "F64x", "f64x",
+		"F16", "f16", "F32", "f32", "F64", "f64", "Q", "q"
+	};
+	for (std::size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i)
+	{
+		const std::size_t count = std::char_traits<char>::length(suffixes[i]);
+		if (numeric.size() < count ||
+			numeric.compare(numeric.size() - count, count, suffixes[i]) != 0)
+			continue;
+		numeric.erase(numeric.size() - count);
+		if (type.kind == lowering::ir::LOW_F32) numeric += "f";
+		else if (type.kind == lowering::ir::LOW_F80) numeric += "L";
+		break;
+	}
+	return numeric;
+}
+
+bool DecodeFloatingLiteral(const std::string& spelling,
+	const lowering::ir::LowType& type, std::uint64_t* low,
+	std::uint64_t* high)
+{
+	lowir_model::LowType decoded_type;
+	switch (type.kind)
+	{
+	case lowering::ir::LOW_F32:
+		decoded_type = lowir_model::builtin_lowir_type(lowir_model::LTK_F32);
+		break;
+	case lowering::ir::LOW_F64:
+		decoded_type = lowir_model::builtin_lowir_type(lowir_model::LTK_F64);
+		break;
+	case lowering::ir::LOW_F80:
+		decoded_type = lowir_model::builtin_lowir_type(lowir_model::LTK_F80);
+		break;
+	default:
+		return false;
+	}
+	return lowir_model::parse_lowir_floating_literal_bits(
+		spelling, decoded_type, low, high);
+}
+
+bool IsNullPointerLiteralCast(const semantic::Program& program,
+	const semantic::DumpNode& source, semantic::TypeId target)
+{
+	target = program.types.RemoveTopCv(target);
+	const semantic::TypeRecord& target_record = program.types.Get(target);
+	if (target_record.kind != semantic::TYPE_POINTER) return false;
+	return source.integer_literal_zero;
+}
+
+bool IsIntNullPointerLiteralCast(const semantic::Program& program,
+	const semantic::DumpNode& source, semantic::TypeId target)
+{
+	const semantic::TypeRecord source_type = program.types.Get(
+		program.types.RemoveTopCv(source.type));
+	return source_type.kind == semantic::TYPE_FUNDAMENTAL &&
+		source_type.fundamental == semantic::FUND_INT &&
+		IsNullPointerLiteralCast(program, source, target);
+}
+
+std::int64_t CanonicalIntegerImmediate(std::int64_t value,
+	std::uint8_t width, bool is_signed)
+{
+	if (width >= 64) return value;
+	const std::uint64_t mask = (std::uint64_t(1) << width) - 1;
+	std::uint64_t narrowed = static_cast<std::uint64_t>(value) & mask;
+	if (is_signed &&
+		(narrowed & (std::uint64_t(1) << (width - 1))) != 0)
+		narrowed |= ~mask;
+	return static_cast<std::int64_t>(narrowed);
+}
 
 SourceTypeLowering::SourceTypeLowering(const semantic::Program& program)
 	: program_(program)

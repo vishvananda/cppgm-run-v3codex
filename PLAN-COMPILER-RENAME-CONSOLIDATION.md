@@ -1297,3 +1297,24 @@ checkpoint where applicable, commit, and push state.
   Performance measurement is not applicable because the executable or every
   meaningful allocated moved-object section was exact.  Push: with this
   ledger checkpoint.
+- `b2a17a1d`, `e1e44dc2`, and this commit — R8 lowering support dissolution.
+  Split the catch-all header into narrow inline sequences and identity maps;
+  moved emission-name presentation to `lowering/presentation`, byte counting
+  into the lowering driver, scalar and literal interpretation beside source
+  types, storage facts beside object lowering, and symbol normalization beside
+  ABI lowering.  Renamed `PresentationNameMap` to the responsibility-specific
+  `presentation::EmissionNameMap` and `SanitizeSymbol` to
+  `abi::NormalizeSymbolName`.  Removed the unused internal
+  `DecodeStringLiteral` entry instead of carrying a compatibility API.  No
+  `lowering/support/utilities` file, include, or symbol remains.
+
+  Focused PA15, PA16, PA18, PA21, and PA34 gates passed and all 18 frozen
+  output surfaces were exact.  The three-commit checkpoint passed 5471/5471;
+  LowIR remained 124/99, semantic ownership remained 850/0, the layout census
+  remained 6/6/4/18, and the file audit remained zero-fatal/32-warning.  The
+  optimized-host compiler text shrank by 920 bytes.  Across 12 samples per
+  compiler in both label orders, old/candidate frozen wall medians tied at
+  4.645 seconds and user medians were 4.150/4.155 seconds (+0.12%).  Fresh
+  explicit-O1 32/32/32 inception matched all 217 current objects (216 shared
+  plus the compiler runner) and the final compiler exactly.  Push: with this
+  ledger checkpoint.
