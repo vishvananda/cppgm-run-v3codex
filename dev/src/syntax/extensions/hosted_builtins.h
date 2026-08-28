@@ -14,9 +14,9 @@ template <class Derived>
 class Syntax
 {
 protected:
-	pa10_syntax_detail::NodeId ParseBuiltinOffsetofExpression()
+	syntax::NodeId ParseBuiltinOffsetofExpression()
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		Derived& parser = static_cast<Derived&>(*this);
 		if (!parser.AtIdentifier() ||
 			parser.Spelling(parser.position_) != "__builtin_offsetof" ||
@@ -41,9 +41,9 @@ protected:
 		return expression;
 	}
 
-	pa10_syntax_detail::NodeId ParseBuiltinTypeTraitExpression()
+	syntax::NodeId ParseBuiltinTypeTraitExpression()
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		Derived& parser = static_cast<Derived&>(*this);
 		if (!parser.AtIdentifier() || !parser.AtOffset(1, OP_LPAREN))
 			return kNoNode;

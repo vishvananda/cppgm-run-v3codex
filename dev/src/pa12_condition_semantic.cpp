@@ -15,19 +15,19 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 	NodeId declaration_node = node;
 	const NodeId first_child = FirstSemanticChild(node);
 	if (first_child != kNoNode &&
-		arena_->IsTag(first_child, ::cppgm::pa10_syntax_detail::STAG_CONDITION_DECLARATION))
+		arena_->IsTag(first_child, ::cppgm::syntax::STAG_CONDITION_DECLARATION))
 		declaration_node = first_child;
-	const NodeId specifiers = FindChild(declaration_node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+	const NodeId specifiers = FindChild(declaration_node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 	if (specifiers != kNoNode)
 	{
-		const NodeId declarator = FindChild(declaration_node, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+		const NodeId declarator = FindChild(declaration_node, ::cppgm::syntax::STAG_DECLARATOR);
 		const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), true);
 		ExpressionInfo placeholder_initializer;
 		DeclaratorInfo parsed = BuildVariableDeclarator(declaration_node,
 			declarator, spec, scope, true, &placeholder_initializer);
 		const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
 			parsed.name, parsed.type);
-		const NodeId initializer = FindChild(declaration_node, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
+		const NodeId initializer = FindChild(declaration_node, ::cppgm::syntax::STAG_INITIALIZER);
 		ExpressionInfo value;
 		if (spec.placeholder_auto)
 			value = placeholder_initializer;

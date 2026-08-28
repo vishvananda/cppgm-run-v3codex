@@ -451,7 +451,7 @@ bool SemanticAnalyzer::ApplyQualifiedMemberNamingTarget(ExpressionInfo* value,
 
 ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 {
-	const NodeId type_id = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
+	const NodeId type_id = FindChild(node, ::cppgm::syntax::STAG_TYPE_ID);
 	if (type_id == kNoNode) throw std::runtime_error("cast without type-id");
 	NodeId operand_node = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -491,13 +491,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		unqualified_target_record.kind == TYPE_POINTER &&
 		program_->types.IsFunction(unqualified_target_record.child);
 	const bool compound_literal =
-		arena_->IsTag(operand_node, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST);
+		arena_->IsTag(operand_node, ::cppgm::syntax::STAG_BRACED_INIT_LIST);
 	const bool c_style_cast =
 		arena_->Payload(node).compare(0, 10, "OP_LPAREN:") == 0;
 	ExpressionInfo operand = AnalyzeExpression(operand_node, scope,
 		program_->types.IsFunction(EffectiveType(target)) ||
 		(function_pointer_target &&
-		 (!c_style_cast || arena_->IsTag(operand_node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))) ||
+		 (!c_style_cast || arena_->IsTag(operand_node, ::cppgm::syntax::STAG_ID_EXPRESSION))) ||
 		unqualified_target_record.kind == TYPE_MEMBER_POINTER || compound_literal ?
 		target : kNoType);
 	if (CandidateSubstitutionFailed()) return ExpressionInfo();
@@ -822,7 +822,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 void SemanticAnalyzer::AppendParenthesizedCallArguments(NodeId node,
 	std::vector<NodeId>* arguments) const
 {
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BINARY_EXPRESSION) &&
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_BINARY_EXPRESSION) &&
 		PayloadSource(node) == ",")
 	{
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -837,11 +837,11 @@ void SemanticAnalyzer::AppendParenthesizedCallArguments(NodeId node,
 bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
 	NodeId type_id, NodeId operand, ScopeId scope, ExpressionInfo* result)
 {
-	const NodeId specifiers = FindChild(type_id, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
+	const NodeId specifiers = FindChild(type_id, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ);
 	const NodeId name = specifiers == kNoNode ? kNoNode :
 		FirstSemanticChild(specifiers);
-	if (name == kNoNode || !arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ||
-		operand == kNoNode || !arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
+	if (name == kNoNode || !arena_->IsTag(name, ::cppgm::syntax::STAG_TYPE_NAME) ||
+		operand == kNoNode || !arena_->IsTag(operand, ::cppgm::syntax::STAG_PARENTHESIZED_EXPRESSION))
 		return false;
 	const std::string spelling = PayloadSource(name);
 	NamePath structured_base;
@@ -874,11 +874,11 @@ bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
 bool SemanticAnalyzer::AnalyzeParenthesizedValueBinaryCast(
 	NodeId type_id, NodeId operand, ScopeId scope, ExpressionInfo* result)
 {
-	const NodeId specifiers = FindChild(type_id, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
+	const NodeId specifiers = FindChild(type_id, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ);
 	const NodeId name = specifiers == kNoNode ? kNoNode :
 		FirstSemanticChild(specifiers);
-	if (name == kNoNode || !arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ||
-		operand == kNoNode || !arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_UNARY_EXPRESSION))
+	if (name == kNoNode || !arena_->IsTag(name, ::cppgm::syntax::STAG_TYPE_NAME) ||
+		operand == kNoNode || !arena_->IsTag(operand, ::cppgm::syntax::STAG_UNARY_EXPRESSION))
 		return false;
 	const std::string operation = PayloadSource(operand);
 	if (operation != "+" && operation != "-") return false;

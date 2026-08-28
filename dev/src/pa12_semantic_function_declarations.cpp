@@ -14,7 +14,7 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId source_declaratio
 	std::uint32_t output_parent, const NamePath& declared_path,
 	const SpecInfo& spec, DeclaratorInfo parsed)
 {
-	if (FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_VIRT_SPECIFIER) != kNoNode)
+	if (FindChild(declarator, ::cppgm::syntax::STAG_VIRT_SPECIFIER) != kNoNode)
 		throw std::runtime_error(
 			"virt-specifier is only allowed in a class definition");
 	if (spec.thread_local_storage)
@@ -44,11 +44,11 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId source_declaratio
 		GetFunction(function).constexpr_function || spec.is_constexpr;
 	ValidateFunctionRefQualifier(function);
 	ValidateNonmemberOperator(function);
-	const NodeId function_initializer = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
+	const NodeId function_initializer = FindChild(item, ::cppgm::syntax::STAG_INITIALIZER);
 	ConfigureAssignmentSpecialMember(function, function_initializer,
 		!declared_path.global && declared_path.Size() <= 1);
 	const NodeId special = function_initializer == kNoNode ? kNoNode :
-		FindChild(function_initializer, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_INITIALIZER);
+		FindChild(function_initializer, ::cppgm::syntax::STAG_SPECIAL_INITIALIZER);
 	if (special != kNoNode && arena_->Payload(special) == "delete")
 	{
 		GetMutableFunction(function).deleted_function = true;

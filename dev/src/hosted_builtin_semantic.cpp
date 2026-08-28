@@ -139,7 +139,7 @@ TypeId SemanticAnalyzer::BuildBuiltinTransformType(NodeId node, ScopeId scope)
 		FindTypeTransform(PayloadSource(node));
 	if (transform == TYPE_TRANSFORM_NONE)
 		throw std::runtime_error("unsupported builtin type transform");
-	const NodeId operand = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
+	const NodeId operand = FindChild(node, ::cppgm::syntax::STAG_TYPE_ID);
 	TypeId type = BuildTypeId(operand, scope);
 	if (CandidateSubstitutionFailed() || type == kNoType) return kNoType;
 	TypeTable* types = &program_->types;
@@ -236,15 +236,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId holder = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(holder, ::cppgm::pa10_syntax_detail::STAG_BUILTIN_TYPE_OPERAND)) continue;
-		const NodeId type_id = FindChild(holder, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
-		NodeId declarator = FindChild(type_id, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
+		if (!arena_->IsTag(holder, ::cppgm::syntax::STAG_BUILTIN_TYPE_OPERAND)) continue;
+		const NodeId type_id = FindChild(holder, ::cppgm::syntax::STAG_TYPE_ID);
+		NodeId declarator = FindChild(type_id, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR);
 		if (declarator == kNoNode)
-			declarator = FindChild(type_id, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+			declarator = FindChild(type_id, ::cppgm::syntax::STAG_DECLARATOR);
 		const bool expansion =
-			FindChild(holder, ::cppgm::pa10_syntax_detail::STAG_TYPE_PACK_EXPANSION) != kNoNode ||
+			FindChild(holder, ::cppgm::syntax::STAG_TYPE_PACK_EXPANSION) != kNoNode ||
 			(declarator != kNoNode &&
-			 FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK) != kNoNode);
+			 FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_PACK) != kNoNode);
 		if (expansion)
 		{
 			std::vector<ScopeId> element_scopes;

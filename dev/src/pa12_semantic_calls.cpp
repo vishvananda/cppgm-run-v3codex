@@ -24,9 +24,9 @@ void SemanticAnalyzer::PublishCallImplicitObject(
 std::vector<NodeId> SemanticAnalyzer::CollectCallArgumentSyntax(
 	NodeId call, NodeId* arguments_node) const
 {
-	*arguments_node = FindChild(call, ::cppgm::pa10_syntax_detail::STAG_ARGUMENT_LIST);
+	*arguments_node = FindChild(call, ::cppgm::syntax::STAG_ARGUMENT_LIST);
 	if (*arguments_node == kNoNode)
-		*arguments_node = FindChild(call, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST);
+		*arguments_node = FindChild(call, ::cppgm::syntax::STAG_BRACED_INIT_LIST);
 	if (*arguments_node == kNoNode)
 	{
 		std::uint32_t edge = arena_->FirstEdge(call);
@@ -1102,7 +1102,7 @@ bool SemanticAnalyzer::TryAnalyzeVariadicBuiltinCall(
 			throw std::runtime_error("va_start outside a variadic function");
 		const FunctionInfo& function = GetFunction(current_function_context_);
 		if (function.parameters.empty() ||
-			!arena_->IsTag(argument_syntax[1], ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
+			!arena_->IsTag(argument_syntax[1], ::cppgm::syntax::STAG_ID_EXPRESSION) ||
 			program_->names.UseInterned(
 				arena_->PayloadId(argument_syntax[1])) !=
 				function.parameters.back().name)
@@ -1114,7 +1114,7 @@ bool SemanticAnalyzer::TryAnalyzeVariadicBuiltinCall(
 	list = ApplyCallArgument(list, va_list_pointer);
 	if (kind == BUILTIN_FUNCTION_VA_ARG)
 	{
-		if (!arena_->IsTag(argument_syntax[1], ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
+		if (!arena_->IsTag(argument_syntax[1], ::cppgm::syntax::STAG_TYPE_ID))
 			throw std::runtime_error("va_arg has no result type");
 		const TypeId type = BuildTypeId(argument_syntax[1], scope);
 		if (type == kNoType)
@@ -1492,7 +1492,7 @@ TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
 	const std::string& spelling, NodeId syntax)
 {
 	const NodeId structure = syntax == kNoNode ? kNoNode :
-		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+		FindChild(syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 	const TypeId specialization = structure == kNoNode ? kNoType :
 		ResolveStructuredTypeName(structure, scope);
 	if (specialization != kNoType) return specialization;
@@ -1575,9 +1575,9 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
 {
-	while (arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
+	while (arena_->IsTag(callee, ::cppgm::syntax::STAG_PARENTHESIZED_EXPRESSION))
 		callee = FirstSemanticChild(callee);
-	if (callee == kNoNode || !arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_MEMBER_EXPRESSION))
+	if (callee == kNoNode || !arena_->IsTag(callee, ::cppgm::syntax::STAG_MEMBER_EXPRESSION))
 		return false;
 	const std::uint32_t object_edge = arena_->FirstEdge(callee);
 	const std::uint32_t name_edge = object_edge == kNoEdge ? kNoEdge :
@@ -1782,9 +1782,9 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
 {
-	while (arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
+	while (arena_->IsTag(callee, ::cppgm::syntax::STAG_PARENTHESIZED_EXPRESSION))
 		callee = FirstSemanticChild(callee);
-	if (callee == kNoNode || !arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_MEMBER_EXPRESSION))
+	if (callee == kNoNode || !arena_->IsTag(callee, ::cppgm::syntax::STAG_MEMBER_EXPRESSION))
 		return false;
 	const std::uint32_t object_edge = arena_->FirstEdge(callee);
 	const std::uint32_t name_edge = object_edge == kNoEdge ? kNoEdge :
@@ -1797,7 +1797,7 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	if (!argument_syntax.empty())
 		throw std::runtime_error("explicit destructor call has arguments");
 	const NodeId structure = FindChild(identifier,
-		::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+		::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 	NamePath destructor_path;
 	if (structure == kNoNode)
 		destructor_path.Push(program_->names.InternRange(

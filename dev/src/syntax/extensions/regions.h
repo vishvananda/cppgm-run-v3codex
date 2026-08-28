@@ -4,10 +4,9 @@
 
 namespace cppgm
 {
-namespace pa30_syntax_detail
+namespace syntax
 {
 
-using namespace pa10_syntax_detail;
 
 template <class Derived>
 class RegionSyntax

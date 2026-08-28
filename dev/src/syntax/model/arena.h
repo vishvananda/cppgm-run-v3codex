@@ -12,7 +12,7 @@
 
 namespace cppgm
 {
-namespace pa10_syntax_detail
+namespace syntax
 {
 
 typedef InternedStringId TextId;
@@ -62,7 +62,7 @@ struct SyntaxToken
 class SyntaxTokenSink : public IPostTokenStream
 {
 public:
-	SyntaxTokenSink(StringTable& strings, SyntaxInterningStats* stats);
+	SyntaxTokenSink(StringTable& strings, InterningStats* stats);
 	void SetSourceLocation(const std::string& file,
 		std::size_t line, std::size_t column);
 	void EmitInvalid(const std::string& source);
@@ -104,7 +104,7 @@ private:
 		const void* data, std::size_t size);
 
 	StringTable& strings_;
-	SyntaxInterningStats* stats_;
+	InterningStats* stats_;
 	TextId source_file_;
 	TextId cached_source_file_;
 	std::string cached_source_file_spelling_;
@@ -153,7 +153,7 @@ class SyntaxArena
 public:
 	SyntaxArena(StringTable& strings, const std::vector<SyntaxToken>& tokens,
 		const std::vector<SyntaxLiteralFact>& literal_facts,
-		SyntaxInterningStats* stats);
+		InterningStats* stats);
 	NodeId Make(const char* tag);
 	NodeId Make(const char* tag, const std::string& payload);
 	void Add(NodeId parent, NodeId child);
@@ -251,7 +251,7 @@ private:
 	std::uint32_t PrepareEdgeMutation(NodeId parent, NodeId child);
 
 	StringTable& strings_;
-	SyntaxInterningStats* stats_;
+	InterningStats* stats_;
 	const std::vector<SyntaxToken>& tokens_;
 	const std::vector<SyntaxLiteralFact>& literal_facts_;
 	std::vector<SyntaxNode> nodes_;

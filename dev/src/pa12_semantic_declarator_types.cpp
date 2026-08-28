@@ -173,14 +173,14 @@ EntityId SemanticAnalyzer::EntityOf(TypeId type) const
 
 bool SemanticAnalyzer::IsCallableDeclaration(NodeId node) const
 {
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION)) return true;
-	const NodeId list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_FUNCTION_DEFINITION)) return true;
+	const NodeId list = FindChild(node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
 	for (std::uint32_t edge = list == kNoNode ? kNoEdge : arena_->FirstEdge(list);
 		edge != kNoEdge; edge = arena_->NextEdge(edge))
 	{
-		const NodeId declarator = FindChild(arena_->EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+		const NodeId declarator = FindChild(arena_->EdgeChild(edge), ::cppgm::syntax::STAG_DECLARATOR);
 		if (declarator != kNoNode &&
-			FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE) != kNoNode) return true;
+			FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE) != kNoNode) return true;
 	}
 	return false;
 }

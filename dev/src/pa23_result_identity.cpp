@@ -163,14 +163,14 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		const ResultSyntaxReference& reference)
 		-> const std::vector<ResultSyntaxReference>* {
 		if (reference.node == kNoNode) return 0;
-		NodeId type = arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ?
-			reference.node : FindChild(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
+		NodeId type = arena_->IsTag(reference.node, ::cppgm::syntax::STAG_TYPE_ID) ?
+			reference.node : FindChild(reference.node, ::cppgm::syntax::STAG_TYPE_ID);
 		if (type != kNoNode)
 		{
-			NodeId declarator = FindChild(type, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
+			NodeId declarator = FindChild(type, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR);
 			if (declarator == kNoNode)
-				declarator = FindChild(type, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
-			const NodeId specifiers = FindChild(type, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
+				declarator = FindChild(type, ::cppgm::syntax::STAG_DECLARATOR);
+			const NodeId specifiers = FindChild(type, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ);
 			const NodeId name = specifiers == kNoNode ? kNoNode :
 				FirstSemanticChild(specifiers);
 			const NamePath path = StructuredNamePath(name);
@@ -178,13 +178,13 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 				path.Last() : name == kNoNode ? 0 :
 				arena_->SemanticPayloadId(name);
 			if (declarator != kNoNode &&
-				FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK) != kNoNode &&
+				FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_PACK) != kNoNode &&
 				direct_name != 0)
 				return FindResultSyntaxBinding(
 					reference.environment, direct_name, environment_names,
 					root_bindings, &environment_probes);
 		}
-		if (!arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION))
+		if (!arena_->IsTag(reference.node, ::cppgm::syntax::STAG_PACK_EXPANSION_EXPRESSION))
 			return 0;
 		const NodeId operand = FirstSemanticChild(reference.node);
 		const NameId name = operand == kNoNode ? 0 :
@@ -223,7 +223,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 			return true;
 		}
 		if (reference.node == kNoNode) return false;
-		if (arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK))
+		if (arena_->IsTag(reference.node, ::cppgm::syntax::STAG_PARAMETER_PACK))
 		{
 			atoms->push_back(ResultIdentityAtom(
 				RESULT_IDENTITY_PACK_EXPANSION));
@@ -251,8 +251,8 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		const std::size_t parameter = root_parameter(semantic_name);
 		if (parameter < pattern->parameters.size())
 		{
-			if (arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION) ||
-				arena_->HasDescendantTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK))
+			if (arena_->IsTag(reference.node, ::cppgm::syntax::STAG_PACK_EXPANSION_EXPRESSION) ||
+				arena_->HasDescendantTag(reference.node, ::cppgm::syntax::STAG_PARAMETER_PACK))
 				atoms->push_back(ResultIdentityAtom(
 					RESULT_IDENTITY_PACK_EXPANSION));
 			atoms->push_back(ResultIdentityAtom(
@@ -260,11 +260,11 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 			return true;
 		}
 		if (!reference.environment &&
-			arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) &&
-			!arena_->HasDescendantTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK) &&
+			arena_->IsTag(reference.node, ::cppgm::syntax::STAG_TYPE_ID) &&
+			!arena_->HasDescendantTag(reference.node, ::cppgm::syntax::STAG_PARAMETER_PACK) &&
 			!arena_->HasDescendantTag(
 				reference.node, "pack-expansion-expression") &&
-			!arena_->HasDescendantTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_SIZEOF_PACK_EXPRESSION) &&
+			!arena_->HasDescendantTag(reference.node, ::cppgm::syntax::STAG_SIZEOF_PACK_EXPRESSION) &&
 			!SyntaxUsesAnyTemplateParameter(reference.node, dependent_names))
 		{
 			const TypeId type = BuildCanonicalTemplateTypeArgument(
@@ -277,15 +277,15 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 			}
 		}
 
-		if (arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME))
+		if (arena_->IsTag(reference.node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME))
 		{
 			std::vector<NodeId> components;
 			for (std::uint32_t edge = arena_->FirstEdge(reference.node);
 				edge != kNoEdge; edge = arena_->NextEdge(edge))
-				if (arena_->IsTag(arena_->EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
+				if (arena_->IsTag(arena_->EdgeChild(edge), ::cppgm::syntax::STAG_NAME_COMPONENT))
 					components.push_back(arena_->EdgeChild(edge));
 			if (components.size() == 1 &&
-				FindChild(components[0], ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) == kNoNode)
+				FindChild(components[0], ::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) == kNoNode)
 			{
 				const NameId name = arena_->SemanticPayloadId(components[0]);
 				const std::vector<ResultSyntaxReference>* bound =
@@ -323,7 +323,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 						alias_templates_[alias];
 					std::vector<ResultSyntaxReference> arguments;
 					const NodeId terminal_list = FindChild(
-						components.back(), ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
+						components.back(), ::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
 					collect_arguments(terminal_list, reference, &arguments);
 					std::vector<ResultSyntaxEnvironment> frames;
 					frames.reserve(alias_pattern.parameters.size());
@@ -364,10 +364,10 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 
 			atoms->push_back(ResultIdentityAtom(
 				RESULT_IDENTITY_QUALIFIED_BEGIN,
-				FindChild(reference.node, ::cppgm::pa10_syntax_detail::STAG_GLOBAL_QUALIFIER) != kNoNode));
+				FindChild(reference.node, ::cppgm::syntax::STAG_GLOBAL_QUALIFIER) != kNoNode));
 			NamePath component_path;
 			component_path.global =
-				FindChild(reference.node, ::cppgm::pa10_syntax_detail::STAG_GLOBAL_QUALIFIER) != kNoNode;
+				FindChild(reference.node, ::cppgm::syntax::STAG_GLOBAL_QUALIFIER) != kNoNode;
 			bool resolved_type_prefix = false;
 			for (std::size_t c = 0; c < components.size(); ++c)
 			{
@@ -397,7 +397,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 					atoms->push_back(ResultIdentityAtom(
 						RESULT_IDENTITY_ENTITY, EntityOf(marker.type)));
 				const NodeId list = FindChild(
-					components[c], ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
+					components[c], ::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
 				if (list == kNoNode) continue;
 				std::vector<ResultSyntaxReference> arguments;
 				collect_arguments(list, reference, &arguments);
@@ -449,7 +449,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 					const bool pack_expansion =
 						arguments[a].bound_argument == kNoTemplateArgumentList &&
 						arena_->IsTag(arguments[a].node,
-							::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION);
+							::cppgm::syntax::STAG_PACK_EXPANSION_EXPRESSION);
 					if (pack_expansion) atoms->push_back(ResultIdentityAtom(
 						RESULT_IDENTITY_PACK_EXPANSION));
 					ResultSyntaxReference argument = arguments[a];
@@ -470,15 +470,15 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		}
 
 		const bool transparent =
-			arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ||
-			arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ) ||
-			arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_DEFAULT_TEMPLATE_ARGUMENT) ||
-			(arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR) &&
-			 arena_->HasDirectChildTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK)) ||
-			(arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) &&
+			arena_->IsTag(reference.node, ::cppgm::syntax::STAG_TYPE_ID) ||
+			arena_->IsTag(reference.node, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ) ||
+			arena_->IsTag(reference.node, ::cppgm::syntax::STAG_DEFAULT_TEMPLATE_ARGUMENT) ||
+			(arena_->IsTag(reference.node, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR) &&
+			 arena_->HasDirectChildTag(reference.node, ::cppgm::syntax::STAG_PARAMETER_PACK)) ||
+			(arena_->IsTag(reference.node, ::cppgm::syntax::STAG_TYPE_NAME) &&
 			 arena_->HasDirectChildTag(
 				reference.node, "structured-type-name")) ||
-			(arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER) &&
+			(arena_->IsTag(reference.node, ::cppgm::syntax::STAG_DECL_SPECIFIER) &&
 			 arena_->HasDirectChildTag(
 				reference.node, "structured-type-name"));
 		if (!transparent)
@@ -513,10 +513,10 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		const NodeId node = pending.back();
 		pending.pop_back();
 		++discovery_visits;
-		const bool can_name_pack = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
-			arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ||
-			arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER) ||
-			arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT);
+		const bool can_name_pack = arena_->IsTag(node, ::cppgm::syntax::STAG_ID_EXPRESSION) ||
+			arena_->IsTag(node, ::cppgm::syntax::STAG_TYPE_NAME) ||
+			arena_->IsTag(node, ::cppgm::syntax::STAG_DECL_SPECIFIER) ||
+			arena_->IsTag(node, ::cppgm::syntax::STAG_NAME_COMPONENT);
 		const NameId name = can_name_pack ? arena_->SemanticPayloadId(node) : 0;
 		if (name != 0 && !candidate_names.Find(name) &&
 			root_parameter(name) == pattern->parameters.size())

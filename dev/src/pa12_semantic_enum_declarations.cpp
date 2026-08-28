@@ -17,7 +17,7 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 	bool generated_identity = false;
 	BuildEnumDeclarationNamePath(node, hint, &spelling, &path,
 		&generated_identity);
-	const bool scoped = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_ENUM_KEY) != kNoNode;
+	const bool scoped = FindChild(node, ::cppgm::syntax::STAG_ENUM_KEY) != kNoNode;
 	const NamedFlavor flavor = scoped ? NAMED_ENUM_CLASS : NAMED_ENUM;
 	const bool qualified = path.global || path.Size() > 1;
 	const bool definition =
@@ -25,7 +25,7 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 	const NameId name = path.Last();
 	const ScopeId owner = ResolveOwner(scope, path);
 	if (owner == kNoScope) throw std::runtime_error("enum owner not found");
-	const NodeId underlying_node = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
+	const NodeId underlying_node = FindChild(node, ::cppgm::syntax::STAG_TYPE_ID);
 	TypeId underlying = underlying_node == kNoNode ?
 		program_->types.Fundamental(FUND_INT) :
 		BuildTypeId(underlying_node, owner);
@@ -113,7 +113,7 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId enumerator = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(enumerator, ::cppgm::pa10_syntax_detail::STAG_ENUMERATOR)) continue;
+		if (!arena_->IsTag(enumerator, ::cppgm::syntax::STAG_ENUMERATOR)) continue;
 		const NodeId initializer = FirstSemanticChild(enumerator);
 		std::int64_t value = next;
 		if (initializer != kNoNode)

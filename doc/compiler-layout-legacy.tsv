@@ -35,7 +35,6 @@ include	^pa28_	semantic/object_model/, lowering/objects/
 include	^pa30_	compiler_object/, syntax/, semantic/, lowering/
 include	^pa33_	semantic/, lowering/
 include	^pa34_	syntax/, semantic/, lowering/
-namespace	^pa10_syntax_detail$	cppgm::syntax
 namespace	^pa11$	cppgm::semantic
 namespace	^pa12_semantic_detail$	cppgm::semantic
 namespace	^pa15_force_inline$	cppgm::lowering::inline_policy
@@ -56,18 +55,14 @@ namespace	^pa21_lowering_detail$	cppgm::lowering
 namespace	^pa22_lambda_presentation$	cppgm::semantic::presentation
 namespace	^pa25_lowering_detail$	cppgm::lowering
 namespace	^pa25_semantic_detail$	cppgm::semantic
-namespace	^pa25_syntax_detail$	cppgm::syntax
 namespace	^pa26_lowering_detail$	cppgm::lowering
 namespace	^pa27_lowering_detail$	cppgm::lowering
 namespace	^pa28_lowering_detail$	cppgm::lowering
 namespace	^pa30$	cppgm::compiler_object
 namespace	^pa30_lowering_detail$	cppgm::lowering
-namespace	^pa30_syntax_detail$	cppgm::syntax
-namespace	^pa32_syntax_detail$	cppgm::syntax
 namespace	^pa33_lowering_detail$	cppgm::lowering
 namespace	^pa34_lowering_detail$	cppgm::lowering
 namespace	^pa34_source_identity$	cppgm::semantic::presentation
-namespace	^pa34_syntax_detail$	cppgm::syntax
 identifier	^CPPGM_PA[0-9][A-Za-z0-9_]*$	guard derived from destination path
 identifier	^PA3Mock_IsDefinedIdentifier$	MockIsDefinedIdentifier
 identifier	^append_pa12_template_stats$	append_template_analysis_stats

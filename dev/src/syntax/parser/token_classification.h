@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace pa10_syntax_detail
+namespace syntax
 {
 
 inline bool IsFundamentalKind(std::uint16_t kind)

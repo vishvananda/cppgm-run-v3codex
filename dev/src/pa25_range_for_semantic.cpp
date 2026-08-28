@@ -263,8 +263,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeRangeForAdlCall(
 void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
 	ExpressionInfo initializer, ScopeId scope, std::uint32_t output_parent)
 {
-	const NodeId specifiers = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
-	const NodeId declarator = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+	const NodeId specifiers = FindChild(declaration, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
+	const NodeId declarator = FindChild(declaration, ::cppgm::syntax::STAG_DECLARATOR);
 	if (specifiers == kNoNode || declarator == kNoNode)
 		throw std::runtime_error("invalid range declaration");
 	const SpecInfo spec = BuildSpecifiers(
@@ -279,7 +279,7 @@ void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PTR_OPERATOR)) continue;
+			if (!arena_->IsTag(child, ::cppgm::syntax::STAG_PTR_OPERATOR)) continue;
 			if (!pointer_operator.empty())
 				throw std::runtime_error(
 					"compound placeholder range declarator");
@@ -359,8 +359,8 @@ void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
 void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
-	const NodeId declaration = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_RANGE_DECLARATION);
-	const NodeId initializer_node = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_RANGE_INITIALIZER);
+	const NodeId declaration = FindChild(node, ::cppgm::syntax::STAG_RANGE_DECLARATION);
+	const NodeId initializer_node = FindChild(node, ::cppgm::syntax::STAG_RANGE_INITIALIZER);
 	const NodeId initializer_syntax = FirstSemanticChild(initializer_node);
 	if (declaration == kNoNode || initializer_syntax == kNoNode)
 		throw std::runtime_error("invalid range-for statement");
@@ -384,7 +384,7 @@ void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 
 	ExpressionInfo range;
 	TypeId range_type = kNoType;
-	const bool braced = arena_->IsTag(initializer_syntax, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST);
+	const bool braced = arena_->IsTag(initializer_syntax, ::cppgm::syntax::STAG_BRACED_INIT_LIST);
 	if (braced)
 	{
 		std::vector<ExpressionInfo> elements;
@@ -591,7 +591,7 @@ void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 	++loop_depth_;
 	break_cleanup_stops_.push_back(control);
 	continue_cleanup_stops_.push_back(control);
-	if (arena_->IsTag(body_syntax, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT))
+	if (arena_->IsTag(body_syntax, ::cppgm::syntax::STAG_COMPOUND_STATEMENT))
 	{
 		for (std::uint32_t edge = arena_->FirstEdge(body_syntax);
 			edge != kNoEdge; edge = arena_->NextEdge(edge))

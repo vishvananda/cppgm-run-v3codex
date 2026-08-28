@@ -105,8 +105,8 @@ bool SemanticAnalyzer::AnalyzeRetainedNamedCall(
 bool SemanticAnalyzer::AnalyzeAmbiguousCallStatement(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
-	const NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
-	const NodeId list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
+	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
+	const NodeId list = FindChild(node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
 	const std::uint32_t specifier_edge = specifiers == kNoNode ? kNoEdge :
 		arena_->FirstEdge(specifiers);
 	const std::uint32_t item_edge = list == kNoNode ? kNoEdge :
@@ -118,21 +118,21 @@ bool SemanticAnalyzer::AnalyzeAmbiguousCallStatement(
 	const NodeId specifier_node = arena_->EdgeChild(specifier_edge);
 	const NodeId specifier_structure = FirstSemanticChild(specifier_node);
 	if (specifier_structure != kNoNode &&
-		!arena_->IsTag(specifier_structure, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME))
+		!arena_->IsTag(specifier_structure, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME))
 		return false;
 	const std::string spelling = PayloadSource(specifier_node);
 	const NodeId item = arena_->EdgeChild(item_edge);
-	if (FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER) != kNoNode) return false;
-	const NodeId declarator = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+	if (FindChild(item, ::cppgm::syntax::STAG_INITIALIZER) != kNoNode) return false;
+	const NodeId declarator = FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
 	const NodeId nested = declarator == kNoNode ? kNoNode :
-		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_NESTED_DECLARATOR);
+		FindChild(declarator, ::cppgm::syntax::STAG_NESTED_DECLARATOR);
 	const NodeId argument_declarator = nested == kNoNode ? kNoNode :
 		FirstSemanticChild(nested);
 	const NodeId argument_name = argument_declarator == kNoNode ? kNoNode :
-		FindChild(argument_declarator, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
+		FindChild(argument_declarator, ::cppgm::syntax::STAG_IDENTIFIER);
 	if (argument_name == kNoNode ||
-		FindChild(argument_declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE) != kNoNode ||
-		FindChild(argument_declarator, ::cppgm::pa10_syntax_detail::STAG_ARRAY_SUFFIX) != kNoNode)
+		FindChild(argument_declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE) != kNoNode ||
+		FindChild(argument_declarator, ::cppgm::syntax::STAG_ARRAY_SUFFIX) != kNoNode)
 		return false;
 	const NamePath structured = StructuredNamePath(specifier_node);
 	if (FunctionCallCandidates(scope, spelling, 0, specifier_node).empty() &&
@@ -169,8 +169,8 @@ bool SemanticAnalyzer::AnalyzeAmbiguousRelationalDeclaration(
 	// parsed as `outer<(value < 0)>::member > x`.  PA10 deliberately retains
 	// the declaration parse, so resolve this declaration/expression ambiguity
 	// here, after ordinary point-of-declaration lookup is available.
-	const NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
-	const NodeId list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
+	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
+	const NodeId list = FindChild(node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
 	const std::uint32_t specifier_edge = specifiers == kNoNode ? kNoEdge :
 		arena_->FirstEdge(specifiers);
 	const std::uint32_t item_edge = list == kNoNode ? kNoEdge :
@@ -180,13 +180,13 @@ bool SemanticAnalyzer::AnalyzeAmbiguousRelationalDeclaration(
 		arena_->NextEdge(item_edge) != kNoEdge) return false;
 	const NodeId specifier = arena_->EdgeChild(specifier_edge);
 	const NodeId item = arena_->EdgeChild(item_edge);
-	if (FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER) != kNoNode) return false;
-	const NodeId declarator = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+	if (FindChild(item, ::cppgm::syntax::STAG_INITIALIZER) != kNoNode) return false;
+	const NodeId declarator = FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
 	const NodeId right_syntax = declarator == kNoNode ? kNoNode :
-		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
+		FindChild(declarator, ::cppgm::syntax::STAG_IDENTIFIER);
 	if (right_syntax == kNoNode ||
-		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE) != kNoNode ||
-		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_ARRAY_SUFFIX) != kNoNode) return false;
+		FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE) != kNoNode ||
+		FindChild(declarator, ::cppgm::syntax::STAG_ARRAY_SUFFIX) != kNoNode) return false;
 
 	std::string spelling = PayloadSource(specifier);
 	spelling.erase(std::remove_if(spelling.begin(), spelling.end(),
@@ -318,13 +318,13 @@ bool SemanticAnalyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId parameter = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION)) return false;
-		NodeId declarator = FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+		if (!arena_->IsTag(parameter, ::cppgm::syntax::STAG_PARAMETER_DECLARATION)) return false;
+		NodeId declarator = FindChild(parameter, ::cppgm::syntax::STAG_DECLARATOR);
 		if (declarator == kNoNode)
-			declarator = FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
+			declarator = FindChild(parameter, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR);
 		if (declarator != kNoNode) continue;
 		const NodeId argument_specifiers =
-			FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+			FindChild(parameter, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 		const NodeId argument = argument_specifiers == kNoNode ? kNoNode :
 			FirstSemanticChild(argument_specifiers);
 		if (argument == kNoNode) return false;
@@ -340,13 +340,13 @@ bool SemanticAnalyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
 	{
 		const NodeId parameter = arena_->EdgeChild(edge);
 		const NodeId argument_specifiers =
-			FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+			FindChild(parameter, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 		const NodeId argument = argument_specifiers == kNoNode ? kNoNode :
 			FirstSemanticChild(argument_specifiers);
 		if (argument == kNoNode) return false;
-		NodeId declarator = FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+		NodeId declarator = FindChild(parameter, ::cppgm::syntax::STAG_DECLARATOR);
 		if (declarator == kNoNode)
-			declarator = FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
+			declarator = FindChild(parameter, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR);
 		argument_syntax.push_back(argument);
 		if (declarator == kNoNode)
 		{
@@ -354,7 +354,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
 				PayloadSource(argument), scope, kNoType, argument));
 			continue;
 		}
-		const NodeId empty_clause = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE);
+		const NodeId empty_clause = FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE);
 		if (empty_clause == kNoNode ||
 			FirstSemanticChild(empty_clause) != kNoNode) return false;
 		const SpecInfo argument_spec = BuildSpecifiers(
@@ -412,18 +412,18 @@ bool SemanticAnalyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
 bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
-	const NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
-	const NodeId list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
+	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
+	const NodeId list = FindChild(node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
 	const std::uint32_t item_edge = list == kNoNode ? kNoEdge :
 		arena_->FirstEdge(list);
 	if (specifiers == kNoNode || item_edge == kNoEdge ||
 		arena_->NextEdge(item_edge) != kNoEdge)
 		return false;
 	const NodeId item = arena_->EdgeChild(item_edge);
-	if (FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER) != kNoNode) return false;
-	const NodeId declarator = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+	if (FindChild(item, ::cppgm::syntax::STAG_INITIALIZER) != kNoNode) return false;
+	const NodeId declarator = FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
 	const NodeId clause = declarator == kNoNode ? kNoNode :
-		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE);
+		FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE);
 	const NameId variable_name = declarator == kNoNode ? 0 :
 		DeclaratorName(declarator);
 	const std::uint32_t parameter_edge = clause == kNoNode ? kNoEdge :
@@ -433,9 +433,9 @@ bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 		return AnalyzeAmbiguousMultiDirectInitializer(node, scope,
 			output_parent, specifiers, clause, variable_name);
 	const NodeId provisional = arena_->EdgeChild(parameter_edge);
-	if (!arena_->IsTag(provisional, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION)) return false;
+	if (!arena_->IsTag(provisional, ::cppgm::syntax::STAG_PARAMETER_DECLARATION)) return false;
 	const NodeId call_specifiers =
-		FindChild(provisional, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+		FindChild(provisional, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 	const std::uint32_t call_edge = call_specifiers == kNoNode ? kNoEdge :
 		arena_->FirstEdge(call_specifiers);
 	if (call_edge == kNoEdge || arena_->NextEdge(call_edge) != kNoEdge)
@@ -443,7 +443,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 	const NodeId call_name = arena_->EdgeChild(call_edge);
 	const std::string call_spelling = PayloadSource(call_name);
 	const NamePath structured = StructuredNamePath(call_name);
-	const NodeId call_declarator = FindChild(provisional, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+	const NodeId call_declarator = FindChild(provisional, ::cppgm::syntax::STAG_DECLARATOR);
 	if (call_declarator == kNoNode)
 	{
 		const LookupResult value =
@@ -488,20 +488,20 @@ bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 		 FindFunctionTemplates(scope, structured)).empty())
 		return false;
 	const NodeId call_clause = call_declarator == kNoNode ? kNoNode :
-		FindChild(call_declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE);
+		FindChild(call_declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE);
 	const std::uint32_t argument_edge = call_clause == kNoNode ? kNoEdge :
 		arena_->FirstEdge(call_clause);
 	if (argument_edge == kNoEdge || arena_->NextEdge(argument_edge) != kNoEdge)
 		return false;
 	const NodeId argument_parameter = arena_->EdgeChild(argument_edge);
 	const NodeId argument_specifiers =
-		FindChild(argument_parameter, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+		FindChild(argument_parameter, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 	const std::uint32_t argument_name_edge =
 		argument_specifiers == kNoNode ? kNoEdge :
 		arena_->FirstEdge(argument_specifiers);
 	if (argument_name_edge == kNoEdge ||
 		arena_->NextEdge(argument_name_edge) != kNoEdge ||
-		FindChild(argument_parameter, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR) != kNoNode)
+		FindChild(argument_parameter, ::cppgm::syntax::STAG_DECLARATOR) != kNoNode)
 		return false;
 	const NodeId argument_name = arena_->EdgeChild(argument_name_edge);
 	const std::string argument_spelling = PayloadSource(argument_name);

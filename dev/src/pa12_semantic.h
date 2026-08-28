@@ -79,7 +79,7 @@ class SemanticGraphConsumer;
 struct SemanticAnalysisStats
 {
 	PreprocessingStats preprocessing;
-	SyntaxInterningStats interning;
+	syntax::InterningStats interning;
 	std::size_t tokens;
 	std::size_t syntax_nodes;
 	std::size_t semantic_nodes;
@@ -93,7 +93,7 @@ struct SemanticAnalysisStats
 	std::size_t name_path_single_component_parses;
 	std::size_t name_path_parse_families[NAME_PATH_PARSE_FAMILY_COUNT];
 	std::size_t syntax_name_path_fallback_tags[
-		pa10_syntax_detail::STAG_COUNT];
+		syntax::STAG_COUNT];
 	std::size_t structured_name_path_requests;
 	std::size_t syntax_name_path_requests;
 	std::size_t syntax_name_path_direct;

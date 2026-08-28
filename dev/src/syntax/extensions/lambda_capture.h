@@ -7,10 +7,9 @@
 
 namespace cppgm
 {
-namespace pa25_syntax_detail
+namespace syntax
 {
 
-using namespace pa10_syntax_detail;
 
 template <class Derived>
 class LambdaCaptureSyntax

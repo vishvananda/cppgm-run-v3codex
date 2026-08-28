@@ -8,10 +8,9 @@
 
 namespace cppgm
 {
-namespace pa34_syntax_detail
+namespace syntax
 {
 
-using namespace pa10_syntax_detail;
 
 template <class Derived>
 class AggregateSyntax
@@ -76,15 +75,15 @@ protected:
 	}
 
 	void AppendDeclaratorNames(NodeId declarator,
-		pa10_syntax_detail::TextId fallback,
-		std::vector<pa10_syntax_detail::TextId>* names) const
+		syntax::TextId fallback,
+		std::vector<syntax::TextId>* names) const
 	{
 		const Derived& parser = static_cast<const Derived&>(*this);
 		for (std::uint32_t edge = parser.arena_.FirstEdge(declarator);
 			edge != kNoEdge; edge = parser.arena_.NextEdge(edge))
 		{
 			const NodeId child = parser.arena_.EdgeChild(edge);
-			if (!parser.arena_.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_BINDING)) continue;
+			if (!parser.arena_.IsTag(child, ::cppgm::syntax::STAG_STRUCTURED_BINDING)) continue;
 			for (std::uint32_t binding = parser.arena_.FirstEdge(child);
 				binding != kNoEdge; binding = parser.arena_.NextEdge(binding))
 				names->push_back(parser.arena_.PayloadId(

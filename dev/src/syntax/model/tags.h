@@ -7,7 +7,7 @@
 
 namespace cppgm
 {
-namespace pa10_syntax_detail
+namespace syntax
 {
 
 enum SyntaxTagCode : std::uint16_t

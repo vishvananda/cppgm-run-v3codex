@@ -2,21 +2,24 @@
 
 namespace cppgm
 {
-
-void WriteSyntaxTranslationUnit(const std::string& path,
-	const std::string& source, const PreprocessingOptions& options,
-	std::ostream& output, SyntaxStats* stats)
+namespace syntax
 {
-	pa10_syntax_detail::RunSyntaxTranslationUnit(
+
+void WriteTranslationUnit(const std::string& path,
+	const std::string& source, const PreprocessingOptions& options,
+	std::ostream& output, Stats* stats)
+{
+	RunTranslationUnit(
 		path, source, options, &output, 0, stats);
 }
 
-void ConsumeSyntaxTranslationUnit(const std::string& path,
+void ConsumeTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	pa10_syntax_detail::SyntaxTreeConsumer& consumer, SyntaxStats* stats)
+	SyntaxTreeConsumer& consumer, Stats* stats)
 {
-	pa10_syntax_detail::RunSyntaxTranslationUnit(
+	RunTranslationUnit(
 		path, source, options, 0, &consumer, stats);
+}
 }
 
 }

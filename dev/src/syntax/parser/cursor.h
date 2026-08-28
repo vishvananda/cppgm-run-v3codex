@@ -9,7 +9,7 @@
 
 namespace cppgm
 {
-namespace pa10_syntax_detail
+namespace syntax
 {
 
 template <class Derived>

@@ -30,20 +30,20 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 	bool local, ExpressionInfo* prepared_initializer)
 {
 	const bool function =
-		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE) != kNoNode;
+		FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE) != kNoNode;
 	if (!spec.placeholder_auto || function)
 		return BuildDeclarator(declarator, spec.type, scope,
 			spec.placeholder_auto);
 	if (!prepared_initializer)
 		throw std::logic_error(
 			"placeholder variable deduction has no result owner");
-	NodeId initializer = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
+	NodeId initializer = FindChild(item, ::cppgm::syntax::STAG_INITIALIZER);
 	if (initializer == kNoNode)
 		throw std::runtime_error("placeholder variable requires initializer");
 	NodeId expression = FirstSemanticChild(initializer);
-	while (expression != kNoNode && arena_->IsTag(expression, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER))
+	while (expression != kNoNode && arena_->IsTag(expression, ::cppgm::syntax::STAG_INITIALIZER))
 		expression = FirstSemanticChild(expression);
-	if (expression != kNoNode && arena_->IsTag(expression, ::cppgm::pa10_syntax_detail::STAG_PAREN_INITIALIZER))
+	if (expression != kNoNode && arena_->IsTag(expression, ::cppgm::syntax::STAG_PAREN_INITIALIZER))
 	{
 		const NodeId first = FirstSemanticChild(expression);
 		const std::uint32_t first_edge = arena_->FirstEdge(expression);
@@ -52,7 +52,7 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 				"placeholder direct-initializer requires one expression");
 		expression = first;
 	}
-	if (expression != kNoNode && arena_->IsTag(expression, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+	if (expression != kNoNode && arena_->IsTag(expression, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 	{
 		std::vector<NodeId> syntax;
 		for (std::uint32_t edge = arena_->FirstEdge(expression);
@@ -100,7 +100,7 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 		spec.storage_class == STORAGE_CLASS_STATIC ||
 		(spec.placeholder_cv & CV_CONST) != 0;
 	const bool preserve_recipe = !local && spec.is_constexpr &&
-		arena_->HasDescendantTag(initializer, ::cppgm::pa10_syntax_detail::STAG_CONDITIONAL_EXPRESSION);
+		arena_->HasDescendantTag(initializer, ::cppgm::syntax::STAG_CONDITIONAL_EXPRESSION);
 	if (require_constant)
 	{
 		++constant_expression_required_depth_;
@@ -132,7 +132,7 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PTR_OPERATOR)) continue;
+			if (!arena_->IsTag(child, ::cppgm::syntax::STAG_PTR_OPERATOR)) continue;
 			if (!pointer_operator.empty())
 				throw std::runtime_error(
 					"compound placeholder declarator is outside the PA23 boundary");
@@ -197,7 +197,7 @@ DeclaratorInfo SemanticAnalyzer::BuildMemberDeclarator(NodeId item,
 	ExpressionInfo* prepared_initializer)
 {
 	const bool function = definition ||
-		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE) != kNoNode;
+		FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE) != kNoNode;
 	DeclaratorInfo parsed = spec.placeholder_auto && !function ?
 		BuildVariableDeclarator(item, declarator, spec, scope, false,
 			prepared_initializer) :
@@ -568,13 +568,13 @@ bool SemanticAnalyzer::ShouldPreserveRuntimeInitializerRecipe(bool local,
 {
 	if (local || !spec.is_constexpr) return false;
 	if (program_->types.IsReference(type))
-		return arena_->HasDescendantTag(initializer, ::cppgm::pa10_syntax_detail::STAG_CONDITIONAL_EXPRESSION);
+		return arena_->HasDescendantTag(initializer, ::cppgm::syntax::STAG_CONDITIONAL_EXPRESSION);
 	if (!IsClassObjectType(type)) return false;
-	const NodeId paren = FindChild(initializer, ::cppgm::pa10_syntax_detail::STAG_PAREN_INITIALIZER);
+	const NodeId paren = FindChild(initializer, ::cppgm::syntax::STAG_PAREN_INITIALIZER);
 	const NodeId expression = paren == kNoNode ? initializer : paren;
-	const NodeId call = FindChild(expression, ::cppgm::pa10_syntax_detail::STAG_CALL_EXPRESSION);
+	const NodeId call = FindChild(expression, ::cppgm::syntax::STAG_CALL_EXPRESSION);
 	const NodeId arguments = call == kNoNode ? kNoNode :
-		FindChild(call, ::cppgm::pa10_syntax_detail::STAG_ARGUMENT_LIST);
+		FindChild(call, ::cppgm::syntax::STAG_ARGUMENT_LIST);
 	return arguments != kNoNode && arena_->FirstEdge(arguments) != kNoEdge;
 }
 

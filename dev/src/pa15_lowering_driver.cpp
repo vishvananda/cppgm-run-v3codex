@@ -241,7 +241,7 @@ void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
 		++family)
 		target->name_path_parse_families[family] +=
 			source.name_path_parse_families[family];
-	for (std::size_t tag = 0; tag < pa10_syntax_detail::STAG_COUNT; ++tag)
+	for (std::size_t tag = 0; tag < syntax::STAG_COUNT; ++tag)
 		target->syntax_name_path_fallback_tags[tag] +=
 			source.syntax_name_path_fallback_tags[tag];
 	target->structured_name_path_requests +=

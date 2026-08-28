@@ -11,16 +11,16 @@ namespace pa12_semantic_detail
 void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	TypeId owner_type, AccessKind access)
 {
-	const NodeId declarator = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+	const NodeId declarator = FindChild(node, ::cppgm::syntax::STAG_DECLARATOR);
 	const NodeId target_node = declarator == kNoNode ? kNoNode :
-		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_CONVERSION_TYPE_ID);
+		FindChild(declarator, ::cppgm::syntax::STAG_CONVERSION_TYPE_ID);
 	if (target_node == kNoNode)
 		throw std::logic_error("conversion function has no target type");
 	const TypeId target = BuildTypeId(target_node, scope);
 	bool explicit_specifier = false;
 	bool constexpr_specifier = false;
 	bool inline_specifier = false;
-	const NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_MEMBER_SPECIFIERS);
+	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_MEMBER_SPECIFIERS);
 	if (specifiers != kNoNode)
 		for (std::uint32_t edge = arena_->FirstEdge(specifiers);
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
@@ -41,14 +41,14 @@ void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	if (constexpr_specifier)
 		parsed.type = ApplyConstexprMemberFunctionType(
 			parsed.type, entity, false);
-	const NodeId initializer = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
+	const NodeId initializer = FindChild(node, ::cppgm::syntax::STAG_INITIALIZER);
 	const NodeId special = initializer == kNoNode ? kNoNode :
-		FindChild(initializer, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_INITIALIZER);
+		FindChild(initializer, ::cppgm::syntax::STAG_SPECIAL_INITIALIZER);
 	if (special != kNoNode && arena_->Payload(special) == "default")
 		throw std::runtime_error("conversion function cannot be defaulted");
 	const bool deleted = special != kNoNode &&
 		arena_->Payload(special) == "delete";
-	const bool definition = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION);
+	const bool definition = arena_->IsTag(node, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DEFINITION);
 	const NameId conversion_name = DeclaratorNamePath(declarator).Last();
 	const BindingId function = DeclareFunction(scope, conversion_name,
 		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,
@@ -73,7 +73,7 @@ void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	info.deferred = !info.deleted_special_member;
 	if (definition) {
 		info.definition_body = FunctionDefinitionPart(node, "compound-statement");
-		info.function_try_block = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_TRY_BLOCK);
+		info.function_try_block = FindChild(node, ::cppgm::syntax::STAG_FUNCTION_TRY_BLOCK);
 	}
 	if (info.constexpr_function)
 	{

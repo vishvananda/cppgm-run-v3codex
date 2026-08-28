@@ -5,7 +5,7 @@
 
 namespace cppgm
 {
-namespace pa10_syntax_detail
+namespace syntax
 {
 
 std::vector<std::uint32_t> BuildBraceMatches(

@@ -25,7 +25,7 @@ void SemanticAnalyzer::ConfigureVirtualFunction(BindingId binding,
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_VIRT_SPECIFIER)) continue;
+			if (!arena_->IsTag(child, ::cppgm::syntax::STAG_VIRT_SPECIFIER)) continue;
 			const std::string spelling = PayloadSource(child);
 			override_specifier = override_specifier || spelling == "override";
 			final_specifier = final_specifier || spelling == "final";
@@ -34,7 +34,7 @@ void SemanticAnalyzer::ConfigureVirtualFunction(BindingId binding,
 	if (initializer != kNoNode)
 	{
 		const NodeId value = FirstSemanticChild(initializer);
-		pure = value != kNoNode && arena_->IsTag(value, ::cppgm::pa10_syntax_detail::STAG_LITERAL) &&
+		pure = value != kNoNode && arena_->IsTag(value, ::cppgm::syntax::STAG_LITERAL) &&
 			arena_->Payload(value) == "0";
 	}
 	if (declaration.static_member_function &&

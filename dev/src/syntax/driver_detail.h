@@ -5,12 +5,12 @@
 
 namespace cppgm
 {
-namespace pa10_syntax_detail
+namespace syntax
 {
 
-void RunSyntaxTranslationUnit(const std::string& path,
+void RunTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	std::ostream* output, SyntaxTreeConsumer* consumer, SyntaxStats* stats,
+	std::ostream* output, SyntaxTreeConsumer* consumer, Stats* stats,
 	InternedStringTable* retained_strings = 0);
 
 }

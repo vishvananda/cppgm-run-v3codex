@@ -15,7 +15,7 @@ bool SemanticAnalyzer::ShouldDeferClassTemplateMemberExceptionSpecification(
 	if (current_class_context_ == kNoEntity ||
 		!IsClassTemplateSpecializationContext(current_class_context_))
 		return false;
-	const NodeId qualifier = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+	const NodeId qualifier = FindChild(declarator, ::cppgm::syntax::STAG_FUNCTION_QUALIFIER);
 	return qualifier != kNoNode &&
 		FirstSemanticChild(qualifier) != kNoNode;
 }
@@ -23,7 +23,7 @@ bool SemanticAnalyzer::ShouldDeferClassTemplateMemberExceptionSpecification(
 bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope,
 	bool force_evaluation)
 {
-	const NodeId qualifier = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+	const NodeId qualifier = FindChild(declarator, ::cppgm::syntax::STAG_FUNCTION_QUALIFIER);
 	if (qualifier == kNoNode) return false;
 	const std::string spelling = PayloadSource(qualifier);
 	if (spelling == "noexcept" || spelling == "throw()") return true;
@@ -79,7 +79,7 @@ void SemanticAnalyzer::ConfigureFunctionExceptionSpecification(
 		}
 		return;
 	}
-	const NodeId qualifier = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+	const NodeId qualifier = FindChild(declarator, ::cppgm::syntax::STAG_FUNCTION_QUALIFIER);
 	FunctionExceptionBoundaryKind boundary =
 		program_->bindings[binding].nonthrowing ?
 			FUNCTION_EXCEPTION_BOUNDARY_TERMINATE :
@@ -101,7 +101,7 @@ void SemanticAnalyzer::ConfigureFunctionExceptionSpecification(
 	else if (qualifier != kNoNode &&
 		PayloadSource(qualifier).compare(0, 6, "throw(") == 0)
 	{
-		const NodeId list = FindChild(qualifier, ::cppgm::pa10_syntax_detail::STAG_EXCEPTION_TYPE_LIST);
+		const NodeId list = FindChild(qualifier, ::cppgm::syntax::STAG_EXCEPTION_TYPE_LIST);
 		if (list == kNoNode)
 			throw std::logic_error("dynamic exception specification has no type list");
 		for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;

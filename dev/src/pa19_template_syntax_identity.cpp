@@ -25,7 +25,7 @@ std::uint32_t NextComparableTemplateSyntaxEdge(const SyntaxArena& arena,
 	std::uint32_t edge, bool ignore_global_qualifier)
 {
 	while (edge != kNoEdge && ignore_global_qualifier &&
-		arena.IsTag(arena.EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_GLOBAL_QUALIFIER))
+		arena.IsTag(arena.EdgeChild(edge), ::cppgm::syntax::STAG_GLOBAL_QUALIFIER))
 		edge = arena.NextEdge(edge);
 	return edge;
 }

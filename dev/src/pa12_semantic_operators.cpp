@@ -105,18 +105,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	const NodeId operand = FirstSemanticChild(node);
 	if (operand == kNoNode) throw std::runtime_error("empty sizeof");
 	TypeId measured = kNoType;
-	if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
+	if (arena_->IsTag(operand, ::cppgm::syntax::STAG_TYPE_ID))
 	{
-		const NodeId specifiers = FindChild(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
+		const NodeId specifiers = FindChild(operand, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ);
 		const NodeId name = specifiers == kNoNode ? kNoNode :
 			FirstSemanticChild(specifiers);
-		const NodeId declarator = FindChild(operand, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
+		const NodeId declarator = FindChild(operand, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR);
 		const NodeId clause = declarator == kNoNode ? kNoNode :
-			FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE);
+			FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE);
 		NamePath base;
 		std::vector<TypeId> explicit_arguments;
 		const bool ambiguous_function_call = name != kNoNode &&
-			arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) && clause != kNoNode &&
+			arena_->IsTag(name, ::cppgm::syntax::STAG_TYPE_NAME) && clause != kNoNode &&
 			FirstSemanticChild(clause) == kNoNode &&
 			ParseExplicitTemplateArguments(
 				name, scope, &base, &explicit_arguments);
@@ -136,7 +136,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 					"ambiguous function template in sizeof expression");
 		}
 		if (measured == kNoType && name != kNoNode &&
-			arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME))
+			arena_->IsTag(name, ::cppgm::syntax::STAG_TYPE_NAME))
 		{
 			const LookupResult value =
 				LookupSyntaxName(name, scope, LOOKUP_ORDINARY);
@@ -147,7 +147,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 				for (std::uint32_t edge = declarator == kNoNode ? kNoEdge :
 					arena_->FirstEdge(declarator); edge != kNoEdge;
 					edge = arena_->NextEdge(edge))
-					if (arena_->IsTag(arena_->EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_ARRAY_SUFFIX))
+					if (arena_->IsTag(arena_->EdgeChild(edge), ::cppgm::syntax::STAG_ARRAY_SUFFIX))
 					{
 						const TypeRecord array = program_->types.Get(
 							program_->types.RemoveTopCv(measured));
@@ -160,7 +160,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 		}
 		if (measured == kNoType) measured = BuildTypeId(operand, scope);
 	}
-	else if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
+	else if (arena_->IsTag(operand, ::cppgm::syntax::STAG_ID_EXPRESSION))
 	{
 		const std::string spelling = arena_->Payload(operand);
 		const LookupResult ordinary =
@@ -188,7 +188,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 		}
 		--unevaluated_depth_;
 	}
-	const bool alignment_query = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_TRAIT_EXPRESSION);
+	const bool alignment_query = arena_->IsTag(node, ::cppgm::syntax::STAG_TYPE_TRAIT_EXPRESSION);
 	if (CandidateSubstitutionFailed() || measured == kNoType)
 		return ExpressionInfo();
 	measured = EffectiveType(measured);
@@ -227,7 +227,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target) {
-	const bool postfix = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_POSTFIX_EXPRESSION); const std::string operation = PayloadSource(node);
+	const bool postfix = arena_->IsTag(node, ::cppgm::syntax::STAG_POSTFIX_EXPRESSION); const std::string operation = PayloadSource(node);
 	const int op = PayloadTokenKind(node);
 	const NodeId operand_syntax = FirstSemanticChild(node); const TypeId address_context_target = UnaryAddressContextTarget(operation, target, operand_syntax, scope);
 	const TypeId operand_target =

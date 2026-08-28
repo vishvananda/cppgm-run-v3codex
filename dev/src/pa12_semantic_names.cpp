@@ -90,19 +90,19 @@ NamePath SemanticAnalyzer::StructuredNamePath(NodeId syntax)
 	NamePath path;
 	const NodeId structure = syntax != kNoNode &&
 		arena_->IsTag(syntax,
-			::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) ? syntax :
+			::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) ? syntax :
 		syntax == kNoNode ? kNoNode :
 		FindChild(syntax,
-			::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+			::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 	if (structure == kNoNode) return path;
 	path.global = FindChild(structure,
-		::cppgm::pa10_syntax_detail::STAG_GLOBAL_QUALIFIER) != kNoNode;
+		::cppgm::syntax::STAG_GLOBAL_QUALIFIER) != kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
 		if (arena_->IsTag(child,
-			::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
+			::cppgm::syntax::STAG_NAME_COMPONENT))
 			path.Push(program_->names.UseInterned(
 				arena_->SemanticPayloadId(child)));
 	}
@@ -124,8 +124,8 @@ NamePath SemanticAnalyzer::SyntaxNamePath(NodeId syntax)
 	if (stats_)
 	{
 		++stats_->syntax_name_path_fallbacks;
-		const pa10_syntax_detail::SyntaxTagCode tag = syntax == kNoNode ?
-			pa10_syntax_detail::STAG_NONE : arena_->TagCode(syntax);
+		const syntax::SyntaxTagCode tag = syntax == kNoNode ?
+			syntax::STAG_NONE : arena_->TagCode(syntax);
 		++stats_->syntax_name_path_fallback_tags[tag];
 	}
 	return syntax == kNoNode ? path : ParseNamePath(
@@ -136,9 +136,9 @@ LookupResult SemanticAnalyzer::LookupSyntaxName(NodeId syntax, ScopeId scope,
 	LookupKind kind)
 {
 	const NodeId structure = syntax == kNoNode ? kNoNode : FindChild(
-		syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+		syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 	return structure != kNoNode || (syntax != kNoNode && arena_->IsTag(syntax,
-		::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME)) ?
+		::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME)) ?
 		LookupStructuredName(syntax, scope, kind) :
 		LookupPath(scope, SyntaxNamePath(syntax), kind);
 }

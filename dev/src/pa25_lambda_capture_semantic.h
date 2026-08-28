@@ -17,7 +17,7 @@ class LambdaCaptureUseTable
 public:
 	struct Fact
 	{
-		pa10_syntax_detail::NodeId syntax;
+		syntax::NodeId syntax;
 		std::uint32_t name_begin, name_count;
 		bool captures_this;
 
@@ -25,8 +25,8 @@ public:
 	};
 
 	LambdaCaptureUseTable();
-	const Fact& FindOrBuild(const pa10_syntax_detail::SyntaxArena& arena,
-		pa10_syntax_detail::NodeId lambda);
+	const Fact& FindOrBuild(const syntax::SyntaxArena& arena,
+		syntax::NodeId lambda);
 	pa11::NameId NameAt(const Fact& fact, std::size_t index) const;
 	bool IsExplicitAt(const Fact& fact, std::size_t index) const;
 	bool IsReferenceAt(const Fact& fact, std::size_t index) const;
@@ -47,29 +47,29 @@ private:
 			: name(name_value), previous(previous_value), depth(depth_value) {}
 	};
 
-	std::uint32_t FindFact(pa10_syntax_detail::NodeId lambda) const;
-	std::uint32_t EnsureFact(pa10_syntax_detail::NodeId lambda);
+	std::uint32_t FindFact(syntax::NodeId lambda) const;
+	std::uint32_t EnsureFact(syntax::NodeId lambda);
 	void Rehash(std::size_t capacity);
 	void Build(std::uint32_t fact,
-		const pa10_syntax_detail::SyntaxArena& arena);
-	void Walk(pa10_syntax_detail::NodeId node,
-		const pa10_syntax_detail::SyntaxArena& arena,
+		const syntax::SyntaxArena& arena);
+	void Walk(syntax::NodeId node,
+		const syntax::SyntaxArena& arena,
 		std::vector<pa11::NameId>* free_names, bool* captures_this);
-	void WalkSimpleDeclaration(pa10_syntax_detail::NodeId node,
-		const pa10_syntax_detail::SyntaxArena& arena,
+	void WalkSimpleDeclaration(syntax::NodeId node,
+		const syntax::SyntaxArena& arena,
 		std::vector<pa11::NameId>* free_names, bool* captures_this);
-	void WalkDeclaratorDeclaration(pa10_syntax_detail::NodeId node,
-		const pa10_syntax_detail::SyntaxArena& arena,
+	void WalkDeclaratorDeclaration(syntax::NodeId node,
+		const syntax::SyntaxArena& arena,
 		std::vector<pa11::NameId>* free_names, bool* captures_this);
-	void WalkRangeFor(pa10_syntax_detail::NodeId node,
-		const pa10_syntax_detail::SyntaxArena& arena,
+	void WalkRangeFor(syntax::NodeId node,
+		const syntax::SyntaxArena& arena,
 		std::vector<pa11::NameId>* free_names, bool* captures_this);
 	pa11::NameId DeclaratorName(
-		const pa10_syntax_detail::SyntaxArena& arena,
-		pa10_syntax_detail::NodeId node) const;
+		const syntax::SyntaxArena& arena,
+		syntax::NodeId node) const;
 	pa11::NameId SimpleExpressionName(
-		const pa10_syntax_detail::SyntaxArena& arena,
-		pa10_syntax_detail::NodeId node) const;
+		const syntax::SyntaxArena& arena,
+		syntax::NodeId node) const;
 	void AddBound(pa11::NameId name);
 	bool IsBound(pa11::NameId name) const;
 	void RestoreBounds(std::size_t mark);

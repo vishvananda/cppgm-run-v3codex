@@ -7,7 +7,7 @@
 
 namespace cppgm
 {
-namespace pa34_syntax_detail
+namespace syntax
 {
 
 template <class Derived>
@@ -63,9 +63,9 @@ protected:
 		return parser.JoinSpellings(first, parser.position_);
 	}
 
-	pa10_syntax_detail::NodeId ParseGnuAsmOperand(const char* tag)
+	syntax::NodeId ParseGnuAsmOperand(const char* tag)
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		Derived& parser = static_cast<Derived&>(*this);
 		std::string symbolic;
 		if (parser.Match(OP_LSQUARE))
@@ -90,18 +90,18 @@ protected:
 	}
 
 	void ParseGnuAsmOperandGroup(
-		pa10_syntax_detail::NodeId statement, const char* tag)
+		syntax::NodeId statement, const char* tag)
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		Derived& parser = static_cast<Derived&>(*this);
 		if (AtGnuAsmColon() || parser.At(OP_RPAREN)) return;
 		do { parser.arena_.Add(statement, ParseGnuAsmOperand(tag)); }
 		while (parser.Match(OP_COMMA));
 	}
 
-	pa10_syntax_detail::NodeId TryParseGnuAsmStatement()
+	syntax::NodeId TryParseGnuAsmStatement()
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		Derived& parser = static_cast<Derived&>(*this);
 		if (!AtGnuAsmIntroducer()) return kNoNode;
 		pending_colons_ = 0;
@@ -148,9 +148,9 @@ protected:
 		return statement;
 	}
 
-	bool TryParseGnuAsmLabel(pa10_syntax_detail::NodeId declarator)
+	bool TryParseGnuAsmLabel(syntax::NodeId declarator)
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		Derived& parser = static_cast<Derived&>(*this);
 		if (!AtGnuAsmIntroducer()) return false;
 		ConsumeGnuAsmIntroducer();

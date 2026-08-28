@@ -49,7 +49,7 @@ NodeId AsmOperandExpression(const SyntaxArena& arena, NodeId operand)
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (!arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ASM_SYMBOL)) return child;
+		if (!arena.IsTag(child, ::cppgm::syntax::STAG_GNU_ASM_SYMBOL)) return child;
 	}
 	return kNoNode;
 }
@@ -59,7 +59,7 @@ NodeId AsmOperandExpression(const SyntaxArena& arena, NodeId operand)
 void SemanticAnalyzer::ApplyFunctionAsmLabel(
 	NodeId declarator, BindingId binding)
 {
-	const NodeId syntax = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_GNU_ASM_LABEL);
+	const NodeId syntax = FindChild(declarator, ::cppgm::syntax::STAG_GNU_ASM_LABEL);
 	if (syntax == kNoNode) return;
 	const std::string label = DecodeAsmString(
 		*arena_, syntax, "invalid GNU asm label");
@@ -75,7 +75,7 @@ void SemanticAnalyzer::ApplyFunctionAsmLabel(
 bool SemanticAnalyzer::AnalyzeGnuAsmStatement(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
-	if (!arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_GNU_ASM_STATEMENT)) return false;
+	if (!arena_->IsTag(node, ::cppgm::syntax::STAG_GNU_ASM_STATEMENT)) return false;
 	const GnuAsmOperation operation = ClassifyAsmTemplate(DecodeAsmString(
 		*arena_, node, "invalid GNU asm template"));
 	const std::uint32_t statement = MakeDump(DUMP_GNU_ASM_STATEMENT);
@@ -87,16 +87,16 @@ bool SemanticAnalyzer::AnalyzeGnuAsmStatement(
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId operand = arena_->EdgeChild(edge);
-		if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_GNU_ASM_CLOBBER))
+		if (arena_->IsTag(operand, ::cppgm::syntax::STAG_GNU_ASM_CLOBBER))
 		{
 			(void)DecodeAsmString(*arena_, operand,
 				"invalid GNU asm clobber");
 			continue;
 		}
-		if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_GNU_ASM_GOTO_LABEL))
+		if (arena_->IsTag(operand, ::cppgm::syntax::STAG_GNU_ASM_GOTO_LABEL))
 			throw std::runtime_error("GNU asm goto is unsupported");
-		const bool output = arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_GNU_ASM_OUTPUT);
-		if (!output && !arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_GNU_ASM_INPUT))
+		const bool output = arena_->IsTag(operand, ::cppgm::syntax::STAG_GNU_ASM_OUTPUT);
+		if (!output && !arena_->IsTag(operand, ::cppgm::syntax::STAG_GNU_ASM_INPUT))
 			throw std::logic_error("invalid GNU asm syntax child");
 		const std::string constraint = DecodeAsmString(
 			*arena_, operand, "invalid GNU asm constraint");

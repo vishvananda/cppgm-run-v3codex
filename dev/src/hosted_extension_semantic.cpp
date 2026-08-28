@@ -5,24 +5,24 @@ namespace cppgm
 namespace hosted_extension
 {
 
-bool HasGnuAttribute(const pa10_syntax_detail::SyntaxArena& arena,
-	pa10_syntax_detail::NodeId node, const std::string& name)
+bool HasGnuAttribute(const syntax::SyntaxArena& arena,
+	syntax::NodeId node, const std::string& name)
 {
-	using namespace pa10_syntax_detail;
+	using namespace syntax;
 	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE) &&
+		if (arena.IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE) &&
 			arena.SemanticPayload(child) == name) return true;
 	}
 	return false;
 }
 
-bool DeferArtificialFunction(const pa10_syntax_detail::SyntaxArena& arena,
-	pa10_syntax_detail::NodeId declaration, bool force_inline)
+bool DeferArtificialFunction(const syntax::SyntaxArena& arena,
+	syntax::NodeId declaration, bool force_inline)
 {
-	using namespace pa10_syntax_detail;
+	using namespace syntax;
 	if (!force_inline) return false;
 	const auto artificial = [&arena](NodeId owner) {
 		return HasGnuAttribute(arena, owner, "artificial") ||
@@ -33,22 +33,22 @@ bool DeferArtificialFunction(const pa10_syntax_detail::SyntaxArena& arena,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if ((arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR) ||
-			 arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ)) && artificial(child))
+		if ((arena.IsTag(child, ::cppgm::syntax::STAG_DECLARATOR) ||
+			 arena.IsTag(child, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ)) && artificial(child))
 			return true;
 	}
 	return false;
 }
 
-bool HasStandardAttribute(const pa10_syntax_detail::SyntaxArena& arena,
-	pa10_syntax_detail::NodeId node, const std::string& name)
+bool HasStandardAttribute(const syntax::SyntaxArena& arena,
+	syntax::NodeId node, const std::string& name)
 {
-	using namespace pa10_syntax_detail;
+	using namespace syntax;
 	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_STANDARD_ATTRIBUTE) &&
+		if (arena.IsTag(child, ::cppgm::syntax::STAG_STANDARD_ATTRIBUTE) &&
 			arena.SemanticPayload(child) == name) return true;
 	}
 	return false;

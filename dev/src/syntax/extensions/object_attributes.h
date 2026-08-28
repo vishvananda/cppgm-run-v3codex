@@ -7,19 +7,19 @@
 
 namespace cppgm
 {
-namespace pa32_syntax_detail
+namespace syntax
 {
 
 bool ConsumeLeadingGnuObjectAttribute(
-	const std::vector<pa10_syntax_detail::SyntaxToken>& tokens,
-	const pa10_syntax_detail::StringTable& strings,
-	pa10_syntax_detail::SyntaxArena& arena, std::size_t* position,
-	std::vector<pa10_syntax_detail::NodeId>* attributes);
+	const std::vector<syntax::SyntaxToken>& tokens,
+	const syntax::StringTable& strings,
+	syntax::SyntaxArena& arena, std::size_t* position,
+	std::vector<syntax::NodeId>* attributes);
 bool ConsumeLeadingStandardObjectAttribute(
-	const std::vector<pa10_syntax_detail::SyntaxToken>& tokens,
-	const pa10_syntax_detail::StringTable& strings,
-	pa10_syntax_detail::SyntaxArena& arena, std::size_t* position,
-	std::vector<pa10_syntax_detail::NodeId>* attributes);
+	const std::vector<syntax::SyntaxToken>& tokens,
+	const syntax::StringTable& strings,
+	syntax::SyntaxArena& arena, std::size_t* position,
+	std::vector<syntax::NodeId>* attributes);
 
 }
 }

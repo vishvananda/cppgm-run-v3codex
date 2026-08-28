@@ -38,7 +38,7 @@ int ClassifyOperationSpelling(const std::string& operation)
 
 int SemanticAnalyzer::PayloadTokenKind(NodeId node)
 {
-	const ::cppgm::pa10_syntax_detail::TextId payload =
+	const ::cppgm::syntax::TextId payload =
 		arena_->SemanticPayloadId(node);
 	if (payload == 0) return -1;
 	if (payload_token_kind_.size() <= payload)

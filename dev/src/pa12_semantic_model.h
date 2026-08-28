@@ -17,7 +17,7 @@ struct SemanticAnalysisStats;
 namespace pa12_semantic_detail
 {
 
-using namespace pa10_syntax_detail;
+using namespace syntax;
 using namespace pa11;
 
 std::string RenderBindingPresentation(const Program& program,

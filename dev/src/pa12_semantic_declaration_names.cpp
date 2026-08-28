@@ -39,7 +39,7 @@ void SemanticAnalyzer::BuildClassDeclarationNamePath(NodeId node,
 	if (specialization_name.empty())
 	{
 		const NodeId structure = FindChild(
-			node, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+			node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 		if (structure != kNoNode)
 		{
 			*path = StructuredNamePath(structure);

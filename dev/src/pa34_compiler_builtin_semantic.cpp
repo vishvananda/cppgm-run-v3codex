@@ -138,12 +138,12 @@ bool SemanticAnalyzer::TryAnalyzeTypeofFunctionalCast(NodeId callee,
 	const std::vector<NodeId>& arguments, ScopeId scope,
 	TypeId target, ExpressionInfo* result)
 {
-	if (!arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
+	if (!arena_->IsTag(callee, ::cppgm::syntax::STAG_ID_EXPRESSION) ||
 		arena_->Payload(callee).compare(0, 8, "__typeof") != 0) return false;
-	const NodeId decltype_name = arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ?
-		FindChild(callee, ::cppgm::pa10_syntax_detail::STAG_DECLTYPE_NAME) : kNoNode;
+	const NodeId decltype_name = arena_->IsTag(callee, ::cppgm::syntax::STAG_ID_EXPRESSION) ?
+		FindChild(callee, ::cppgm::syntax::STAG_DECLTYPE_NAME) : kNoNode;
 	if (decltype_name == kNoNode ||
-		FindChild(decltype_name, ::cppgm::pa10_syntax_detail::STAG_QUALIFIED_NAME) != kNoNode) return false;
+		FindChild(decltype_name, ::cppgm::syntax::STAG_QUALIFIED_NAME) != kNoNode) return false;
 	const TypeId cast_type = DecltypeType(
 		FirstSemanticChild(decltype_name), scope);
 	if (CandidateSubstitutionFailed() || cast_type == kNoType)
@@ -168,7 +168,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinOffsetof(
 	if (member_edge == kNoEdge)
 		throw std::runtime_error("invalid offsetof expression");
 	const NodeId operand = arena_->EdgeChild(type_edge);
-	const NodeId type_syntax = FindChild(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
+	const NodeId type_syntax = FindChild(operand, ::cppgm::syntax::STAG_TYPE_ID);
 	const TypeId type = BuildTypeId(type_syntax, scope);
 	if (CandidateSubstitutionFailed() || type == kNoType)
 		return ExpressionInfo();
@@ -240,9 +240,9 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
 		{
 			const NodeId type_syntax = argument_syntax[vector_convert ? 1 : 0];
 			value_syntax = argument_syntax[vector_convert ? 0 : 1];
-			if (arena_->IsTag(type_syntax, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
+			if (arena_->IsTag(type_syntax, ::cppgm::syntax::STAG_TYPE_ID))
 				result_type = BuildTypeId(type_syntax, scope);
-			else if (arena_->IsTag(type_syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
+			else if (arena_->IsTag(type_syntax, ::cppgm::syntax::STAG_ID_EXPRESSION))
 			{
 				const LookupResult found =
 					LookupSyntaxName(type_syntax, scope, LOOKUP_TYPE);

@@ -12,7 +12,7 @@ namespace pa12_semantic_detail
 bool SemanticAnalyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
 	ScopeId scope, std::uint32_t output_parent)
 {
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LABELED_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_LABELED_STATEMENT))
 	{
 		const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
 		const std::uint32_t statement = MakeDump(DUMP_LABELED_STATEMENT,
@@ -24,7 +24,7 @@ bool SemanticAnalyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
 		AnalyzeStatement(child, scope, statement);
 		return true;
 	}
-	if (!arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_GOTO_STATEMENT)) return false;
+	if (!arena_->IsTag(node, ::cppgm::syntax::STAG_GOTO_STATEMENT)) return false;
 	const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
 	const std::uint32_t statement = MakeDump(DUMP_GOTO_STATEMENT,
 		kNoType, VALUE_NONE, name);
@@ -281,8 +281,8 @@ void SemanticAnalyzer::DemandConstructorUnwindDestructors(
 					const NodeId current = syntax.back();
 					syntax.pop_back();
 					if (current == kNoNode) continue;
-					throwing = arena_->IsTag(current, ::cppgm::pa10_syntax_detail::STAG_THROW_EXPRESSION) ||
-						arena_->IsTag(current, ::cppgm::pa10_syntax_detail::STAG_THROW_STATEMENT);
+					throwing = arena_->IsTag(current, ::cppgm::syntax::STAG_THROW_EXPRESSION) ||
+						arena_->IsTag(current, ::cppgm::syntax::STAG_THROW_STATEMENT);
 					for (std::uint32_t edge = arena_->FirstEdge(current);
 						!throwing && edge != kNoEdge;
 						edge = arena_->NextEdge(edge))
@@ -653,7 +653,7 @@ bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 bool SemanticAnalyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_THROW_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_THROW_STATEMENT))
 	{
 		const ExpressionInfo expression = AnalyzeThrowExpression(node, scope);
 		AppendFullExpressionDestructionActions(expression.node, expression.node);
@@ -668,7 +668,7 @@ bool SemanticAnalyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
 		dump_.Add(output_parent, expression.node);
 		return true;
 	}
-	if (!arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TRY_BLOCK)) return false;
+	if (!arena_->IsTag(node, ::cppgm::syntax::STAG_TRY_BLOCK)) return false;
 	AnalyzeTryStatement(node, scope, output_parent);
 	return true;
 }
@@ -888,15 +888,15 @@ void SemanticAnalyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 		scope, SCOPE_BLOCK, 0, ScopePrefixId(scope));
 	const std::uint32_t handler = MakeDump(DUMP_HANDLER);
 	dump_.Add(output_parent, handler);
-	const NodeId declaration = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_EXCEPTION_DECLARATION);
+	const NodeId declaration = FindChild(node, ::cppgm::syntax::STAG_EXCEPTION_DECLARATION);
 	if (declaration == kNoNode)
 		throw std::runtime_error("exception handler has no declaration");
-	if (FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_ELLIPSIS) == kNoNode)
+	if (FindChild(declaration, ::cppgm::syntax::STAG_ELLIPSIS) == kNoNode)
 	{
-		const NodeId specifiers = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+		const NodeId specifiers = FindChild(declaration, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 		if (specifiers == kNoNode)
 			throw std::runtime_error("exception handler has no type");
-		const NodeId declarator = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+		const NodeId declarator = FindChild(declaration, ::cppgm::syntax::STAG_DECLARATOR);
 		const SpecInfo spec = BuildSpecifiers(specifiers, handler_scope,
 			std::string(), declarator != kNoNode, true);
 		DeclaratorInfo parsed;
@@ -949,7 +949,7 @@ void SemanticAnalyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 			AddLifetimeObligation(handler_scope, binding, parsed.type);
 		}
 	}
-	const NodeId body = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT);
+	const NodeId body = FindChild(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT);
 	if (body == kNoNode)
 		throw std::runtime_error("exception handler has no body");
 	++exception_handler_depth_;
@@ -974,7 +974,7 @@ void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT) && !saw_body)
+		if (arena_->IsTag(child, ::cppgm::syntax::STAG_COMPOUND_STATEMENT) && !saw_body)
 		{
 			exception_cleanup_stops_.push_back(scope);
 			PushExceptionControlContext();
@@ -983,11 +983,11 @@ void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 			exception_cleanup_stops_.pop_back();
 			saw_body = true;
 		}
-		else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_HANDLER))
+		else if (arena_->IsTag(child, ::cppgm::syntax::STAG_HANDLER))
 		{
-			const NodeId declaration = FindChild(child, ::cppgm::pa10_syntax_detail::STAG_EXCEPTION_DECLARATION);
+			const NodeId declaration = FindChild(child, ::cppgm::syntax::STAG_EXCEPTION_DECLARATION);
 			catches_all = catches_all || (declaration != kNoNode &&
-				FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_ELLIPSIS) != kNoNode);
+				FindChild(declaration, ::cppgm::syntax::STAG_ELLIPSIS) != kNoNode);
 			AnalyzeExceptionHandler(child, scope, statement);
 			++handler_count;
 		}

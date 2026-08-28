@@ -15,7 +15,7 @@ namespace pa12_semantic_detail
 namespace
 {
 
-using namespace pa10_syntax_detail;
+using namespace syntax;
 using namespace pa11;
 
 void CollectDirectAbiTags(const SyntaxArena& arena, Program* program,
@@ -26,7 +26,7 @@ void CollectDirectAbiTags(const SyntaxArena& arena, Program* program,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId attribute = arena.EdgeChild(edge);
-		if (!arena.IsTag(attribute, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE)) continue;
+		if (!arena.IsTag(attribute, ::cppgm::syntax::STAG_GNU_ATTRIBUTE)) continue;
 		const std::string name = arena.SemanticPayload(attribute);
 		if (name != "abi_tag" && name != "__abi_tag__") continue;
 		bool has_argument = false;
@@ -34,9 +34,9 @@ void CollectDirectAbiTags(const SyntaxArena& arena, Program* program,
 			child_edge != kNoEdge; child_edge = arena.NextEdge(child_edge))
 		{
 			const NodeId child = arena.EdgeChild(child_edge);
-			if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE_NONLITERAL_ARGUMENT))
+			if (arena.IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE_NONLITERAL_ARGUMENT))
 				throw std::runtime_error("invalid abi_tag attribute argument");
-			if (!arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE_ARGUMENT)) continue;
+			if (!arena.IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE_ARGUMENT)) continue;
 			has_argument = true;
 			std::string tag;
 			if (!DecodeNarrowStringLiteralSequence(
@@ -59,7 +59,7 @@ void CollectFunctionAbiTags(const SyntaxArena& arena, Program* program,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR))
+		if (arena.IsTag(child, ::cppgm::syntax::STAG_DECLARATOR))
 		{
 			declarator = child;
 			break;
@@ -77,8 +77,8 @@ std::uint8_t DirectFunctionControlAttributeMask(
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId attribute = arena.EdgeChild(edge);
-		if (!arena.IsTag(attribute, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE) &&
-			!arena.IsTag(attribute, ::cppgm::pa10_syntax_detail::STAG_STANDARD_ATTRIBUTE)) continue;
+		if (!arena.IsTag(attribute, ::cppgm::syntax::STAG_GNU_ATTRIBUTE) &&
+			!arena.IsTag(attribute, ::cppgm::syntax::STAG_STANDARD_ATTRIBUTE)) continue;
 		const std::string& spelling = arena.SemanticPayload(attribute);
 		if (spelling == "noreturn" || spelling == "__noreturn__")
 			result |= FUNCTION_CONTROL_NORETURN;
@@ -103,10 +103,10 @@ std::uint8_t CollectFunctionControlAttributeMask(
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR) ||
+		if (arena.IsTag(child, ::cppgm::syntax::STAG_DECLARATOR) ||
 			arena.IsTag(child,
-				::cppgm::pa10_syntax_detail::STAG_LAMBDA_DECLARATOR) ||
-			arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ))
+				::cppgm::syntax::STAG_LAMBDA_DECLARATOR) ||
+			arena.IsTag(child, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ))
 		{
 			result |= DirectFunctionControlAttributeMask(arena, child);
 		}

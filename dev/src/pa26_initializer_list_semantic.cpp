@@ -94,7 +94,7 @@ void SemanticAnalyzer::ConfigureInitializerListSpecialization(TypeId type)
 bool SemanticAnalyzer::DeduceInitializerListElementType(
 	NodeId list, ScopeId scope, TypeId* element_type)
 {
-	if (list == kNoNode || !arena_->IsTag(list, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST) ||
+	if (list == kNoNode || !arena_->IsTag(list, ::cppgm::syntax::STAG_BRACED_INIT_LIST) ||
 		!element_type) return false;
 	TypeId deduced = kNoType;
 	for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
@@ -118,7 +118,7 @@ bool SemanticAnalyzer::TryAnalyzeInitializerListVariable(NodeId expression,
 	ExpressionInfo* initializer)
 {
 	if (expression == kNoNode ||
-		!arena_->IsTag(expression, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST) ||
+		!arena_->IsTag(expression, ::cppgm::syntax::STAG_BRACED_INIT_LIST) ||
 		!IsInitializerListType(type)) return false;
 	*initializer = AnalyzeInitializerList(expression, scope, type);
 	initializer->type = type;
@@ -260,7 +260,7 @@ BindingId SemanticAnalyzer::SelectInitializerListConstructorPhase(
 	BindingId selected = select_source(source_list);
 	NodeId source = source_list;
 	if (selected == kNoBinding && argument_syntax.size() == 1 &&
-		arena_->IsTag(argument_syntax[0], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+		arena_->IsTag(argument_syntax[0], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 	{
 		source = argument_syntax[0];
 		selected = select_source(source);

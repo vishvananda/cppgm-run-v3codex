@@ -36,7 +36,7 @@ void SemanticAnalyzer::ApplyVariableObjectAttributes(
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId attribute = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(attribute, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE)) continue;
+		if (!arena_->IsTag(attribute, ::cppgm::syntax::STAG_GNU_ATTRIBUTE)) continue;
 		const std::string name = arena_->SemanticPayload(attribute);
 		if (name == "weak" || name == "__weak__")
 		{
@@ -51,9 +51,9 @@ void SemanticAnalyzer::ApplyVariableObjectAttributes(
 			argument_edge = arena_->NextEdge(argument_edge))
 		{
 			const NodeId child = arena_->EdgeChild(argument_edge);
-			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE_NONLITERAL_ARGUMENT))
+			if (arena_->IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE_NONLITERAL_ARGUMENT))
 				throw std::runtime_error("invalid section attribute argument");
-			if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE_ARGUMENT)) continue;
+			if (!arena_->IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE_ARGUMENT)) continue;
 			if (argument != kNoNode)
 				throw std::runtime_error("section attribute has multiple arguments");
 			argument = child;

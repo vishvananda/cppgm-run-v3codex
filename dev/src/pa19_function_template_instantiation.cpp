@@ -362,7 +362,7 @@ bool EquivalentFunctionTemplateNondeducedShapes(const SyntaxArena& arena,
 
 bool IsFunctionOnlyDeclSpecifier(const SyntaxArena& arena, NodeId node)
 {
-	if (!arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER)) return false;
+	if (!arena.IsTag(node, ::cppgm::syntax::STAG_DECL_SPECIFIER)) return false;
 	const std::string& spelling = arena.Payload(node);
 	return spelling == "friend" || spelling == "inline" ||
 		spelling == "constexpr" || spelling == "virtual" ||
@@ -1026,7 +1026,7 @@ void SemanticAnalyzer::ConfigureFunctionTemplateException(
 	const EntityId access_owner = member_owner != kNoEntity ? member_owner :
 		pattern->friend_owners.empty() ? kNoEntity : pattern->friend_owners.front();
 	ScopedEntityContext access_context(&current_class_context_, access_owner);
-	const NodeId qualifier = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+	const NodeId qualifier = FindChild(declarator, ::cppgm::syntax::STAG_FUNCTION_QUALIFIER);
 	const NodeId expression = qualifier == kNoNode ?
 		kNoNode : FirstSemanticChild(qualifier);
 	if (expression != kNoNode)
@@ -1056,9 +1056,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	pattern.specifiers = specifiers;
 	pattern.declarator = declarator;
 	pattern.definition_body = definition ?
-		FindChild(target, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT) : kNoNode;
+		FindChild(target, ::cppgm::syntax::STAG_COMPOUND_STATEMENT) : kNoNode;
 	pattern.constructor_initializer = definition ? FindChild(
-		target, ::cppgm::pa10_syntax_detail::STAG_CTOR_INITIALIZER) : kNoNode;
+		target, ::cppgm::syntax::STAG_CTOR_INITIALIZER) : kNoNode;
 	pattern.parameters = parameters;
 	pattern.language_linkage = current_language_linkage_;
 	pattern.member_access = member_access;
@@ -1066,22 +1066,22 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		FunctionControlAttributeMask(*arena_, target);
 	pattern.defined = definition;
 	pattern.conversion_template = special_member_template && FindChild(
-		declarator, ::cppgm::pa10_syntax_detail::STAG_CONVERSION_TYPE_ID) != kNoNode;
+		declarator, ::cppgm::syntax::STAG_CONVERSION_TYPE_ID) != kNoNode;
 	pattern.constructor_template =
 		special_member_template && !pattern.conversion_template;
-	NodeId declaration_initializer = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
-	const NodeId declarator_list = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
+	NodeId declaration_initializer = FindChild(target, ::cppgm::syntax::STAG_INITIALIZER);
+	const NodeId declarator_list = FindChild(target, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
 	for (std::uint32_t edge = declarator_list == kNoNode ? kNoEdge :
 		arena_->FirstEdge(declarator_list);
 		edge != kNoEdge && declaration_initializer == kNoNode;
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId item = arena_->EdgeChild(edge);
-		if (FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR) == declarator)
-			declaration_initializer = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
+		if (FindChild(item, ::cppgm::syntax::STAG_DECLARATOR) == declarator)
+			declaration_initializer = FindChild(item, ::cppgm::syntax::STAG_INITIALIZER);
 	}
 	const NodeId special_initializer = declaration_initializer == kNoNode ?
-		kNoNode : FindChild(declaration_initializer, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_INITIALIZER);
+		kNoNode : FindChild(declaration_initializer, ::cppgm::syntax::STAG_SPECIAL_INITIALIZER);
 	pattern.deleted_function = special_initializer != kNoNode &&
 		arena_->Payload(special_initializer) == "delete";
 	pattern.dependent_exception_specification =
@@ -1131,7 +1131,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 				parameters[p].value_type, false,
 			static_cast<std::int64_t>(p));
 	}
-	const NodeId trailing_return = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_TRAILING_RETURN_TYPE);
+	const NodeId trailing_return = FindChild(declarator, ::cppgm::syntax::STAG_TRAILING_RETURN_TYPE);
 	const bool dependent_trailing_return = trailing_return != kNoNode &&
 		(PayloadSource(trailing_return).find("decltype") == 0 ||
 		 SyntaxUsesAnyTemplateParameter(trailing_return, parameter_names) ||
@@ -1144,7 +1144,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		shape_spec.type = program_->types.Fundamental(FUND_VOID);
 	else if (pattern.conversion_template)
 		shape_spec.type = BuildTypeId(
-			FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_CONVERSION_TYPE_ID), shape_scope);
+			FindChild(declarator, ::cppgm::syntax::STAG_CONVERSION_TYPE_ID), shape_scope);
 	else shape_spec = BuildSpecifiers(specifiers, shape_scope, std::string(), true, false, dependent_result_shape);
 	ApplyFunctionTemplateSpecifierFacts(pattern, &shape_spec);
 	if (dependent_result_shape != kNoType && shape_spec.placeholder_auto &&
@@ -1181,7 +1181,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		pattern.owner = ResolveOwner(scope, path);
 	if (pattern.owner == kNoScope)
 		throw std::runtime_error("function template owner not found");
-	pattern.trailing_return_syntax = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_TRAILING_RETURN_TYPE);
+	pattern.trailing_return_syntax = FindChild(declarator, ::cppgm::syntax::STAG_TRAILING_RETURN_TYPE);
 	const bool defer_trailing_return = dependent_trailing_return;
 	const EntityId member_owner = program_->EntityForScope(pattern.owner);
 	if (special_member_template && member_owner == kNoEntity)
@@ -1514,7 +1514,7 @@ DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
 		else if (pattern.conversion_template)
 		{
 			spec->type = BuildTypeId(
-				FindChild(pattern.declarator, ::cppgm::pa10_syntax_detail::STAG_CONVERSION_TYPE_ID),
+				FindChild(pattern.declarator, ::cppgm::syntax::STAG_CONVERSION_TYPE_ID),
 				template_scope);
 			spec->is_constexpr = pattern.constexpr_specifier;
 			spec->inline_specifier = pattern.inline_specifier;
@@ -1867,8 +1867,8 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 				"empty function template default argument");
 		if (source_parameter.kind == TEMPLATE_ARGUMENT_TYPE)
 		{
-			NodeId type_id = arena_->IsTag(source, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ? source :
-				FindChild(source, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
+			NodeId type_id = arena_->IsTag(source, ::cppgm::syntax::STAG_TYPE_ID) ? source :
+				FindChild(source, ::cppgm::syntax::STAG_TYPE_ID);
 			if (type_id == kNoNode) return false;
 			argument.type = BuildTypeId(type_id, default_scope);
 			if (argument.type == kNoType) return false;

@@ -20,7 +20,7 @@ protected:
 };
 
 void PublishDriverStats(const std::string& source,
-	const SyntaxStats& syntax, const std::chrono::steady_clock::time_point& start,
+	const syntax::Stats& syntax, const std::chrono::steady_clock::time_point& start,
 	SemanticAnalysisStats* stats)
 {
 	if (!stats) return;
@@ -46,10 +46,10 @@ void WriteSemanticTranslationUnit(const std::string& path,
 	const std::chrono::steady_clock::time_point started =
 		std::chrono::steady_clock::now();
 	if (stats) *stats = SemanticAnalysisStats();
-	SyntaxStats syntax;
+	syntax::Stats syntax;
 	pa12_semantic_detail::SemanticGraphStorage graph;
 	pa12_semantic_detail::SemanticAnalyzer analyzer(graph, output, stats);
-	pa10_syntax_detail::RunSyntaxTranslationUnit(path, source, options,
+	syntax::RunTranslationUnit(path, source, options,
 		0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
 	PublishDriverStats(source, syntax, started, stats);
 }
@@ -63,7 +63,7 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 	const std::chrono::steady_clock::time_point started =
 		std::chrono::steady_clock::now();
 	if (stats) *stats = SemanticAnalysisStats();
-	SyntaxStats syntax;
+	syntax::Stats syntax;
 	NullStreamBuffer sink_buffer;
 	std::ostream sink(&sink_buffer);
 	pa12_semantic_detail::SemanticGraphStorage graph;
@@ -71,7 +71,7 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 		pa12_semantic_detail::SemanticAnalyzer analyzer(graph, sink, stats,
 			true, false, complete_constructor_unwind, host_object_emission,
 			source_type_view);
-		pa10_syntax_detail::RunSyntaxTranslationUnit(path, source, options,
+		syntax::RunTranslationUnit(path, source, options,
 			0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
 	}
 	PublishDriverStats(source, syntax, started, stats);
@@ -194,7 +194,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 {
 	for (std::size_t i = 0; i < NAME_PATH_PARSE_FAMILY_COUNT; ++i)
 		name_path_parse_families[i] = 0;
-	for (std::size_t i = 0; i < pa10_syntax_detail::STAG_COUNT; ++i)
+	for (std::size_t i = 0; i < syntax::STAG_COUNT; ++i)
 		syntax_name_path_fallback_tags[i] = 0;
 	for (std::size_t i = 0; i < SEMANTIC_PRESENTATION_FAMILY_COUNT; ++i)
 	{

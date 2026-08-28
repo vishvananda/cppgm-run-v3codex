@@ -25,27 +25,26 @@
 #include <string>
 #include <utility>
 #include <vector>
-namespace cppgm { namespace {
-using namespace pa10_syntax_detail;
-class Parser : private ParserCursor<Parser>,
-	private ParserNameFacts<Parser>,
-	private hosted_builtin::Syntax<Parser>,
-	private hosted_extension::Syntax<Parser>,
-	private pa25_syntax_detail::LambdaCaptureSyntax<Parser>,
-	private pa25_syntax_detail::RangeForSyntax<Parser>,
-	private pa30_syntax_detail::RegionSyntax<Parser>,
-	private pa34_syntax_detail::GnuAsmSyntax<Parser>,
-	private pa34_syntax_detail::AggregateSyntax<Parser>,
-	private pa34_syntax_detail::TemplateSyntax<Parser>,
-	private pa34_syntax_detail::ControlFlowSyntax<Parser>
+namespace cppgm { namespace syntax { namespace {
+class SyntaxParser : private ParserCursor<SyntaxParser>,
+	private ParserNameFacts<SyntaxParser>,
+	private hosted_builtin::Syntax<SyntaxParser>,
+	private hosted_extension::Syntax<SyntaxParser>,
+	private LambdaCaptureSyntax<SyntaxParser>,
+	private RangeForSyntax<SyntaxParser>,
+	private RegionSyntax<SyntaxParser>,
+	private GnuAsmSyntax<SyntaxParser>,
+	private AggregateSyntax<SyntaxParser>,
+	private TemplateSyntax<SyntaxParser>,
+	private ControlFlowSyntax<SyntaxParser>
 {
-friend class ParserCursor<Parser>; friend class ParserNameFacts<Parser>;
-friend class hosted_builtin::Syntax<Parser>;
-friend class hosted_extension::Syntax<Parser>; friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
-friend class pa25_syntax_detail::RangeForSyntax<Parser>; friend class pa30_syntax_detail::RegionSyntax<Parser>;
-friend class pa34_syntax_detail::GnuAsmSyntax<Parser>; friend class pa34_syntax_detail::AggregateSyntax<Parser>;
-friend class pa34_syntax_detail::TemplateSyntax<Parser>; friend class pa34_syntax_detail::ControlFlowSyntax<Parser>; public:
-		Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings, SyntaxArena& arena, SyntaxStats* stats, bool mock_name_convention)
+friend class ParserCursor<SyntaxParser>; friend class ParserNameFacts<SyntaxParser>;
+friend class hosted_builtin::Syntax<SyntaxParser>;
+friend class hosted_extension::Syntax<SyntaxParser>; friend class syntax::LambdaCaptureSyntax<SyntaxParser>;
+friend class syntax::RangeForSyntax<SyntaxParser>; friend class syntax::RegionSyntax<SyntaxParser>;
+friend class syntax::GnuAsmSyntax<SyntaxParser>; friend class syntax::AggregateSyntax<SyntaxParser>;
+friend class syntax::TemplateSyntax<SyntaxParser>; friend class syntax::ControlFlowSyntax<SyntaxParser>; public:
+		SyntaxParser(const std::vector<SyntaxToken>& tokens, StringTable& strings, SyntaxArena& arena, Stats* stats, bool mock_name_convention)
 			: tokens_(tokens), strings_(strings), arena_(arena), stats_(stats), mock_name_convention_(mock_name_convention),
 			  position_(0), angle_stop_depth_(0), compound_depth_(0), retained_template_argument_depth_(0), template_declaration_depth_(0),
 		  name_fact_revision_(1), angle_matches_(tokens.size()),
@@ -677,7 +676,7 @@ private:
 	const std::vector<SyntaxToken>& tokens_;
 	StringTable& strings_;
 	SyntaxArena& arena_;
-	SyntaxStats* stats_;
+	Stats* stats_;
 	bool mock_name_convention_;
 	std::size_t position_, angle_stop_depth_, compound_depth_, retained_template_argument_depth_, template_declaration_depth_;
 	std::uint32_t name_fact_revision_;
@@ -687,7 +686,7 @@ private:
 	std::vector<std::uint32_t> brace_matches_;
 		std::vector<TextId> last_declared_names_, parameter_names_, active_non_type_parameter_names_, current_classes_;
 };
-NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
+NodeId SyntaxParser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 {
 	const Mark mark = Checkpoint();
 	const NodeId sequence = arena_.Make(for_type_id ? "type-specifier-seq" : "decl-specifier-seq");
@@ -852,7 +851,7 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 	}
 	return sequence;
 }
-bool Parser::ParseTypeId(NodeId parent, bool attach)
+bool SyntaxParser::ParseTypeId(NodeId parent, bool attach)
 { if (TryParseBuiltinTransformTypeId(parent, attach)) return true;
 	const Mark mark = Checkpoint();
 	const NodeId type_id = arena_.Make("type-id");
@@ -879,7 +878,7 @@ bool Parser::ParseTypeId(NodeId parent, bool attach)
 	if (attach) arena_.Add(parent, type_id);
 	return true;
 }
-NodeId Parser::ParseParameterClause()
+NodeId SyntaxParser::ParseParameterClause()
 {
 	if (!Match(OP_LPAREN)) return kNoNode;
 	const NodeId clause = arena_.Make("parameter-clause");
@@ -963,7 +962,7 @@ NodeId Parser::ParseParameterClause()
 	Expect(OP_RPAREN);
 	return clause;
 }
-NodeId Parser::ParseDeclarator(bool abstract, TextId* name)
+NodeId SyntaxParser::ParseDeclarator(bool abstract, TextId* name)
 {
 	const Mark mark = Checkpoint();
 	const NodeId result = arena_.Make(abstract ?
@@ -1181,7 +1180,7 @@ NodeId Parser::ParseDeclarator(bool abstract, TextId* name)
 	}
 	return result;
 }
-int Parser::BinaryPrecedence(std::uint16_t kind) const
+int SyntaxParser::BinaryPrecedence(std::uint16_t kind) const
 {
 	if (kind == kRShiftFirstToken) return 10;
 	if (kind >= kSimpleTokenCount) return 0;
@@ -1205,7 +1204,7 @@ int Parser::BinaryPrecedence(std::uint16_t kind) const
 	default: return 0;
 	}
 }
-NodeId Parser::ParseExpression(int minimum_precedence)
+NodeId SyntaxParser::ParseExpression(int minimum_precedence)
 {
 	if (Match(KW_THROW))
 	{
@@ -1276,7 +1275,7 @@ NodeId Parser::ParseExpression(int minimum_precedence)
 	}
 	return left;
 }
-NodeId Parser::ParseBracedInitList()
+NodeId SyntaxParser::ParseBracedInitList()
 {
 	if (!Match(OP_LBRACE)) return kNoNode;
 	const NodeId list = arena_.Make("braced-init-list");
@@ -1295,14 +1294,14 @@ NodeId Parser::ParseBracedInitList()
 	Expect(OP_RBRACE);
 	return list;
 }
-NodeId Parser::ParsePackExpansion(NodeId value)
+NodeId SyntaxParser::ParsePackExpansion(NodeId value)
 {
 	if (!Match(OP_DOTS)) return value;
 	const NodeId pack = arena_.Make("pack-expansion-expression");
 	arena_.Add(pack, value);
 	return pack;
 }
-NodeId Parser::ParsePrimaryExpression()
+NodeId SyntaxParser::ParsePrimaryExpression()
 {
 	if (AtLiteral()) {
 		const std::size_t token = position_++;
@@ -1411,14 +1410,14 @@ NodeId Parser::ParsePrimaryExpression()
 	}
 	return kNoNode;
 }
-NodeId Parser::ParsePostfixExpression() {
+NodeId SyntaxParser::ParsePostfixExpression() {
 	NodeId value = ParsePrimaryExpression();
 	if (value == kNoNode) return kNoNode;
 	return ParsePostfixSuffixes(value);
 }
-NodeId Parser::ParsePostfixSuffixes(NodeId value) {
+NodeId SyntaxParser::ParsePostfixSuffixes(NodeId value) {
 	while (true) {
-		if (At(OP_LBRACE) && arena_.IsTag(value, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
+		if (At(OP_LBRACE) && arena_.IsTag(value, ::cppgm::syntax::STAG_ID_EXPRESSION) &&
 			(HasNameFact(arena_.PayloadId(value), kKnownType) ||
 			 IsFundamentalTypeSpelling(arena_.Payload(value)) ||
 			 arena_.FirstEdge(value) != kNoEdge ||
@@ -1430,7 +1429,7 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 		if (Match(OP_LPAREN)) {
 			const NodeId call = arena_.Make("call-expression");
 			arena_.Add(call, value);
-			const std::string callee = arena_.IsTag(value, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ?
+			const std::string callee = arena_.IsTag(value, ::cppgm::syntax::STAG_ID_EXPRESSION) ?
 				arena_.Payload(value) : std::string();
 			bool function_style = false;
 			for (std::uint16_t candidate = 0;
@@ -1504,7 +1503,7 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 	}
 	return value;
 }
-NodeId Parser::ParseUnaryExpression()
+NodeId SyntaxParser::ParseUnaryExpression()
 {
 	if (MatchHostedExtensionMarker()) return ParseUnaryExpression();
 	const NodeId coroutine_await = TryParseCoroutineAwaitExpression();
@@ -1692,7 +1691,7 @@ NodeId Parser::ParseUnaryExpression()
 	if (global_scope) --position_;
 	return ParsePostfixExpression();
 }
-NodeId Parser::ParseInitializer()
+NodeId SyntaxParser::ParseInitializer()
 {
 	if (Match(OP_ASS))
 	{
@@ -1748,7 +1747,7 @@ NodeId Parser::ParseInitializer()
 	}
 	return kNoNode;
 }
-NodeId Parser::ParseCondition(SimpleTokenKind terminator)
+NodeId SyntaxParser::ParseCondition(SimpleTokenKind terminator)
 {
 	const NodeId condition = arena_.Make("condition");
 	const Mark declaration_mark = Checkpoint();
@@ -1780,7 +1779,7 @@ NodeId Parser::ParseCondition(SimpleTokenKind terminator)
 	arena_.Add(condition, expression);
 	return condition;
 }
-NodeId Parser::ParseCompoundStatement()
+NodeId SyntaxParser::ParseCompoundStatement()
 {
 	if (!Match(OP_LBRACE)) return kNoNode;
 	++compound_depth_; const std::size_t fact_mark = name_fact_changes_.size();
@@ -1814,7 +1813,7 @@ NodeId Parser::ParseCompoundStatement()
 	RestoreNameFacts(fact_mark); --compound_depth_;
 	return compound;
 }
-NodeId Parser::ParseStatement()
+NodeId SyntaxParser::ParseStatement()
 {
 	SkipAttributes();
 	const NodeId gnu_asm = TryParseGnuAsmStatement();
@@ -1996,7 +1995,7 @@ NodeId Parser::ParseStatement()
 	arena_.Add(statement, expression);
 	return statement;
 }
-NodeId Parser::ParseNamespace()
+NodeId SyntaxParser::ParseNamespace()
 {
 	bool is_inline = Match(KW_INLINE);
 	if (!Match(KW_NAMESPACE)) return kNoNode;
@@ -2032,7 +2031,7 @@ NodeId Parser::ParseNamespace()
 	Expect(OP_RBRACE);
 	return declaration;
 }
-NodeId Parser::ParseUsing()
+NodeId SyntaxParser::ParseUsing()
 {
 	if (!Match(KW_USING)) return kNoNode;
 	if (Match(KW_NAMESPACE))
@@ -2086,7 +2085,7 @@ NodeId Parser::ParseUsing()
 		arena_.Add(declaration, attributes[i]);
 	return declaration;
 }
-NodeId Parser::ParseNestedTemplateParameterClause()
+NodeId SyntaxParser::ParseNestedTemplateParameterClause()
 {
 	const NodeId clause = arena_.Make("template-parameter-clause");
 	Expect(OP_LT);
@@ -2106,7 +2105,7 @@ NodeId Parser::ParseNestedTemplateParameterClause()
 	ExpectCloseAngle();
 	return clause;
 }
-NodeId Parser::ParseTypeTemplateParameter()
+NodeId SyntaxParser::ParseTypeTemplateParameter()
 {
 	const NodeId parameter = arena_.Make("type-parameter");
 	const bool template_template = Match(KW_TEMPLATE);
@@ -2137,7 +2136,7 @@ NodeId Parser::ParseTypeTemplateParameter()
 	}
 	return parameter;
 }
-NodeId Parser::ParseNonTypeTemplateParameter()
+NodeId SyntaxParser::ParseNonTypeTemplateParameter()
 {
 	const NodeId parameter = arena_.Make("non-type-template-parameter");
 	const bool bare_int_parameter = At(KW_INT);
@@ -2174,14 +2173,14 @@ NodeId Parser::ParseNonTypeTemplateParameter()
 	}
 	return parameter;
 }
-NodeId Parser::ParseTemplateParameter()
+NodeId SyntaxParser::ParseTemplateParameter()
 {
 	if (!StartsDependentNonTypeTemplateParameter() &&
 		(At(KW_CLASS) || At(KW_TYPENAME) || At(KW_TEMPLATE)))
 		return ParseTypeTemplateParameter();
 	return ParseNonTypeTemplateParameter();
 }
-NodeId Parser::ParseTemplate(bool in_class)
+NodeId SyntaxParser::ParseTemplate(bool in_class)
 {
 	if (!Match(KW_TEMPLATE)) return kNoNode;
 	const std::size_t parameter_mark = active_non_type_parameter_names_.size();
@@ -2222,7 +2221,7 @@ NodeId Parser::ParseTemplate(bool in_class)
 	}
 	return declaration;
 }
-NodeId Parser::ParseCtorInitializer()
+NodeId SyntaxParser::ParseCtorInitializer()
 {
 	if (!Match(OP_COLON)) return kNoNode;
 	const NodeId initializer = arena_.Make("ctor-initializer");
@@ -2272,7 +2271,7 @@ NodeId Parser::ParseCtorInitializer()
 	}
 	return initializer;
 }
-NodeId Parser::ParseSpecialMember(bool)
+NodeId SyntaxParser::ParseSpecialMember(bool)
 {
 	const Mark mark = Checkpoint();
 	const std::vector<NodeId> specifiers = ParseSpecialMemberSpecifiers();
@@ -2297,7 +2296,7 @@ NodeId Parser::ParseSpecialMember(bool)
 			edge != kNoEdge; edge = arena_.NextEdge(edge))
 		{
 			const NodeId child = arena_.EdgeChild(edge);
-			if (arena_.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
+			if (arena_.IsTag(child, ::cppgm::syntax::STAG_NAME_COMPONENT))
 				components.push_back(arena_.SemanticPayloadId(child));
 		}
 		if (components.size() > 1)
@@ -2412,7 +2411,7 @@ NodeId Parser::ParseSpecialMember(bool)
 	arena_.Add(member, body);
 	return member;
 }
-NodeId Parser::ParseClass(bool require_semicolon)
+NodeId SyntaxParser::ParseClass(bool require_semicolon)
 {
 	if (!At(KW_CLASS) && !At(KW_STRUCT) && !At(KW_UNION)) return kNoNode;
 	const std::size_t key = position_++;
@@ -2598,7 +2597,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 	return declaration;
 }
-NodeId Parser::ParseEnum(bool require_semicolon)
+NodeId SyntaxParser::ParseEnum(bool require_semicolon)
 {
 	if (!At(KW_ENUM)) return kNoNode;
 	const std::size_t first = position_++;
@@ -2657,7 +2656,7 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 	arena_.SetTokenRange(declaration, first, position_);
 	return declaration;
 }
-bool Parser::StartsStandaloneEnumDeclaration() const
+bool SyntaxParser::StartsStandaloneEnumDeclaration() const
 {
 	std::size_t scan = position_ + 1;
 	if (scan < tokens_.size() &&
@@ -2678,7 +2677,7 @@ bool Parser::StartsStandaloneEnumDeclaration() const
 		kind == static_cast<std::uint16_t>(OP_COLON) ||
 		kind == static_cast<std::uint16_t>(OP_SEMICOLON);
 }
-NodeId Parser::ParseStaticAssert()
+NodeId SyntaxParser::ParseStaticAssert()
 {
 	const std::size_t first = position_; if (!Match(KW_STATIC_ASSERT)) return kNoNode;
 	const NodeId declaration = arena_.Make("static-assert-declaration");
@@ -2696,7 +2695,7 @@ NodeId Parser::ParseStaticAssert()
 	Expect(OP_SEMICOLON);
 	arena_.SetTokenRange(declaration, first, position_); return declaration;
 }
-NodeId Parser::ParseSimpleOrFunction(bool, bool)
+NodeId SyntaxParser::ParseSimpleOrFunction(bool, bool)
 {
 	const Mark mark = Checkpoint();
 	const std::size_t specifier_first = position_;
@@ -2710,7 +2709,7 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 	return FinishSimpleOrFunction(
 		mark, specifier_first, specifier_last, specifiers);
 }
-NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
+NodeId SyntaxParser::FinishSimpleOrFunction(const Mark& mark,
 	std::size_t specifier_first, std::size_t specifier_last,
 	NodeId specifiers)
 {
@@ -2738,7 +2737,7 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 			return kNoNode;
 		}
 		if ((At(OP_LBRACE) || At(KW_TRY)) && names.empty() &&
-			arena_.HasDescendantTag(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE))
+			arena_.HasDescendantTag(declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE))
 		{
 			const NodeId declaration = arena_.Make("function-definition");
 			arena_.Add(declaration, specifiers);
@@ -2793,14 +2792,14 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 	}
 	return declaration;
 }
-bool Parser::ParseLeadingAttribute(std::vector<NodeId>* attributes)
+bool SyntaxParser::ParseLeadingAttribute(std::vector<NodeId>* attributes)
 {
-	return pa32_syntax_detail::ConsumeLeadingGnuObjectAttribute(
+	return syntax::ConsumeLeadingGnuObjectAttribute(
 		tokens_, strings_, arena_, &position_, attributes) ||
-		pa32_syntax_detail::ConsumeLeadingStandardObjectAttribute(
+		syntax::ConsumeLeadingStandardObjectAttribute(
 			tokens_, strings_, arena_, &position_, attributes) || SkipAttribute();
 }
-NodeId Parser::ParseDeclaration(bool in_class)
+NodeId SyntaxParser::ParseDeclaration(bool in_class)
 {
 	std::vector<NodeId> attributes;
 	while (ParseLeadingAttribute(&attributes) || MatchHostedExtensionMarker()) {}
@@ -2810,7 +2809,7 @@ NodeId Parser::ParseDeclaration(bool in_class)
 			arena_.Add(declaration, attributes[i]);
 	return declaration;
 }
-NodeId Parser::ParseDeclarationCore(bool in_class)
+NodeId SyntaxParser::ParseDeclarationCore(bool in_class)
 {
 	if (position_ < tokens_.size() &&
 		tokens_[position_].Kind() == kPragmaPackPushToken)
@@ -2920,8 +2919,6 @@ NodeId Parser::ParseDeclarationCore(bool in_class)
 	return ParseSimpleOrFunction(in_class);
 }
 }
-namespace pa10_syntax_detail
-{
 namespace
 {
 
@@ -2940,11 +2937,11 @@ private:
 
 }
 
-void RunSyntaxTranslationUnit(const std::string& path, const std::string& source, const PreprocessingOptions& options, std::ostream* output, SyntaxTreeConsumer* consumer,
-	SyntaxStats* stats, InternedStringTable* retained_strings)
+void RunTranslationUnit(const std::string& path, const std::string& source, const PreprocessingOptions& options, std::ostream* output, SyntaxTreeConsumer* consumer,
+	Stats* stats, InternedStringTable* retained_strings)
 {
 	const std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
-	if (stats) *stats = SyntaxStats();
+	if (stats) *stats = Stats();
 	StringTable local_strings; StringTable& strings = retained_strings ? *retained_strings : local_strings;
 	const std::size_t reserve_limit = 1024 * 1024;
 	strings.Reserve(std::min(reserve_limit, source.size() / 2 + 32));
@@ -2955,7 +2952,7 @@ void RunSyntaxTranslationUnit(const std::string& path, const std::string& source
 		stats ? &stats->preprocessing : 0);
 	SyntaxArena arena(strings, sink.Tokens(), sink.LiteralFacts(),
 		stats ? &stats->interning : 0);
-	Parser parser(sink.Tokens(), strings, arena, stats, output != 0);
+	SyntaxParser parser(sink.Tokens(), strings, arena, stats, output != 0);
 	const std::chrono::steady_clock::time_point parse_started = std::chrono::steady_clock::now();
 	const NodeId root = parser.ParseTranslationUnit();
 	const std::size_t rollback_storage = arena.RollbackStorageBytes();

@@ -716,13 +716,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 {
 	ExpressionInfo local;
 	if (syntax != kNoNode &&
-		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) == kNoNode &&
+		FindChild(syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) == kNoNode &&
 		spelling.find("::") == std::string::npos &&
 		TryAnalyzeConstexprLocal(spelling, target, &local))
 		return local;
 	LookupResult found;
 	const NodeId decltype_name = syntax == kNoNode ? kNoNode :
-		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_DECLTYPE_NAME);
+		FindChild(syntax, ::cppgm::syntax::STAG_DECLTYPE_NAME);
 	if (decltype_name != kNoNode)
 	{
 		const TypeId qualifier = program_->types.RemoveTopCv(
@@ -730,13 +730,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 				FirstSemanticChild(decltype_name), scope)));
 		EnsureClassDefinition(qualifier);
 		const ScopeId carrier = program_->ScopeForType(qualifier);
-		const NodeId qualified = FindChild(decltype_name, ::cppgm::pa10_syntax_detail::STAG_QUALIFIED_NAME);
+		const NodeId qualified = FindChild(decltype_name, ::cppgm::syntax::STAG_QUALIFIED_NAME);
 		if (carrier != kNoScope && qualified != kNoNode)
 			found = LookupStructuredName(
 				qualified, carrier, LOOKUP_ORDINARY);
 	}
 	else if (syntax != kNoNode &&
-		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) != kNoNode)
+		FindChild(syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) != kNoNode)
 	{
 		const BindingId variable_template =
 			InstantiateVariableTemplate(syntax, scope);
@@ -786,17 +786,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	std::size_t first_template_component =
 		std::numeric_limits<std::size_t>::max();
 	const NodeId structured_name = syntax == kNoNode ? kNoNode :
-		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+		FindChild(syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 	for (std::uint32_t edge = structured_name == kNoNode ? kNoEdge :
 		arena_->FirstEdge(structured_name); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId component = arena_->EdgeChild(edge);
-		if (arena_->IsTag(component, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
+		if (arena_->IsTag(component, ::cppgm::syntax::STAG_NAME_COMPONENT))
 		{
 			if (first_template_component ==
 					std::numeric_limits<std::size_t>::max() &&
-				FindChild(component, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) != kNoNode)
+				FindChild(component, ::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) != kNoNode)
 				first_template_component = qualified_component_count;
 			++qualified_component_count;
 		}
@@ -955,17 +955,17 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 {
 	if (node == kNoNode) throw std::runtime_error("empty decltype");
 	bool parenthesized = false;
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_PARENTHESIZED_EXPRESSION))
 	{
 		parenthesized = true;
 		node = FirstSemanticChild(node);
 	}
 	const bool unparenthesized_member = !parenthesized &&
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_MEMBER_EXPRESSION);
+		arena_->IsTag(node, ::cppgm::syntax::STAG_MEMBER_EXPRESSION);
 	const bool unparenthesized_id = !parenthesized &&
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
-		FindChild(node, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) == kNoNode &&
+		arena_->IsTag(node, ::cppgm::syntax::STAG_ID_EXPRESSION);
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_ID_EXPRESSION) &&
+		FindChild(node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) == kNoNode &&
 		arena_->Payload(node).find("::") == std::string::npos)
 	{
 		const LookupResult found = LookupSyntaxName(

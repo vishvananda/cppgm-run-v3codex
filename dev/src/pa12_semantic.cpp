@@ -647,13 +647,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (node == kNoNode) throw std::runtime_error("missing expression");
 	ExpressionInfo prepared;
 	if (ReusePreparedBracedExpression(node, target, &prepared)) return prepared;
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_PARENTHESIZED_EXPRESSION))
 		return AnalyzeExpression(FirstSemanticChild(node), scope, target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_STATEMENT_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_STATEMENT_EXPRESSION))
 		return AnalyzeStatementExpression(node, scope, target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_THROW_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_THROW_EXPRESSION))
 		return AnalyzeThrowExpression(node, scope);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LITERAL))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_LITERAL))
 	{
 		std::string spelling = arena_->Payload(node);
 		if (spelling.compare(0, 11, "TT_LITERAL:") == 0)
@@ -675,7 +675,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		}
 		return ApplyTarget(result, target);
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_KEYWORD_LITERAL))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_KEYWORD_LITERAL))
 	{
 		const int keyword = PayloadTokenKind(node);
 		ExpressionInfo result;
@@ -698,13 +698,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		else throw std::runtime_error("unsupported keyword literal");
 		return ApplyTarget(result, target);
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_ID_EXPRESSION))
 	{
 		const std::string spelling = arena_->Payload(node);
 		ExpressionInfo compiler_value;
 		if (TryAnalyzeCompilerPredefinedValue(spelling, node, target, &compiler_value)) return compiler_value;
 		ExpressionInfo local;
-		if (FindChild(node, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) == kNoNode &&
+		if (FindChild(node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) == kNoNode &&
 			spelling.find("::") == std::string::npos &&
 			TryAnalyzeConstexprLocal(spelling, target, &local))
 			return local;
@@ -724,47 +724,47 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		}
 		return AnalyzeNamedValue(spelling, scope, target, node);
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BUILTIN_TYPE_TRAIT_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_BUILTIN_TYPE_TRAIT_EXPRESSION))
 		return ApplyTarget(AnalyzeBuiltinTypeTrait(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BUILTIN_OFFSETOF_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_BUILTIN_OFFSETOF_EXPRESSION))
 		return AnalyzeBuiltinOffsetof(node, scope, target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CALL_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_CALL_EXPRESSION))
 		return AnalyzeCall(node, scope, target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_LAMBDA_EXPRESSION))
 		return AnalyzeLambdaExpression(node, scope, target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_UNARY_EXPRESSION) ||
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_POSTFIX_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_UNARY_EXPRESSION) ||
+		arena_->IsTag(node, ::cppgm::syntax::STAG_POSTFIX_EXPRESSION))
 		return ApplyTarget(AnalyzeUnary(node, scope, target), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BINARY_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_BINARY_EXPRESSION))
 		return ApplyTarget(AnalyzeBinary(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FOLD_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_FOLD_EXPRESSION))
 		return ApplyTarget(AnalyzeFoldExpression(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ASSIGNMENT_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_ASSIGNMENT_EXPRESSION))
 		return ApplyTarget(AnalyzeAssignment(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CAST_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_CAST_EXPRESSION))
 		return ApplyTarget(AnalyzeCast(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CONDITIONAL_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_CONDITIONAL_EXPRESSION))
 		return ApplyTarget(AnalyzeConditional(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SUBSCRIPT_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_SUBSCRIPT_EXPRESSION))
 		return ApplyTarget(AnalyzeSubscript(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIZEOF_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_SIZEOF_EXPRESSION))
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIZEOF_PACK_EXPRESSION)) return ApplyTarget(AnalyzeSizeofPackExpression(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_TRAIT_EXPRESSION) &&
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_SIZEOF_PACK_EXPRESSION)) return ApplyTarget(AnalyzeSizeofPackExpression(node, scope), target);
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_TYPE_TRAIT_EXPRESSION) &&
 		PayloadTokenKind(node) == KW_ALIGNOF)
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_TRAIT_EXPRESSION) &&
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_TYPE_TRAIT_EXPRESSION) &&
 		PayloadTokenKind(node) == KW_NOEXCEPT)
 		return ApplyTarget(AnalyzeNoexcept(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_TRAIT_EXPRESSION) &&
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_TYPE_TRAIT_EXPRESSION) &&
 		PayloadTokenKind(node) == KW_TYPEID)
 		return ApplyTarget(AnalyzeTypeid(node, scope), target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 		return AnalyzeBracedInit(node, scope, target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NEW_EXPRESSION)) return AnalyzeNewExpression(node, scope, target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DELETE_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_NEW_EXPRESSION)) return AnalyzeNewExpression(node, scope, target);
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_DELETE_EXPRESSION))
 		return AnalyzeDeleteExpression(node, scope, target);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_MEMBER_EXPRESSION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_MEMBER_EXPRESSION))
 		return ApplyTarget(AnalyzeMember(node, scope), target);
 	const NodeId first_child = FirstSemanticChild(node);
 	throw std::runtime_error("unsupported PA12 expression " + arena_->Tag(node) +
@@ -1276,7 +1276,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 	if (callee_syntax == kNoNode) throw std::runtime_error("call without callee");
 	NodeId direct_callee_syntax = callee_syntax;
 	bool parenthesized_callee = false;
-	while (arena_->IsTag(direct_callee_syntax, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION)) {
+	while (arena_->IsTag(direct_callee_syntax, ::cppgm::syntax::STAG_PARENTHESIZED_EXPRESSION)) {
 		parenthesized_callee = true;
 		direct_callee_syntax = FirstSemanticChild(direct_callee_syntax);
 		if (direct_callee_syntax == kNoNode)
@@ -1295,11 +1295,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 	if (CandidateSubstitutionFailed()) return ExpressionInfo();
 	std::size_t constexpr_callee_local = 0;
 	const bool local_callable =
-		arena_->IsTag(direct_callee_syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
-		FindChild(direct_callee_syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) == kNoNode && arena_->Payload(direct_callee_syntax).find("::") == std::string::npos &&
+		arena_->IsTag(direct_callee_syntax, ::cppgm::syntax::STAG_ID_EXPRESSION) &&
+		FindChild(direct_callee_syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) == kNoNode && arena_->Payload(direct_callee_syntax).find("::") == std::string::npos &&
 		FindConstexprLocal(program_->names.Intern(
 			arena_->Payload(direct_callee_syntax)), &constexpr_callee_local);
-	if (arena_->IsTag(direct_callee_syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
+	if (arena_->IsTag(direct_callee_syntax, ::cppgm::syntax::STAG_ID_EXPRESSION) &&
 		!local_callable)
 	{
 		const std::string spelling = arena_->Payload(direct_callee_syntax);
@@ -1389,7 +1389,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		{
 			const TypeRecord cast_record = program_->types.Get(cast_type);
 			if (cast_record.kind == TYPE_ARRAY && arguments_node != kNoNode &&
-				arena_->IsTag(arguments_node, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+				arena_->IsTag(arguments_node, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 			{
 				ExpressionInfo initialized = AnalyzeBracedInit(
 					arguments_node, scope, cast_type);
@@ -1415,7 +1415,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 				argument_syntax[0], scope, cast_type, analyzed_arguments[0]);
 			if (CandidateSubstitutionFailed()) return ExpressionInfo();
 			if (arguments_node != kNoNode &&
-				arena_->IsTag(arguments_node, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST) &&
+				arena_->IsTag(arguments_node, ::cppgm::syntax::STAG_BRACED_INIT_LIST) &&
 				IsBracedNarrowing(operand, cast_type))
 				return CandidateExpressionFailure(
 					"narrowing list-initialization conversion");
@@ -1521,7 +1521,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	const std::string operation = PayloadSource(node);
 	const int op = PayloadTokenKind(node);
 	const bool braced_assignment = op == OP_ASS &&
-		arena_->IsTag(right_syntax, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST);
+		arena_->IsTag(right_syntax, ::cppgm::syntax::STAG_BRACED_INIT_LIST);
 	if (braced_assignment && !braced_initialization_context_)
 		return AnalyzeAssignmentInBracedContext(node, scope);
 	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
@@ -1726,9 +1726,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	AccessKind member_access)
 {
-	const NodeId clause = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_CLAUSE);
+	const NodeId clause = FindChild(node, ::cppgm::syntax::STAG_TEMPLATE_PARAMETER_CLAUSE);
 	const NodeId list = clause == kNoNode ? kNoNode :
-		FindChild(clause, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_LIST);
+		FindChild(clause, ::cppgm::syntax::STAG_TEMPLATE_PARAMETER_LIST);
 	std::vector<TemplateParameter> parameters;
 	std::vector<NameId> parameter_name_list;
 	std::vector<NodeId> defaults;
@@ -1743,8 +1743,8 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	if (clause != kNoNode && list == kNoNode && target != kNoNode &&
 		AnalyzeExplicitTemplateSpecialization(target, scope, member_access))
 		return;
-	if (target != kNoNode && arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_DEDUCTION_GUIDE_DECLARATION)) return;
-	if (target != kNoNode && arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
+	if (target != kNoNode && arena_->IsTag(target, ::cppgm::syntax::STAG_DEDUCTION_GUIDE_DECLARATION)) return;
+	if (target != kNoNode && arena_->IsTag(target, ::cppgm::syntax::STAG_ALIAS_DECLARATION))
 	{
 		ValidateRetainedTemplateDefinition(target, scope, parameters);
 		RegisterAliasTemplate(target, scope, member_access, parameters);
@@ -1757,18 +1757,18 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	const bool source_class_template = source_type_view_ &&
 		target != kNoNode &&
 		(arena_->IsTag(target,
-			::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
+			::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
 		 arena_->IsTag(target,
-			::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION));
+			::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION));
 	const std::size_t source_binding_begin = source_class_template ?
 		program_->BindingCount() : 0;
 	const std::size_t source_scope_begin = source_class_template ?
 		program_->ScopeCount() : 0;
-	if (target != kNoNode && !arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_DECLARATION))
+	if (target != kNoNode && !arena_->IsTag(target, ::cppgm::syntax::STAG_TEMPLATE_DECLARATION))
 		ValidateRetainedTemplateDefinition(target, scope, parameters);
 	if (target != kNoNode &&
-		(arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
-		 arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION)))
+		(arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
+		 arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION)))
 	{
 		if (source_class_template)
 		{
@@ -1784,27 +1784,27 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	if (target != kNoNode && RetainVariableTemplate(
 		target, scope, parameters)) return;
 	const bool special_member_template = target != kNoNode &&
-		(arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DECLARATION) ||
-		 arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION));
+		(arena_->IsTag(target, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DECLARATION) ||
+		 arena_->IsTag(target, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DEFINITION));
 	if (target == kNoNode ||
-		(!arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION) &&
-		 !arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION) &&
+		(!arena_->IsTag(target, ::cppgm::syntax::STAG_SIMPLE_DECLARATION) &&
+		 !arena_->IsTag(target, ::cppgm::syntax::STAG_FUNCTION_DEFINITION) &&
 		 !special_member_template))
 		throw std::runtime_error("unsupported PA12 templated declaration");
 	const NodeId specifiers = FindChild(target, special_member_template ?
 		"member-specifiers" : "decl-specifier-seq");
 	if (specifiers == kNoNode && !special_member_template)
 		throw std::runtime_error("invalid PA12 function template");
-	const bool definition = arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION) ||
-		arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION);
+	const bool definition = arena_->IsTag(target, ::cppgm::syntax::STAG_FUNCTION_DEFINITION) ||
+		arena_->IsTag(target, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DEFINITION);
 	const NodeId declarators = definition ? kNoNode :
-		FindChild(target, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
+		FindChild(target, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
 	if (!definition && declarators == kNoNode && !special_member_template)
 		throw std::runtime_error("invalid PA12 function template");
 	std::vector<NodeId> pattern_declarators;
 	if (definition || special_member_template)
 	{
-		const NodeId declarator = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+		const NodeId declarator = FindChild(target, ::cppgm::syntax::STAG_DECLARATOR);
 		if (declarator == kNoNode)
 			throw std::runtime_error("invalid PA12 function template definition");
 		pattern_declarators.push_back(declarator);
@@ -1815,7 +1815,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId declarator =
-				FindChild(arena_->EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+				FindChild(arena_->EdgeChild(edge), ::cppgm::syntax::STAG_DECLARATOR);
 			if (declarator != kNoNode) pattern_declarators.push_back(declarator);
 		}
 	}
@@ -1831,10 +1831,10 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId specifier = arena_->EdgeChild(edge);
-		const NodeId structured = FindChild(specifier, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+		const NodeId structured = FindChild(specifier, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 		const bool deferred_shape =
-			arena_->IsTag(specifier, ::cppgm::pa10_syntax_detail::STAG_DECLTYPE_SPECIFIER) ||
-			(arena_->IsTag(specifier, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER) &&
+			arena_->IsTag(specifier, ::cppgm::syntax::STAG_DECLTYPE_SPECIFIER) ||
+			(arena_->IsTag(specifier, ::cppgm::syntax::STAG_DECL_SPECIFIER) &&
 			 FirstSemanticChild(specifier) != kNoNode) ||
 			structured != kNoNode;
 		if (deferred_shape &&
@@ -1848,7 +1848,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	{
 		const NodeId declarator = pattern_declarators[i];
 		const NodeId exception_qualifier =
-			FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+			FindChild(declarator, ::cppgm::syntax::STAG_FUNCTION_QUALIFIER);
 		const NodeId exception_expression = exception_qualifier == kNoNode ?
 			kNoNode : FirstSemanticChild(exception_qualifier);
 		const bool dependent_exception_specification =
@@ -1867,7 +1867,7 @@ void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 	const bool unnamed = spelling.empty() || spelling == "<unnamed>";
 	if (unnamed) spelling = "<unnamed>";
 	const NameId name = program_->names.Intern(spelling);
-	const bool is_inline = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INLINE) != kNoNode;
+	const bool is_inline = FindChild(node, ::cppgm::syntax::STAG_INLINE) != kNoNode;
 	const ScopeId child = program_->OpenNamespace(
 		scope, name, is_inline, unnamed);
 	program_->SetScopeEmissionName(child, unnamed ?
@@ -1909,8 +1909,8 @@ void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool local)
 {
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_EMPTY_DECLARATION) || arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DEDUCTION_GUIDE_DECLARATION)) return;
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LAYOUT_PACK_PUSH))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_EMPTY_DECLARATION) || arena_->IsTag(node, ::cppgm::syntax::STAG_DEDUCTION_GUIDE_DECLARATION)) return;
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_LAYOUT_PACK_PUSH))
 	{
 		const std::int64_t parsed = ParseInteger(arena_->Payload(node));
 		if (parsed <= 0 ||
@@ -1921,7 +1921,7 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 		current_pack_alignment_ = static_cast<std::size_t>(parsed);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LAYOUT_PACK_POP))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_LAYOUT_PACK_POP))
 	{
 		if (pack_alignment_stack_.empty()) current_pack_alignment_ = 0;
 		else
@@ -1931,51 +1931,51 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 		}
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_DECLARATION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_TEMPLATE_DECLARATION))
 	{
 		AnalyzeTemplate(node, scope);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_STATIC_ASSERT_DECLARATION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_STATIC_ASSERT_DECLARATION))
 		return AnalyzeStaticAssert(node, scope);
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_EXPLICIT_INSTANTIATION_DECLARATION) ||
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_EXPLICIT_INSTANTIATION_DEFINITION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_EXPLICIT_INSTANTIATION_DECLARATION) ||
+		arena_->IsTag(node, ::cppgm::syntax::STAG_EXPLICIT_INSTANTIATION_DEFINITION))
 	{
 		AnalyzeExplicitInstantiation(node, scope,
-			arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_EXPLICIT_INSTANTIATION_DEFINITION));
+			arena_->IsTag(node, ::cppgm::syntax::STAG_EXPLICIT_INSTANTIATION_DEFINITION));
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_DEFINITION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_NAMESPACE_DEFINITION))
 	{
 		AnalyzeNamespace(node, scope, output_parent);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_ALIAS_DEFINITION) ||
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE) ||
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DECLARATION) ||
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_NAMESPACE_ALIAS_DEFINITION) ||
+		arena_->IsTag(node, ::cppgm::syntax::STAG_USING_DIRECTIVE) ||
+		arena_->IsTag(node, ::cppgm::syntax::STAG_USING_DECLARATION) ||
+		arena_->IsTag(node, ::cppgm::syntax::STAG_ALIAS_DECLARATION))
 	{
 		AnalyzeUsing(node, scope, output_parent, local);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_SIMPLE_DECLARATION))
 	{
 		AnalyzeSimple(node, scope, output_parent, local);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_FUNCTION_DEFINITION))
 	{
 		AnalyzeFunction(node, scope, output_parent);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION) ||
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DECLARATION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DEFINITION) ||
+		arena_->IsTag(node, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DECLARATION))
 	{
 		AnalyzeOutOfClassSpecialMember(node, scope);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
+		arena_->IsTag(node, ::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION))
 	{
 		const TypeId type = AnalyzeClass(node, scope, std::string(), false);
 		const EntityId entity = EntityOf(type);
@@ -1990,7 +1990,7 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 		}
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ENUM_SPECIFIER))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_ENUM_SPECIFIER))
 	{
 		AnalyzeEnum(node, scope, std::string(), false);
 		if (local)
@@ -2000,7 +2000,7 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 		}
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LINKAGE_SPECIFICATION))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_LINKAGE_SPECIFICATION))
 	{
 		const LanguageLinkage previous_linkage = current_language_linkage_;
 		const bool direct_declaration = (arena_->Flags(node) & SYNTAX_FLAG_DIRECT_LINKAGE_DECLARATION) != 0;
@@ -2033,14 +2033,14 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	if (local && AnalyzeAmbiguousDirectInitializer(
 		node, scope, output_parent))
 		return;
-	const NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ), list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
+	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ), list = FindChild(node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
 	std::string hint;
 	EntityId declaration_class_context = kNoEntity;
 	if (list != kNoNode)
 	{
 		const NodeId first = FirstSemanticChild(list);
 		const NodeId declarator = first == kNoNode ? kNoNode :
-			FindChild(first, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+			FindChild(first, ::cppgm::syntax::STAG_DECLARATOR);
 		if (declarator != kNoNode && DeclaratorName(declarator) != 0)
 			hint = program_->names.Get(DeclaratorName(declarator));
 		if (declarator != kNoNode)
@@ -2087,7 +2087,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId item = arena_->EdgeChild(edge);
-		const NodeId declarator = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+		const NodeId declarator = FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
 		if (declarator == kNoNode) throw std::runtime_error("missing declarator");
 		if (IsStructuredBindingDeclarator(declarator)) { AnalyzeStructuredBindingDeclaration(item, declarator, spec, scope, owner, local); continue; }
 		const NamePath declared_path = DeclaratorNamePath(declarator);
@@ -2123,7 +2123,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		if (spec.is_constexpr)
 			parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
-		const NodeId initializer_node = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
+		const NodeId initializer_node = FindChild(item, ::cppgm::syntax::STAG_INITIALIZER);
 		if (spec.storage_class != STORAGE_CLASS_EXTERN ||
 			initializer_node != kNoNode)
 		{
@@ -2265,7 +2265,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool deferred_member_definition)
 {
-	const NodeId declarator = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+	const NodeId declarator = FindChild(node, ::cppgm::syntax::STAG_DECLARATOR);
 	const NamePath path = DeclaratorNamePath(declarator);
 	ScopeId structured_owner = kNoScope;
 	const NodeId structure = DeclaratorNameStructure(declarator);
@@ -2300,10 +2300,10 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	if (declaration_class != kNoEntity)
 		current_class_context_ = declaration_class;
 	const ScopeId semantic_scope = deferred_member_definition ? scope : owner;
-	const SpecInfo spec = BuildSpecifiers(FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ),
+	const SpecInfo spec = BuildSpecifiers(FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ),
 		semantic_scope, std::string(), true);
 	if (spec.virtual_specifier ||
-		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_VIRT_SPECIFIER) != kNoNode)
+		FindChild(declarator, ::cppgm::syntax::STAG_VIRT_SPECIFIER) != kNoNode)
 		throw std::runtime_error(
 			"virtual specifier is only allowed in a class definition");
 	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, semantic_scope,
@@ -2335,7 +2335,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 			function.constexpr_function || spec.is_constexpr;
 		function.definition_body =
 			FunctionDefinitionPart(node, "compound-statement");
-		function.function_try_block = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_TRY_BLOCK);
+		function.function_try_block = FindChild(node, ::cppgm::syntax::STAG_FUNCTION_TRY_BLOCK);
 	}
 	if (deferred_member_definition)
 	{
@@ -2446,7 +2446,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 void SemanticAnalyzer::AnalyzeSubstatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT))
 		AnalyzeCompound(node, scope, output_parent);
 	else
 	{
@@ -2464,17 +2464,17 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 {
 	if (AnalyzeHostedSelectionStatement(node, scope, output_parent)) return;
 	if (AnalyzeGnuAsmStatement(node, scope, output_parent)) return;
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT))
 	{
 		AnalyzeCompound(node, scope, output_parent);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_RETURN_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_RETURN_STATEMENT))
 	{
 		AnalyzeReturnStatement(node, scope, output_parent);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_EXPRESSION_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_EXPRESSION_STATEMENT))
 	{
 		const std::uint32_t statement = MakeDump(DUMP_EXPRESSION_STATEMENT);
 		dump_.Add(output_parent, statement);
@@ -2490,7 +2490,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		return;
 	}
 	if (AnalyzeExceptionStatement(node, scope, output_parent)) return;
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_IF_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_IF_STATEMENT))
 	{
 		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,
 			ScopePrefixId(scope));
@@ -2500,11 +2500,11 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CONDITION))
+			if (arena_->IsTag(child, ::cppgm::syntax::STAG_CONDITION))
 				AnalyzeCondition(child, control, statement, false);
-			else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_THEN) || arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_ELSE))
+			else if (arena_->IsTag(child, ::cppgm::syntax::STAG_THEN) || arena_->IsTag(child, ::cppgm::syntax::STAG_ELSE))
 			{
-				const std::uint32_t branch = MakeDump(arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_THEN) ?
+				const std::uint32_t branch = MakeDump(arena_->IsTag(child, ::cppgm::syntax::STAG_THEN) ?
 					DUMP_THEN : DUMP_ELSE);
 				dump_.Add(statement, branch);
 				AnalyzeSubstatement(FirstSemanticChild(child), control, branch);
@@ -2513,10 +2513,10 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		AppendScopeDestructionActions(control, output_parent, scope);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_WHILE_STATEMENT) ||
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DO_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_WHILE_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::syntax::STAG_DO_STATEMENT))
 	{
-		const bool is_do = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DO_STATEMENT);
+		const bool is_do = arena_->IsTag(node, ::cppgm::syntax::STAG_DO_STATEMENT);
 		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,
 			ScopePrefixId(scope));
 		const std::uint32_t statement = MakeDump(is_do ?
@@ -2529,7 +2529,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CONDITION))
+			if (arena_->IsTag(child, ::cppgm::syntax::STAG_CONDITION))
 				AnalyzeCondition(child, control, statement, false);
 			else AnalyzeSubstatement(child, control, statement);
 		}
@@ -2539,7 +2539,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		AppendScopeDestructionActions(control, output_parent, scope);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FOR_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_FOR_STATEMENT))
 	{
 		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,
 			ScopePrefixId(scope));
@@ -2552,7 +2552,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_FOR_INIT_STATEMENT))
+			if (arena_->IsTag(child, ::cppgm::syntax::STAG_FOR_INIT_STATEMENT))
 			{
 				const std::uint32_t init = MakeDump(DUMP_FOR_INIT_STATEMENT);
 				dump_.Add(statement, init);
@@ -2572,9 +2572,9 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 					}
 				}
 			}
-			else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CONDITION))
+			else if (arena_->IsTag(child, ::cppgm::syntax::STAG_CONDITION))
 				AnalyzeCondition(child, control, statement, false);
-			else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_ITERATION))
+			else if (arena_->IsTag(child, ::cppgm::syntax::STAG_ITERATION))
 			{
 				const std::uint32_t iteration = MakeDump(DUMP_ITERATION);
 				dump_.Add(statement, iteration);
@@ -2591,12 +2591,12 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		AppendScopeDestructionActions(control, output_parent, scope);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_RANGE_FOR_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_RANGE_FOR_STATEMENT))
 	{
 		AnalyzeRangeFor(node, scope, output_parent);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SWITCH_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_SWITCH_STATEMENT))
 	{
 		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,
 			ScopePrefixId(scope));
@@ -2609,7 +2609,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CONDITION))
+			if (arena_->IsTag(child, ::cppgm::syntax::STAG_CONDITION))
 				AnalyzeCondition(child, control, statement, true);
 			else AnalyzeSubstatement(child, control, statement);
 		}
@@ -2619,7 +2619,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		AppendScopeDestructionActions(control, output_parent, scope);
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BREAK_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_BREAK_STATEMENT))
 	{
 		if (loop_depth_ == 0 && switch_depth_ == 0)
 			throw std::runtime_error("break outside loop or switch");
@@ -2631,7 +2631,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			break_cleanup_stops_.back());
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CONTINUE_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_CONTINUE_STATEMENT))
 	{
 		if (loop_depth_ == 0) throw std::runtime_error("continue outside loop");
 		const std::uint32_t statement = MakeDump(DUMP_CONTINUE_STATEMENT);
@@ -2642,14 +2642,14 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			continue_cleanup_stops_.back());
 		return;
 	}
-	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CASE_STATEMENT) ||
-		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DEFAULT_STATEMENT))
+	if (arena_->IsTag(node, ::cppgm::syntax::STAG_CASE_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::syntax::STAG_DEFAULT_STATEMENT))
 	{
 		if (switch_depth_ == 0)
 			throw std::runtime_error("case/default outside switch");
 		ValidateSwitchLabelEntry(scope, scope_parents_,
 			scope_switch_entry_barriers_, switch_label_entry_scopes_);
-		const bool is_case = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CASE_STATEMENT);
+		const bool is_case = arena_->IsTag(node, ::cppgm::syntax::STAG_CASE_STATEMENT);
 		const std::uint32_t statement = MakeDump(is_case ?
 			DUMP_CASE_STATEMENT : DUMP_DEFAULT_STATEMENT);
 		dump_.Add(output_parent, statement);

@@ -13,7 +13,7 @@ void SemanticAnalyzer::AnalyzeDeclaratorlessSimpleDeclaration(
 	bool local, const SpecInfo& spec)
 {
 	const NodeId class_specifier = FindChild(specifiers,
-		::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER);
+		::cppgm::syntax::STAG_CLASS_SPECIFIER);
 	const EntityId entity = EntityOf(spec.type);
 	const bool anonymous_union = class_specifier != kNoNode &&
 		arena_->Payload(class_specifier).empty() && entity != kNoEntity &&

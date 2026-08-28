@@ -17,7 +17,7 @@ class Syntax
 protected:
 	bool SkipHostedAttributeSyntax()
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		Derived& parser = static_cast<Derived&>(*this);
 		const std::size_t start = parser.position_;
 		if (parser.AtIdentifier() &&
@@ -67,7 +67,7 @@ protected:
 
 	bool AtHostedAttribute() const
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		const Derived& parser = static_cast<const Derived&>(*this);
 		return (parser.At(OP_LSQUARE) && parser.AtOffset(1, OP_LSQUARE)) ||
 			(parser.AtIdentifier() && IsGnuAttributeIntroducer(
@@ -85,7 +85,7 @@ protected:
 
 	bool StartsHostedDeclaration(std::size_t position) const
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		const Derived& parser = static_cast<const Derived&>(*this);
 		return position < parser.tokens_.size() &&
 			parser.tokens_[position].Kind() == kIdentifierToken &&
@@ -94,7 +94,7 @@ protected:
 
 	bool StartsHostedType(std::size_t position) const
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		const Derived& parser = static_cast<const Derived&>(*this);
 		if (position >= parser.tokens_.size()) return false;
 		if (parser.tokens_[position].Kind() ==
@@ -111,11 +111,11 @@ protected:
 	}
 
 	bool TryParseHostedDeclSpecifier(
-		pa10_syntax_detail::NodeId sequence, bool for_type_id,
+		syntax::NodeId sequence, bool for_type_id,
 		bool* consumed, bool* saw_type, bool* saw_user_type,
 		bool* saw_int128, std::string* first_type)
 	{
-		using namespace pa10_syntax_detail;
+		using namespace syntax;
 		Derived& parser = static_cast<Derived&>(*this);
 		if (!parser.AtIdentifier()) return false;
 		const SpecifierKind kind =

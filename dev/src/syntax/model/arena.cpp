@@ -9,7 +9,7 @@
 
 namespace cppgm
 {
-namespace pa10_syntax_detail
+namespace syntax
 {
 const std::uint16_t kSimpleTokenCount =
 	static_cast<std::uint16_t>(OP_ARROW) + 1;
@@ -69,7 +69,7 @@ std::uint32_t SyntaxToken::LiteralFact() const
 }
 
 SyntaxTokenSink::SyntaxTokenSink(StringTable& strings,
-	SyntaxInterningStats* stats)
+	InterningStats* stats)
 	: strings_(strings), stats_(stats), source_file_(0),
 	  cached_source_file_(0), has_cached_source_file_(false), source_line_(0),
 	  source_column_(0) {}
@@ -295,7 +295,7 @@ SyntaxEdge::SyntaxEdge(NodeId child_value) : child(child_value), next(kNoEdge)
 SyntaxArena::SyntaxArena(StringTable& strings,
 	const std::vector<SyntaxToken>& tokens,
 	const std::vector<SyntaxLiteralFact>& literal_facts,
-	SyntaxInterningStats* stats)
+	InterningStats* stats)
 	: strings_(strings), stats_(stats), tokens_(tokens),
 	  literal_facts_(literal_facts), tag_cache_(kSyntaxTagCacheEntries),
 	  rollback_edge_base_(0) {}
@@ -582,7 +582,7 @@ void SyntaxArena::AppendImmediateParameterNames(NodeId declarator,
 			edge = NextEdge(edge))
 		{
 			const NodeId child = EdgeChild(edge);
-			if (!IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE))
+			if (!IsTag(child, ::cppgm::syntax::STAG_PARAMETER_CLAUSE))
 			{
 				pending.push_back(child);
 				continue;
@@ -591,7 +591,7 @@ void SyntaxArena::AppendImmediateParameterNames(NodeId declarator,
 				item = NextEdge(item))
 			{
 				const NodeId parameter = EdgeChild(item);
-				if (!IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION)) continue;
+				if (!IsTag(parameter, ::cppgm::syntax::STAG_PARAMETER_DECLARATION)) continue;
 				const TextId name = nodes_[parameter].semantic_payload;
 				if (name != 0) result->push_back(name);
 			}

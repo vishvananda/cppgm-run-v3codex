@@ -136,7 +136,7 @@ bool TypeIdNamesDependentQualifiedType(const SyntaxArena& arena,
 	NodeId specifiers = kNoNode;
 	for (std::uint32_t edge = arena.FirstEdge(type_id); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
-		if (arena.IsTag(arena.EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ))
+		if (arena.IsTag(arena.EdgeChild(edge), ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ))
 		{
 			specifiers = arena.EdgeChild(edge);
 			break;
@@ -149,7 +149,7 @@ bool TypeIdNamesDependentQualifiedType(const SyntaxArena& arena,
 		NodeId structure = kNoNode;
 		for (std::uint32_t child = arena.FirstEdge(specifier);
 			child != kNoEdge; child = arena.NextEdge(child))
-			if (arena.IsTag(arena.EdgeChild(child), ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME))
+			if (arena.IsTag(arena.EdgeChild(child), ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME))
 			{
 				structure = arena.EdgeChild(child);
 				break;
@@ -158,7 +158,7 @@ bool TypeIdNamesDependentQualifiedType(const SyntaxArena& arena,
 		std::vector<NodeId> components;
 		for (std::uint32_t component = arena.FirstEdge(structure);
 			component != kNoEdge; component = arena.NextEdge(component))
-			if (arena.IsTag(arena.EdgeChild(component), ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
+			if (arena.IsTag(arena.EdgeChild(component), ::cppgm::syntax::STAG_NAME_COMPONENT))
 				components.push_back(arena.EdgeChild(component));
 		for (std::size_t component = 0;
 			component + 1 < components.size(); ++component)
@@ -299,19 +299,19 @@ void SemanticAnalyzer::ResetClassTemplateSpecializationDefinition(
 bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	NodeId target, ScopeId scope, AccessKind)
 {
-	NodeId declarator = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
-	if (arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
+	NodeId declarator = FindChild(target, ::cppgm::syntax::STAG_DECLARATOR);
+	if (arena_->IsTag(target, ::cppgm::syntax::STAG_SIMPLE_DECLARATION))
 	{
-		const NodeId list = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
+		const NodeId list = FindChild(target, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
 		const NodeId item = list == kNoNode ? kNoNode :
 			FirstSemanticChild(list);
 		declarator = item == kNoNode ? kNoNode :
-			FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+			FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
 	}
 	const NodeId structure =
-		arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
-		arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION) ?
-		FindChild(target, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) :
+		arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
+		arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION) ?
+		FindChild(target, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) :
 		declarator == kNoNode ? kNoNode :
 		DeclaratorNameStructure(declarator);
 	// A concrete out-of-class member specialization names its class template-id
@@ -322,28 +322,28 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	if (structure != kNoNode)
 	{
 		structured_path.global =
-			FindChild(structure, ::cppgm::pa10_syntax_detail::STAG_GLOBAL_QUALIFIER) != kNoNode;
+			FindChild(structure, ::cppgm::syntax::STAG_GLOBAL_QUALIFIER) != kNoNode;
 		for (std::uint32_t edge = arena_->FirstEdge(structure);
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT)) continue;
+			if (!arena_->IsTag(child, ::cppgm::syntax::STAG_NAME_COMPONENT)) continue;
 			components.push_back(child);
 			structured_path.Push(program_->names.UseInterned(
 				arena_->SemanticPayloadId(child)));
 		}
 	}
 	const bool member_class_template_specialization =
-		(arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
-		 arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION)) &&
+		(arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
+		 arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION)) &&
 		!components.empty() && FindChild(components.back(),
-			::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) != kNoNode;
+			::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) != kNoNode;
 	ScopeId explicit_member_owner_scope = kNoScope;
 	for (std::size_t component = 0;
 		component + 1 < components.size(); ++component)
 	{
 		const NodeId list = FindChild(
-			components[component], ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
+			components[component], ::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
 		if (list == kNoNode) continue;
 		NamePath primary;
 		primary.global = structured_path.global;
@@ -384,12 +384,12 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 			SCOPE_TEMPLATE_PARAMETERS, 0,
 			ScopePrefixId(program_->entities[entity].member_scope));
 		SpecInfo member_spec;
-		if (arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DECLARATION) ||
-			arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION))
+		if (arena_->IsTag(target, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DECLARATION) ||
+			arena_->IsTag(target, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DEFINITION))
 			member_spec.type = program_->types.Fundamental(FUND_VOID);
 		else
 		{
-			const NodeId specifiers = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+			const NodeId specifiers = FindChild(target, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 			if (specifiers == kNoNode)
 				throw std::runtime_error(
 					"explicit member specialization has no declared type");
@@ -403,7 +403,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		current_class_context_ = previous_class;
 		if (!program_->types.IsFunction(parsed.type))
 		{
-			if (!arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
+			if (!arena_->IsTag(target, ::cppgm::syntax::STAG_SIMPLE_DECLARATION))
 				throw std::runtime_error(
 					"explicit member specialization is not a function");
 			AnalyzeSimple(target, definition_scope, root_, false, true, true);
@@ -420,8 +420,8 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 					static_cast<std::size_t>(canonical) + 1, 0);
 			explicit_static_member_specialization_states_[canonical] = 1;
 			const NodeId item = FirstSemanticChild(
-				FindChild(target, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST));
-			if (item == kNoNode || FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER) == kNoNode)
+				FindChild(target, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST));
+			if (item == kNoNode || FindChild(item, ::cppgm::syntax::STAG_INITIALIZER) == kNoNode)
 				program_->bindings[canonical].explicit_instantiation_suppressed =
 					true;
 			return true;
@@ -470,8 +470,8 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		std::uint8_t& state =
 			function_explicit_specialization_states_[selected];
 		const bool target_definition =
-			arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION) ||
-			arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION);
+			arena_->IsTag(target, ::cppgm::syntax::STAG_FUNCTION_DEFINITION) ||
+			arena_->IsTag(target, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DEFINITION);
 		if (target_definition && (state & 2) != 0)
 			throw std::runtime_error(
 				"duplicate explicit member specialization definition");
@@ -501,15 +501,15 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		function.defined = target_definition;
 		function.deferred = true;
 		function.definition_body = target_definition ?
-			FindChild(target, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT) : kNoNode;
+			FindChild(target, ::cppgm::syntax::STAG_COMPOUND_STATEMENT) : kNoNode;
 		function.constructor_initializer = target_definition ?
-			FindChild(target, ::cppgm::pa10_syntax_detail::STAG_CTOR_INITIALIZER) : kNoNode;
+			FindChild(target, ::cppgm::syntax::STAG_CTOR_INITIALIZER) : kNoNode;
 		function.lexical_scope = definition_scope;
 		function.constexpr_function = function.constexpr_function ||
 			member_spec.is_constexpr;
 		program_->bindings[selected].explicit_instantiation_suppressed = false;
 		const NodeId exception_qualifier = FindChild(declarator,
-			::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+			::cppgm::syntax::STAG_FUNCTION_QUALIFIER);
 		if (function.destructor && exception_qualifier == kNoNode)
 			EnsureFunctionExceptionSpecification(selected);
 		else
@@ -536,15 +536,15 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 			structure, &primary, &argument_syntax);
 	if (!explicit_template_id)
 	{
-		if (arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
-			arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION) ||
+		if (arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
+			arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION) ||
 			declarator == kNoNode) return false;
 		primary = DeclaratorNamePath(declarator);
 		if (primary.Empty()) return false;
 	}
 
-	if (arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
-		arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION))
+	if (arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
+		arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION))
 	{
 		const bool target_definition =
 			(arena_->Flags(target) & SYNTAX_FLAG_DEFINITION) != 0;
@@ -592,7 +592,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 					"explicit class specialization cache has no entity");
 			const BindingRecord& declaration = program_->bindings[
 				program_->entities[entity].declaration];
-			const NodeId key_node = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_KEY);
+			const NodeId key_node = FindChild(target, ::cppgm::syntax::STAG_CLASS_KEY);
 			const std::string key_text = PayloadSource(key_node);
 			const NamedFlavor flavor = key_text == "struct" ? NAMED_STRUCT :
 				key_text == "class" ? NAMED_CLASS :
@@ -701,7 +701,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	}
 
 	if (declarator == kNoNode) return false;
-	const NodeId specifiers = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+	const NodeId specifiers = FindChild(target, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 	if (specifiers == kNoNode) return false;
 	ScopeId specialization_semantic_scope = scope;
 	if (structure != kNoNode && structured_path.Size() > 1)
@@ -724,7 +724,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	BindingId selected = kNoBinding;
 	if (!explicit_template_id)
 	{
-		const NodeId identifier = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
+		const NodeId identifier = FindChild(declarator, ::cppgm::syntax::STAG_IDENTIFIER);
 		const NodeId name_syntax = structure != kNoNode ? structure : identifier;
 		if (name_syntax == kNoNode) return false;
 		const std::vector<BindingId> candidates =
@@ -781,7 +781,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	std::uint8_t& specialization_state =
 		function_explicit_specialization_states_[selected];
 	const bool target_definition =
-		arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION);
+		arena_->IsTag(target, ::cppgm::syntax::STAG_FUNCTION_DEFINITION);
 	if (target_definition && (specialization_state & 2) != 0)
 		throw std::runtime_error(
 			"duplicate explicit function specialization definition");
@@ -812,10 +812,10 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		function.constexpr_function || spec.is_constexpr;
 	function.defined = target_definition;
 	function.deferred = true;
-	function.definition_body = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT);
+	function.definition_body = FindChild(target, ::cppgm::syntax::STAG_COMPOUND_STATEMENT);
 	function.lexical_scope = specialization_semantic_scope;
 	const NodeId exception_qualifier = FindChild(declarator,
-		::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+		::cppgm::syntax::STAG_FUNCTION_QUALIFIER);
 	if (function.destructor && exception_qualifier == kNoNode)
 		EnsureFunctionExceptionSpecification(selected);
 	else
@@ -909,7 +909,7 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	if (!CollectExplicitTemplateArguments(
 		syntax, &path, &argument_syntax)) return kNoBinding;
 	std::vector<std::size_t> related;
-	const NodeId structure = FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+	const NodeId structure = FindChild(syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 	if (structure == kNoNode) related = FindVariableTemplates(scope, path);
 	else
 	{
@@ -1259,17 +1259,17 @@ void SemanticAnalyzer::ParseTemplateParametersWithDependentNames(
 		const NodeId parameter = arena_->EdgeChild(edge);
 		TemplateParameter record;
 		record.default_argument =
-			FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_DEFAULT_TEMPLATE_ARGUMENT);
-		record.pack = FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK) != kNoNode;
-		if (arena_->IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_TYPE_PARAMETER))
+			FindChild(parameter, ::cppgm::syntax::STAG_DEFAULT_TEMPLATE_ARGUMENT);
+		record.pack = FindChild(parameter, ::cppgm::syntax::STAG_PARAMETER_PACK) != kNoNode;
+		if (arena_->IsTag(parameter, ::cppgm::syntax::STAG_TYPE_PARAMETER))
 		{
-			if (FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TEMPLATE_PARAMETER) != kNoNode)
+			if (FindChild(parameter, ::cppgm::syntax::STAG_TEMPLATE_TEMPLATE_PARAMETER) != kNoNode)
 			{
 				record.kind = TEMPLATE_ARGUMENT_TEMPLATE;
 				const NodeId nested_clause = FindChild(
-					parameter, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_CLAUSE);
+					parameter, ::cppgm::syntax::STAG_TEMPLATE_PARAMETER_CLAUSE);
 				const NodeId nested_list = nested_clause == kNoNode ? kNoNode :
-					FindChild(nested_clause, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_LIST);
+					FindChild(nested_clause, ::cppgm::syntax::STAG_TEMPLATE_PARAMETER_LIST);
 				std::vector<NameId> nested_names;
 				std::vector<NodeId> nested_defaults;
 				ParseTemplateParametersWithDependentNames(nested_list, scope,
@@ -1277,17 +1277,17 @@ void SemanticAnalyzer::ParseTemplateParametersWithDependentNames(
 					&nested_defaults, visible_local_names,
 					enclosing_dependent_names);
 			}
-			const NodeId identifier = FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
+			const NodeId identifier = FindChild(parameter, ::cppgm::syntax::STAG_IDENTIFIER);
 			record.name = identifier == kNoNode ? 0 :
 				program_->names.UseInterned(arena_->PayloadId(identifier));
 		}
-		else if (arena_->IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_NON_TYPE_TEMPLATE_PARAMETER))
+		else if (arena_->IsTag(parameter, ::cppgm::syntax::STAG_NON_TYPE_TEMPLATE_PARAMETER))
 		{
 			record.kind = TEMPLATE_ARGUMENT_INTEGRAL;
-			record.specifiers = FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
-			record.declarator = FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+			record.specifiers = FindChild(parameter, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
+			record.declarator = FindChild(parameter, ::cppgm::syntax::STAG_DECLARATOR);
 			record.pack = record.pack || (record.declarator != kNoNode &&
-				arena_->HasDescendantTag(record.declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK));
+				arena_->HasDescendantTag(record.declarator, ::cppgm::syntax::STAG_PARAMETER_PACK));
 			record.name = record.declarator == kNoNode ? 0 :
 				DeclaratorName(record.declarator);
 			record.dependent_type = SyntaxUsesTemplateParameter(
@@ -1330,18 +1330,18 @@ bool SemanticAnalyzer::CollectExplicitTemplateArguments(NodeId syntax,
 	NamePath* base, std::vector<NodeId>* arguments)
 {
 	if (syntax == kNoNode) return false;
-	const NodeId structure = arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) ?
-		syntax : FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+	const NodeId structure = arena_->IsTag(syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) ?
+		syntax : FindChild(syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 	if (structure == kNoNode) return false;
 	NodeId terminal = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT)) terminal = child;
+		if (arena_->IsTag(child, ::cppgm::syntax::STAG_NAME_COMPONENT)) terminal = child;
 	}
 	if (terminal == kNoNode) return false;
-	const NodeId list = FindChild(terminal, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
+	const NodeId list = FindChild(terminal, ::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
 	if (list == kNoNode) return false;
 	*base = StructuredNamePath(structure);
 	arguments->clear();
@@ -1519,12 +1519,12 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 			source, *source_dependent_names);
 	if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
 	{
-		NodeId type_id = arena_->IsTag(source, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ? source :
-			FindChild(source, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
+		NodeId type_id = arena_->IsTag(source, ::cppgm::syntax::STAG_TYPE_ID) ? source :
+			FindChild(source, ::cppgm::syntax::STAG_TYPE_ID);
 		if (type_id != kNoNode)
 			argument.type = BuildCanonicalTemplateTypeArgument(
 				type_id, source_scope, source_dependent_names);
-		else if (arena_->IsTag(source, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
+		else if (arena_->IsTag(source, ::cppgm::syntax::STAG_ID_EXPRESSION))
 		{
 			const LookupResult found =
 				LookupSyntaxName(source, source_scope, LOOKUP_TYPE);
@@ -1568,26 +1568,26 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 		ScopedConstantEvaluationRoot constant_root(
 			&constant_evaluation_suppressed_depth_);
 		ExpressionInfo expression;
-		if (arena_->IsTag(source, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
+		if (arena_->IsTag(source, ::cppgm::syntax::STAG_TYPE_ID))
 		{
-			const NodeId specifiers = FindChild(source, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
+			const NodeId specifiers = FindChild(source, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ);
 			const NodeId name = specifiers == kNoNode ? kNoNode :
 				FirstSemanticChild(specifiers);
-			const NodeId declarator = FindChild(source, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
+			const NodeId declarator = FindChild(source, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR);
 			const NodeId retained_declarator = declarator != kNoNode ?
-				declarator : FindChild(source, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+				declarator : FindChild(source, ::cppgm::syntax::STAG_DECLARATOR);
 			const NodeId call_clause = retained_declarator == kNoNode ?
-				kNoNode : FindChild(retained_declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE);
+				kNoNode : FindChild(retained_declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE);
 			const bool retained_pack_name = declarator != kNoNode &&
-				FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK) != kNoNode;
-			if (name != kNoNode && arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) &&
+				FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_PACK) != kNoNode;
+			if (name != kNoNode && arena_->IsTag(name, ::cppgm::syntax::STAG_TYPE_NAME) &&
 				retained_declarator == kNoNode)
 			{
 				const LookupResult known_type =
 					LookupSyntaxName(name, source_scope, LOOKUP_TYPE);
 				if (known_type.type != kNoType) return false;
 			}
-			if (name != kNoNode && arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) &&
+			if (name != kNoNode && arena_->IsTag(name, ::cppgm::syntax::STAG_TYPE_NAME) &&
 				call_clause != kNoNode &&
 				FirstSemanticChild(call_clause) == kNoNode)
 			{
@@ -1613,21 +1613,21 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 				--constant_expression_required_depth_;
 				if (!formed) return false;
 			}
-			else if (name != kNoNode && arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) &&
+			else if (name != kNoNode && arena_->IsTag(name, ::cppgm::syntax::STAG_TYPE_NAME) &&
 				(declarator == kNoNode || retained_pack_name))
 				expression = AnalyzeNamedValue(PayloadSource(name),
 					source_scope,
 					dependent_target ? kNoType : argument.type, name);
 			else if (name != kNoNode &&
-				arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_DECLTYPE_SPECIFIER) &&
-				FindChild(source, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR) == kNoNode)
+				arena_->IsTag(name, ::cppgm::syntax::STAG_DECLTYPE_SPECIFIER) &&
+				FindChild(source, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR) == kNoNode)
 			{
 				const TypeId qualifier = program_->types.RemoveTopCv(
 					EffectiveType(DecltypeType(
 						FirstSemanticChild(name), source_scope)));
 				EnsureClassDefinition(qualifier);
 				const ScopeId carrier = program_->ScopeForType(qualifier);
-				const NodeId qualified = FindChild(name, ::cppgm::pa10_syntax_detail::STAG_QUALIFIED_TYPE_NAME);
+				const NodeId qualified = FindChild(name, ::cppgm::syntax::STAG_QUALIFIED_TYPE_NAME);
 				const LookupResult found = carrier == kNoScope ||
 					qualified == kNoNode ? LookupResult() :
 					LookupStructuredName(qualified, carrier, LOOKUP_ORDINARY);
@@ -1741,7 +1741,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 	};
 	for (std::size_t i = 0; i < syntax.size(); ++i)
 	{
-		if (arena_->IsTag(syntax[i], ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION))
+		if (arena_->IsTag(syntax[i], ::cppgm::syntax::STAG_PACK_EXPANSION_EXPRESSION))
 		{
 			const NodeId operand = FirstSemanticChild(syntax[i]);
 			if (operand == kNoNode)
@@ -1776,14 +1776,14 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			}
 			continue;
 		}
-		NodeId type_id = arena_->IsTag(syntax[i], ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ? syntax[i] :
-			FindChild(syntax[i], ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
+		NodeId type_id = arena_->IsTag(syntax[i], ::cppgm::syntax::STAG_TYPE_ID) ? syntax[i] :
+			FindChild(syntax[i], ::cppgm::syntax::STAG_TYPE_ID);
 		NodeId declarator = type_id == kNoNode ? kNoNode :
-			FindChild(type_id, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
+			FindChild(type_id, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR);
 		if (declarator == kNoNode && type_id != kNoNode)
-			declarator = FindChild(type_id, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+			declarator = FindChild(type_id, ::cppgm::syntax::STAG_DECLARATOR);
 		const bool expansion = declarator != kNoNode &&
-			FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK) != kNoNode;
+			FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_PACK) != kNoNode;
 		if (!expansion)
 		{
 			if (!append_argument(

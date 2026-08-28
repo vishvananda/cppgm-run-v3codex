@@ -1383,12 +1383,12 @@ void report_source_compile_stats(
 			 << " semantic_peak_bytes=" << semantic.peak_stage_storage_bytes;
 		report_generated_identity_stats(semantic);
 		for (std::size_t tag = 0;
-			tag < cppgm::pa10_syntax_detail::STAG_COUNT; ++tag)
+			tag < cppgm::syntax::STAG_COUNT; ++tag)
 		{
 			if (semantic.syntax_name_path_fallback_tags[tag] != 0)
 				cerr << " syntax_name_path_fallback_tag_"
-					 << cppgm::pa10_syntax_detail::SyntaxTagSpelling(
-						static_cast<cppgm::pa10_syntax_detail::SyntaxTagCode>(tag))
+					 << cppgm::syntax::SyntaxTagSpelling(
+						static_cast<cppgm::syntax::SyntaxTagCode>(tag))
 					 << '=' << semantic.syntax_name_path_fallback_tags[tag];
 		}
 			report_compile_phase_stats(stats, preparation_stats,
@@ -1742,8 +1742,8 @@ int run_emit_ast_mode(const vector<string> & args)
     const string source((istreambuf_iterator<char>(input)),
                         istreambuf_iterator<char>());
     output << "start translation unit " << i + 1 << '\n';
-    cppgm::SyntaxStats stats;
-    cppgm::WriteSyntaxTranslationUnit(path, source, options, output,
+    cppgm::syntax::Stats stats;
+    cppgm::syntax::WriteTranslationUnit(path, source, options, output,
         invocation.collect_stats ? &stats : 0);
     if(invocation.collect_stats) {
       cerr << "pa10_stats file=" << path

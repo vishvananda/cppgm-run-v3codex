@@ -11,12 +11,12 @@ namespace pa12_semantic_detail
 bool SemanticAnalyzer::AnalyzeExplicitVariableInstantiation(
 	NodeId target, ScopeId scope, bool definition)
 {
-	if (definition || !arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION) ||
+	if (definition || !arena_->IsTag(target, ::cppgm::syntax::STAG_SIMPLE_DECLARATION) ||
 		program_->KindOfScope(scope) != SCOPE_NAMESPACE) return false;
-	const NodeId list = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
+	const NodeId list = FindChild(target, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
 	const NodeId item = list == kNoNode ? kNoNode : FirstSemanticChild(list);
 	const NodeId declarator = item == kNoNode ? kNoNode :
-		FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+		FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
 	if (declarator == kNoNode) return false;
 	const std::uint32_t first = arena_->FirstEdge(list);
 	if (first != kNoEdge && arena_->NextEdge(first) != kNoEdge)

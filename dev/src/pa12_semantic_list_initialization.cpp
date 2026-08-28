@@ -148,7 +148,7 @@ bool HasDirectPackExpansion(const SyntaxArena& arena, NodeId list)
 {
 	for (std::uint32_t edge = arena.FirstEdge(list); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
-		if (arena.IsTag(arena.EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION))
+		if (arena.IsTag(arena.EdgeChild(edge), ::cppgm::syntax::STAG_PACK_EXPANSION_EXPRESSION))
 			return true;
 	return false;
 }
@@ -160,7 +160,7 @@ bool SemanticAnalyzer::NeedsBracedCallContext(
 {
 	if (braced_initialization_context_) return false;
 	for (std::size_t i = 0; i < arguments.size(); ++i)
-		if (arena_->IsTag(arguments[i], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST)) return true;
+		if (arena_->IsTag(arguments[i], ::cppgm::syntax::STAG_BRACED_INIT_LIST)) return true;
 	return false;
 }
 
@@ -185,7 +185,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignmentInBracedContext(
 ExpressionInfo SemanticAnalyzer::AnalyzeUntypedCallArgument(
 	NodeId argument, ScopeId scope)
 {
-	if (!arena_->IsTag(argument, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+	if (!arena_->IsTag(argument, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 		return AnalyzeExpression(argument, scope);
 	if (!braced_initialization_context_)
 		throw std::logic_error("braced call argument has no fact context");
@@ -198,7 +198,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeFunctionalCastArgument(
 	const ExpressionInfo& prepared)
 {
 	if (prepared.type != kNoType) return prepared;
-	if (!arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+	if (!arena_->IsTag(syntax, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 		return CandidateExpressionFailure(
 			"functional cast argument has no type");
 	return AnalyzeBracedInit(syntax, scope, target);
@@ -207,7 +207,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeFunctionalCastArgument(
 CallConversionFact SemanticAnalyzer::UntypedCallArgumentConversion(
 	NodeId argument, ScopeId scope, TypeId target)
 {
-	if (arena_->IsTag(argument, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+	if (arena_->IsTag(argument, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 		return BracedInitializationConversion(argument, scope, target);
 	CallConversionFact result;
 	if (HasUniqueFunctionAddressTarget(scope, argument, target))
@@ -238,7 +238,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeCallArgument(NodeId syntax,
 {
 	if (prepared.type != kNoType)
 		return ApplyCallArgument(prepared, target, conversion);
-	if (!arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+	if (!arena_->IsTag(syntax, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 		return AnalyzeExpression(syntax, scope, target);
 	const TypeRecord parameter = program_->types.Get(target);
 	const TypeId list_target = parameter.kind == TYPE_LVALUE_REFERENCE ||
@@ -324,7 +324,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 			array_element.kind == TYPE_FUNDAMENTAL &&
 			array_element.fundamental == FUND_CHAR &&
 			arena_->NextEdge(element_edge) == kNoEdge &&
-			arena_->IsTag(arena_->EdgeChild(element_edge), ::cppgm::pa10_syntax_detail::STAG_LITERAL) &&
+			arena_->IsTag(arena_->EdgeChild(element_edge), ::cppgm::syntax::STAG_LITERAL) &&
 			arena_->Payload(arena_->EdgeChild(element_edge)).find('"') !=
 				std::string::npos;
 		ExpressionInfo result = string_array ?
@@ -377,14 +377,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 void SemanticAnalyzer::PrepareBracedInitialization(NodeId list, ScopeId scope)
 {
 	if (!braced_initialization_context_ || list == kNoNode ||
-		!arena_->IsTag(list, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+		!arena_->IsTag(list, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 		return;
 	for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DESIGNATED_INITIALIZER)) continue;
-		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+		if (arena_->IsTag(child, ::cppgm::syntax::STAG_DESIGNATED_INITIALIZER)) continue;
+		if (arena_->IsTag(child, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 		{
 			PrepareBracedInitialization(child, scope);
 			continue;
@@ -572,7 +572,7 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 {
 	CallConversionFact invalid;
 	if (!braced_initialization_context_ || list == kNoNode ||
-		!arena_->IsTag(list, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+		!arena_->IsTag(list, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 		return invalid;
 	const std::uint64_t key = BracedFactKey(list, target);
 	const CallConversionFact* existing =
@@ -622,7 +622,7 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 		for (std::size_t i = 0; i < elements.size(); ++i)
 		{
 			CallConversionFact element;
-			if (arena_->IsTag(elements[i], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+			if (arena_->IsTag(elements[i], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 				element = BracedInitializationConversion(
 					elements[i], scope, initializer_element);
 			else
@@ -656,7 +656,7 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 			for (std::size_t i = 0; i < elements.size(); ++i)
 			{
 				CallConversionFact element;
-				if (arena_->IsTag(elements[i], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+				if (arena_->IsTag(elements[i], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 					element = BracedInitializationConversion(
 						elements[i], scope, record.child);
 				else
@@ -702,7 +702,7 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 					const TypeId member_type =
 						program_->bindings[members[i]].type;
 					CallConversionFact element;
-					if (arena_->IsTag(elements[i], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+					if (arena_->IsTag(elements[i], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 						element = BracedInitializationConversion(
 							elements[i], scope, member_type);
 					else
@@ -728,7 +728,7 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 			arguments.reserve(elements.size());
 			for (std::size_t i = 0; i < elements.size(); ++i)
 			{
-				if (arena_->IsTag(elements[i], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+				if (arena_->IsTag(elements[i], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 					arguments.push_back(ExpressionInfo());
 				else
 				{
@@ -751,7 +751,7 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 	}
 	else if (elements.empty()) result.rank = CONVERSION_EXACT;
 	else if (elements.size() != 1) result.rank = CONVERSION_INVALID;
-	else if (arena_->IsTag(elements[0], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+	else if (arena_->IsTag(elements[0], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 		result = BracedInitializationConversion(elements[0], scope, target);
 	else
 	{
@@ -867,7 +867,7 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 					program_->types.Parameters(constructor.type)[a];
 				if (arguments[a].type == kNoType)
 				{
-					if (arena_->IsTag(argument_syntax[a], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+					if (arena_->IsTag(argument_syntax[a], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 					{
 						conversion = BracedInitializationConversion(
 							argument_syntax[a], scope, parameter);
@@ -877,7 +877,7 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 							top.kind == TYPE_RVALUE_REFERENCE ? top.child : parameter);
 						std::uint32_t edge = arena_->FirstEdge(argument_syntax[a]);
 						if (edge != kNoEdge && arena_->NextEdge(edge) == kNoEdge &&
-							!arena_->IsTag(arena_->EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+							!arena_->IsTag(arena_->EdgeChild(edge), ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 						{
 							const ExpressionInfo* prepared = FindPreparedExpression(
 								*braced_initialization_context_,
@@ -1068,7 +1068,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	bool has_braced_argument = list_initialization && source_list != kNoNode;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 		if (argument_syntax[i] != kNoNode &&
-			arena_->IsTag(argument_syntax[i], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+			arena_->IsTag(argument_syntax[i], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 			has_braced_argument = true;
 	if (!braced_initialization_context_ && has_braced_argument)
 	{
@@ -1086,7 +1086,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			PrepareBracedInitialization(source_list, scope);
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 			if (argument_syntax[i] != kNoNode &&
-				arena_->IsTag(argument_syntax[i], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+				arena_->IsTag(argument_syntax[i], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 				PrepareBracedInitialization(argument_syntax[i], scope);
 	}
 	std::vector<ExpressionInfo> arguments;
@@ -1102,7 +1102,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		arguments.reserve(argument_syntax.size());
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 		{
-			if (arena_->IsTag(argument_syntax[i], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+			if (arena_->IsTag(argument_syntax[i], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 				arguments.push_back(ExpressionInfo());
 			else arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
 		}
@@ -1206,7 +1206,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		{
 			if (argument.type == kNoType)
 			{
-				if (arena_->IsTag(selected_argument_syntax[a], ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
+				if (arena_->IsTag(selected_argument_syntax[a], ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 				{
 					argument = MaterializeBracedConstructorArgument(
 						selected_argument_syntax[a], scope, parameters[a]);

@@ -10,7 +10,7 @@ namespace cppgm
 namespace pa25_semantic_detail
 {
 
-using namespace pa10_syntax_detail;
+using namespace syntax;
 using namespace pa11;
 
 namespace
@@ -20,12 +20,12 @@ const std::uint32_t kNoIndex = std::numeric_limits<std::uint32_t>::max();
 
 bool IsControlScope(const SyntaxArena& arena, NodeId node)
 {
-	return arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_IF_STATEMENT) ||
-		arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SWITCH_STATEMENT) ||
-		arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_WHILE_STATEMENT) ||
-		arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DO_STATEMENT) ||
-		arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FOR_STATEMENT) ||
-		arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_HANDLER);
+	return arena.IsTag(node, ::cppgm::syntax::STAG_IF_STATEMENT) ||
+		arena.IsTag(node, ::cppgm::syntax::STAG_SWITCH_STATEMENT) ||
+		arena.IsTag(node, ::cppgm::syntax::STAG_WHILE_STATEMENT) ||
+		arena.IsTag(node, ::cppgm::syntax::STAG_DO_STATEMENT) ||
+		arena.IsTag(node, ::cppgm::syntax::STAG_FOR_STATEMENT) ||
+		arena.IsTag(node, ::cppgm::syntax::STAG_HANDLER);
 }
 
 }
@@ -168,7 +168,7 @@ void LambdaCaptureUseTable::RestoreBounds(std::size_t mark)
 NameId LambdaCaptureUseTable::DeclaratorName(
 	const SyntaxArena& arena, NodeId node) const
 {
-	if (arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER))
+	if (arena.IsTag(node, ::cppgm::syntax::STAG_IDENTIFIER))
 	{
 		const NameId identity = arena.SemanticPayloadId(node);
 		if (identity != 0) return identity;
@@ -194,7 +194,7 @@ NameId LambdaCaptureUseTable::SimpleExpressionName(
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME)) structured = child;
+		if (arena.IsTag(child, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME)) structured = child;
 	}
 	if (structured != kNoNode)
 	{
@@ -204,8 +204,8 @@ NameId LambdaCaptureUseTable::SimpleExpressionName(
 			edge != kNoEdge; edge = arena.NextEdge(edge))
 		{
 			const NodeId child = arena.EdgeChild(edge);
-			if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GLOBAL_QUALIFIER)) return 0;
-			if (!arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT)) continue;
+			if (arena.IsTag(child, ::cppgm::syntax::STAG_GLOBAL_QUALIFIER)) return 0;
+			if (!arena.IsTag(child, ::cppgm::syntax::STAG_NAME_COMPONENT)) continue;
 			only = arena.SemanticPayloadId(child);
 			++components;
 		}
@@ -229,7 +229,7 @@ void LambdaCaptureUseTable::WalkSimpleDeclaration(NodeId node,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST)) list = child;
+		if (arena.IsTag(child, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST)) list = child;
 	}
 	if (list == kNoNode) return;
 	for (std::uint32_t edge = arena.FirstEdge(list); edge != kNoEdge;
@@ -241,7 +241,7 @@ void LambdaCaptureUseTable::WalkSimpleDeclaration(NodeId node,
 			item_edge != kNoEdge; item_edge = arena.NextEdge(item_edge))
 		{
 			const NodeId child = arena.EdgeChild(item_edge);
-			if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR)) declarator = child;
+			if (arena.IsTag(child, ::cppgm::syntax::STAG_DECLARATOR)) declarator = child;
 		}
 		if (declarator != kNoNode)
 		{
@@ -267,7 +267,7 @@ void LambdaCaptureUseTable::WalkDeclaratorDeclaration(NodeId node,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR)) declarator = child;
+		if (arena.IsTag(child, ::cppgm::syntax::STAG_DECLARATOR)) declarator = child;
 	}
 	if (declarator != kNoNode)
 	{
@@ -278,7 +278,7 @@ void LambdaCaptureUseTable::WalkDeclaratorDeclaration(NodeId node,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (child != declarator && !arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ))
+		if (child != declarator && !arena.IsTag(child, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ))
 			Walk(child, arena, free_names, captures_this);
 	}
 }
@@ -293,9 +293,9 @@ void LambdaCaptureUseTable::WalkRangeFor(NodeId node,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_RANGE_INITIALIZER))
+		if (arena.IsTag(child, ::cppgm::syntax::STAG_RANGE_INITIALIZER))
 			Walk(child, arena, free_names, captures_this);
-		else if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_RANGE_DECLARATION))
+		else if (arena.IsTag(child, ::cppgm::syntax::STAG_RANGE_DECLARATION))
 			declaration = child;
 	}
 	if (declaration != kNoNode)
@@ -306,7 +306,7 @@ void LambdaCaptureUseTable::WalkRangeFor(NodeId node,
 	{
 		const NodeId child = arena.EdgeChild(edge);
 		if (child != declaration &&
-			!arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_RANGE_INITIALIZER))
+			!arena.IsTag(child, ::cppgm::syntax::STAG_RANGE_INITIALIZER))
 			Walk(child, arena, free_names, captures_this);
 	}
 	RestoreBounds(mark);
@@ -316,7 +316,7 @@ void LambdaCaptureUseTable::Walk(NodeId node, const SyntaxArena& arena,
 	std::vector<NameId>* free_names, bool* captures_this)
 {
 	++syntax_visits_;
-	if (arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_EXPRESSION))
+	if (arena.IsTag(node, ::cppgm::syntax::STAG_LAMBDA_EXPRESSION))
 	{
 		const Fact& nested = FindOrBuild(arena, node);
 		for (std::size_t i = 0; i < nested.name_count; ++i)
@@ -327,35 +327,35 @@ void LambdaCaptureUseTable::Walk(NodeId node, const SyntaxArena& arena,
 		*captures_this = *captures_this || nested.captures_this;
 		return;
 	}
-	if (arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
+	if (arena.IsTag(node, ::cppgm::syntax::STAG_ID_EXPRESSION))
 	{
 		const NameId name = SimpleExpressionName(arena, node);
 		if (name != 0 && !IsBound(name)) free_names->push_back(name);
 		return;
 	}
-	if (arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_KEYWORD_LITERAL) &&
+	if (arena.IsTag(node, ::cppgm::syntax::STAG_KEYWORD_LITERAL) &&
 		arena.SemanticPayload(node) == "this")
 	{
 		*captures_this = true;
 		return;
 	}
-	if (arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
+	if (arena.IsTag(node, ::cppgm::syntax::STAG_SIMPLE_DECLARATION))
 	{
 		WalkSimpleDeclaration(node, arena, free_names, captures_this);
 		return;
 	}
-	if (arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CONDITION_DECLARATION) ||
-		arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_EXCEPTION_DECLARATION))
+	if (arena.IsTag(node, ::cppgm::syntax::STAG_CONDITION_DECLARATION) ||
+		arena.IsTag(node, ::cppgm::syntax::STAG_EXCEPTION_DECLARATION))
 	{
 		WalkDeclaratorDeclaration(node, arena, free_names, captures_this);
 		return;
 	}
-	if (arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_RANGE_FOR_STATEMENT))
+	if (arena.IsTag(node, ::cppgm::syntax::STAG_RANGE_FOR_STATEMENT))
 	{
 		WalkRangeFor(node, arena, free_names, captures_this);
 		return;
 	}
-	const bool scoped = arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT) ||
+	const bool scoped = arena.IsTag(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT) ||
 		IsControlScope(arena, node);
 	const std::size_t mark = bound_stack_.size();
 	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
@@ -384,7 +384,7 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 			edge = arena.NextEdge(edge))
 		{
 			const NodeId child = arena.EdgeChild(edge);
-			if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_INTRODUCER))
+			if (arena.IsTag(child, ::cppgm::syntax::STAG_LAMBDA_INTRODUCER))
 			{
 				for (std::uint32_t capture_edge = arena.FirstEdge(child);
 					capture_edge != kNoEdge;
@@ -400,7 +400,7 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 					else if (arena.IsTag(capture,
 						"lambda-capture-default-copy"))
 						has_default = true;
-					else if (arena.IsTag(capture, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_CAPTURE_THIS))
+					else if (arena.IsTag(capture, ::cppgm::syntax::STAG_LAMBDA_CAPTURE_THIS))
 					{
 						if (captures_this)
 							throw std::runtime_error(
@@ -417,8 +417,8 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 						explicit_names.push_back(name);
 						explicit_reference.push_back(1);
 					}
-					else if (arena.IsTag(capture, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_CAPTURE_COPY) ||
-						arena.IsTag(capture, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_CAPTURE_COPY_PACK))
+					else if (arena.IsTag(capture, ::cppgm::syntax::STAG_LAMBDA_CAPTURE_COPY) ||
+						arena.IsTag(capture, ::cppgm::syntax::STAG_LAMBDA_CAPTURE_COPY_PACK))
 					{
 						const NameId name = arena.SemanticPayloadId(capture);
 						free_names.push_back(name);
@@ -427,14 +427,14 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 					}
 				}
 			}
-			else if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_DECLARATOR))
+			else if (arena.IsTag(child, ::cppgm::syntax::STAG_LAMBDA_DECLARATOR))
 			{
 				for (std::uint32_t declaration_edge = arena.FirstEdge(child);
 					declaration_edge != kNoEdge;
 					declaration_edge = arena.NextEdge(declaration_edge))
 				{
 					const NodeId clause = arena.EdgeChild(declaration_edge);
-					if (arena.IsTag(clause, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_CLAUSE))
+					if (arena.IsTag(clause, ::cppgm::syntax::STAG_TEMPLATE_PARAMETER_CLAUSE))
 					{
 						const NodeId list = arena.FirstEdge(clause) == kNoEdge ?
 							kNoNode : arena.EdgeChild(arena.FirstEdge(clause));
@@ -446,18 +446,18 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 								arena, arena.EdgeChild(parameter_edge)));
 						continue;
 					}
-					if (!arena.IsTag(clause, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE)) continue;
+					if (!arena.IsTag(clause, ::cppgm::syntax::STAG_PARAMETER_CLAUSE)) continue;
 					for (std::uint32_t parameter_edge = arena.FirstEdge(clause);
 						parameter_edge != kNoEdge;
 						parameter_edge = arena.NextEdge(parameter_edge))
 					{
 						const NodeId parameter = arena.EdgeChild(parameter_edge);
-						if (arena.IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION))
+						if (arena.IsTag(parameter, ::cppgm::syntax::STAG_PARAMETER_DECLARATION))
 							AddBound(DeclaratorName(arena, parameter));
 					}
 				}
 			}
-			else if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT)) body = child;
+			else if (arena.IsTag(child, ::cppgm::syntax::STAG_COMPOUND_STATEMENT)) body = child;
 		}
 		if (has_default && body != kNoNode)
 			Walk(body, arena, &free_names, &captures_this);

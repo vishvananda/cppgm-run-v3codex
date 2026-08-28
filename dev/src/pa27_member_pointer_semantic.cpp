@@ -58,10 +58,10 @@ TypeId SemanticAnalyzer::MemberPointerAddressSyntaxTarget(
 	NodeId syntax, ScopeId scope)
 {
 	while (syntax != kNoNode &&
-		arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
+		arena_->IsTag(syntax, ::cppgm::syntax::STAG_PARENTHESIZED_EXPRESSION))
 		syntax = FirstSemanticChild(syntax);
-	if (syntax == kNoNode || !arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
-		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) == kNoNode)
+	if (syntax == kNoNode || !arena_->IsTag(syntax, ::cppgm::syntax::STAG_ID_EXPRESSION) ||
+		FindChild(syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) == kNoNode)
 		return kNoType;
 	const LookupResult found = LookupStructuredName(
 		syntax, scope, LOOKUP_ORDINARY);
@@ -79,7 +79,7 @@ TypeId SemanticAnalyzer::MemberPointerAddressTarget(
 	if (target != kNoType) return target;
 	if (operand.binding == kNoBinding ||
 		operand.binding >= program_->bindings.size() || syntax == kNoNode ||
-		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) == kNoNode)
+		FindChild(syntax, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) == kNoNode)
 		return kNoType;
 	const BindingRecord& binding = program_->bindings[operand.binding];
 	if (binding.non_static_data_member && binding.member_owner != kNoEntity)

@@ -8,12 +8,11 @@
 
 namespace cppgm
 {
-namespace pa32_syntax_detail
+namespace syntax
 {
 namespace
 {
 
-using namespace pa10_syntax_detail;
 
 struct GnuObjectAttributeSyntaxFact
 {

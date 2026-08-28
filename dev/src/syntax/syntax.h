@@ -11,12 +11,11 @@
 namespace cppgm
 {
 
-namespace pa10_syntax_detail
+namespace syntax
 {
 class SyntaxTreeConsumer;
-}
 
-struct SyntaxInterningStats
+struct InterningStats
 {
 	InternedStringStats table;
 	std::size_t source_location_calls;
@@ -30,14 +29,14 @@ struct SyntaxInterningStats
 	std::size_t source_file_cache_hits;
 	std::size_t source_file_cache_misses;
 
-	SyntaxInterningStats();
-	void Accumulate(const SyntaxInterningStats& other);
+	InterningStats();
+	void Accumulate(const InterningStats& other);
 };
 
-struct SyntaxStats
+struct Stats
 {
 	PreprocessingStats preprocessing;
-	SyntaxInterningStats interning;
+	InterningStats interning;
 	std::size_t tokens;
 	std::size_t interned_spellings;
 	std::size_t spelling_bytes;
@@ -63,21 +62,22 @@ struct SyntaxStats
 	std::uint64_t render_nanoseconds;
 	std::uint64_t elapsed_nanoseconds;
 
-	SyntaxStats();
+	Stats();
 };
 
 // Parse one translation unit through phase 7 and write the PA10 syntax-tree
 // view. All retained token and syntax storage is owned by this call.
-void WriteSyntaxTranslationUnit(const std::string& path,
+void WriteTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	std::ostream& output, SyntaxStats* stats = 0);
+	std::ostream& output, Stats* stats = 0);
 
 // Parse one translation unit through the shared PA10 syntax boundary and give
 // a phase-local, read-only arena view to a semantic consumer. The arena and
 // retained tokens are released when this call returns.
-void ConsumeSyntaxTranslationUnit(const std::string& path,
+void ConsumeTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	pa10_syntax_detail::SyntaxTreeConsumer& consumer,
-	SyntaxStats* stats = 0);
+	SyntaxTreeConsumer& consumer,
+	Stats* stats = 0);
 
+}
 }
