@@ -1,4 +1,4 @@
-#include "lowering/initialization/static_storage.h"
+#include "lowering/objects/static_initialization.h"
 
 #include "lowering/support/utilities.h"
 #include "preprocess/tokens/post_tokenizer.h"

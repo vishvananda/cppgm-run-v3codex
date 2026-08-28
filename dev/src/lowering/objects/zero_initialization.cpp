@@ -1,4 +1,4 @@
-#include "lowering/initialization/zero_fill.h"
+#include "lowering/objects/zero_initialization.h"
 
 namespace cppgm
 {
