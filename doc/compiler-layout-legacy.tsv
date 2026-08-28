@@ -1,6 +1,4 @@
 kind	pattern	destination
-path	^dev/src/pa30_	compiler_object/, syntax/, semantic/, lowering/
-include	^pa30_	compiler_object/, syntax/, semantic/, lowering/
 namespace	^pa30$	cppgm::compiler_object
 identifier	^CPPGM_PA[0-9][A-Za-z0-9_]*$	guard derived from destination path
 identifier	^PA3Mock_IsDefinedIdentifier$	MockIsDefinedIdentifier

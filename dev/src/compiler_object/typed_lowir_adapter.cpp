@@ -1,4 +1,4 @@
-#include "pa30_lowir_adapter.h"
+#include "compiler_object/typed_lowir_adapter.h"
 
 #include "support/numeric/decimal_spelling.h"
 #include "semantic/lifetime/demand_reason.h"

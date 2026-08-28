@@ -183,7 +183,7 @@ if (@error)
 	exit 1;
 }
 
-my %count;
+my %count = map { $_ => 0 } qw(path include namespace identifier);
 ++ $count{$_->{kind}} for @finding;
 print "Compiler layout audit passed: " . scalar(@files) . " files; " .
 	"$count{path} legacy paths, $count{include} legacy includes, " .
