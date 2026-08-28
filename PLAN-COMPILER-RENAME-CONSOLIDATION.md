@@ -1030,3 +1030,31 @@ checkpoint where applicable, commit, and push state.
   three-increment cumulative gate passed 5471/5471; LowIR remained 124/99,
   and the compiler-layout and zero-fatal/33-warning file audits retained their
   baselines.  Push: with this ledger checkpoint.
+- `e191d577` — R6 initialization-analysis owner.  Renamed the intact
+  `semantic/initialization/initialization.cpp` translation unit to
+  `semantic/initialization/analysis.cpp` at the same link position and closed
+  its 39 construction, initialization, return, allocation, temporary, and
+  cleanup methods as one scratch-state pipeline.  PA12 and PA16 passed
+  484/484, all 18 output surfaces were exact, and stripped old/new objects
+  were byte-identical.  The file/layout audits retained their baselines.
+- **Rejected R6 template translation-unit split; combined owner retained.**
+  Split `semantic/templates/aliases_and_lambdas.cpp` into adjacent
+  `lambda_runtime.cpp` and `alias_analysis.cpp` owners in original public
+  definition order.  The source count rose from 216 to 217.  PA12, PA18,
+  PA19, and PA25 passed 669/669, all 18 output surfaces were exact, both audits
+  passed, and fresh explicit-O1 32/32/32 inception matched every one of 217
+  objects and the final compiler.
+
+  The split was not performance-inert.  GCC-O3 compiler text grew 1,568 bytes.
+  Six identical-current-source lanes per self producer measured old/new wall
+  medians of 32.21/32.405 seconds (+0.61%) and aggregate CPU of
+  919.03/918.45 seconds (-0.06%), with mixed pair directions.  The corrected
+  same-revision wall ratio improved only from 1.522x to 1.519x and remained
+  above the gate, while aggregate-CPU ratio worsened from 1.536x to 1.552x
+  because the duplicated analyzer header added source work disproportionately
+  to self-host.  Exact optimized-host frozen medians were GCC-O3 4.54/4.56
+  seconds (+0.44%) and Clang-O3 4.79/4.77 seconds.  The files, source set, and
+  manifest routes were reverted exactly; all 27 methods are deliberately kept
+  in the accurately named combined owner rather than paying this repeated
+  parse/code-layout cost.  The semantic audit is now 850 definitions with 41
+  core-analysis methods still queued.
