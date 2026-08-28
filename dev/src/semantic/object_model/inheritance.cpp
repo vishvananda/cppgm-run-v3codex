@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace pa11
+namespace semantic
 {
 
 namespace

@@ -9,7 +9,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -36,7 +36,7 @@ TypeId RemoveFunctionParameterCv(TypeTable* types, TypeId type,
 
 }
 
-bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
+bool Analyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 {
 	if (type == function_template_dependent_result_shape_ &&
 		type != kNoType)
@@ -154,7 +154,7 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 	return dependent;
 }
 
-bool SemanticAnalyzer::FunctionTemplateTypeUsesUnspecifiedParameter(
+bool Analyzer::FunctionTemplateTypeUsesUnspecifiedParameter(
 	TypeId type, const std::vector<TemplateParameter>& parameters,
 	const std::vector<std::uint8_t>& explicitly_specified) const
 {
@@ -219,7 +219,7 @@ bool SemanticAnalyzer::FunctionTemplateTypeUsesUnspecifiedParameter(
 	return false;
 }
 
-std::size_t SemanticAnalyzer::FunctionTemplateShapePackParameter(TypeId type,
+std::size_t Analyzer::FunctionTemplateShapePackParameter(TypeId type,
 	const std::vector<TemplateParameter>& parameters) const
 {
 	for (std::size_t i = 0; i < parameters.size() &&
@@ -275,7 +275,7 @@ std::size_t SemanticAnalyzer::FunctionTemplateShapePackParameter(TypeId type,
 	return parameters.size();
 }
 
-bool SemanticAnalyzer::FunctionTemplateArgumentPatternAccepts(
+bool Analyzer::FunctionTemplateArgumentPatternAccepts(
 	const TemplateArgument& pattern, const TemplateArgument& exemplar,
 	const std::vector<TemplateParameter>& pattern_parameters,
 	const std::vector<TemplateParameter>& exemplar_parameters) const
@@ -290,7 +290,7 @@ bool SemanticAnalyzer::FunctionTemplateArgumentPatternAccepts(
 	return pattern == exemplar;
 }
 
-bool SemanticAnalyzer::FunctionTemplateParameterListAccepts(
+bool Analyzer::FunctionTemplateParameterListAccepts(
 	const FunctionTemplatePattern& pattern,
 	const FunctionTemplatePattern& exemplar) const
 {
@@ -366,7 +366,7 @@ bool SemanticAnalyzer::FunctionTemplateParameterListAccepts(
 	return true;
 }
 
-int SemanticAnalyzer::CompareFunctionTemplateConstraints(
+int Analyzer::CompareFunctionTemplateConstraints(
 	const FunctionInfo& left, const FunctionInfo& right) const
 {
 	if (!left.template_specialization || !right.template_specialization ||
@@ -446,7 +446,7 @@ int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 	return left_parameters < right_parameters ? 1 : -1;
 }
 
-bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
+bool Analyzer::FunctionTemplatePatternAccepts(
 	TypeId pattern, TypeId exemplar,
 	const std::vector<TemplateParameter>& pattern_parameters,
 	const std::vector<TemplateParameter>& exemplar_parameters) const
@@ -616,7 +616,7 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 	return false;
 }
 
-bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
+bool Analyzer::DeduceFunctionTemplateType(TypeId pattern,
 	TypeId argument, std::vector<TypeId>* deduced) const
 {
 	++function_template_deduction_visits_;
@@ -725,7 +725,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 	return false;
 }
 
-bool SemanticAnalyzer::DeduceFunctionTemplatePackArgument(
+bool Analyzer::DeduceFunctionTemplatePackArgument(
 	const TemplateArgument& pattern, const TemplateArgument& argument,
 	const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const
@@ -777,7 +777,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackArgument(
 		pattern.value_binding == argument.value_binding;
 }
 
-bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
+bool Analyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 	TypeId argument, const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const
 {
@@ -1125,7 +1125,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 	return false;
 }
 
-std::size_t SemanticAnalyzer::RequiredFunctionParameterCount(
+std::size_t Analyzer::RequiredFunctionParameterCount(
 	const std::vector<ParameterInfo>& parameters) const
 {
 	std::size_t required = parameters.size();
@@ -1134,7 +1134,7 @@ std::size_t SemanticAnalyzer::RequiredFunctionParameterCount(
 	return required;
 }
 
-bool SemanticAnalyzer::DeduceFunctionTemplateOverloadArgument(
+bool Analyzer::DeduceFunctionTemplateOverloadArgument(
 	TypeId parameter, NodeId syntax, ScopeId scope,
 	const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced)
@@ -1219,7 +1219,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplateOverloadArgument(
 	return true;
 }
 
-void SemanticAnalyzer::AppendConversionFunctionTemplateCandidates(
+void Analyzer::AppendConversionFunctionTemplateCandidates(
 	EntityId entity, TypeId target, std::vector<BindingId>* candidates)
 {
 	if (!candidates || target == kNoType) return;
@@ -1325,7 +1325,7 @@ void SemanticAnalyzer::AppendConversionFunctionTemplateCandidates(
 	}
 }
 
-void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
+void Analyzer::DeduceFunctionTemplatePatterns(
 	const std::vector<std::size_t>& patterns,
 	const std::vector<ExpressionInfo>& arguments,
 	std::vector<BindingId>* specializations,
@@ -1571,7 +1571,7 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 	}
 }
 
-void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
+void Analyzer::DeduceFunctionTemplates(ScopeId scope,
 	const std::string& spelling,
 	const std::vector<ExpressionInfo>& arguments, NodeId syntax)
 {
@@ -1632,7 +1632,7 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::DeduceFunctionTemplatePatternsWithExplicitSyntax(
+void Analyzer::DeduceFunctionTemplatePatternsWithExplicitSyntax(
 	const std::vector<std::size_t>& patterns,
 	const std::vector<ExpressionInfo>& arguments,
 	const std::vector<NodeId>& explicit_syntax, ScopeId use_scope,
@@ -1667,7 +1667,7 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatternsWithExplicitSyntax(
 	}
 }
 
-std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
+std::vector<BindingId> Analyzer::FunctionTemplateTargetCandidates(
 	ScopeId scope, const std::string& spelling, TypeId target, NodeId syntax)
 {
 	NamePath structured_base;
@@ -1788,7 +1788,7 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 	return result;
 }
 
-bool SemanticAnalyzer::HasUniqueFunctionAddressTarget(
+bool Analyzer::HasUniqueFunctionAddressTarget(
 	ScopeId scope, NodeId syntax, TypeId target)
 {
 	while (syntax != kNoNode &&
@@ -1864,7 +1864,7 @@ bool SemanticAnalyzer::HasUniqueFunctionAddressTarget(
 	return selected != kNoBinding;
 }
 
-bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
+bool Analyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 	TypeId target, ExpressionInfo* result)
 {
 	const std::string spelling = arena_->Payload(node);

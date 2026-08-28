@@ -12,7 +12,7 @@
 
 namespace cppgm
 {
-namespace pa11
+namespace semantic
 {
 
 typedef std::uint32_t NameId;

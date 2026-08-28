@@ -364,7 +364,7 @@ void AdaptBoundaryFacts(const Symbol& source,
 
 bool HasNonCallDemand(const Symbol& source)
 {
-	using namespace pa12_semantic_detail;
+	using namespace semantic;
 	const std::uint16_t call_mask =
 		FunctionDemandReasonMask(FUNCTION_DEMAND_EVALUATED_USE) |
 		FunctionDemandReasonMask(FUNCTION_DEMAND_RETAINED_CALL);

@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -357,7 +357,7 @@ ConstexprScalarValue ApplyWideConstantBinary(const std::string& operation,
 	throw std::runtime_error("unsupported wide constant binary operator");
 }
 
-ConstexprScalarValue SemanticAnalyzer::ApplyConstantIntegralUnary(
+ConstexprScalarValue Analyzer::ApplyConstantIntegralUnary(
 	const std::string& operation, const ConstexprScalarValue& value,
 	TypeId type) const
 {
@@ -390,7 +390,7 @@ ConstexprScalarValue SemanticAnalyzer::ApplyConstantIntegralUnary(
 	return NormalizeScalarConstant(type, value);
 }
 
-bool SemanticAnalyzer::TryLoadConstexprIntegralAddress(
+bool Analyzer::TryLoadConstexprIntegralAddress(
 	std::uint32_t address, TypeId target, ConstexprScalarValue* value) const
 {
 	const ConstexprAddressValue* pointed = ConstexprAddressAt(address);
@@ -425,7 +425,7 @@ bool SemanticAnalyzer::TryLoadConstexprIntegralAddress(
 	return true;
 }
 
-void SemanticAnalyzer::SetFunctionalScalarCast(ExpressionInfo* result,
+void Analyzer::SetFunctionalScalarCast(ExpressionInfo* result,
 	const ExpressionInfo& operand, TypeId target) const
 {
 	if (operand.constant &&

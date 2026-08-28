@@ -5,16 +5,16 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::IsMemberPointer(TypeId type) const
+bool Analyzer::IsMemberPointer(TypeId type) const
 {
 	return program_->types.Get(program_->types.RemoveTopCv(
 		EffectiveType(type))).kind == TYPE_MEMBER_POINTER;
 }
 
-std::size_t SemanticAnalyzer::TemplatePartialMemberPointerPackParameter(
+std::size_t Analyzer::TemplatePartialMemberPointerPackParameter(
 	const TypeRecord& type, const std::vector<TemplateParameter>& parameters,
 	std::size_t depth) const
 {
@@ -24,7 +24,7 @@ std::size_t SemanticAnalyzer::TemplatePartialMemberPointerPackParameter(
 		TemplatePartialPackParameter(type.child, parameters, depth + 1);
 }
 
-bool SemanticAnalyzer::DeduceTemplatePartialMemberPointerType(
+bool Analyzer::DeduceTemplatePartialMemberPointerType(
 	const TypeRecord& pattern, const TypeRecord& argument,
 	const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const
@@ -35,7 +35,7 @@ bool SemanticAnalyzer::DeduceTemplatePartialMemberPointerType(
 			pattern.child, argument.child, parameters, deduced);
 }
 
-TypeId SemanticAnalyzer::UnaryAddressOperandTarget(
+TypeId Analyzer::UnaryAddressOperandTarget(
 	const std::string& operation, TypeId target) const
 {
 	if (operation != "&" || target == kNoType) return kNoType;
@@ -46,7 +46,7 @@ TypeId SemanticAnalyzer::UnaryAddressOperandTarget(
 		shape.child : kNoType;
 }
 
-TypeId SemanticAnalyzer::UnaryAddressContextTarget(
+TypeId Analyzer::UnaryAddressContextTarget(
 	const std::string& operation, TypeId target, NodeId operand, ScopeId scope)
 {
 	return ClassifyOperationSpelling(operation) == OP_AMP &&
@@ -54,7 +54,7 @@ TypeId SemanticAnalyzer::UnaryAddressContextTarget(
 		MemberPointerAddressSyntaxTarget(operand, scope) : target;
 }
 
-TypeId SemanticAnalyzer::MemberPointerAddressSyntaxTarget(
+TypeId Analyzer::MemberPointerAddressSyntaxTarget(
 	NodeId syntax, ScopeId scope)
 {
 	while (syntax != kNoNode &&
@@ -73,7 +73,7 @@ TypeId SemanticAnalyzer::MemberPointerAddressSyntaxTarget(
 		program_->entities[binding.member_owner].type, binding.type);
 }
 
-TypeId SemanticAnalyzer::MemberPointerAddressTarget(
+TypeId Analyzer::MemberPointerAddressTarget(
 	const ExpressionInfo& operand, NodeId syntax, TypeId target) const
 {
 	if (target != kNoType) return target;
@@ -92,14 +92,14 @@ TypeId SemanticAnalyzer::MemberPointerAddressTarget(
 		program_->types.MemberPointer(function.member_owner, function.type);
 }
 
-bool SemanticAnalyzer::IsBuiltinLogicalOperand(
+bool Analyzer::IsBuiltinLogicalOperand(
 	const ExpressionInfo& operand) const
 {
 	return IsArithmetic(operand.type) || IsPointer(Decay(operand.type)) ||
 		IsNullptr(operand.type) || IsMemberPointer(operand.type);
 }
 
-ConversionRank SemanticAnalyzer::MemberPointerConversion(
+ConversionRank Analyzer::MemberPointerConversion(
 	TypeId source, bool integer_zero, TypeId target) const
 {
 	const TypeRecord from = program_->types.Get(source);
@@ -117,7 +117,7 @@ ConversionRank SemanticAnalyzer::MemberPointerConversion(
 	return CONVERSION_INVALID;
 }
 
-bool SemanticAnalyzer::MemberPointerBaseAdjustment(
+bool Analyzer::MemberPointerBaseAdjustment(
 	TypeId source, TypeId target, std::uint64_t* adjustment) const
 {
 	source = program_->types.RemoveTopCv(EffectiveType(source));
@@ -145,7 +145,7 @@ bool SemanticAnalyzer::MemberPointerBaseAdjustment(
 	return true;
 }
 
-bool SemanticAnalyzer::ApplyMemberPointerTarget(
+bool Analyzer::ApplyMemberPointerTarget(
 	ExpressionInfo* value, TypeId source, TypeId target)
 {
 	if (!value) throw std::logic_error("missing member pointer target value");
@@ -208,7 +208,7 @@ bool SemanticAnalyzer::ApplyMemberPointerTarget(
 	return true;
 }
 
-bool SemanticAnalyzer::FormMemberPointerAddress(
+bool Analyzer::FormMemberPointerAddress(
 	const ExpressionInfo& operand, TypeId target, TypeId* result_type,
 	bool* constant, ConstexprScalarValue* scalar, BindingId* selected) const
 {
@@ -245,7 +245,7 @@ bool SemanticAnalyzer::FormMemberPointerAddress(
 	return true;
 }
 
-void SemanticAnalyzer::RecordMemberPointerAddressFacts(
+void Analyzer::RecordMemberPointerAddressFacts(
 	NodeId expression, BindingId selected)
 {
 	if (expression == kNoNode || expression >= dump_.nodes.size() ||
@@ -262,7 +262,7 @@ void SemanticAnalyzer::RecordMemberPointerAddressFacts(
 	dump_.nodes[expression].virtual_slot = slot;
 }
 
-bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
+bool Analyzer::TryAnalyzeMemberPointerApplication(
 	const std::string& operation, const std::string& display_operation,
 	const ExpressionInfo& left, const ExpressionInfo& right,
 	ExpressionInfo* result)

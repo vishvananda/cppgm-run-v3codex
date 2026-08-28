@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-std::uint32_t SemanticAnalyzer::BuildInheritedConstructorBaseAction(
+std::uint32_t Analyzer::BuildInheritedConstructorBaseAction(
 	const FunctionInfo& constructor, EntityId entity,
 	const std::vector<BindingId>& parameters, std::size_t* base_ordinal)
 {
@@ -54,7 +54,7 @@ std::uint32_t SemanticAnalyzer::BuildInheritedConstructorBaseAction(
 	return base_action;
 }
 
-LookupResult SemanticAnalyzer::LookupExplicitUnqualifiedTemplateName(
+LookupResult Analyzer::LookupExplicitUnqualifiedTemplateName(
 	ScopeId scope, NameId name, LookupKind kind)
 {
 	bool ambiguous = false;
@@ -83,7 +83,7 @@ LookupResult SemanticAnalyzer::LookupExplicitUnqualifiedTemplateName(
 	throw std::runtime_error("ambiguous template name");
 }
 
-std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
+std::size_t Analyzer::FindClassTemplate(ScopeId scope,
 	const NamePath& path)
 {
 	const std::size_t no_pattern = std::numeric_limits<std::size_t>::max();
@@ -109,7 +109,7 @@ std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
 		LookupPath(scope, path, LOOKUP_TYPE), path.Last());
 }
 
-void SemanticAnalyzer::ApplyQualifiedCallNamingTarget(ExpressionInfo* value,
+void Analyzer::ApplyQualifiedCallNamingTarget(ExpressionInfo* value,
 	EntityId naming_class, const std::vector<BindingId>& candidates)
 {
 	if (!value || naming_class == kNoEntity) return;
@@ -122,7 +122,7 @@ void SemanticAnalyzer::ApplyQualifiedCallNamingTarget(ExpressionInfo* value,
 		}
 }
 
-bool SemanticAnalyzer::CacheDestructorChainDecision(BindingId destructor,
+bool Analyzer::CacheDestructorChainDecision(BindingId destructor,
 	bool proven_empty) const
 {
 	if (empty_destructor_chain_cache_.size() <= destructor)
@@ -134,7 +134,7 @@ bool SemanticAnalyzer::CacheDestructorChainDecision(BindingId destructor,
 	return proven_empty;
 }
 
-bool SemanticAnalyzer::CanElideDestructorChain(BindingId destructor) const
+bool Analyzer::CanElideDestructorChain(BindingId destructor) const
 {
 	++empty_destructor_chain_visits_;
 	if (destructor == kNoBinding || destructor >= program_->bindings.size())

@@ -9,7 +9,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -37,7 +37,7 @@ std::string StaticAssertLocation(const SyntaxArena& arena, NodeId node)
 
 }
 
-std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
+std::size_t Analyzer::RequestedAlignment(NodeId node, ScopeId scope)
 {
 	std::size_t result = 0;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -123,7 +123,7 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 	return result;
 }
 
-void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
+void Analyzer::RecordExpressionFacts(const ExpressionInfo& value)
 {
 	if (value.node == kNoDumpEdge) return;
 	DumpNode& node = dump_.nodes[value.node];
@@ -155,7 +155,7 @@ void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
 	}
 }
 
-bool SemanticAnalyzer::IsUnsignedIntegral(TypeId type) const
+bool Analyzer::IsUnsignedIntegral(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord& record = program_->types.Get(type);
@@ -183,7 +183,7 @@ bool SemanticAnalyzer::IsUnsignedIntegral(TypeId type) const
 	}
 }
 
-std::size_t SemanticAnalyzer::IntegralWidth(TypeId type) const
+std::size_t Analyzer::IntegralWidth(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord& record = program_->types.Get(type);
@@ -207,7 +207,7 @@ std::size_t SemanticAnalyzer::IntegralWidth(TypeId type) const
 	return program_->SizeOf(type) * 8;
 }
 
-std::int64_t SemanticAnalyzer::NormalizeIntegralConstant(TypeId type,
+std::int64_t Analyzer::NormalizeIntegralConstant(TypeId type,
 	std::int64_t value) const
 {
 	const std::size_t width = IntegralWidth(type);
@@ -227,7 +227,7 @@ std::int64_t SemanticAnalyzer::NormalizeIntegralConstant(TypeId type,
 	return static_cast<std::int64_t>(bits);
 }
 
-bool SemanticAnalyzer::TryFoldConstantClassConversion(
+bool Analyzer::TryFoldConstantClassConversion(
 	const ExpressionInfo& value, BindingId conversion, TypeId target,
 	std::int64_t* result)
 {
@@ -324,7 +324,7 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 	return true;
 }
 
-ExpressionInfo SemanticAnalyzer::ApplyContextualBool(ExpressionInfo value)
+ExpressionInfo Analyzer::ApplyContextualBool(ExpressionInfo value)
 {
 	const TypeId boolean = program_->types.Fundamental(FUND_BOOL);
 	if (program_->types.RemoveTopCv(EffectiveType(value.type)) == boolean)
@@ -356,7 +356,7 @@ ExpressionInfo SemanticAnalyzer::ApplyContextualBool(ExpressionInfo value)
 	return ApplyExplicitConversion(value, boolean);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeNoexcept(NodeId node, ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeNoexcept(NodeId node, ScopeId scope)
 {
 	const NodeId operand = FirstSemanticChild(node);
 	if (operand == kNoNode)
@@ -388,7 +388,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNoexcept(NodeId node, ScopeId scope)
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::ApplyClassObjectTarget(
+ExpressionInfo Analyzer::ApplyClassObjectTarget(
 	ExpressionInfo value, TypeId target)
 {
 	const CallConversionFact conversion =
@@ -409,7 +409,7 @@ ExpressionInfo SemanticAnalyzer::ApplyClassObjectTarget(
 	return ApplyCallArgument(value, target, &conversion);
 }
 
-void SemanticAnalyzer::ValidateStaticAssertionsInBlock(NodeId block,
+void Analyzer::ValidateStaticAssertionsInBlock(NodeId block,
 	ScopeId scope, std::uint32_t detached_output)
 {
 	const ScopeId local = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefixId(scope));
@@ -437,7 +437,7 @@ void SemanticAnalyzer::ValidateStaticAssertionsInBlock(NodeId block,
 	}
 }
 
-void SemanticAnalyzer::ValidateOrdinaryMemberFunctionBody(BindingId function)
+void Analyzer::ValidateOrdinaryMemberFunctionBody(BindingId function)
 {
 	FunctionInfo& info = GetMutableFunction(function);
 	if (!info.defined || info.definition_body == kNoNode) return;
@@ -495,7 +495,7 @@ void SemanticAnalyzer::ValidateOrdinaryMemberFunctionBody(BindingId function)
 	current_function_context_ = previous_function;
 }
 
-void SemanticAnalyzer::ValidateOrdinaryMemberFunctionBodies(EntityId entity)
+void Analyzer::ValidateOrdinaryMemberFunctionBodies(EntityId entity)
 {
 	if (entity < class_template_pattern_by_entity_.size() &&
 		class_template_pattern_by_entity_[entity] != kNoDumpEdge)
@@ -507,7 +507,7 @@ void SemanticAnalyzer::ValidateOrdinaryMemberFunctionBodies(EntityId entity)
 			entity_member_functions_[entity][i]);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
+ExpressionInfo Analyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
 	NodeId arguments_node, TypeId target,
 	const std::vector<ExpressionInfo>* prepared_arguments)
@@ -668,7 +668,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		ApplyTarget(result, target);
 }
 
-void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
+void Analyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 {
 	const NodeId condition_syntax = FirstSemanticChild(node);
 	if (condition_syntax == kNoNode)

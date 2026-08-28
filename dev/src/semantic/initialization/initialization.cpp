@@ -5,7 +5,7 @@
 #include <stdexcept>
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
@@ -27,12 +27,12 @@ std::vector<unsigned char> DecodeStringInitializer(
 }
 
 }
-bool SemanticAnalyzer::IsClassObjectType(TypeId type) const
+bool Analyzer::IsClassObjectType(TypeId type) const
 {
 	return IsClassEntity(*program_, EntityOf(type));
 }
 
-BindingId SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
+BindingId Analyzer::ValidateClassValueConstruction(TypeId type,
 	const ExpressionInfo& source, bool copy_initialization)
 {
 	EnsureClassDefinition(type);
@@ -47,7 +47,7 @@ BindingId SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
 		ConstructorCandidates(entity), copy_initialization, false, 0, false, kNoNode, type);
 }
 
-std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
+std::uint32_t Analyzer::BuildClassValueConstructorAction(TypeId type,
 	const ExpressionInfo& source, bool copy_initialization, bool demand)
 {
 	EnsureClassDefinition(type);
@@ -137,7 +137,7 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 	return action;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildClassConditional(
+ExpressionInfo Analyzer::BuildClassConditional(
 	std::uint32_t condition, const ExpressionInfo& yes,
 	const ExpressionInfo& no, TypeId type, bool preserve_xvalue)
 {
@@ -220,7 +220,7 @@ ExpressionInfo SemanticAnalyzer::BuildClassConditional(
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::RetargetClassConditional(
+ExpressionInfo Analyzer::RetargetClassConditional(
 	const ExpressionInfo& value, TypeId type)
 {
 	if (dump_.nodes[value.node].kind != DUMP_CONDITIONAL_EXPRESSION)
@@ -247,7 +247,7 @@ ExpressionInfo SemanticAnalyzer::RetargetClassConditional(
 	no.binding = dump_.nodes[children[2]].binding;
 	return BuildClassConditional(children[0], yes, no, type, true);
 }
-void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
+void Analyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 {
 	FinalizeStaticallyUnreachableBranchCleanup(function);
 	const TypeId result = program_->types.Get(dump_.nodes[function].type).child;
@@ -335,7 +335,7 @@ void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 	}
 }
 
-std::uint32_t SemanticAnalyzer::BuildDefaultConstructorAction(TypeId type,
+std::uint32_t Analyzer::BuildDefaultConstructorAction(TypeId type,
 	ScopeId scope)
 {
 	TypeId object = program_->types.RemoveTopCv(EffectiveType(type));
@@ -359,7 +359,7 @@ std::uint32_t SemanticAnalyzer::BuildDefaultConstructorAction(TypeId type,
 	dump_.Add(action, BuildDefaultConstructorAction(record.child, scope));
 	return action;
 }
-bool SemanticAnalyzer::IsDirectTrivialClassValueType(TypeId type) const
+bool Analyzer::IsDirectTrivialClassValueType(TypeId type) const
 {
 	const TypeRecord& top = program_->types.Get(type);
 	if (top.kind == TYPE_LVALUE_REFERENCE || top.kind == TYPE_RVALUE_REFERENCE)
@@ -372,7 +372,7 @@ bool SemanticAnalyzer::IsDirectTrivialClassValueType(TypeId type) const
 		entity.trivial_destructor && !entity.empty_class;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildDirectClassValueTransfer(
+ExpressionInfo Analyzer::BuildDirectClassValueTransfer(
 	const ExpressionInfo& source, TypeId target,
 	BindingId selected_constructor)
 {
@@ -410,7 +410,7 @@ ExpressionInfo SemanticAnalyzer::BuildDirectClassValueTransfer(
 	return result;
 }
 
-void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
 	const std::uint32_t statement = MakeDump(DUMP_RETURN_STATEMENT);
@@ -607,7 +607,7 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 	AppendScopeDestructionActions(scope, statement);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
+ExpressionInfo Analyzer::AnalyzeVariableInitializer(
 	NodeId initializer_node, ScopeId scope, TypeId type, bool local)
 {
 	EnsureClassDefinition(type);
@@ -807,7 +807,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 	}
 	return FinalizeVariableInitializer(initializer, type, class_entity, local);
 }
-void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
+void Analyzer::AddMemberInitializationAction(BindingId member_id,
 	NodeId initializer, ScopeId scope, std::uint32_t body)
 {
 	const BindingRecord member = program_->bindings[member_id];
@@ -982,7 +982,7 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 	++expression_count_;
 }
 
-void SemanticAnalyzer::RecordDelegatingConstructor(BindingId source,
+void Analyzer::RecordDelegatingConstructor(BindingId source,
 	BindingId selected)
 {
 	const auto complete_identity = [this](BindingId binding)
@@ -1018,7 +1018,7 @@ void SemanticAnalyzer::RecordDelegatingConstructor(BindingId source,
 	throw std::logic_error("cyclic constructor delegation fact graph");
 }
 
-void SemanticAnalyzer::CollectConstructorInitializers(
+void Analyzer::CollectConstructorInitializers(
 	const FunctionInfo& constructor, EntityId entity, ScopeId function_scope,
 	std::vector<NodeId>* syntax, std::vector<ScopeId>* scopes,
 	std::vector<std::uint8_t>* expanded)
@@ -1056,7 +1056,7 @@ void SemanticAnalyzer::CollectConstructorInitializers(
 		}
 	}
 }
-void SemanticAnalyzer::AddConstructorMemberActions(
+void Analyzer::AddConstructorMemberActions(
 	const FunctionInfo& constructor, ScopeId function_scope,
 	const std::vector<BindingId>& parameters,
 	std::uint32_t body)
@@ -1286,7 +1286,7 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 	}
 	ClearInjectedConstructorInitializers();
 }
-void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
+void Analyzer::AddBaseInitializationAction(EntityId entity,
 	std::size_t base_ordinal, NodeId initializer, ScopeId scope,
 	std::uint32_t body, bool pack_expanded)
 {
@@ -1297,7 +1297,7 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 		initializer, scope, body, pack_expanded);
 }
 
-void SemanticAnalyzer::AddBaseInitializationActionAt(EntityId entity,
+void Analyzer::AddBaseInitializationActionAt(EntityId entity,
 	EntityId base, std::uint64_t offset, NodeId initializer, ScopeId scope,
 	std::uint32_t body, bool pack_expanded)
 {
@@ -1377,7 +1377,7 @@ void SemanticAnalyzer::AddBaseInitializationActionAt(EntityId entity,
 	++expression_count_;
 }
 
-bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
+bool Analyzer::InitializationActionsAreNonthrowing(
 	std::uint32_t body)
 {
 	std::vector<std::uint32_t> pending(1, body);
@@ -1440,7 +1440,7 @@ bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
 	return true;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
+ExpressionInfo Analyzer::AnalyzeAggregateElement(TypeId type,
 	ScopeId scope, std::uint32_t* element_edge)
 {
 	const TypeId object = program_->types.RemoveTopCv(type);
@@ -1588,7 +1588,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
 	return omitted;
 }
 
-std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
+std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 	std::uint32_t aggregate_list, bool allow_array_members)
 {
 	const EntityId entity = EntityOf(type);
@@ -1830,7 +1830,7 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 	return call;
 }
 
-BindingId SemanticAnalyzer::SelectUsualDeallocation(ScopeId scope,
+BindingId Analyzer::SelectUsualDeallocation(ScopeId scope,
 	EntityId entity, bool explicit_global, bool array, TypeId object_type)
 {
 	const bool class_object = IsClassEntity(*program_, entity);
@@ -1896,7 +1896,7 @@ BindingId SemanticAnalyzer::SelectUsualDeallocation(ScopeId scope,
 	return selected;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeArrayNewExpression(NodeId node,
+ExpressionInfo Analyzer::AnalyzeArrayNewExpression(NodeId node,
 	NodeId type_node, ScopeId scope, TypeId target)
 {
 	const NodeId specifiers = FindChild(type_node, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ);
@@ -2089,7 +2089,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeArrayNewExpression(NodeId node,
 	return ApplyTarget(result, target);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
+ExpressionInfo Analyzer::AnalyzeNewExpression(NodeId node,
 	ScopeId scope, TypeId target)
 {
 	const NodeId type_node = FindChild(node, ::cppgm::syntax::STAG_TYPE_ID);
@@ -2325,7 +2325,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 	return ApplyTarget(result, target);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeDeleteExpression(NodeId node,
+ExpressionInfo Analyzer::AnalyzeDeleteExpression(NodeId node,
 	ScopeId scope, TypeId target)
 {
 	const bool array = FindChild(node, ::cppgm::syntax::STAG_ARRAY_DELETE) != kNoNode;
@@ -2411,7 +2411,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDeleteExpression(NodeId node,
 	return ApplyTarget(result, target);
 }
 
-ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
+ExpressionInfo Analyzer::MaterializeTemporary(
 	const ExpressionInfo& initializer)
 {
 	const TypeRecord initial_type = program_->types.Get(
@@ -2468,7 +2468,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::MaterializeDiscardedClassResult(
+ExpressionInfo Analyzer::MaterializeDiscardedClassResult(
 	ExpressionInfo value)
 {
 	const DumpKind kind = dump_.nodes[value.node].kind;
@@ -2508,7 +2508,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeDiscardedClassResult(
 	return value;
 }
 
-void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
+void Analyzer::AddDefaultConstructor(std::uint32_t variable,
 	BindingId binding, TypeId type)
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
@@ -2555,7 +2555,7 @@ void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 	dump_.Add(variable, action);
 }
 
-void SemanticAnalyzer::EmitDefaultConstructor(EntityId entity)
+void Analyzer::EmitDefaultConstructor(EntityId entity)
 {
 	if (entity >= default_constructor_demand_states_.size() ||
 		default_constructor_demand_states_[entity] != 1) return;
@@ -2584,7 +2584,7 @@ void SemanticAnalyzer::EmitDefaultConstructor(EntityId entity)
 	++default_constructor_emissions_;
 }
 
-std::uint32_t SemanticAnalyzer::MakeDestructorAction(TypeId type,
+std::uint32_t Analyzer::MakeDestructorAction(TypeId type,
 	BindingId destructor, BindingId object, std::uint32_t base_projections,
 	bool demand)
 {
@@ -2603,7 +2603,7 @@ std::uint32_t SemanticAnalyzer::MakeDestructorAction(TypeId type,
 	return action;
 }
 
-std::uint32_t SemanticAnalyzer::PublishVariableInitializerActions(
+std::uint32_t Analyzer::PublishVariableInitializerActions(
 	std::uint32_t variable, BindingId binding, TypeId type,
 	const ExpressionInfo& initializer, bool has_initializer,
 	bool declaration_only, bool qualified_lexical_scope)
@@ -2627,7 +2627,7 @@ std::uint32_t SemanticAnalyzer::PublishVariableInitializerActions(
 	return edge == kNoDumpEdge ? kNoDumpEdge : dump_.edges[edge].child;
 }
 
-bool SemanticAnalyzer::HasControlDependentTemporary(std::uint32_t node)
+bool Analyzer::HasControlDependentTemporary(std::uint32_t node)
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return false;
 	++temporary_dependency_visits_;
@@ -2641,7 +2641,7 @@ bool SemanticAnalyzer::HasControlDependentTemporary(std::uint32_t node)
 	return false;
 }
 
-void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
+void Analyzer::AppendUnwindDestructionActions(ScopeId scope,
 	std::uint32_t output_parent, ScopeId stop_exclusive)
 {
 	if (stop_exclusive == kNoScope)
@@ -2675,7 +2675,7 @@ void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
 	}
 }
 
-bool SemanticAnalyzer::IsElidableAutomaticDestructor(
+bool Analyzer::IsElidableAutomaticDestructor(
 	BindingId destructor) const
 {
 	if (destructor == kNoBinding || destructor >= program_->bindings.size())
@@ -2697,13 +2697,13 @@ bool SemanticAnalyzer::IsElidableAutomaticDestructor(
 	return CanElideDestructorChain(destructor);
 }
 
-ScopeId SemanticAnalyzer::CompoundCleanupStop(ScopeId scope) const
+ScopeId Analyzer::CompoundCleanupStop(ScopeId scope) const
 {
 	return program_->KindOfScope(scope) == SCOPE_FUNCTION ?
 		scope_parents_[scope] : scope;
 }
 
-ScopeId SemanticAnalyzer::FunctionCleanupStop(ScopeId scope) const
+ScopeId Analyzer::FunctionCleanupStop(ScopeId scope) const
 {
 	while (scope != kNoScope &&
 		program_->KindOfScope(scope) != SCOPE_FUNCTION)
@@ -2711,7 +2711,7 @@ ScopeId SemanticAnalyzer::FunctionCleanupStop(ScopeId scope) const
 	return scope == kNoScope ? kNoScope : scope_parents_[scope];
 }
 
-void SemanticAnalyzer::RegisterConditionLifetime(ScopeId scope,
+void Analyzer::RegisterConditionLifetime(ScopeId scope,
 	BindingId object, TypeId type, const ExpressionInfo& initializer,
 	std::uint32_t condition)
 {
@@ -2755,7 +2755,7 @@ void SemanticAnalyzer::RegisterConditionLifetime(ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
+void Analyzer::AddNamespaceObjectAction(std::uint32_t variable,
 	BindingId object, TypeId type, std::uint32_t initializer)
 {
 	std::uint32_t destructor_action = kNoDumpEdge;
@@ -2799,7 +2799,7 @@ void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
 		initializer, destructor_action, initializer_list_backing));
 }
 
-void SemanticAnalyzer::AppendScopeDestructionActions(ScopeId scope,
+void Analyzer::AppendScopeDestructionActions(ScopeId scope,
 	std::uint32_t output_parent, ScopeId stop_exclusive)
 {
 	if (stop_exclusive == kNoScope)
@@ -2824,7 +2824,7 @@ void SemanticAnalyzer::AppendScopeDestructionActions(ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
+void Analyzer::AddDestructorSubobjectActions(EntityId entity,
 	BindingId active_destructor, std::uint32_t body)
 {
 	if (entity >= entity_data_members_.size())

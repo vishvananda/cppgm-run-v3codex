@@ -6,10 +6,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
+bool Analyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
 	ScopeId scope, std::uint32_t output_parent)
 {
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_LABELED_STATEMENT))
@@ -33,7 +33,7 @@ bool SemanticAnalyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
 	return true;
 }
 
-BindingId SemanticAnalyzer::DelegatingConstructorCleanupDestructor(
+BindingId Analyzer::DelegatingConstructorCleanupDestructor(
 	TypeId owner_type, EntityId entity, bool base_entry)
 {
 	if (program_->entities[entity].trivial_destructor) return kNoBinding;
@@ -44,7 +44,7 @@ BindingId SemanticAnalyzer::DelegatingConstructorCleanupDestructor(
 	return base_entry ? EnsureDestructorBaseEntry(destructor) : destructor;
 }
 
-void SemanticAnalyzer::BeginFunctionControlFlowFacts()
+void Analyzer::BeginFunctionControlFlowFacts()
 {
 	FunctionControlFlowFactState saved;
 	saved.contexts.swap(exception_control_contexts_);
@@ -60,7 +60,7 @@ void SemanticAnalyzer::BeginFunctionControlFlowFacts()
 	pending_control_flow_gotos_.clear();
 }
 
-void SemanticAnalyzer::FinishFunctionControlFlowFacts()
+void Analyzer::FinishFunctionControlFlowFacts()
 {
 	if (current_exception_control_context_ != 0 ||
 		exception_control_contexts_.empty())
@@ -78,7 +78,7 @@ void SemanticAnalyzer::FinishFunctionControlFlowFacts()
 	pending_control_flow_gotos_.swap(saved.pending_gotos);
 }
 
-void SemanticAnalyzer::PushExceptionControlContext()
+void Analyzer::PushExceptionControlContext()
 {
 	if (exception_control_contexts_.empty())
 		BeginFunctionControlFlowFacts();
@@ -93,7 +93,7 @@ void SemanticAnalyzer::PushExceptionControlContext()
 		exception_control_contexts_[parent].depth + 1));
 }
 
-void SemanticAnalyzer::PopExceptionControlContext()
+void Analyzer::PopExceptionControlContext()
 {
 	if (current_exception_control_context_ == 0 ||
 		current_exception_control_context_ >= exception_control_contexts_.size())
@@ -102,7 +102,7 @@ void SemanticAnalyzer::PopExceptionControlContext()
 		exception_control_contexts_[current_exception_control_context_].parent;
 }
 
-void SemanticAnalyzer::ResolveControlFlowGoto(
+void Analyzer::ResolveControlFlowGoto(
 	const PendingGotoControlFact& source, const LabelControlFact& target)
 {
 	ScopeId source_ancestor = source.scope;
@@ -204,7 +204,7 @@ void SemanticAnalyzer::ResolveControlFlowGoto(
 	dump_.nodes[source.node].exception_control_exit_count = exits;
 }
 
-void SemanticAnalyzer::RegisterControlFlowLabel(NameId name, ScopeId scope)
+void Analyzer::RegisterControlFlowLabel(NameId name, ScopeId scope)
 {
 	if (exception_control_contexts_.empty()) BeginFunctionControlFlowFacts();
 	LabelControlFact target(scope, current_exception_control_context_);
@@ -232,7 +232,7 @@ void SemanticAnalyzer::RegisterControlFlowLabel(NameId name, ScopeId scope)
 	pending_control_flow_gotos_.erase(range.first, range.second);
 }
 
-void SemanticAnalyzer::RegisterControlFlowGoto(std::uint32_t node,
+void Analyzer::RegisterControlFlowGoto(std::uint32_t node,
 	NameId name, ScopeId scope)
 {
 	if (exception_control_contexts_.empty()) BeginFunctionControlFlowFacts();
@@ -258,7 +258,7 @@ void SemanticAnalyzer::RegisterControlFlowGoto(std::uint32_t node,
 	else pending_control_flow_gotos_.insert(std::make_pair(name, source));
 }
 
-void SemanticAnalyzer::DemandConstructorUnwindDestructors(
+void Analyzer::DemandConstructorUnwindDestructors(
 	std::uint32_t body)
 {
 	if (!complete_constructor_unwind_)
@@ -310,7 +310,7 @@ void SemanticAnalyzer::DemandConstructorUnwindDestructors(
 	}
 }
 
-std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
+std::uint32_t Analyzer::MakeTemporaryDestructorAction(
 	std::uint32_t temporary, BindingId destructor,
 	bool preserve_nontrivial_action)
 {
@@ -349,7 +349,7 @@ std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 	return action;
 }
 
-void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node,
+void Analyzer::MarkFullExpressionCalls(std::uint32_t node,
 	bool managed_cleanup, bool allocation_call)
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
@@ -376,7 +376,7 @@ void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node,
 	}
 }
 
-void SemanticAnalyzer::MarkDefaultArgumentSubtree(std::uint32_t node)
+void Analyzer::MarkDefaultArgumentSubtree(std::uint32_t node)
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
 	std::vector<std::uint32_t> pending(1, node);
@@ -391,7 +391,7 @@ void SemanticAnalyzer::MarkDefaultArgumentSubtree(std::uint32_t node)
 	}
 }
 
-void SemanticAnalyzer::AppendFullExpressionDestructionActions(
+void Analyzer::AppendFullExpressionDestructionActions(
 	std::uint32_t expression, std::uint32_t output_parent,
 	bool preserve_nontrivial_actions)
 {
@@ -450,7 +450,7 @@ void SemanticAnalyzer::AppendFullExpressionDestructionActions(
 	}
 }
 
-void SemanticAnalyzer::FinalizeStaticallyUnreachableBranchCleanup(
+void Analyzer::FinalizeStaticallyUnreachableBranchCleanup(
 	std::uint32_t function_definition)
 {
 	if (function_definition == kNoDumpEdge ||
@@ -549,7 +549,7 @@ void SemanticAnalyzer::FinalizeStaticallyUnreachableBranchCleanup(
 			DemandFunction(dump_.nodes[actions[i]].binding);
 }
 
-bool SemanticAnalyzer::RequiresManagedConditionalFullExpression(
+bool Analyzer::RequiresManagedConditionalFullExpression(
 	std::uint32_t expression, std::size_t first_edge)
 {
 	if (!InitializationActionsAreNonthrowing(expression)) return true;
@@ -564,7 +564,7 @@ bool SemanticAnalyzer::RequiresManagedConditionalFullExpression(
 	return false;
 }
 
-bool SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
+bool Analyzer::CollectTemporaryObjects(std::uint32_t node,
 	std::vector<std::uint32_t>* temporaries)
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return false;
@@ -578,7 +578,7 @@ bool SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
 		!direct_branch_root);
 }
 
-bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
+bool Analyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 	std::vector<std::uint32_t>* temporaries, bool conditionally_evaluated,
 	std::uint32_t branch_owner, std::uint32_t branch_child,
 	std::size_t branch_depth, bool projected_subobject,
@@ -650,7 +650,7 @@ bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 	return control_dependent;
 }
 
-bool SemanticAnalyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
+bool Analyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_THROW_STATEMENT))
@@ -673,7 +673,7 @@ bool SemanticAnalyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
 	return true;
 }
 
-void SemanticAnalyzer::StageExceptionalFullExpression(
+void Analyzer::StageExceptionalFullExpression(
 	std::uint32_t expression, std::uint32_t statement, ScopeId scope, bool force)
 {
 	force = StageNestedTemplateTemporaryCleanup(expression, statement) || force;
@@ -720,7 +720,7 @@ void SemanticAnalyzer::StageExceptionalFullExpression(
 	}
 }
 
-void SemanticAnalyzer::StageAutomaticInitializerException(
+void Analyzer::StageAutomaticInitializerException(
 	std::uint32_t expression, std::uint32_t variable, ScopeId scope,
 	BindingId binding, TypeId type, bool eligible)
 {
@@ -737,7 +737,7 @@ void SemanticAnalyzer::StageAutomaticInitializerException(
 	StageExceptionalFullExpression(expression, variable, scope, true);
 }
 
-void SemanticAnalyzer::StageControlFullExpression(
+void Analyzer::StageControlFullExpression(
 	std::uint32_t expression, std::uint32_t statement, ScopeId scope)
 {
 	const std::size_t edge_count = dump_.edges.size();
@@ -751,7 +751,7 @@ void SemanticAnalyzer::StageControlFullExpression(
 	AppendUnwindDestructionActions(scope, statement);
 }
 
-bool SemanticAnalyzer::HasUnwindDestructionActions(ScopeId scope,
+bool Analyzer::HasUnwindDestructionActions(ScopeId scope,
 	ScopeId stop_exclusive) const
 {
 	if (stop_exclusive == kNoScope)
@@ -771,7 +771,7 @@ bool SemanticAnalyzer::HasUnwindDestructionActions(ScopeId scope,
 	return false;
 }
 
-bool SemanticAnalyzer::HasEnclosingNontrivialObjectLifetime(
+bool Analyzer::HasEnclosingNontrivialObjectLifetime(
 	ScopeId scope, ScopeId stop_exclusive) const
 {
 	++enclosing_lifetime_queries_;
@@ -796,7 +796,7 @@ bool SemanticAnalyzer::HasEnclosingNontrivialObjectLifetime(
 	return active != stopped;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeThrowExpression(
+ExpressionInfo Analyzer::AnalyzeThrowExpression(
 	NodeId node, ScopeId scope)
 {
 	const NodeId operand = FirstSemanticChild(node);
@@ -881,7 +881,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThrowExpression(
 	return result;
 }
 
-void SemanticAnalyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
 	const ScopeId handler_scope = NewScope(
@@ -962,7 +962,7 @@ void SemanticAnalyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 	AppendScopeDestructionActions(handler_scope, handler, scope);
 }
 
-void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
 	const std::uint32_t statement = MakeDump(DUMP_TRY_STATEMENT);

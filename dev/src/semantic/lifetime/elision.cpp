@@ -6,10 +6,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
+bool Analyzer::EmptyDefaultConstructorChain(BindingId constructor,
 	std::vector<BindingId>* base_entries)
 {
 	constructor = program_->bindings[constructor].canonical;
@@ -201,7 +201,7 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 	return true;
 }
 
-void SemanticAnalyzer::PublishInitializationStats() const
+void Analyzer::PublishInitializationStats() const
 {
 	PublishStaticConstantEvaluationStats();
 	stats_->empty_constructor_chain_requests =

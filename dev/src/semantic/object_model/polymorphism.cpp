@@ -6,10 +6,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::ConfigureVirtualFunction(BindingId binding,
+void Analyzer::ConfigureVirtualFunction(BindingId binding,
 	const SpecInfo& spec, NodeId declarator, NodeId initializer)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size())
@@ -64,7 +64,7 @@ void SemanticAnalyzer::ConfigureVirtualFunction(BindingId binding,
 		members.push_back(canonical_id);
 }
 
-bool SemanticAnalyzer::CovariantVirtualReturn(TypeId derived,
+bool Analyzer::CovariantVirtualReturn(TypeId derived,
 	TypeId base) const
 {
 	if (derived == base) return true;
@@ -100,7 +100,7 @@ bool SemanticAnalyzer::CovariantVirtualReturn(TypeId derived,
 	return BaseConversionAllowed(derived_named.entity, base_named.entity);
 }
 
-FunctionSignatureKey SemanticAnalyzer::VirtualSignatureKey(
+FunctionSignatureKey Analyzer::VirtualSignatureKey(
 	BindingId binding) const
 {
 	binding = program_->bindings[binding].canonical;
@@ -111,7 +111,7 @@ FunctionSignatureKey SemanticAnalyzer::VirtualSignatureKey(
 			GetFunction(binding).signature);
 }
 
-bool SemanticAnalyzer::VirtualSignatureMatches(BindingId derived,
+bool Analyzer::VirtualSignatureMatches(BindingId derived,
 	BindingId base) const
 {
 	derived = program_->bindings[derived].canonical;
@@ -127,7 +127,7 @@ bool SemanticAnalyzer::VirtualSignatureMatches(BindingId derived,
 	return CovariantVirtualReturn(derived_result, base_result);
 }
 
-void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
+void Analyzer::MarkVtableDemand(EntityId entity)
 {
 	std::vector<std::uint8_t> visited(program_->entities.size(), 0);
 	std::vector<EntityId> pending(1, entity);
@@ -204,7 +204,7 @@ void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 	}
 }
 
-std::uint32_t SemanticAnalyzer::VirtualSlotFor(BindingId binding) const
+std::uint32_t Analyzer::VirtualSlotFor(BindingId binding) const
 {
 	++virtual_slot_lookups_;
 	if (binding == kNoBinding || binding >= program_->bindings.size())

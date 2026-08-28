@@ -5,7 +5,7 @@ namespace cppgm
 namespace pa16_zero_initialization
 {
 
-using namespace pa11;
+using namespace semantic;
 
 bool ContiguousSpanEligible(const Program& program, TypeId type)
 {

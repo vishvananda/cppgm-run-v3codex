@@ -620,7 +620,7 @@ void ReportCompilePhases(std::ostream& output,
 	std::uint64_t debug_nanoseconds,
 	std::uint64_t lowir_opt_nanoseconds)
 {
-	const cppgm::SemanticAnalysisStats& semantic = stats.semantic;
+	const cppgm::semantic::Stats& semantic = stats.semantic;
 	const std::uint64_t typed_accounted_nanoseconds =
 		semantic.elapsed_nanoseconds + stats.lowering_nanoseconds;
 	const std::uint64_t typed_glue_nanoseconds = typed_pipeline_nanoseconds >

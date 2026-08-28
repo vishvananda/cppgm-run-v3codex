@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::SyntaxNamesUnboundTemplateParameter(
+bool Analyzer::SyntaxNamesUnboundTemplateParameter(
 	NodeId syntax, ScopeId scope)
 {
 	if (syntax == kNoNode) return false;
@@ -35,7 +35,7 @@ bool SemanticAnalyzer::SyntaxNamesUnboundTemplateParameter(
 	return false;
 }
 
-bool SemanticAnalyzer::TryExpandBuiltinIntegerPack(NodeId operand,
+bool Analyzer::TryExpandBuiltinIntegerPack(NodeId operand,
 	ScopeId scope, const TemplateParameter& destination,
 	ScopeId parameter_scope, std::vector<TemplateArgument>* arguments)
 {
@@ -84,7 +84,7 @@ bool SemanticAnalyzer::TryExpandBuiltinIntegerPack(NodeId operand,
 	return true;
 }
 
-bool SemanticAnalyzer::TryResolveBuiltinTypePackElement(
+bool Analyzer::TryResolveBuiltinTypePackElement(
 	NodeId syntax, ScopeId scope, TypeId* type)
 {
 	NamePath path;
@@ -125,7 +125,7 @@ bool SemanticAnalyzer::TryResolveBuiltinTypePackElement(
 	return true;
 }
 
-bool SemanticAnalyzer::TryResolveBuiltinMakeIntegerSequence(
+bool Analyzer::TryResolveBuiltinMakeIntegerSequence(
 	NodeId syntax, ScopeId scope, TypeId* type)
 {
 	NamePath path;

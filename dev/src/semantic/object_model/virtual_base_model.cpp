@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace pa11
+namespace semantic
 {
 
 void Program::RehashVirtualBaseIndex(std::size_t capacity)

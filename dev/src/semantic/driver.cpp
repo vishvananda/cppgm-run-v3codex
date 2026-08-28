@@ -9,6 +9,9 @@
 namespace cppgm
 {
 
+namespace semantic
+{
+
 namespace
 {
 
@@ -21,7 +24,7 @@ protected:
 
 void PublishDriverStats(const std::string& source,
 	const syntax::Stats& syntax, const std::chrono::steady_clock::time_point& start,
-	SemanticAnalysisStats* stats)
+	Stats* stats)
 {
 	if (!stats) return;
 	stats->preprocessing = syntax.preprocessing;
@@ -39,36 +42,36 @@ void PublishDriverStats(const std::string& source,
 
 }
 
-void WriteSemanticTranslationUnit(const std::string& path,
+void WriteTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	std::ostream& output, SemanticAnalysisStats* stats)
+	std::ostream& output, semantic::Stats* stats)
 {
 	const std::chrono::steady_clock::time_point started =
 		std::chrono::steady_clock::now();
-	if (stats) *stats = SemanticAnalysisStats();
+	if (stats) *stats = Stats();
 	syntax::Stats syntax;
-	pa12_semantic_detail::SemanticGraphStorage graph;
-	pa12_semantic_detail::SemanticAnalyzer analyzer(graph, output, stats);
+	GraphStorage graph;
+	Analyzer analyzer(graph, output, stats);
 	syntax::RunTranslationUnit(path, source, options,
 		0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
 	PublishDriverStats(source, syntax, started, stats);
 }
 
-void ConsumeSemanticTranslationUnit(const std::string& path,
+void ConsumeTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	pa12_semantic_detail::SemanticGraphConsumer& consumer,
-	SemanticAnalysisStats* stats, bool complete_constructor_unwind,
+	SemanticGraphConsumer& consumer,
+	Stats* stats, bool complete_constructor_unwind,
 	bool host_object_emission, bool source_type_view)
 {
 	const std::chrono::steady_clock::time_point started =
 		std::chrono::steady_clock::now();
-	if (stats) *stats = SemanticAnalysisStats();
+	if (stats) *stats = Stats();
 	syntax::Stats syntax;
 	NullStreamBuffer sink_buffer;
 	std::ostream sink(&sink_buffer);
-	pa12_semantic_detail::SemanticGraphStorage graph;
+	GraphStorage graph;
 	{
-		pa12_semantic_detail::SemanticAnalyzer analyzer(graph, sink, stats,
+		Analyzer analyzer(graph, sink, stats,
 			true, false, complete_constructor_unwind, host_object_emission,
 			source_type_view);
 		syntax::RunTranslationUnit(path, source, options,
@@ -80,7 +83,7 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 	consumer.Consume(graph.View());
 }
 
-SemanticAnalysisStats::SemanticAnalysisStats()
+Stats::Stats()
 	: tokens(0), syntax_nodes(0), semantic_nodes(0), semantic_edges(0),
 	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
 	  expressions(0), name_path_parse_requests(0),
@@ -214,6 +217,8 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 		generated_identity_render_components[i] = 0;
 		generated_identity_render_bytes[i] = 0;
 	}
+}
+
 }
 
 }

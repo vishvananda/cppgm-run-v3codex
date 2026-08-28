@@ -11,7 +11,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
@@ -130,7 +130,7 @@ bool ClassTemplateArgumentsAllowPartialSelection(const Program& program,
 }
 
 std::string ClassTemplateSpecializationScopeName(std::size_t pattern,
-	std::size_t ordinal, SemanticAnalysisStats* stats)
+	std::size_t ordinal, semantic::Stats* stats)
 {
 	std::ostringstream result;
 	result << "__cppgm_class_template_" << pattern << '_' << ordinal;
@@ -148,7 +148,7 @@ std::string ClassTemplateSpecializationScopeName(std::size_t pattern,
 
 std::string ClassTemplateSpecializationStorageName(std::size_t pattern,
 	TemplateArgumentListId arguments, TemplateArgumentPartitionId partition,
-	SemanticAnalysisStats* stats)
+	semantic::Stats* stats)
 {
 	std::ostringstream result;
 	result << "__cppgm_class_template_identity_" << pattern << '_'
@@ -167,7 +167,7 @@ std::string ClassTemplateSpecializationStorageName(std::size_t pattern,
 
 }
 
-bool SemanticAnalyzer::IsDeclaration(NodeId node) const
+bool Analyzer::IsDeclaration(NodeId node) const
 {
 	return arena_->IsTag(node, ::cppgm::syntax::STAG_SIMPLE_DECLARATION) ||
 		arena_->IsTag(node, ::cppgm::syntax::STAG_FUNCTION_DEFINITION) ||
@@ -191,7 +191,7 @@ bool SemanticAnalyzer::IsDeclaration(NodeId node) const
 		arena_->IsTag(node, ::cppgm::syntax::STAG_LINKAGE_SPECIFICATION);
 }
 
-void SemanticAnalyzer::RegisterClassMemberFunction(EntityId entity,
+void Analyzer::RegisterClassMemberFunction(EntityId entity,
 	BindingId function)
 {
 	if (entity == kNoEntity || function == kNoBinding) return;
@@ -205,7 +205,7 @@ void SemanticAnalyzer::RegisterClassMemberFunction(EntityId entity,
 		functions.end())
 		functions.push_back(function);
 }
-LookupResult SemanticAnalyzer::LookupName(ScopeId scope, NameId name,
+LookupResult Analyzer::LookupName(ScopeId scope, NameId name,
 	LookupKind kind)
 {
 	if (kind == LOOKUP_TYPE || kind == LOOKUP_SCOPE_CARRIER)
@@ -248,7 +248,7 @@ LookupResult SemanticAnalyzer::LookupName(ScopeId scope, NameId name,
 	return result;
 }
 
-LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
+LookupResult Analyzer::LookupPath(ScopeId scope,
 	const NamePath& path, LookupKind kind)
 {
 	if (path.Size() <= 1)
@@ -292,7 +292,7 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 	return program_->LookupQualifiedName(carrier, path.Last(), kind);
 }
 
-LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
+LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 	ScopeId scope, LookupKind kind, ScopeId* terminal_owner,
 	bool defer_dependent_type, bool defer_dependent_specialization)
 {
@@ -441,7 +441,7 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 	return LookupResult();
 }
 
-std::vector<BindingId> SemanticAnalyzer::UsingFunctionCandidates(
+std::vector<BindingId> Analyzer::UsingFunctionCandidates(
 	ScopeId scope, const NamePath& path, const std::string& spelling,
 	ScopeId* target_owner, bool* names_owner_alias, NodeId syntax)
 {
@@ -506,7 +506,7 @@ std::vector<BindingId> SemanticAnalyzer::UsingFunctionCandidates(
 	return FunctionCandidates(*target_owner, program_->names.Get(identity));
 }
 
-bool SemanticAnalyzer::ParseExplicitTemplateArguments(NodeId syntax,
+bool Analyzer::ParseExplicitTemplateArguments(NodeId syntax,
 	ScopeId scope, NamePath* base, std::vector<TypeId>* arguments)
 {
 	std::vector<NodeId> syntax_arguments;
@@ -555,7 +555,7 @@ bool SemanticAnalyzer::ParseExplicitTemplateArguments(NodeId syntax,
 	return true;
 }
 
-bool SemanticAnalyzer::ClassTemplateMemberNamesPrimaryParameters(
+bool Analyzer::ClassTemplateMemberNamesPrimaryParameters(
 	const std::vector<TemplateParameter>& parameters,
 	const std::vector<TemplateArgument>& arguments) const
 {
@@ -595,7 +595,7 @@ bool SemanticAnalyzer::ClassTemplateMemberNamesPrimaryParameters(
 	return true;
 }
 
-bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
+bool Analyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	ScopeId scope, const std::vector<TemplateParameter>& parameters)
 {
 	// Out-of-class member templates have one template head for the class and
@@ -803,7 +803,7 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	return true;
 }
 
-bool SemanticAnalyzer::RetainedClassDeclaresNestedPath(NodeId declaration,
+bool Analyzer::RetainedClassDeclaresNestedPath(NodeId declaration,
 	const std::vector<NameId>& path)
 {
 	NodeId owner = declaration;
@@ -848,7 +848,7 @@ bool SemanticAnalyzer::RetainedClassDeclaresNestedPath(NodeId declaration,
 	return true;
 }
 
-bool SemanticAnalyzer::RetainVariableTemplate(NodeId declaration,
+bool Analyzer::RetainVariableTemplate(NodeId declaration,
 	ScopeId scope, const std::vector<TemplateParameter>& parameters)
 {
 	if (!arena_->IsTag(declaration, ::cppgm::syntax::STAG_SIMPLE_DECLARATION)) return false;
@@ -937,7 +937,7 @@ bool SemanticAnalyzer::RetainVariableTemplate(NodeId declaration,
 	return true;
 }
 
-void SemanticAnalyzer::PublishClassTemplateFriendGrants(
+void Analyzer::PublishClassTemplateFriendGrants(
 	const ClassTemplatePattern& pattern, EntityId specialization)
 {
 	if (specialization == kNoEntity) return;
@@ -951,7 +951,7 @@ void SemanticAnalyzer::PublishClassTemplateFriendGrants(
 	}
 }
 
-void SemanticAnalyzer::RegisterClassTemplateFriend(
+void Analyzer::RegisterClassTemplateFriend(
 	std::size_t pattern_index, EntityId owner)
 {
 	if (pattern_index >= class_templates_.size() || owner == kNoEntity)
@@ -968,7 +968,7 @@ void SemanticAnalyzer::RegisterClassTemplateFriend(
 	}
 }
 
-bool SemanticAnalyzer::AnalyzeFriendClassTemplate(NodeId target,
+bool Analyzer::AnalyzeFriendClassTemplate(NodeId target,
 	ScopeId scope, const std::vector<TemplateParameter>& parameters)
 {
 	if (!arena_->IsTag(target, ::cppgm::syntax::STAG_SIMPLE_DECLARATION)) return false;
@@ -1019,7 +1019,7 @@ bool SemanticAnalyzer::AnalyzeFriendClassTemplate(NodeId target,
 	return true;
 }
 
-bool SemanticAnalyzer::EquivalentNondeducedTypeArgumentShape(NodeId left,
+bool Analyzer::EquivalentNondeducedTypeArgumentShape(NodeId left,
 	const std::vector<TemplateParameter>& left_parameters, NodeId right,
 	const std::vector<TemplateParameter>& right_parameters)
 {
@@ -1031,7 +1031,7 @@ bool SemanticAnalyzer::EquivalentNondeducedTypeArgumentShape(NodeId left,
 		left_parameters, right_parameters);
 }
 
-void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
+void Analyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	const std::vector<TemplateParameter>& parameters,
 	AccessKind member_access)
 {
@@ -1236,7 +1236,7 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		static_cast<std::uint32_t>(index);
 }
 
-std::size_t SemanticAnalyzer::FindClassTemplateIndex(
+std::size_t Analyzer::FindClassTemplateIndex(
 	const LookupResult& found, NameId requested) const
 {
 	if (found.type == kNoType) return NoTemplatePattern();
@@ -1263,21 +1263,21 @@ std::size_t SemanticAnalyzer::FindClassTemplateIndex(
 		declaration.name == pattern.name ? index : NoTemplatePattern();
 }
 
-std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
+std::size_t Analyzer::FindClassTemplate(ScopeId scope,
 	const std::string& spelling)
 {
 	const NamePath path = ParseNamePath(spelling, NAME_PATH_PARSE_TEMPLATE);
 	return FindClassTemplate(scope, path);
 }
 
-TypeId SemanticAnalyzer::ResolveStructuredTypeName(NodeId name,
+TypeId Analyzer::ResolveStructuredTypeName(NodeId name,
 	ScopeId argument_scope)
 {
 	return LookupStructuredName(
 		name, argument_scope, LOOKUP_TYPE).type;
 }
 
-ScopeId SemanticAnalyzer::BindClassTemplateArguments(
+ScopeId Analyzer::BindClassTemplateArguments(
 	const ClassTemplatePattern& pattern,
 	const std::vector<TemplateArgument>& arguments)
 {
@@ -1293,7 +1293,7 @@ ScopeId SemanticAnalyzer::BindClassTemplateArguments(
 	return template_scope;
 }
 
-void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
+void Analyzer::ApplyClassTemplateMemberDefinitions(
 	std::size_t index, BindingId specialization,
 	const std::vector<TemplateArgument>& arguments, bool demanded)
 {
@@ -1433,7 +1433,7 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 	}
 }
 
-void SemanticAnalyzer::QueueClassTemplateMemberDefinitions(
+void Analyzer::QueueClassTemplateMemberDefinitions(
 	std::size_t pattern, BindingId specialization)
 {
 	if (pattern >= class_templates_.size() || specialization == kNoBinding)
@@ -1455,7 +1455,7 @@ void SemanticAnalyzer::QueueClassTemplateMemberDefinitions(
 	++demand_worklist_pushes_;
 }
 
-void SemanticAnalyzer::DemandClassTemplateMemberDefinitions(EntityId entity)
+void Analyzer::DemandClassTemplateMemberDefinitions(EntityId entity)
 {
 	for (std::size_t depth = 0; entity != kNoEntity &&
 		depth <= program_->entities.size(); ++depth)
@@ -1482,7 +1482,7 @@ void SemanticAnalyzer::DemandClassTemplateMemberDefinitions(EntityId entity)
 	}
 }
 
-void SemanticAnalyzer::MarkClassTemplateSpecializationUse(EntityId entity)
+void Analyzer::MarkClassTemplateSpecializationUse(EntityId entity)
 {
 	for (std::size_t depth = 0; entity != kNoEntity &&
 		depth <= program_->entities.size(); ++depth)
@@ -1505,7 +1505,7 @@ void SemanticAnalyzer::MarkClassTemplateSpecializationUse(EntityId entity)
 	}
 }
 
-void SemanticAnalyzer::ApplyDemandedClassTemplateMemberDefinitions(
+void Analyzer::ApplyDemandedClassTemplateMemberDefinitions(
 	BindingId specialization)
 {
 	if (specialization == kNoBinding ||
@@ -1530,13 +1530,13 @@ void SemanticAnalyzer::ApplyDemandedClassTemplateMemberDefinitions(
 	QueueClassTemplateMemberDefinitions(pattern, specialization);
 }
 
-void SemanticAnalyzer::MarkClassTemplatePresentation(EntityId entity)
+void Analyzer::MarkClassTemplatePresentation(EntityId entity)
 {
 	if (entity != kNoEntity && host_object_emission_)
 		program_->entities[entity].class_template_presentation = true;
 }
 
-void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
+void Analyzer::CompleteClassTemplateSpecialization(std::size_t index,
 	BindingId binding, const std::vector<TemplateArgument>& arguments)
 {
 	if (index >= class_templates_.size())
@@ -1638,7 +1638,7 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		ClassTemplateSpecializationStorageName(
 			index, specialization_arguments,
 			kEmptyTemplateArgumentPartition, stats_) :
-		pa19_template_presentation::RenderClassTemplateSpecializationName(
+		semantic::presentation::RenderClassTemplateSpecializationName(
 			*program_, pattern.name, arguments.data(), arguments.size(), stats_);
 	const NameId specialization_emission_name =
 		TemplateArgumentsNeedInternalEmission(*program_, arguments) ?
@@ -1689,7 +1689,7 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		DemandClassTemplateMemberDefinitions(entity);
 	QueueClassTemplateMemberDefinitions(index, binding);
 }
-void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
+void Analyzer::EnsureClassDefinition(TypeId type)
 {
 	if (type == kNoType) return;
 	const TypeRecord* record = &program_->types.Get(type);
@@ -1740,14 +1740,14 @@ void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
 	}
 }
 
-bool SemanticAnalyzer::IsClassTemplateSpecializationEntity(
+bool Analyzer::IsClassTemplateSpecializationEntity(
 	EntityId entity) const
 {
 	return entity != kNoEntity &&
 		program_->entities[entity].template_argument_begin != kNoBinding;
 }
 
-bool SemanticAnalyzer::IsClassTemplateSpecializationContext(
+bool Analyzer::IsClassTemplateSpecializationContext(
 	EntityId entity) const
 {
 	for (std::size_t depth = 0;
@@ -1759,7 +1759,7 @@ bool SemanticAnalyzer::IsClassTemplateSpecializationContext(
 	return false;
 }
 
-BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
+BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 	const std::vector<TypeId>& supplied_arguments)
 {
 	if (index >= class_templates_.size())
@@ -1781,7 +1781,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	return InstantiateClassTemplate(index, canonical);
 }
 
-bool SemanticAnalyzer::MaterializeTemplatePartialArguments(
+bool Analyzer::MaterializeTemplatePartialArguments(
 	const std::vector<TemplateParameter>& primary_parameters,
 	const std::vector<TemplateParameter>& partial_parameters,
 	const std::vector<NodeId>& syntax, ScopeId lexical_scope,
@@ -1855,7 +1855,7 @@ bool SemanticAnalyzer::MaterializeTemplatePartialArguments(
 	return true;
 }
 
-bool SemanticAnalyzer::DeduceTemplatePartialArgument(
+bool Analyzer::DeduceTemplatePartialArgument(
 	const TemplateArgument& pattern, const TemplateArgument& argument,
 	const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const
@@ -1908,7 +1908,7 @@ bool SemanticAnalyzer::DeduceTemplatePartialArgument(
 	return pattern == argument;
 }
 
-std::size_t SemanticAnalyzer::TemplatePartialPackParameter(TypeId type,
+std::size_t Analyzer::TemplatePartialPackParameter(TypeId type,
 	const std::vector<TemplateParameter>& parameters, std::size_t depth) const
 {
 	if (depth > program_->types.Size()) return parameters.size();
@@ -1964,7 +1964,7 @@ std::size_t SemanticAnalyzer::TemplatePartialPackParameter(TypeId type,
 	return parameters.size();
 }
 
-bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
+bool Analyzer::DeduceTemplatePartialType(TypeId pattern,
 	TypeId argument, const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const
 {
@@ -2203,7 +2203,7 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 	return false;
 }
 
-bool SemanticAnalyzer::MatchTemplatePartialArguments(
+bool Analyzer::MatchTemplatePartialArguments(
 	const std::vector<TemplateParameter>& parameters,
 	const std::vector<TemplateArgument>& pattern_arguments,
 	const std::vector<TemplateArgument>& arguments,
@@ -2270,7 +2270,7 @@ bool SemanticAnalyzer::MatchTemplatePartialArguments(
 	return true;
 }
 
-int SemanticAnalyzer::CompareTemplatePartialPatterns(
+int Analyzer::CompareTemplatePartialPatterns(
 	const std::vector<TemplateParameter>& left_parameters,
 	const std::vector<TemplateArgument>& left_arguments,
 	const std::vector<TemplateParameter>& right_parameters,
@@ -2287,7 +2287,7 @@ int SemanticAnalyzer::CompareTemplatePartialPatterns(
 	return right_accepts_left ? 1 : -1;
 }
 
-std::size_t SemanticAnalyzer::SelectClassTemplatePartial(
+std::size_t Analyzer::SelectClassTemplatePartial(
 	ClassTemplatePattern& pattern,
 	const std::vector<TemplateArgument>& arguments,
 	FunctionTemplateDeduction* selected_bindings)
@@ -2393,7 +2393,7 @@ std::size_t SemanticAnalyzer::SelectClassTemplatePartial(
 	return result;
 }
 
-BindingId SemanticAnalyzer::ReuseClassTemplateSpecialization(
+BindingId Analyzer::ReuseClassTemplateSpecialization(
 	std::size_t index, BindingId binding)
 {
 	if (index >= class_templates_.size() || binding == kNoBinding)
@@ -2437,7 +2437,7 @@ BindingId SemanticAnalyzer::ReuseClassTemplateSpecialization(
 	return binding;
 }
 
-BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
+BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 	const std::vector<TemplateArgument>& supplied_arguments)
 {
 	if (index >= class_templates_.size())
@@ -2546,7 +2546,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		const std::string specialization_name = host_object_emission_ ?
 			ClassTemplateSpecializationStorageName(
 				index, key.arguments, key.partition, stats_) :
-			pa19_template_presentation::RenderClassTemplateSpecializationName(
+			semantic::presentation::RenderClassTemplateSpecializationName(
 				*program_, pattern.name, arguments.data(), arguments.size(), stats_);
 		const NameId name = program_->names.Intern(specialization_name);
 		const EntityId entity = program_->NewEntity(name,
@@ -2587,7 +2587,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	const std::string specialization_name = host_object_emission_ ?
 		ClassTemplateSpecializationStorageName(
 			index, key.arguments, key.partition, stats_) :
-		pa19_template_presentation::RenderClassTemplateSpecializationName(
+		semantic::presentation::RenderClassTemplateSpecializationName(
 			*program_, pattern.name, arguments.data(), arguments.size(), stats_);
 	ScopeId template_scope = BindClassTemplateArguments(pattern, arguments);
 	NodeId selected_declaration = pattern.declaration;
@@ -2679,7 +2679,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	return binding;
 }
 
-void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
+void Analyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 {
 	if (index >= class_templates_.size())
 		throw std::logic_error("invalid class template upgrade");
@@ -2715,7 +2715,7 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 			CompleteClassTemplateSpecialization(index, binding, arguments);
 	}
 }
-void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
+void Analyzer::AnalyzeExplicitInstantiation(NodeId node,
 	ScopeId scope, bool definition)
 {
 	const NodeId target = FirstSemanticChild(node);

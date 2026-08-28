@@ -12,6 +12,9 @@
 namespace cppgm
 {
 
+namespace semantic
+{
+
 enum NamePathParseFamily
 {
 	NAME_PATH_PARSE_SYNTAX_FALLBACK,
@@ -71,12 +74,9 @@ enum SemanticGeneratedIdentityFamily
 	SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT
 };
 
-namespace pa12_semantic_detail
-{
 class SemanticGraphConsumer;
-}
 
-struct SemanticAnalysisStats
+struct Stats
 {
 	PreprocessingStats preprocessing;
 	syntax::InterningStats interning;
@@ -272,26 +272,28 @@ struct SemanticAnalysisStats
 	std::uint64_t render_nanoseconds;
 	std::uint64_t elapsed_nanoseconds;
 
-	SemanticAnalysisStats();
+	Stats();
 };
 
 // Parse through the shared PA10 boundary, construct canonical PA12 semantic
 // facts, and render the deterministic assignment view. The syntax arena is
 // phase-local; canonical types, bindings, and dump nodes are translation-unit
 // owned and are released together after rendering.
-void WriteSemanticTranslationUnit(const std::string& path,
+void WriteTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	std::ostream& output, SemanticAnalysisStats* stats = 0);
+	std::ostream& output, Stats* stats = 0);
 
 // Parse and analyze once, then synchronously expose the canonical semantic
 // graph to a typed next-phase consumer. The graph view is borrowed and is no
 // longer valid when this function returns.
-void ConsumeSemanticTranslationUnit(const std::string& path,
+void ConsumeTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	pa12_semantic_detail::SemanticGraphConsumer& consumer,
-	SemanticAnalysisStats* stats = 0,
+	SemanticGraphConsumer& consumer,
+	Stats* stats = 0,
 	bool complete_constructor_unwind = false,
 	bool host_object_emission = false,
 	bool source_type_view = false);
+
+}
 
 }

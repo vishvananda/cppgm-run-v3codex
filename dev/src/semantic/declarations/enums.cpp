@@ -5,12 +5,12 @@
 #include <string>
 #include <vector>
 
-namespace cppgm { namespace pa12_semantic_detail {
+namespace cppgm { namespace semantic {
 
 BindingId LocalTypeContext(const Program& program, ScopeId owner,
 	BindingId current_function);
 
-TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint, bool elaborated)
+TypeId Analyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint, bool elaborated)
 {
 	std::string spelling;
 	NamePath path;

@@ -2,10 +2,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::CompleteTranslationUnitDemand()
+void Analyzer::CompleteTranslationUnitDemand()
 {
 	if (source_type_view_)
 		for (std::size_t i = 0; i < functions_.size(); ++i)
@@ -43,7 +43,7 @@ void SemanticAnalyzer::CompleteTranslationUnitDemand()
 	}
 }
 
-void SemanticAnalyzer::MarkFunctionObjectOutputRoot(BindingId binding)
+void Analyzer::MarkFunctionObjectOutputRoot(BindingId binding)
 {
 	if (binding == kNoBinding) return;
 	binding = program_->bindings[binding].canonical;
@@ -67,7 +67,7 @@ void SemanticAnalyzer::MarkFunctionObjectOutputRoot(BindingId binding)
 	}
 }
 
-void SemanticAnalyzer::DemandRuntimeFunction(BindingId binding,
+void Analyzer::DemandRuntimeFunction(BindingId binding,
 	FunctionDemandReason reason)
 {
 	if (binding == kNoBinding) return;
@@ -79,7 +79,7 @@ void SemanticAnalyzer::DemandRuntimeFunction(BindingId binding,
 	DemandRuntimeDefinition(binding);
 }
 
-bool SemanticAnalyzer::FunctionObjectDefinitionRequired(
+bool Analyzer::FunctionObjectDefinitionRequired(
 	BindingId binding) const
 {
 	if (binding == kNoBinding) return false;
@@ -90,7 +90,7 @@ bool SemanticAnalyzer::FunctionObjectDefinitionRequired(
 		 record.object_output_root);
 }
 
-void SemanticAnalyzer::ReplayFunctionDemandEdges(BindingId binding)
+void Analyzer::ReplayFunctionDemandEdges(BindingId binding)
 {
 	binding = program_->bindings[binding].canonical;
 	FunctionInfo& function = GetMutableFunction(binding);
@@ -106,14 +106,14 @@ void SemanticAnalyzer::ReplayFunctionDemandEdges(BindingId binding)
 	}
 }
 
-void SemanticAnalyzer::ReplayRequiredFunctionDemandEdges()
+void Analyzer::ReplayRequiredFunctionDemandEdges()
 {
 	for (std::size_t i = 0; i < functions_with_demand_edges_.size(); ++i)
 		if (FunctionObjectDefinitionRequired(functions_with_demand_edges_[i]))
 			ReplayFunctionDemandEdges(functions_with_demand_edges_[i]);
 }
 
-void SemanticAnalyzer::DemandRuntimeDefinition(BindingId binding)
+void Analyzer::DemandRuntimeDefinition(BindingId binding)
 {
 	if (binding == kNoBinding) return;
 	binding = program_->bindings[binding].canonical;
@@ -145,7 +145,7 @@ void SemanticAnalyzer::DemandRuntimeDefinition(BindingId binding)
 	QueueDeferredFunctionDefinition(binding);
 }
 
-void SemanticAnalyzer::QueueDeferredFunctionDefinition(BindingId binding)
+void Analyzer::QueueDeferredFunctionDefinition(BindingId binding)
 {
 	if (binding >= function_fact_by_binding_.size() ||
 		function_fact_by_binding_[binding] == kNoDumpEdge) return;
@@ -157,7 +157,7 @@ void SemanticAnalyzer::QueueDeferredFunctionDefinition(BindingId binding)
 	++demand_worklist_pushes_;
 }
 
-void SemanticAnalyzer::CompleteFunctionDefinition(BindingId binding)
+void Analyzer::CompleteFunctionDefinition(BindingId binding)
 {
 	binding = program_->bindings[binding].canonical;
 	GetMutableFunction(binding).definition_state =

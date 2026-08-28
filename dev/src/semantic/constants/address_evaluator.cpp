@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-std::uint32_t SemanticAnalyzer::InternConstexprAddress(
+std::uint32_t Analyzer::InternConstexprAddress(
 	const ConstexprAddressValue& address)
 {
 	std::unordered_map<ConstexprAddressValue, std::uint32_t,
@@ -24,7 +24,7 @@ std::uint32_t SemanticAnalyzer::InternConstexprAddress(
 	return result;
 }
 
-const ConstexprAddressValue* SemanticAnalyzer::ConstexprAddressAt(
+const ConstexprAddressValue* Analyzer::ConstexprAddressAt(
 	std::uint32_t address) const
 {
 	return address == kNoConstexprAddress ||
@@ -32,12 +32,12 @@ const ConstexprAddressValue* SemanticAnalyzer::ConstexprAddressAt(
 		&constexpr_addresses_[address];
 }
 
-std::uint32_t SemanticAnalyzer::NullConstexprAddress()
+std::uint32_t Analyzer::NullConstexprAddress()
 {
 	return InternConstexprAddress(ConstexprAddressValue());
 }
 
-void SemanticAnalyzer::SetExpressionAddress(ExpressionInfo* expression,
+void Analyzer::SetExpressionAddress(ExpressionInfo* expression,
 	std::uint32_t address) const
 {
 	if (!ConstexprAddressAt(address))
@@ -52,7 +52,7 @@ void SemanticAnalyzer::SetExpressionAddress(ExpressionInfo* expression,
 	expression->constexpr_address = address;
 }
 
-void SemanticAnalyzer::SetExpressionLvalueAddress(ExpressionInfo* expression,
+void Analyzer::SetExpressionLvalueAddress(ExpressionInfo* expression,
 	std::uint32_t address) const
 {
 	if (!ConstexprAddressAt(address))
@@ -60,14 +60,14 @@ void SemanticAnalyzer::SetExpressionLvalueAddress(ExpressionInfo* expression,
 	expression->constexpr_lvalue_address = address;
 }
 
-std::uint32_t SemanticAnalyzer::ExpressionAddress(
+std::uint32_t Analyzer::ExpressionAddress(
 	const ExpressionInfo& expression) const
 {
 	return ConstexprAddressAt(expression.constexpr_address) ?
 		expression.constexpr_address : kNoConstexprAddress;
 }
 
-std::uint32_t SemanticAnalyzer::BindingAddress(BindingId binding) const
+std::uint32_t Analyzer::BindingAddress(BindingId binding) const
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size())
 		return kNoConstexprAddress;
@@ -82,7 +82,7 @@ std::uint32_t SemanticAnalyzer::BindingAddress(BindingId binding) const
 	return ConstexprAddressAt(address) ? address : kNoConstexprAddress;
 }
 
-void SemanticAnalyzer::PublishBindingAddress(BindingId binding,
+void Analyzer::PublishBindingAddress(BindingId binding,
 	std::uint32_t address)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size() ||
@@ -95,7 +95,7 @@ void SemanticAnalyzer::PublishBindingAddress(BindingId binding,
 	constexpr_address_by_binding_[binding] = address;
 }
 
-std::uint32_t SemanticAnalyzer::LvalueAddress(ExpressionInfo* expression)
+std::uint32_t Analyzer::LvalueAddress(ExpressionInfo* expression)
 {
 	if (constant_expression_required_depth_ == 0 &&
 		constexpr_evaluation_depth_ == 0 && unevaluated_depth_ == 0 &&
@@ -193,7 +193,7 @@ std::uint32_t SemanticAnalyzer::LvalueAddress(ExpressionInfo* expression)
 	return kNoConstexprAddress;
 }
 
-std::uint32_t SemanticAnalyzer::OffsetConstexprAddress(
+std::uint32_t Analyzer::OffsetConstexprAddress(
 	std::uint32_t address, std::int64_t byte_offset, bool narrow,
 	std::int64_t extent)
 {
@@ -224,7 +224,7 @@ std::uint32_t SemanticAnalyzer::OffsetConstexprAddress(
 		source->identity, offset, lower, upper));
 }
 
-bool SemanticAnalyzer::ExpressionTruth(
+bool Analyzer::ExpressionTruth(
 	const ExpressionInfo& expression) const
 {
 	const TypeRecord type = program_->types.Get(program_->types.RemoveTopCv(
@@ -237,7 +237,7 @@ bool SemanticAnalyzer::ExpressionTruth(
 		ScalarTruth(ExpressionScalar(expression));
 }
 
-bool SemanticAnalyzer::TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
+bool Analyzer::TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments, TypeId target,
 	ExpressionInfo* result,
@@ -310,7 +310,7 @@ bool SemanticAnalyzer::TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
 	return true;
 }
 
-ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
+ConstexprFlow Analyzer::EvaluateConstexprReturn(NodeId expression,
 	ScopeId scope, TypeId result_type, ConstexprScalarValue* result,
 	bool* result_has_scalar, std::uint32_t* result_address,
 	std::uint32_t* result_object,
@@ -384,7 +384,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 	return CONSTEXPR_FLOW_RETURN;
 }
 
-ExpressionInfo SemanticAnalyzer::MaterializeConstexprAddress(
+ExpressionInfo Analyzer::MaterializeConstexprAddress(
 	std::uint32_t address_id, TypeId type)
 {
 	const ConstexprAddressValue* address = ConstexprAddressAt(address_id);

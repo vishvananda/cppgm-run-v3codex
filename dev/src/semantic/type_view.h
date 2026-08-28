@@ -10,6 +10,9 @@
 namespace cppgm
 {
 
+namespace semantic
+{
+
 enum TypeNamePathParseFamily
 {
 	TYPE_NAME_PATH_PARSE_USING,
@@ -21,7 +24,7 @@ enum TypeNamePathParseFamily
 	TYPE_NAME_PATH_PARSE_FAMILY_COUNT
 };
 
-struct TypeAnalysisStats
+struct TypeViewStats
 {
 	PreprocessingStats preprocessing;
 	std::size_t tokens;
@@ -57,14 +60,16 @@ struct TypeAnalysisStats
 	std::uint64_t render_nanoseconds;
 	std::uint64_t elapsed_nanoseconds;
 
-	TypeAnalysisStats();
+	TypeViewStats();
 };
 
 // Parse through the PA10 boundary, run the shared semantic analysis, and write
 // the deterministic PA11 scope/type view. Translation-unit storage is local to
 // this call.
-void WriteTypeTranslationUnit(const std::string& path,
+void WriteTypeView(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	std::ostream& output, TypeAnalysisStats* stats = 0);
+	std::ostream& output, TypeViewStats* stats = 0);
+
+}
 
 }

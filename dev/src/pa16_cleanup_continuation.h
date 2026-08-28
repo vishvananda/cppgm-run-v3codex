@@ -49,7 +49,7 @@ struct Action
 	Action(const ActionKey& key_value, std::uint32_t node);
 };
 
-ActionKey MakeActionKey(const pa12_semantic_detail::DumpNode& action);
+ActionKey MakeActionKey(const semantic::DumpNode& action);
 
 struct Key
 {

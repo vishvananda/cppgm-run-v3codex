@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
@@ -750,7 +750,7 @@ bool HasRetainedParameterRoot(const Program& program,
 
 }
 
-void SemanticAnalyzer::PublishFunctionTemplateResultAbiType(
+void Analyzer::PublishFunctionTemplateResultAbiType(
 	FunctionTemplatePattern* pattern, const DeclaratorInfo& declarator)
 {
 	if (!pattern) return;

@@ -8,7 +8,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
@@ -132,7 +132,7 @@ bool IsClassEntity(const EntityRecord& entity)
 
 }
 
-TypeId SemanticAnalyzer::BuildBuiltinTransformType(NodeId node, ScopeId scope)
+TypeId Analyzer::BuildBuiltinTransformType(NodeId node, ScopeId scope)
 {
 	using namespace hosted_builtin;
 	const TypeTransformKind transform =
@@ -223,7 +223,7 @@ TypeId SemanticAnalyzer::BuildBuiltinTransformType(NodeId node, ScopeId scope)
 	throw std::logic_error("unhandled builtin type transform");
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
+ExpressionInfo Analyzer::AnalyzeBuiltinTypeTrait(
 	NodeId node, ScopeId scope)
 {
 	using namespace hosted_builtin;

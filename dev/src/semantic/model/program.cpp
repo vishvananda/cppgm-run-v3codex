@@ -7,7 +7,7 @@
 
 namespace cppgm
 {
-namespace pa11
+namespace semantic
 {
 namespace
 {
@@ -1384,7 +1384,7 @@ std::string Program::RenderEmissionName(ScopeId owner, NameId terminal,
 		std::string result = RenderEntityEmissionName(
 			owner_entity, &owner_components);
 		result += "::";
-		result += pa22_lambda_presentation::RenderLambdaMemberTerminal(
+		result += semantic::presentation::RenderLambdaMemberTerminal(
 			*this, owner_entity, terminal);
 		if (components) *components = owner_components + 1;
 		return result;
@@ -1412,7 +1412,7 @@ std::string Program::RenderEntityEmissionName(EntityId entity,
 		throw std::logic_error("invalid entity emission name");
 	const EntityRecord& record = entities[entity];
 	if (record.emission_name_form == ENTITY_EMISSION_LAMBDA)
-		return pa22_lambda_presentation::RenderLambdaEntityEmissionName(
+		return semantic::presentation::RenderLambdaEntityEmissionName(
 			*this, entity, components);
 	if (record.emission_name_form == ENTITY_EMISSION_OWNER_QUALIFIED)
 		return RenderEmissionName(

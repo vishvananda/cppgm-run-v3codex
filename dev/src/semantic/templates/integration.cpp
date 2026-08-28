@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::AnalyzeExplicitVariableInstantiation(
+bool Analyzer::AnalyzeExplicitVariableInstantiation(
 	NodeId target, ScopeId scope, bool definition)
 {
 	if (definition || !arena_->IsTag(target, ::cppgm::syntax::STAG_SIMPLE_DECLARATION) ||
@@ -37,7 +37,7 @@ bool SemanticAnalyzer::AnalyzeExplicitVariableInstantiation(
 	return true;
 }
 
-bool SemanticAnalyzer::ConstructorSubobjectsAreEmpty(BindingId constructor)
+bool Analyzer::ConstructorSubobjectsAreEmpty(BindingId constructor)
 {
 	const FunctionInfo& function = GetFunction(constructor);
 	if (function.constructor_initializer != kNoNode ||
@@ -89,7 +89,7 @@ bool SemanticAnalyzer::ConstructorSubobjectsAreEmpty(BindingId constructor)
 	return true;
 }
 
-ScopeId SemanticAnalyzer::ResolveStructuredDeclaratorOwner(
+ScopeId Analyzer::ResolveStructuredDeclaratorOwner(
 	NodeId declarator, ScopeId scope, bool routed_owner)
 {
 	if (routed_owner) return program_->ParentScope(scope);
@@ -103,7 +103,7 @@ ScopeId SemanticAnalyzer::ResolveStructuredDeclaratorOwner(
 	return owner;
 }
 
-void SemanticAnalyzer::MergeFunctionRedeclarationParameters(
+void Analyzer::MergeFunctionRedeclarationParameters(
 	FunctionInfo* function, const std::vector<ParameterInfo>& parameters,
 	bool definition)
 {
@@ -134,7 +134,7 @@ void SemanticAnalyzer::MergeFunctionRedeclarationParameters(
 	function->parameters.swap(replacement);
 }
 
-BindingId SemanticAnalyzer::MatchingInjectedClassTemplateSpecialization(
+BindingId Analyzer::MatchingInjectedClassTemplateSpecialization(
 	const LookupResult& found, std::size_t pattern,
 	const std::vector<TemplateArgument>& arguments) const
 {

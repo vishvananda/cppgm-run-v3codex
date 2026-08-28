@@ -2,10 +2,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::DemandDefaultConstructor(EntityId entity)
+void Analyzer::DemandDefaultConstructor(EntityId entity)
 {
 	if (entity == kNoEntity) return;
 	if (default_constructor_demand_states_.size() <= entity)
@@ -17,7 +17,7 @@ void SemanticAnalyzer::DemandDefaultConstructor(EntityId entity)
 	++demand_worklist_pushes_;
 }
 
-void SemanticAnalyzer::DemandConstructorDefinition(BindingId binding)
+void Analyzer::DemandConstructorDefinition(BindingId binding)
 {
 	DemandFunction(binding);
 }

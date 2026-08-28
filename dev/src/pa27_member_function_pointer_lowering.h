@@ -14,8 +14,8 @@ namespace cppgm
 namespace pa27_lowering_detail
 {
 
-using namespace pa11;
-using namespace pa12_semantic_detail;
+using namespace semantic;
+using namespace semantic;
 using namespace pa15_lowir_detail;
 using namespace pa15_lowering_support;
 

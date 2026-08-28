@@ -49,7 +49,7 @@
 #include <string>
 #include <vector>
 namespace cppgm { namespace {
-using namespace pa11; using namespace pa12_semantic_detail;
+using namespace semantic; using namespace semantic;
 using namespace pa15_lowir_detail; using namespace pa15_lowering_support;
 using pa16_lowering_detail::AggregatePath;
 class GraphLowerer :
@@ -951,7 +951,7 @@ private:
 		const DumpNode& record = arena_.nodes[node];
 		Function result;
 		result.symbol = function_symbols_[record.binding];
-		const pa11::BindingRecord& entry_binding =
+		const semantic::BindingRecord& entry_binding =
 			program_.bindings[program_.bindings[record.binding].canonical];
 		result.entry = entry_binding.owner == program_.GlobalScope() &&
 			program_.names.Get(entry_binding.name) == "main";

@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
@@ -54,7 +54,7 @@ bool EquivalentAliasTemplateParameters(
 
 }
 
-bool SemanticAnalyzer::HasTargetTypedSpecializedMemberImmediate(
+bool Analyzer::HasTargetTypedSpecializedMemberImmediate(
 	const ExpressionInfo& destination, const ExpressionInfo& value) const
 {
 	if (value.converted_scalar_target == kNoType ||
@@ -77,14 +77,14 @@ bool SemanticAnalyzer::HasTargetTypedSpecializedMemberImmediate(
 		destination_type == value.converted_scalar_target;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
+ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 	ScopeId scope, TypeId target)
 {
 	++lambda_closure_requests_;
 	const NodeId introducer = FindChild(node, ::cppgm::syntax::STAG_LAMBDA_INTRODUCER);
 	if (introducer == kNoNode)
 		throw std::runtime_error("lambda expression has no capture introducer");
-	const pa25_semantic_detail::LambdaCaptureUseTable::Fact& capture_uses =
+	const semantic::LambdaCaptureUseTable::Fact& capture_uses =
 		lambda_capture_uses_.FindOrBuild(*arena_, node);
 	const NodeId declarator = FindChild(node, ::cppgm::syntax::STAG_LAMBDA_DECLARATOR);
 	const NodeId body = FindChild(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT);
@@ -638,7 +638,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 	return ApplyTarget(result, target);
 }
 
-bool SemanticAnalyzer::IsCapturelessLambdaType(TypeId type) const
+bool Analyzer::IsCapturelessLambdaType(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord& record = program_->types.Get(type);
@@ -649,7 +649,7 @@ bool SemanticAnalyzer::IsCapturelessLambdaType(TypeId type) const
 }
 
 std::vector<ExpressionInfo>
-SemanticAnalyzer::LambdaConstructorDeductionArguments(
+Analyzer::LambdaConstructorDeductionArguments(
 	const std::vector<ExpressionInfo>& arguments)
 {
 	std::vector<ExpressionInfo> result(arguments);
@@ -673,7 +673,7 @@ SemanticAnalyzer::LambdaConstructorDeductionArguments(
 	return result;
 }
 
-void SemanticAnalyzer::InstallLambdaCaptureBindings(ScopeId scope,
+void Analyzer::InstallLambdaCaptureBindings(ScopeId scope,
 	BindingId this_binding, const FunctionInfo& function)
 {
 	if (function.lambda_capture_count == 0) return;
@@ -706,7 +706,7 @@ void SemanticAnalyzer::InstallLambdaCaptureBindings(ScopeId scope,
 	}
 }
 
-ExpressionInfo SemanticAnalyzer::BuildLambdaInvocationPointer(
+ExpressionInfo Analyzer::BuildLambdaInvocationPointer(
 	BindingId conversion_function, TypeId target)
 {
 	const FunctionInfo& conversion = GetFunction(conversion_function);
@@ -731,7 +731,7 @@ ExpressionInfo SemanticAnalyzer::BuildLambdaInvocationPointer(
 	return ApplyTarget(result, target);
 }
 
-void SemanticAnalyzer::DemandMaterializedConstructorActions(
+void Analyzer::DemandMaterializedConstructorActions(
 	std::uint32_t node, bool demand_calls)
 {
 	if (node >= dump_.nodes.size())
@@ -805,7 +805,7 @@ void SemanticAnalyzer::DemandMaterializedConstructorActions(
 	}
 }
 
-void SemanticAnalyzer::DemandRetainedRuntimeCalls(std::uint32_t node)
+void Analyzer::DemandRetainedRuntimeCalls(std::uint32_t node)
 {
 	if (unevaluated_depth_ != 0) return;
 	if (node >= dump_.nodes.size())
@@ -865,7 +865,7 @@ void SemanticAnalyzer::DemandRetainedRuntimeCalls(std::uint32_t node)
 	}
 }
 
-bool SemanticAnalyzer::TryBuildElidedClassValueTransfer(TypeId type,
+bool Analyzer::TryBuildElidedClassValueTransfer(TypeId type,
 	const ExpressionInfo& source, BindingId selected_constructor,
 	ExpressionInfo* result)
 {
@@ -897,7 +897,7 @@ bool SemanticAnalyzer::TryBuildElidedClassValueTransfer(TypeId type,
 	return true;
 }
 
-bool SemanticAnalyzer::StageNestedTemplateTemporaryCleanup(
+bool Analyzer::StageNestedTemplateTemporaryCleanup(
 	std::uint32_t expression, std::uint32_t statement)
 {
 	for (std::uint32_t edge = dump_.nodes[statement].first_edge;
@@ -925,7 +925,7 @@ bool SemanticAnalyzer::StageNestedTemplateTemporaryCleanup(
 	return false;
 }
 
-void SemanticAnalyzer::StageReturnTemporaryCleanup(
+void Analyzer::StageReturnTemporaryCleanup(
 	std::uint32_t expression, std::uint32_t statement, ScopeId scope)
 {
 	std::vector<std::uint32_t> tracked_temporaries;
@@ -997,7 +997,7 @@ void SemanticAnalyzer::StageReturnTemporaryCleanup(
 	}
 }
 
-void SemanticAnalyzer::SelectClassTemplateMemberOwner(
+void Analyzer::SelectClassTemplateMemberOwner(
 	std::size_t pattern_index, ClassTemplateMemberPattern* member)
 {
 	if (!member || pattern_index >= class_templates_.size())
@@ -1054,7 +1054,7 @@ void SemanticAnalyzer::SelectClassTemplateMemberOwner(
 			"class template member owner is not a declared specialization");
 }
 
-ScopeId SemanticAnalyzer::TemplateLexicalScope(
+ScopeId Analyzer::TemplateLexicalScope(
 	ScopeId source, ScopeId owner) const
 {
 	if (program_->KindOfScope(owner) != SCOPE_CLASS) return source;
@@ -1064,7 +1064,7 @@ ScopeId SemanticAnalyzer::TemplateLexicalScope(
 	return owner;
 }
 
-bool SemanticAnalyzer::RouteClassTemplateMemberDefinition(
+bool Analyzer::RouteClassTemplateMemberDefinition(
 	const ClassTemplateMemberPattern& definition, std::size_t component,
 	ScopeId owner_scope, ScopeId lexical_scope, bool demanded)
 {
@@ -1170,7 +1170,7 @@ bool SemanticAnalyzer::RouteClassTemplateMemberDefinition(
 	return true;
 }
 
-bool SemanticAnalyzer::TemplateTemplateParameterMatches(
+bool Analyzer::TemplateTemplateParameterMatches(
 	const std::vector<TemplateParameter>& expected,
 	const std::vector<TemplateParameter>& actual) const
 {
@@ -1205,7 +1205,7 @@ bool SemanticAnalyzer::TemplateTemplateParameterMatches(
 	return true;
 }
 
-bool SemanticAnalyzer::TemplateTemplateParameterMatchesAtScope(
+bool Analyzer::TemplateTemplateParameterMatchesAtScope(
 	const std::vector<TemplateParameter>& expected,
 	const std::vector<TemplateParameter>& actual, ScopeId scope)
 {
@@ -1214,7 +1214,7 @@ bool SemanticAnalyzer::TemplateTemplateParameterMatchesAtScope(
 		expected, actual, scope, &local_names);
 }
 
-bool SemanticAnalyzer::TemplateTemplateParameterMatchesAtScope(
+bool Analyzer::TemplateTemplateParameterMatchesAtScope(
 	const std::vector<TemplateParameter>& expected,
 	const std::vector<TemplateParameter>& actual, ScopeId scope,
 	std::unordered_set<NameId>* local_names)
@@ -1285,7 +1285,7 @@ bool SemanticAnalyzer::TemplateTemplateParameterMatchesAtScope(
 	return result;
 }
 
-bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
+bool Analyzer::BuildTemplateTemplateArgument(NodeId syntax,
 	ScopeId scope, const TemplateParameter& parameter,
 	TemplateArgument* argument)
 {
@@ -1293,7 +1293,7 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 		syntax, scope, scope, parameter, argument);
 }
 
-bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
+bool Analyzer::BuildTemplateTemplateArgument(NodeId syntax,
 	ScopeId lookup_scope, ScopeId parameter_scope,
 	const TemplateParameter& parameter, TemplateArgument* argument)
 {
@@ -1371,7 +1371,7 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 	return true;
 }
 
-TypeId SemanticAnalyzer::CreateTemplateTemplateParameterProxy(ScopeId scope,
+TypeId Analyzer::CreateTemplateTemplateParameterProxy(ScopeId scope,
 	const TemplateParameter& parameter, std::size_t ordinal)
 {
 	if (parameter.kind != TEMPLATE_ARGUMENT_TEMPLATE || parameter.name == 0)
@@ -1404,7 +1404,7 @@ TypeId SemanticAnalyzer::CreateTemplateTemplateParameterProxy(ScopeId scope,
 	return marker_type;
 }
 
-void SemanticAnalyzer::RegisterAliasTemplate(NodeId declaration,
+void Analyzer::RegisterAliasTemplate(NodeId declaration,
 	ScopeId scope, AccessKind member_access,
 	const std::vector<TemplateParameter>& parameters)
 {
@@ -1480,7 +1480,7 @@ void SemanticAnalyzer::RegisterAliasTemplate(NodeId declaration,
 		static_cast<std::uint32_t>(index);
 }
 
-std::size_t SemanticAnalyzer::FindAliasTemplateIndex(
+std::size_t Analyzer::FindAliasTemplateIndex(
 	const LookupResult& found, NameId requested) const
 {
 	if (found.type == kNoType) return NoAliasTemplatePattern();
@@ -1501,7 +1501,7 @@ std::size_t SemanticAnalyzer::FindAliasTemplateIndex(
 		NoAliasTemplatePattern();
 }
 
-bool SemanticAnalyzer::IsUnqualifiedAliasTemplateName(
+bool Analyzer::IsUnqualifiedAliasTemplateName(
 	ScopeId scope, const NamePath& path)
 {
 	if (path.Empty() || path.global || path.Size() != 1) return false;
@@ -1510,7 +1510,7 @@ bool SemanticAnalyzer::IsUnqualifiedAliasTemplateName(
 		NoAliasTemplatePattern();
 }
 
-TypeId SemanticAnalyzer::DependentQualifiedTypeShape(NodeId syntax)
+TypeId Analyzer::DependentQualifiedTypeShape(NodeId syntax)
 {
 	if (dependent_qualified_type_shapes_.size() <= syntax)
 		dependent_qualified_type_shapes_.resize(
@@ -1531,7 +1531,7 @@ TypeId SemanticAnalyzer::DependentQualifiedTypeShape(NodeId syntax)
 	return result;
 }
 
-LookupResult SemanticAnalyzer::LookupStructuredTypeSpecifier(
+LookupResult Analyzer::LookupStructuredTypeSpecifier(
 	NodeId syntax, ScopeId scope, TypeId deferred_type,
 	bool typename_specifier)
 {
@@ -1576,7 +1576,7 @@ LookupResult SemanticAnalyzer::LookupStructuredTypeSpecifier(
 	return found;
 }
 
-TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
+TypeId Analyzer::InstantiateAliasTemplate(std::size_t index,
 	const std::vector<TemplateArgument>& arguments)
 {
 	if (index >= alias_templates_.size())
@@ -1700,7 +1700,7 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 	}
 }
 
-bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
+bool Analyzer::AnalyzeExplicitFunctionInstantiation(
 	NodeId target, ScopeId scope, bool definition)
 {
 	if (program_->KindOfScope(scope) != SCOPE_NAMESPACE)

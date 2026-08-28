@@ -180,8 +180,8 @@ void LocalPresentationState::Reset(bool retain_names,
 	temporaries_.clear();
 }
 
-void LocalPresentationState::CollectSourceNames(const pa11::Program& program,
-	const pa12_semantic_detail::DumpArena& arena, std::uint32_t root,
+void LocalPresentationState::CollectSourceNames(const semantic::Program& program,
+	const semantic::DumpArena& arena, std::uint32_t root,
 	lowir_model::GeneratedNameReservations* generated)
 {
 	// Object-only lowering discards local spellings, generated value and
@@ -198,9 +198,9 @@ void LocalPresentationState::CollectSourceNames(const pa11::Program& program,
 	{
 		const std::uint32_t current = pending.back();
 		pending.pop_back();
-		const pa12_semantic_detail::DumpNode& record = arena.nodes[current];
-		if ((record.kind == pa12_semantic_detail::DUMP_PARAMETER ||
-			 record.kind == pa12_semantic_detail::DUMP_VARIABLE) &&
+		const semantic::DumpNode& record = arena.nodes[current];
+		if ((record.kind == semantic::DUMP_PARAMETER ||
+			 record.kind == semantic::DUMP_VARIABLE) &&
 			record.text != 0)
 		{
 			const std::string& name = program.names.Get(record.text);
@@ -213,7 +213,7 @@ void LocalPresentationState::CollectSourceNames(const pa11::Program& program,
 			else RecordSourceName(name, generated);
 		}
 		for (std::uint32_t edge = record.first_edge;
-			edge != pa12_semantic_detail::kNoDumpEdge;
+			edge != semantic::kNoDumpEdge;
 			edge = arena.edges[edge].next)
 			pending.push_back(arena.edges[edge].child);
 	}

@@ -8,10 +8,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::DefaultInitializationOverwritesObject(
+bool Analyzer::DefaultInitializationOverwritesObject(
 	EntityId entity) const
 {
 	std::vector<EntityId> pending(1, entity);
@@ -155,7 +155,7 @@ bool HasDirectPackExpansion(const SyntaxArena& arena, NodeId list)
 
 }
 
-bool SemanticAnalyzer::NeedsBracedCallContext(
+bool Analyzer::NeedsBracedCallContext(
 	const std::vector<NodeId>& arguments) const
 {
 	if (braced_initialization_context_) return false;
@@ -164,7 +164,7 @@ bool SemanticAnalyzer::NeedsBracedCallContext(
 	return false;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeCallInBracedContext(
+ExpressionInfo Analyzer::AnalyzeCallInBracedContext(
 	NodeId call, ScopeId scope, TypeId target)
 {
 	BracedInitializationContext context;
@@ -173,7 +173,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCallInBracedContext(
 	return AnalyzeCall(call, scope, target);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeAssignmentInBracedContext(
+ExpressionInfo Analyzer::AnalyzeAssignmentInBracedContext(
 	NodeId node, ScopeId scope)
 {
 	BracedInitializationContext context;
@@ -182,7 +182,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignmentInBracedContext(
 	return AnalyzeAssignment(node, scope);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeUntypedCallArgument(
+ExpressionInfo Analyzer::AnalyzeUntypedCallArgument(
 	NodeId argument, ScopeId scope)
 {
 	if (!arena_->IsTag(argument, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
@@ -193,7 +193,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUntypedCallArgument(
 	return ExpressionInfo();
 }
 
-ExpressionInfo SemanticAnalyzer::MaterializeFunctionalCastArgument(
+ExpressionInfo Analyzer::MaterializeFunctionalCastArgument(
 	NodeId syntax, ScopeId scope, TypeId target,
 	const ExpressionInfo& prepared)
 {
@@ -204,7 +204,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeFunctionalCastArgument(
 	return AnalyzeBracedInit(syntax, scope, target);
 }
 
-CallConversionFact SemanticAnalyzer::UntypedCallArgumentConversion(
+CallConversionFact Analyzer::UntypedCallArgumentConversion(
 	NodeId argument, ScopeId scope, TypeId target)
 {
 	if (arena_->IsTag(argument, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
@@ -232,7 +232,7 @@ CallConversionFact SemanticAnalyzer::UntypedCallArgumentConversion(
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::MaterializeCallArgument(NodeId syntax,
+ExpressionInfo Analyzer::MaterializeCallArgument(NodeId syntax,
 	ScopeId scope, TypeId target, const ExpressionInfo& prepared,
 	const CallConversionFact* conversion)
 {
@@ -267,7 +267,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeCallArgument(NodeId syntax,
 		list_object.kind == TYPE_ARRAY ? conversion : 0);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
+ExpressionInfo Analyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	TypeId target)
 {
 	if (target == kNoType) throw std::runtime_error("untyped braced-init-list");
@@ -374,7 +374,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	return result;
 }
 
-void SemanticAnalyzer::PrepareBracedInitialization(NodeId list, ScopeId scope)
+void Analyzer::PrepareBracedInitialization(NodeId list, ScopeId scope)
 {
 	if (!braced_initialization_context_ || list == kNoNode ||
 		!arena_->IsTag(list, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
@@ -400,7 +400,7 @@ void SemanticAnalyzer::PrepareBracedInitialization(NodeId list, ScopeId scope)
 	}
 }
 
-bool SemanticAnalyzer::ReusePreparedBracedExpression(
+bool Analyzer::ReusePreparedBracedExpression(
 	NodeId node, TypeId target, ExpressionInfo* result)
 {
 	if (!braced_initialization_context_) return false;
@@ -424,7 +424,7 @@ bool SemanticAnalyzer::ReusePreparedBracedExpression(
 	return true;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzePreparedAggregateElement(TypeId type,
+ExpressionInfo Analyzer::AnalyzePreparedAggregateElement(TypeId type,
 	ScopeId scope, std::uint32_t* element_edge)
 {
 	if (!element_edge)
@@ -441,7 +441,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzePreparedAggregateElement(TypeId type,
 	return AnalyzeAggregateElement(type, scope, element_edge);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeAggregateDescent(TypeId type,
+ExpressionInfo Analyzer::AnalyzeAggregateDescent(TypeId type,
 	ScopeId scope, std::uint32_t* element_edge)
 {
 	ScopedBracedInitializationContext braced_scope(
@@ -449,7 +449,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateDescent(TypeId type,
 	return AnalyzeAggregateInit(type, scope, element_edge);
 }
 
-CallConversionFact SemanticAnalyzer::PreparedAggregateElementConversion(
+CallConversionFact Analyzer::PreparedAggregateElementConversion(
 	NodeId source, TypeId target, const ExpressionInfo& expression)
 {
 	const std::uint64_t key = BracedFactKey(source, target);
@@ -473,7 +473,7 @@ CallConversionFact SemanticAnalyzer::PreparedAggregateElementConversion(
 	return result;
 }
 
-bool SemanticAnalyzer::IsBracedNarrowing(
+bool Analyzer::IsBracedNarrowing(
 	const ExpressionInfo& source, TypeId target,
 	const CallConversionFact* conversion) const
 {
@@ -567,7 +567,7 @@ bool SemanticAnalyzer::IsBracedNarrowing(
 	return false;
 }
 
-CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
+CallConversionFact Analyzer::BracedInitializationConversion(
 	NodeId list, ScopeId scope, TypeId target)
 {
 	CallConversionFact invalid;
@@ -768,7 +768,7 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 	return result;
 }
 
-BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
+BindingId Analyzer::SelectConstructor(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
 	const std::vector<BindingId>& input_candidates, bool copy_initialization,
@@ -1021,7 +1021,7 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 	return selected;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeBracedCallArgument(
+ExpressionInfo Analyzer::AnalyzeBracedCallArgument(
 	NodeId list, ScopeId scope, TypeId target)
 {
 	const TypeId object = program_->types.RemoveTopCv(EffectiveType(target));
@@ -1046,7 +1046,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedCallArgument(
 	return AnalyzeBracedInit(list, scope, target);
 }
 
-std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
+std::uint32_t Analyzer::BuildConstructorAction(TypeId type,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
 	bool copy_initialization, bool list_initialization, bool base_subobject,
 	bool demand, NodeId source_list,

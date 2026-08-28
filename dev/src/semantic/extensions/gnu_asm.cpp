@@ -7,7 +7,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
@@ -56,7 +56,7 @@ NodeId AsmOperandExpression(const SyntaxArena& arena, NodeId operand)
 
 }
 
-void SemanticAnalyzer::ApplyFunctionAsmLabel(
+void Analyzer::ApplyFunctionAsmLabel(
 	NodeId declarator, BindingId binding)
 {
 	const NodeId syntax = FindChild(declarator, ::cppgm::syntax::STAG_GNU_ASM_LABEL);
@@ -72,7 +72,7 @@ void SemanticAnalyzer::ApplyFunctionAsmLabel(
 	record.assembly_name = name;
 }
 
-bool SemanticAnalyzer::AnalyzeGnuAsmStatement(
+bool Analyzer::AnalyzeGnuAsmStatement(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
 	if (!arena_->IsTag(node, ::cppgm::syntax::STAG_GNU_ASM_STATEMENT)) return false;

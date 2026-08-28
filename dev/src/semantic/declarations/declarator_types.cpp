@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::HasDeclSpecifier(
+bool Analyzer::HasDeclSpecifier(
 	NodeId specifiers, const char* spelling) const
 {
 	for (std::uint32_t edge = specifiers == kNoNode ? kNoEdge :
@@ -18,7 +18,7 @@ bool SemanticAnalyzer::HasDeclSpecifier(
 	return false;
 }
 
-SpecInfo SemanticAnalyzer::BuildIdentityOnlySpecifiers(
+SpecInfo Analyzer::BuildIdentityOnlySpecifiers(
 	NodeId node, ScopeId scope, const std::string& hint, bool has_declarators)
 {
 	++class_template_completion_suppressed_depth_;
@@ -36,7 +36,7 @@ SpecInfo SemanticAnalyzer::BuildIdentityOnlySpecifiers(
 	}
 }
 
-TypeId SemanticAnalyzer::BuildIdentityOnlyTypeId(NodeId node, ScopeId scope)
+TypeId Analyzer::BuildIdentityOnlyTypeId(NodeId node, ScopeId scope)
 {
 	++class_template_completion_suppressed_depth_;
 	try
@@ -52,7 +52,7 @@ TypeId SemanticAnalyzer::BuildIdentityOnlyTypeId(NodeId node, ScopeId scope)
 	}
 }
 
-void SemanticAnalyzer::BindDeclaratorImplicitObject(
+void Analyzer::BindDeclaratorImplicitObject(
 	ScopeId scope, std::uint8_t function_cv, bool enabled)
 {
 	if (!enabled || current_class_context_ == kNoEntity) return;
@@ -64,7 +64,7 @@ void SemanticAnalyzer::BindDeclaratorImplicitObject(
 	program_->bindings[binding].compiler_generated = true;
 }
 
-TypeId SemanticAnalyzer::BuildArrayDeclaratorType(NodeId suffix,
+TypeId Analyzer::BuildArrayDeclaratorType(NodeId suffix,
 	TypeId element, ScopeId scope,
 	const std::unordered_set<NameId>* template_parameter_names)
 {
@@ -123,7 +123,7 @@ TypeId SemanticAnalyzer::BuildArrayDeclaratorType(NodeId suffix,
 		"invalid dependent array element type");
 }
 
-TypeId SemanticAnalyzer::BuildBitIntSpecifierType(
+TypeId Analyzer::BuildBitIntSpecifierType(
 	NodeId specifier, ScopeId scope, bool is_unsigned)
 {
 	const NodeId width_node = FirstSemanticChild(specifier);
@@ -164,14 +164,14 @@ TypeId SemanticAnalyzer::BuildBitIntSpecifierType(
 		"invalid dependent _BitInt width");
 }
 
-EntityId SemanticAnalyzer::EntityOf(TypeId type) const
+EntityId Analyzer::EntityOf(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_NAMED ? record.entity : kNoEntity;
 }
 
-bool SemanticAnalyzer::IsCallableDeclaration(NodeId node) const
+bool Analyzer::IsCallableDeclaration(NodeId node) const
 {
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_FUNCTION_DEFINITION)) return true;
 	const NodeId list = FindChild(node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);

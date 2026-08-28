@@ -4,7 +4,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -24,7 +24,7 @@ void PrepareLifetimeScope(ScopeId scope,
 
 }
 
-void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
+void Analyzer::AddLifetimeObligation(ScopeId scope,
 	BindingId object, TypeId type, bool allow_elision)
 {
 	if (IsInitializerListType(type)) return;
@@ -62,7 +62,7 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 		LifetimeObligation(object, destructor, type));
 }
 
-void SemanticAnalyzer::AddTemporaryLifetimeObligation(ScopeId scope,
+void Analyzer::AddTemporaryLifetimeObligation(ScopeId scope,
 	std::uint32_t temporary)
 {
 	const std::uint32_t action = MakeTemporaryDestructorAction(temporary);
@@ -74,5 +74,5 @@ void SemanticAnalyzer::AddTemporaryLifetimeObligation(ScopeId scope,
 	MarkInitializerListLifetimeScope(scope, temporary);
 }
 
-}  // namespace pa12_semantic_detail
+}  // namespace semantic
 }  // namespace cppgm

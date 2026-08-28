@@ -19,10 +19,10 @@ class ComplexLowering
 protected:
 	pa15_lowir_detail::Operand LowerComplexConstruction(
 		std::uint32_t node,
-		const pa12_semantic_detail::DumpNode& record,
+		const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children)
 	{
-		using namespace pa11;
+		using namespace semantic;
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 2)
@@ -50,18 +50,18 @@ protected:
 	}
 
 	pa15_lowir_detail::Operand LowerComplexComponentStorage(
-		const pa12_semantic_detail::DumpNode& record,
+		const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children)
 	{
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 1)
 			throw std::logic_error("invalid complex component graph");
-		const pa12_semantic_detail::DumpNode& source =
+		const semantic::DumpNode& source =
 			derived.arena_.nodes[children[0]];
-		const pa11::TypeId type = derived.ExpressionObjectType(source.type);
-		const pa11::TypeRecord& complex = derived.program_.types.Get(type);
-		if (complex.kind != pa11::TYPE_COMPLEX)
+		const semantic::TypeId type = derived.ExpressionObjectType(source.type);
+		const semantic::TypeRecord& complex = derived.program_.types.Get(type);
+		if (complex.kind != semantic::TYPE_COMPLEX)
 			throw std::logic_error("complex component source is not complex");
 		const Operand storage = derived.LowerStorage(children[0]);
 		const Operand base = derived.AddressOfStorage(storage);
@@ -72,28 +72,28 @@ protected:
 	}
 
 	bool TryLowerComplexStorage(std::uint32_t node,
-		const pa12_semantic_detail::DumpNode& record,
+		const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children,
 		pa15_lowir_detail::Operand* result)
 	{
-		if (record.kind == pa12_semantic_detail::DUMP_COMPLEX_CONSTRUCTION)
+		if (record.kind == semantic::DUMP_COMPLEX_CONSTRUCTION)
 			*result = LowerComplexConstruction(node, record, children);
-		else if (record.kind == pa12_semantic_detail::DUMP_COMPLEX_COMPONENT)
+		else if (record.kind == semantic::DUMP_COMPLEX_COMPONENT)
 			*result = LowerComplexComponentStorage(record, children);
 		else return false;
 		return true;
 	}
 
 	bool TryLowerComplexValue(std::uint32_t node,
-		const pa12_semantic_detail::DumpNode& record,
+		const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children,
 		pa15_lowir_detail::Operand* result)
 	{
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
-		if (record.kind == pa12_semantic_detail::DUMP_COMPLEX_CONSTRUCTION)
+		if (record.kind == semantic::DUMP_COMPLEX_CONSTRUCTION)
 			*result = LowerComplexConstruction(node, record, children);
-		else if (record.kind == pa12_semantic_detail::DUMP_COMPLEX_COMPONENT)
+		else if (record.kind == semantic::DUMP_COMPLEX_COMPONENT)
 			*result = derived.LoadStorage(
 				LowerComplexComponentStorage(record, children),
 				derived.LowerExpressionType(record.type));
@@ -106,7 +106,7 @@ protected:
 	{
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
-		const pa12_semantic_detail::DumpNode& record = derived.arena_.nodes[node];
+		const semantic::DumpNode& record = derived.arena_.nodes[node];
 		if (!derived.IsComplexObjectType(record.type)) return false;
 		const pa15_lowering_support::NodeChildren children = derived.Children(node);
 		Operand source;
@@ -121,7 +121,7 @@ protected:
 	}
 
 	bool TryLowerComplexVariableInitialization(
-		const pa12_semantic_detail::DumpNode& record,
+		const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children,
 		const pa15_lowir_detail::Operand& retained_destination)
 	{

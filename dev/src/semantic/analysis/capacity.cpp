@@ -2,7 +2,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 void DumpArena::ReserveNodes(std::size_t count)
@@ -10,7 +10,7 @@ void DumpArena::ReserveNodes(std::size_t count)
 	if (count < kNoDumpEdge) nodes.reserve(count);
 }
 
-void SemanticAnalyzer::ReserveSemanticCapacity(const SyntaxArena& arena)
+void Analyzer::ReserveSemanticCapacity(const SyntaxArena& arena)
 {
 	// Scope, name, and declaration records are normally no more numerous than
 	// syntax nodes. Use that known scale to avoid repeatedly moving them;
@@ -25,7 +25,7 @@ void SemanticAnalyzer::ReserveSemanticCapacity(const SyntaxArena& arena)
 	dump_.ReserveNodes((syntax_nodes + 1) / 2);
 }
 
-void SemanticAnalyzer::PublishBindingPopulationStats()
+void Analyzer::PublishBindingPopulationStats()
 {
 	for (std::size_t i = 1; i < program_->bindings.size(); ++i)
 	{
@@ -56,7 +56,7 @@ void SemanticAnalyzer::PublishBindingPopulationStats()
 	}
 }
 
-void SemanticAnalyzer::PublishPresentationPopulationStats()
+void Analyzer::PublishPresentationPopulationStats()
 {
 	stats_->binding_record_size = sizeof(BindingRecord);
 	stats_->entity_record_size = sizeof(EntityRecord);

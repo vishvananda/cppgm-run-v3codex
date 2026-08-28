@@ -10,7 +10,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
@@ -116,7 +116,7 @@ std::uint64_t ResultIdentityAtom(ResultIdentityAtomKind kind,
 
 }
 
-void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
+void Analyzer::InternExpandedFunctionTemplateResult(
 	FunctionTemplatePattern* pattern)
 {
 	if (!pattern || pattern->result_root_structure == kNoNode) return;
@@ -583,7 +583,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 	pattern->expanded_result_has_alias = expansions != 0;
 }
 
-bool SemanticAnalyzer::EquivalentExpandedFunctionTemplateResults(
+bool Analyzer::EquivalentExpandedFunctionTemplateResults(
 	const FunctionTemplatePattern& left,
 	const FunctionTemplatePattern& right)
 {

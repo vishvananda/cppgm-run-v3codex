@@ -15,7 +15,7 @@ namespace cppgm
 namespace pa15_lowir_detail
 {
 
-using namespace pa11;
+using namespace semantic;
 
 enum LowKind : std::uint8_t
 {

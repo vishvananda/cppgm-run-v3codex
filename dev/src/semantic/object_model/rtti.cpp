@@ -8,10 +8,9 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-using namespace pa11;
 
 namespace
 {
@@ -24,7 +23,7 @@ std::uint8_t TopCv(const Program& program, TypeId type)
 
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 {
 	const bool enclosing_unevaluated = unevaluated_depth_ != 0;
 	const LookupResult type_info = LookupPath(scope,
@@ -117,7 +116,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 	return result;
 }
 
-bool SemanticAnalyzer::TryAnalyzeTypeidComparison(
+bool Analyzer::TryAnalyzeTypeidComparison(
 	const std::string& operation, const std::string& display_operation,
 	NodeId left_syntax, NodeId right_syntax, const ExpressionInfo& left,
 	const ExpressionInfo& right, ScopeId scope, ExpressionInfo* result)
@@ -155,7 +154,7 @@ bool SemanticAnalyzer::TryAnalyzeTypeidComparison(
 	return true;
 }
 
-void SemanticAnalyzer::DemandConditionallyEvaluatedConstructors(
+void Analyzer::DemandConditionallyEvaluatedConstructors(
 	std::uint32_t root)
 {
 	if (root >= dump_.nodes.size())
@@ -177,7 +176,7 @@ void SemanticAnalyzer::DemandConditionallyEvaluatedConstructors(
 	}
 }
 
-bool SemanticAnalyzer::TryAnalyzeDynamicCast(TypeId target,
+bool Analyzer::TryAnalyzeDynamicCast(TypeId target,
 	const ExpressionInfo& operand, ExpressionInfo* result)
 {
 	const TypeRecord& target_record = program_->types.Get(target);

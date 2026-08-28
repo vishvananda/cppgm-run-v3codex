@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	TypeId owner_type, AccessKind access)
 {
 	const NodeId declarator = FindChild(node, ::cppgm::syntax::STAG_DECLARATOR);

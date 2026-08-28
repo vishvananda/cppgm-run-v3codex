@@ -62,20 +62,20 @@ bool DecodeFloatingLiteral(const std::string& spelling,
 		spelling, decoded_type, low, high);
 }
 
-PresentationNameMap::PresentationNameMap(const pa11::Program& program,
-	SemanticAnalysisStats* stats)
+PresentationNameMap::PresentationNameMap(const semantic::Program& program,
+	semantic::Stats* stats)
 	: program_(program), stats_(stats)
 {
 	for (std::size_t i = 0; i < program.entities.size(); ++i)
 	{
-		const pa11::EntityRecord& entity = program.entities[i];
+		const semantic::EntityRecord& entity = program.entities[i];
 		if (!entity.class_template_presentation) continue;
 		if (entity.emission_name == 0)
 			throw std::logic_error(
 				"class template presentation has no emission name");
-		const pa11::NameId identity = entity.identity_name != 0 ?
+		const semantic::NameId identity = entity.identity_name != 0 ?
 			entity.identity_name : entity.emission_name;
-		const pa11::NameId largest = std::max(entity.emission_name, identity);
+		const semantic::NameId largest = std::max(entity.emission_name, identity);
 		if (replacement_presentations_.size() <= largest)
 			replacement_presentations_.resize(
 				static_cast<std::size_t>(largest) + 1, 0);
@@ -83,7 +83,7 @@ PresentationNameMap::PresentationNameMap(const pa11::Program& program,
 			std::numeric_limits<std::uint32_t>::max())
 			throw std::runtime_error(
 				"too many class template presentations");
-		presentation_entities_.push_back(static_cast<pa11::EntityId>(i));
+		presentation_entities_.push_back(static_cast<semantic::EntityId>(i));
 		rendered_indices_.push_back(0);
 		const std::uint32_t encoded =
 			static_cast<std::uint32_t>(presentation_entities_.size());
@@ -99,32 +99,32 @@ const std::string& PresentationNameMap::ClassTemplatePresentation(
 		presentation >= rendered_indices_.size())
 		throw std::logic_error(
 			"class template presentation index is invalid");
-	const pa11::EntityId entity = presentation_entities_[presentation];
+	const semantic::EntityId entity = presentation_entities_[presentation];
 	if (entity >= program_.entities.size())
 		throw std::logic_error(
 			"class template presentation entity is invalid");
 	if (stats_)
 		++stats_->presentation_reads[
-			SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION];
+			semantic::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION];
 	std::uint32_t index = rendered_indices_[presentation];
 	if (index == 0)
 	{
-		const pa11::EntityRecord& record = program_.entities[entity];
+		const semantic::EntityRecord& record = program_.entities[entity];
 		const std::size_t first = record.template_argument_begin;
 		const std::size_t count = record.template_argument_count;
-		if (record.identity_name == 0 || first == pa11::kNoBinding ||
+		if (record.identity_name == 0 || first == semantic::kNoBinding ||
 			first > program_.canonical_template_arguments.size() ||
 			count > program_.canonical_template_arguments.size() - first)
 			throw std::logic_error(
 				"class template presentation facts are invalid");
-		const pa11::TemplateArgument* arguments = count == 0 ? 0 :
+		const semantic::TemplateArgument* arguments = count == 0 ? 0 :
 			&program_.canonical_template_arguments[first];
 		if (rendered_presentations_.size() >=
 			std::numeric_limits<std::uint32_t>::max())
 			throw std::runtime_error(
 				"too many rendered class template presentations");
 		rendered_presentations_.push_back(
-			pa19_template_presentation::RenderClassTemplateSpecializationName(
+			semantic::presentation::RenderClassTemplateSpecializationName(
 				program_, record.identity_name, arguments, count, stats_));
 		index = static_cast<std::uint32_t>(rendered_presentations_.size());
 		rendered_indices_[presentation] = index;
@@ -133,29 +133,29 @@ const std::string& PresentationNameMap::ClassTemplatePresentation(
 }
 
 std::string PresentationNameMap::Apply(
-	const pa11::BindingRecord& binding) const
+	const semantic::BindingRecord& binding) const
 {
 	if (binding.lambda_invocation)
-		return pa22_lambda_presentation::
+		return semantic::presentation::
 			RenderLambdaInvocationEmissionName(program_,
 				binding.lambda_invocation_owner, binding.owner, 0, stats_);
-	const pa11::EntityId owner_entity =
+	const semantic::EntityId owner_entity =
 		program_.EntityForScope(binding.owner);
-	if (owner_entity != pa11::kNoEntity &&
+	if (owner_entity != semantic::kNoEntity &&
 		owner_entity < program_.entities.size() &&
 		program_.entities[owner_entity].lambda_closure)
 	{
 		std::string result =
-			pa22_lambda_presentation::RenderLambdaEntityEmissionName(
+			semantic::presentation::RenderLambdaEntityEmissionName(
 				program_, owner_entity, 0, stats_);
 		result += "::";
-		result += pa22_lambda_presentation::RenderLambdaMemberTerminal(
+		result += semantic::presentation::RenderLambdaMemberTerminal(
 			program_, owner_entity, binding.name, stats_);
 		return result;
 	}
 	if (stats_)
 		++stats_->presentation_reads[
-			SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION];
+			semantic::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION];
 	program_.BuildEmissionPath(binding.owner, binding.name, &path_);
 	std::string result;
 	for (std::size_t i = 0; i < path_.size(); ++i)
@@ -172,65 +172,65 @@ std::string PresentationNameMap::Apply(
 }
 
 bool NeedsAggregateStorageAddress(bool namespace_object, bool has_leaf,
-	const pa11::BindingRecord& binding)
+	const semantic::BindingRecord& binding)
 {
 	return (!namespace_object && has_leaf) ||
 		(namespace_object && binding.variable_template_specialization);
 }
 
-pa11::EntityId LambdaClosureEntity(
-	const pa11::Program& program, pa11::TypeId type)
+semantic::EntityId LambdaClosureEntity(
+	const semantic::Program& program, semantic::TypeId type)
 {
 	type = program.types.RemoveTopCv(type);
-	const pa11::TypeRecord& record = program.types.Get(type);
-	if (record.kind != pa11::TYPE_NAMED ||
+	const semantic::TypeRecord& record = program.types.Get(type);
+	if (record.kind != semantic::TYPE_NAMED ||
 		record.entity >= program.entities.size() ||
 		!program.entities[record.entity].lambda_closure)
-		return pa11::kNoEntity;
+		return semantic::kNoEntity;
 	return record.entity;
 }
 
 bool IsLambdaCaptureMember(
-	const pa11::Program& program, pa11::BindingId binding)
+	const semantic::Program& program, semantic::BindingId binding)
 {
-	const pa11::BindingRecord& member = program.bindings[binding];
+	const semantic::BindingRecord& member = program.bindings[binding];
 	return program.BindingLayout(member).member_offset == 0 &&
-		member.member_owner != pa11::kNoEntity &&
+		member.member_owner != semantic::kNoEntity &&
 		member.member_owner < program.entities.size() &&
 		program.entities[member.member_owner].lambda_closure;
 }
 
 std::string MissingStorageBindingDetail(
-	const pa11::Program& program, pa11::BindingId binding)
+	const semantic::Program& program, semantic::BindingId binding)
 {
 	std::string detail = std::to_string(binding);
 	if (binding >= program.bindings.size()) return detail;
-	const pa11::BindingRecord& missing = program.bindings[binding];
+	const semantic::BindingRecord& missing = program.bindings[binding];
 	detail += " name=" + program.names.Get(missing.name);
 	if (missing.name != 0)
 		detail += " presentation=" +
-			pa12_semantic_detail::RenderBindingPresentation(program, missing);
+			semantic::RenderBindingPresentation(program, missing);
 	detail += " kind=" +
 		std::to_string(static_cast<unsigned>(missing.kind));
 	return detail;
 }
 
-bool IsNullPointerLiteralCast(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
+bool IsNullPointerLiteralCast(const semantic::Program& program,
+	const semantic::DumpNode& source, semantic::TypeId target)
 {
 	target = program.types.RemoveTopCv(target);
-	const pa11::TypeRecord& target_record = program.types.Get(target);
-	if (target_record.kind != pa11::TYPE_POINTER) return false;
+	const semantic::TypeRecord& target_record = program.types.Get(target);
+	if (target_record.kind != semantic::TYPE_POINTER) return false;
 	return source.integer_literal_zero;
 }
 
-bool IsIntNullPointerLiteralCast(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
+bool IsIntNullPointerLiteralCast(const semantic::Program& program,
+	const semantic::DumpNode& source, semantic::TypeId target)
 {
-	const pa11::TypeRecord source_type = program.types.Get(
+	const semantic::TypeRecord source_type = program.types.Get(
 		program.types.RemoveTopCv(source.type));
-	return source_type.kind == pa11::TYPE_FUNDAMENTAL &&
-		source_type.fundamental == pa11::FUND_INT &&
+	return source_type.kind == semantic::TYPE_FUNDAMENTAL &&
+		source_type.fundamental == semantic::FUND_INT &&
 		IsNullPointerLiteralCast(program, source, target);
 }
 

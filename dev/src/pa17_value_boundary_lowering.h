@@ -20,27 +20,27 @@ template <typename Derived>
 class ValueBoundaryLowering
 {
 protected:
-	bool IsClassValueBoundaryType(pa11::TypeId type) const
+	bool IsClassValueBoundaryType(semantic::TypeId type) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
-		const pa11::TypeRecord& top = derived.program_.types.Get(type);
-		return top.kind != pa11::TYPE_LVALUE_REFERENCE &&
-			top.kind != pa11::TYPE_RVALUE_REFERENCE &&
+		const semantic::TypeRecord& top = derived.program_.types.Get(type);
+		return top.kind != semantic::TYPE_LVALUE_REFERENCE &&
+			top.kind != semantic::TYPE_RVALUE_REFERENCE &&
 			derived.IsClassObjectType(type);
 	}
 
-	bool FunctionHasClassValueBoundary(pa11::TypeId type)
+	bool FunctionHasClassValueBoundary(semantic::TypeId type)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		std::uint32_t cached = 0;
 		if (derived.class_value_boundary_types_.Find(type, &cached))
 			return cached == 2;
-		const pa11::TypeRecord& function = derived.program_.types.Get(type);
-		bool boundary = function.kind == pa11::TYPE_FUNCTION &&
+		const semantic::TypeRecord& function = derived.program_.types.Get(type);
+		bool boundary = function.kind == semantic::TYPE_FUNCTION &&
 			IsClassValueBoundaryType(function.child);
-		if (function.kind == pa11::TYPE_FUNCTION)
+		if (function.kind == semantic::TYPE_FUNCTION)
 		{
-			const pa11::TypeId* parameters =
+			const semantic::TypeId* parameters =
 				derived.program_.types.Parameters(type);
 			for (std::size_t i = 0; !boundary &&
 				i < function.parameter_count; ++i)
@@ -54,61 +54,61 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.arena_.nodes[node].kind !=
-			pa12_semantic_detail::DUMP_CALL_EXPRESSION) return false;
+			semantic::DUMP_CALL_EXPRESSION) return false;
 		const pa15_lowering_support::NodeChildren children =
 			derived.Children(node);
 		return !children.empty() &&
 			derived.arena_.nodes[children[0]].kind ==
-				pa12_semantic_detail::DUMP_CALLEE &&
+				semantic::DUMP_CALLEE &&
 			FunctionHasClassValueBoundary(
 				derived.arena_.nodes[children[0]].type);
 	}
 
-	bool UsesIndirectClassResult(pa11::TypeId type,
-		pa11::BindingId function = pa11::kNoBinding) const
+	bool UsesIndirectClassResult(semantic::TypeId type,
+		semantic::BindingId function = semantic::kNoBinding) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
-		const pa11::TypeRecord& top = derived.program_.types.Get(type);
-		if (top.kind == pa11::TYPE_LVALUE_REFERENCE ||
-			top.kind == pa11::TYPE_RVALUE_REFERENCE)
+		const semantic::TypeRecord& top = derived.program_.types.Get(type);
+		if (top.kind == semantic::TYPE_LVALUE_REFERENCE ||
+			top.kind == semantic::TYPE_RVALUE_REFERENCE)
 			return false;
 		if (derived.IsComplexObjectType(type)) return true;
 		if (!derived.IsClassObjectType(type)) return false;
-		const pa11::TypeId object_type = derived.ExpressionObjectType(type);
-		const pa11::TypeRecord& object = derived.program_.types.Get(object_type);
-		if (object.kind != pa11::TYPE_NAMED ||
+		const semantic::TypeId object_type = derived.ExpressionObjectType(type);
+		const semantic::TypeRecord& object = derived.program_.types.Get(object_type);
+		if (object.kind != semantic::TYPE_NAMED ||
 			!derived.program_.entities[object.entity].complete)
 			return false;
-		const pa11::EntityRecord& entity =
+		const semantic::EntityRecord& entity =
 			derived.program_.entities[object.entity];
-		if (function != pa11::kNoBinding)
+		if (function != semantic::kNoBinding)
 		{
 			if (function >= derived.program_.bindings.size())
 				throw std::logic_error(
 					"class-result boundary has an invalid callable owner");
 			function = derived.program_.bindings[function].canonical;
 		}
-		const bool forced_indirect = function != pa11::kNoBinding &&
+		const bool forced_indirect = function != semantic::kNoBinding &&
 			derived.program_.bindings[function].force_indirect_class_result_abi;
 		return forced_indirect || entity.indirect_class_result_abi;
 	}
 
-	bool UsesIndirectClassParameter(pa11::TypeId type) const
+	bool UsesIndirectClassParameter(semantic::TypeId type) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
-		const pa11::TypeRecord& top = derived.program_.types.Get(type);
-		if (top.kind == pa11::TYPE_LVALUE_REFERENCE ||
-			top.kind == pa11::TYPE_RVALUE_REFERENCE)
+		const semantic::TypeRecord& top = derived.program_.types.Get(type);
+		if (top.kind == semantic::TYPE_LVALUE_REFERENCE ||
+			top.kind == semantic::TYPE_RVALUE_REFERENCE)
 			return false;
 		if (derived.IsComplexObjectType(type)) return true;
 		if (!derived.IsClassObjectType(type)) return false;
-		const pa11::TypeId object_type = derived.ExpressionObjectType(type);
-		const pa11::TypeRecord& object =
+		const semantic::TypeId object_type = derived.ExpressionObjectType(type);
+		const semantic::TypeRecord& object =
 			derived.program_.types.Get(object_type);
-		if (object.kind != pa11::TYPE_NAMED ||
+		if (object.kind != semantic::TYPE_NAMED ||
 			!derived.program_.entities[object.entity].complete)
 			return false;
-		const pa11::EntityRecord& entity =
+		const semantic::EntityRecord& entity =
 			derived.program_.entities[object.entity];
 		const bool aggregate_parameter = object.entity <
 			derived.aggregate_parameter_entities_.size() &&
@@ -117,7 +117,7 @@ protected:
 			(aggregate_parameter && entity.indirect_class_value_abi);
 	}
 
-	std::uint8_t BoundaryCallPassing(pa11::TypeId type) const
+	std::uint8_t BoundaryCallPassing(semantic::TypeId type) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (derived.IsReferenceType(type))
@@ -133,9 +133,9 @@ protected:
 		bool declaration = false) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
-		const pa12_semantic_detail::DumpNode& record =
+		const semantic::DumpNode& record =
 			derived.arena_.nodes[node];
-		const pa11::TypeRecord& function_type =
+		const semantic::TypeRecord& function_type =
 			derived.program_.types.Get(record.type);
 		const bool indirect_result =
 			UsesIndirectClassResult(function_type.child, record.binding);
@@ -151,30 +151,30 @@ protected:
 			parameter.indirect_result = true;
 			parameters->push_back(parameter);
 		}
-		const pa11::BuiltinFunctionKind builtin =
-			record.binding == pa12_semantic_detail::kNoBinding ?
-			pa11::BUILTIN_FUNCTION_NONE :
+		const semantic::BuiltinFunctionKind builtin =
+			record.binding == semantic::kNoBinding ?
+			semantic::BUILTIN_FUNCTION_NONE :
 				derived.program_.bindings[record.binding].builtin_function;
 		const hosted_builtin::MemoryIntrinsicKind memory_builtin =
-			record.binding == pa12_semantic_detail::kNoBinding ?
+			record.binding == semantic::kNoBinding ?
 				hosted_builtin::MEMORY_INTRINSIC_NONE :
 				derived.program_.bindings[record.binding].
 					hosted_memory_intrinsic;
-		const pa11::TypeId* source_parameters =
+		const semantic::TypeId* source_parameters =
 			derived.program_.types.Parameters(record.type);
 		bool copy_or_move_constructor = false;
-		if (record.binding != pa12_semantic_detail::kNoBinding &&
+		if (record.binding != semantic::kNoBinding &&
 			function_type.parameter_count == 2)
 		{
-			const pa11::BindingRecord& binding =
+			const semantic::BindingRecord& binding =
 				derived.program_.bindings[record.binding];
-			if (binding.constructor && binding.member_owner != pa11::kNoEntity &&
+			if (binding.constructor && binding.member_owner != semantic::kNoEntity &&
 				derived.IsReferenceType(source_parameters[1]))
 			{
-				const pa11::TypeRecord& source_object = derived.program_.types.Get(
+				const semantic::TypeRecord& source_object = derived.program_.types.Get(
 					derived.ExpressionObjectType(source_parameters[1]));
 				copy_or_move_constructor =
-					source_object.kind == pa11::TYPE_NAMED &&
+					source_object.kind == semantic::TYPE_NAMED &&
 					source_object.entity == binding.member_owner;
 			}
 		}
@@ -183,16 +183,16 @@ protected:
 		std::size_t parameter_index = 0;
 		for (std::size_t i = 0; i < children.size(); ++i)
 		{
-			const pa12_semantic_detail::DumpNode& child =
+			const semantic::DumpNode& child =
 				derived.arena_.nodes[children[i]];
-			if (child.kind != pa12_semantic_detail::DUMP_PARAMETER) continue;
+			if (child.kind != semantic::DUMP_PARAMETER) continue;
 			pa15_lowir_detail::Parameter parameter;
 			if (derived.output_.retain_local_names)
 			{
 				std::string name = child.text == 0 ? std::string() :
 					derived.program_.names.Get(child.text);
 				if (name.empty()) name = (declaration || record.kind ==
-					pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
+					semantic::DUMP_FUNCTION_DECLARATION ?
 					"arg" : "__param") + std::to_string(parameter_index);
 				parameter.name = pa15_lowir_detail::InternLocalName(
 					derived.output_, name);
@@ -219,7 +219,7 @@ protected:
 			{
 				const std::string name =
 					(declaration || record.kind ==
-						pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
+						semantic::DUMP_FUNCTION_DECLARATION ?
 						"arg" : "__param") + std::to_string(parameter_index);
 				parameter.name = pa15_lowir_detail::InternLocalName(
 					derived.output_, name);
@@ -242,7 +242,7 @@ protected:
 	}
 
 	void MaterializeBoundaryParameter(
-		const pa12_semantic_detail::DumpNode& source,
+		const semantic::DumpNode& source,
 		std::size_t parameter_index)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -257,7 +257,7 @@ protected:
 		}
 		if (derived.IsClassValueType(source.type))
 		{
-			const pa11::TypeRecord& object = derived.program_.types.Get(
+			const semantic::TypeRecord& object = derived.program_.types.Get(
 				derived.ExpressionObjectType(source.type));
 			if (derived.program_.entities[object.entity].empty_class) return;
 			const pa15_lowir_detail::Operand value(

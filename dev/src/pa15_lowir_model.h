@@ -7,7 +7,7 @@ namespace cppgm
 namespace pa15_lowir_detail
 {
 
-using namespace pa11;
+using namespace semantic;
 
 const char* LowOperationText(LowOperation operation);
 

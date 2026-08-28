@@ -16,8 +16,8 @@ bool DeferArtificialFunction(const syntax::SyntaxArena& arena,
 	syntax::NodeId declaration, bool force_inline);
 bool HasStandardAttribute(const syntax::SyntaxArena& arena,
 	syntax::NodeId node, const std::string& name);
-pa11::TypeId ApplyIntegerSignedness(pa11::TypeTable& types,
-	pa11::TypeId type, bool is_unsigned);
+semantic::TypeId ApplyIntegerSignedness(semantic::TypeTable& types,
+	semantic::TypeId type, bool is_unsigned);
 
 }
 }

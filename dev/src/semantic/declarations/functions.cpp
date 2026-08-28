@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId source_declaration,
+void Analyzer::AnalyzeSimpleFunctionDeclaration(NodeId source_declaration,
 	NodeId item, NodeId declarator, ScopeId syntax_scope,
 	ScopeId declaration_scope,
 	std::uint32_t output_parent, const NamePath& declared_path,
@@ -59,7 +59,7 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId source_declaratio
 	dump_.Add(output_parent, declaration);
 }
 
-void SemanticAnalyzer::QueueFunctionDefinitionValidation(BindingId binding)
+void Analyzer::QueueFunctionDefinitionValidation(BindingId binding)
 {
 	if (binding == kNoBinding) return;
 	binding = program_->bindings[binding].canonical;

@@ -7,11 +7,10 @@
 
 namespace cppgm
 {
-namespace pa25_semantic_detail
+namespace semantic
 {
 
 using namespace syntax;
-using namespace pa11;
 
 namespace
 {

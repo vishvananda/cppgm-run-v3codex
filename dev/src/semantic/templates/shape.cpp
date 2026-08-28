@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 bool TypeContainsDependentTemplateShape(const Program& program, TypeId type,

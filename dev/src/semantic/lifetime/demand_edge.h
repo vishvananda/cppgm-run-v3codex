@@ -5,17 +5,17 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 struct FunctionDemandEdge
 {
-	pa11::BindingId caller, callee;
+	semantic::BindingId caller, callee;
 	FunctionDemandReason reason;
 	std::uint32_t next;
 
-	FunctionDemandEdge(pa11::BindingId caller_value,
-		pa11::BindingId callee_value,
+	FunctionDemandEdge(semantic::BindingId caller_value,
+		semantic::BindingId callee_value,
 		FunctionDemandReason reason_value, std::uint32_t next_value)
 		: caller(caller_value), callee(callee_value), reason(reason_value),
 		  next(next_value) {}

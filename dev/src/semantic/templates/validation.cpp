@@ -11,7 +11,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -86,7 +86,7 @@ private:
 class RetainedTemplateValidator
 {
 public:
-	RetainedTemplateValidator(SemanticAnalyzer& analyzer, NodeId target,
+	RetainedTemplateValidator(Analyzer& analyzer, NodeId target,
 		ScopeId lexical_scope, const std::vector<TemplateParameter>& parameters,
 		NodeId class_declaration)
 		: analyzer_(analyzer), target_(target), lexical_scope_(lexical_scope),
@@ -156,7 +156,7 @@ private:
 	RetainedExceptionState RetainedExceptionSpecificationState(
 		NodeId declarator) const;
 
-	SemanticAnalyzer& analyzer_;
+	Analyzer& analyzer_;
 	NodeId target_;
 	ScopeId lexical_scope_;
 	const std::vector<TemplateParameter>& parameters_;
@@ -1751,7 +1751,7 @@ void RetainedTemplateValidator::Run()
 	Visit(target_, root);
 }
 
-void SemanticAnalyzer::ValidateRetainedTemplateDefinition(NodeId target,
+void Analyzer::ValidateRetainedTemplateDefinition(NodeId target,
 	ScopeId scope, const std::vector<TemplateParameter>& parameters,
 	NodeId class_declaration)
 {
@@ -1759,7 +1759,7 @@ void SemanticAnalyzer::ValidateRetainedTemplateDefinition(NodeId target,
 		*this, target, scope, parameters, class_declaration).Run();
 }
 
-void SemanticAnalyzer::PublishRetainedCallLookup(NodeId callee,
+void Analyzer::PublishRetainedCallLookup(NodeId callee,
 	const std::vector<BindingId>& functions,
 	const std::vector<std::size_t>& templates, EntityId naming_class,
 	bool adl_eligible)
@@ -1793,7 +1793,7 @@ void SemanticAnalyzer::PublishRetainedCallLookup(NodeId callee,
 	}
 }
 
-void SemanticAnalyzer::CopyRetainedCallLookup(
+void Analyzer::CopyRetainedCallLookup(
 	NodeId source, NodeId destination)
 {
 	if (source == destination || source >= retained_call_lookup_states_.size() ||
@@ -1830,7 +1830,7 @@ void SemanticAnalyzer::CopyRetainedCallLookup(
 		destination_templates.Push(templates[i]);
 }
 
-void SemanticAnalyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
+void Analyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
 	const std::string& spelling, bool adl_eligible)
 {
 	EntityId naming_class = kNoEntity;
@@ -1857,7 +1857,7 @@ void SemanticAnalyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
 		adl_eligible);
 }
 
-std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
+std::vector<BindingId> Analyzer::RetainedFunctionCallCandidates(
 	NodeId callee, ScopeId scope, const std::string& spelling,
 	EntityId* naming_class, bool* retained_lookup)
 {
@@ -1912,7 +1912,7 @@ std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
 	return result;
 }
 
-void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
+void Analyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 	ScopeId scope, const std::string& spelling,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments, bool retained_lookup,
@@ -2136,7 +2136,7 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 	}
 }
 
-bool SemanticAnalyzer::RetainedCallAllowsArgumentDependentLookup(
+bool Analyzer::RetainedCallAllowsArgumentDependentLookup(
 	NodeId callee) const
 {
 	return callee < retained_call_lookup_states_.size() &&
@@ -2144,7 +2144,7 @@ bool SemanticAnalyzer::RetainedCallAllowsArgumentDependentLookup(
 			RETAINED_CALL_ADL_ELIGIBLE) != 0;
 }
 
-bool SemanticAnalyzer::ClassTemplateSpecializationArgumentsComplete(
+bool Analyzer::ClassTemplateSpecializationArgumentsComplete(
 	EntityId entity) const
 {
 	if (entity >= class_template_pattern_by_entity_.size() ||

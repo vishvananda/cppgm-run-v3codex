@@ -9,15 +9,16 @@
 
 namespace cppgm
 {
+namespace semantic
+{
 namespace
 {
 
-using namespace pa12_semantic_detail;
 
 class TypeViewConsumer : public SemanticGraphConsumer
 {
 public:
-	TypeViewConsumer(std::ostream& output, TypeAnalysisStats* stats)
+	TypeViewConsumer(std::ostream& output, TypeViewStats* stats)
 		: output_(output), stats_(stats) {}
 
 	void Consume(const SemanticGraphView& graph)
@@ -47,12 +48,12 @@ public:
 
 private:
 	std::ostream& output_;
-	TypeAnalysisStats* stats_;
+	TypeViewStats* stats_;
 };
 
 }
 
-TypeAnalysisStats::TypeAnalysisStats()
+TypeViewStats::TypeViewStats()
 	: tokens(0), syntax_nodes(0), interned_names(0), canonical_types(0),
 	  scopes(0), declarations(0), lookup_queries(0), lookup_scope_visits(0),
 	  lookup_edge_visits(0), name_index_probes(0), type_index_probes(0),
@@ -73,16 +74,16 @@ TypeAnalysisStats::TypeAnalysisStats()
 	}
 }
 
-void WriteTypeTranslationUnit(const std::string& path,
+void WriteTypeView(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	std::ostream& output, TypeAnalysisStats* stats)
+	std::ostream& output, TypeViewStats* stats)
 {
 	const std::chrono::steady_clock::time_point started =
 		std::chrono::steady_clock::now();
-	if (stats) *stats = TypeAnalysisStats();
-	SemanticAnalysisStats semantic;
+	if (stats) *stats = TypeViewStats();
+	semantic::Stats semantic;
 	TypeViewConsumer consumer(output, stats);
-	ConsumeSemanticTranslationUnit(path, source, options, consumer,
+	ConsumeTranslationUnit(path, source, options, consumer,
 		stats ? &semantic : 0, false, false, true);
 	if (!stats) return;
 	stats->preprocessing = semantic.preprocessing;
@@ -127,6 +128,8 @@ void WriteTypeTranslationUnit(const std::string& path,
 	stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
 		std::chrono::duration_cast<std::chrono::nanoseconds>(
 			std::chrono::steady_clock::now() - started).count());
+}
+
 }
 
 }

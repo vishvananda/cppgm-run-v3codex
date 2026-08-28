@@ -4,10 +4,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::ApplyPlaceholderDeclaratorOperator(
+void Analyzer::ApplyPlaceholderDeclaratorOperator(
 	const std::string& operation, DeclaratorInfo* declarator) const
 {
 	if (declarator->placeholder_return_kind != PLACEHOLDER_DECLARATOR_VALUE)
@@ -25,7 +25,7 @@ void SemanticAnalyzer::ApplyPlaceholderDeclaratorOperator(
 		"unsupported placeholder function result declarator");
 }
 
-DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
+DeclaratorInfo Analyzer::BuildVariableDeclarator(
 	NodeId item, NodeId declarator, const SpecInfo& spec, ScopeId scope,
 	bool local, ExpressionInfo* prepared_initializer)
 {
@@ -192,7 +192,7 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 	return parsed;
 }
 
-DeclaratorInfo SemanticAnalyzer::BuildMemberDeclarator(NodeId item,
+DeclaratorInfo Analyzer::BuildMemberDeclarator(NodeId item,
 	NodeId declarator, const SpecInfo& spec, ScopeId scope, bool definition,
 	ExpressionInfo* prepared_initializer)
 {
@@ -206,7 +206,7 @@ DeclaratorInfo SemanticAnalyzer::BuildMemberDeclarator(NodeId item,
 	parsed.placeholder_return_cv = spec.placeholder_cv;
 	return parsed;
 }
-void SemanticAnalyzer::ConfigurePlaceholderFunctionReturn(BindingId function,
+void Analyzer::ConfigurePlaceholderFunctionReturn(BindingId function,
 	const DeclaratorInfo& declarator, std::uint8_t placeholder_cv)
 {
 	if (declarator.placeholder_return_kind == PLACEHOLDER_DECLARATOR_NONE)
@@ -221,7 +221,7 @@ void SemanticAnalyzer::ConfigurePlaceholderFunctionReturn(BindingId function,
 	fact.placeholder_return_cv = placeholder_cv;
 }
 
-TypeId SemanticAnalyzer::DeducePlaceholderFunctionReturnType(
+TypeId Analyzer::DeducePlaceholderFunctionReturnType(
 	const FunctionInfo& function, const ExpressionInfo* expression)
 {
 	if (!expression)
@@ -276,7 +276,7 @@ TypeId SemanticAnalyzer::DeducePlaceholderFunctionReturnType(
 	throw std::logic_error("placeholder return deduction has no placeholder");
 }
 
-void SemanticAnalyzer::PublishPlaceholderFunctionReturn(
+void Analyzer::PublishPlaceholderFunctionReturn(
 	BindingId function, const ExpressionInfo* expression)
 {
 	function = program_->bindings[function].canonical;
@@ -309,7 +309,7 @@ void SemanticAnalyzer::PublishPlaceholderFunctionReturn(
 	current_return_type_ = deduced;
 }
 
-void SemanticAnalyzer::CompletePlaceholderFunctionReturn(BindingId function)
+void Analyzer::CompletePlaceholderFunctionReturn(BindingId function)
 {
 	FunctionInfo& fact = GetMutableFunction(function);
 	if (fact.placeholder_return_kind != PLACEHOLDER_DECLARATOR_NONE &&
@@ -317,7 +317,7 @@ void SemanticAnalyzer::CompletePlaceholderFunctionReturn(BindingId function)
 		PublishPlaceholderFunctionReturn(function, 0);
 }
 
-void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
+void Analyzer::AnalyzeRetainedPlaceholderFunctionBody(
 	BindingId function)
 {
 	function = program_->bindings[function].canonical;
@@ -465,7 +465,7 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 	}
 }
 
-void SemanticAnalyzer::ApplyConditionalClassConversion(
+void Analyzer::ApplyConditionalClassConversion(
 	ExpressionInfo* yes, ExpressionInfo* no)
 {
 	const TypeId yes_type = EffectiveType(yes->type);
@@ -526,7 +526,7 @@ void SemanticAnalyzer::ApplyConditionalClassConversion(
 	else *no = ApplyCallArgument(*no, yes_target, &no_to_yes);
 }
 
-void SemanticAnalyzer::PublishStableFunctionTemplateResultAbi(
+void Analyzer::PublishStableFunctionTemplateResultAbi(
 	const FunctionTemplatePattern& pattern, TypeId function_type,
 	EntityId member_owner, BindingId canonical_binding)
 {
@@ -552,7 +552,7 @@ void SemanticAnalyzer::PublishStableFunctionTemplateResultAbi(
 			force_indirect_class_result_abi = true;
 }
 
-void SemanticAnalyzer::CompleteFunctionTemplatePlaceholderResult(
+void Analyzer::CompleteFunctionTemplatePlaceholderResult(
 	std::size_t pattern, BindingId binding, EntityId member_owner)
 {
 	if (GetFunction(binding).placeholder_return_kind ==
@@ -563,7 +563,7 @@ void SemanticAnalyzer::CompleteFunctionTemplatePlaceholderResult(
 		GetFunction(binding).type, member_owner, canonical);
 }
 
-bool SemanticAnalyzer::ShouldPreserveRuntimeInitializerRecipe(bool local,
+bool Analyzer::ShouldPreserveRuntimeInitializerRecipe(bool local,
 	const SpecInfo& spec, TypeId type, NodeId initializer) const
 {
 	if (local || !spec.is_constexpr) return false;
@@ -578,7 +578,7 @@ bool SemanticAnalyzer::ShouldPreserveRuntimeInitializerRecipe(bool local,
 	return arguments != kNoNode && arena_->FirstEdge(arguments) != kNoEdge;
 }
 
-bool SemanticAnalyzer::PreferMaterializedConstantDefinition(
+bool Analyzer::PreferMaterializedConstantDefinition(
 	BindingId canonical) const
 {
 	const StaticConstantInitializerFact* fact =
@@ -586,7 +586,7 @@ bool SemanticAnalyzer::PreferMaterializedConstantDefinition(
 	return fact && fact->prefer_materialized_definition;
 }
 
-void SemanticAnalyzer::PublishInClassStaticDefinitionPolicy(
+void Analyzer::PublishInClassStaticDefinitionPolicy(
 	BindingId binding, TypeId type, const SpecInfo& spec, NodeId initializer)
 {
 	const BindingId canonical = program_->bindings[binding].canonical;
@@ -598,7 +598,7 @@ void SemanticAnalyzer::PublishInClassStaticDefinitionPolicy(
 			false, spec, type, initializer);
 }
 
-void SemanticAnalyzer::PublishVariableInitializer(BindingId binding,
+void Analyzer::PublishVariableInitializer(BindingId binding,
 	TypeId type, const SpecInfo& spec, const ExpressionInfo& initializer,
 	bool preserve_runtime_recipe)
 {

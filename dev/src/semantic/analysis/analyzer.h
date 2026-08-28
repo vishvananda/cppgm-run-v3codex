@@ -19,11 +19,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 using namespace syntax;
-using namespace pa11;
 
 struct BracedInitializationContext;
 class RetainedTemplateValidator;
@@ -60,7 +59,7 @@ bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 	Program* program = 0, ScopeId left_scope = kNoScope,
 	ScopeId right_scope = kNoScope);
 
-struct SemanticGraphStorage
+struct GraphStorage
 {
 	InternedStringTable strings;
 	Program program;
@@ -71,16 +70,16 @@ struct SemanticGraphStorage
 	std::vector<ClassPolymorphismFacts> class_polymorphism;
 	std::uint32_t root;
 
-	SemanticGraphStorage()
+	GraphStorage()
 		: strings(), program(strings), root(kNoDumpEdge) {}
 	SemanticGraphView View() const;
 };
 
-class SemanticAnalyzer : public SyntaxTreeConsumer
+class Analyzer : public SyntaxTreeConsumer
 {
 public:
-	SemanticAnalyzer(SemanticGraphStorage& graph, std::ostream& output,
-		SemanticAnalysisStats* stats, bool retain_lowering_facts = false,
+	Analyzer(GraphStorage& graph, std::ostream& output,
+		Stats* stats, bool retain_lowering_facts = false,
 		bool render_output = true, bool complete_constructor_unwind = false,
 		bool host_object_emission = false, bool source_type_view = false)
 		: arena_(0), output_(output), stats_(stats), strings_(graph.strings),
@@ -1959,7 +1958,7 @@ private:
 
 	const SyntaxArena* arena_;
 	std::ostream& output_;
-	SemanticAnalysisStats* stats_;
+	semantic::Stats* stats_;
 	InternedStringTable& strings_;
 	Program* program_;
 	bool retain_lowering_facts_;
@@ -2099,7 +2098,7 @@ private:
 	TemplateSpecializationTable template_instantiations_;
 	TemplateSpecializationTable function_template_default_requests_;
 	IndexedSequenceTable lambda_closure_index_;
-	pa25_semantic_detail::LambdaCaptureUseTable lambda_capture_uses_;
+	semantic::LambdaCaptureUseTable lambda_capture_uses_;
 	std::vector<LambdaClosureFact> lambda_closures_;
 	std::vector<LambdaCaptureFact> lambda_captures_;
 	std::vector<std::uint32_t> lambda_count_by_function_;

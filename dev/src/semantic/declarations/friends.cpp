@@ -6,10 +6,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
+void Analyzer::AnalyzeFriendFunction(NodeId node,
 	ScopeId class_scope, TypeId owner_type, const SpecInfo& spec)
 {
 	const EntityId owner_entity = EntityOf(owner_type);
@@ -148,7 +148,7 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 	}
 }
 
-void SemanticAnalyzer::AnalyzeFriendClass(NodeId node,
+void Analyzer::AnalyzeFriendClass(NodeId node,
 	ScopeId class_scope, TypeId owner_type)
 {
 	const EntityId owner = EntityOf(owner_type);

@@ -8,7 +8,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -37,7 +37,7 @@ bool ResultLookupFactLess(const FunctionTemplateResultLookupFact& fact,
 
 }
 
-bool SemanticAnalyzer::SyntaxUsesAnyTemplateParameter(NodeId node,
+bool Analyzer::SyntaxUsesAnyTemplateParameter(NodeId node,
 	const std::unordered_set<NameId>& names) const
 {
 	if (node == kNoNode) return false;
@@ -49,7 +49,7 @@ bool SemanticAnalyzer::SyntaxUsesAnyTemplateParameter(NodeId node,
 	return false;
 }
 
-bool SemanticAnalyzer::SyntaxUsesUnqualifiedValueName(NodeId node,
+bool Analyzer::SyntaxUsesUnqualifiedValueName(NodeId node,
 	const std::unordered_set<NameId>& names) const
 {
 	if (node == kNoNode) return false;
@@ -64,7 +64,7 @@ bool SemanticAnalyzer::SyntaxUsesUnqualifiedValueName(NodeId node,
 	return false;
 }
 
-bool SemanticAnalyzer::FunctionTemplateResultUsesDependentParameter(
+bool Analyzer::FunctionTemplateResultUsesDependentParameter(
 	NodeId declarator, NodeId result,
 	const std::unordered_set<NameId>& template_names)
 {
@@ -87,7 +87,7 @@ bool SemanticAnalyzer::FunctionTemplateResultUsesDependentParameter(
 		SyntaxUsesUnqualifiedValueName(result, dependent_parameters);
 }
 
-bool SemanticAnalyzer::IsDirectTemplateParameterExpression(NodeId node,
+bool Analyzer::IsDirectTemplateParameterExpression(NodeId node,
 	const std::unordered_set<NameId>& names) const
 {
 	while (node != kNoNode &&
@@ -101,7 +101,7 @@ bool SemanticAnalyzer::IsDirectTemplateParameterExpression(NodeId node,
 		names.count(arena_->SemanticPayloadId(node)) != 0;
 }
 
-LookupResult SemanticAnalyzer::ResolveClassDirectBase(
+LookupResult Analyzer::ResolveClassDirectBase(
 	NodeId base_name, ScopeId scope)
 {
 	LookupResult result;
@@ -119,7 +119,7 @@ LookupResult SemanticAnalyzer::ResolveClassDirectBase(
 	return result;
 }
 
-bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
+bool Analyzer::HasDependentQualifiedType(NodeId node,
 	const std::unordered_set<NameId>& names, ScopeId scope,
 	std::size_t alias_depth)
 {
@@ -197,7 +197,7 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 	return false;
 }
 
-void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
+void Analyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 	ScopeId scope, FunctionTemplatePattern* pattern,
 	const std::unordered_set<NameId>& dependent_names)
 {
@@ -385,7 +385,7 @@ void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 	}
 }
 
-void SemanticAnalyzer::ValidateFunctionTemplatePatternResults(
+void Analyzer::ValidateFunctionTemplatePatternResults(
 	FunctionTemplatePattern* pattern,
 	const DeclaratorInfo& declarator, ScopeId shape_scope,
 	const std::unordered_set<NameId>& parameter_names,
@@ -428,7 +428,7 @@ void SemanticAnalyzer::ValidateFunctionTemplatePatternResults(
 	PublishFunctionTemplateResultAbiType(pattern, declarator);
 }
 
-bool SemanticAnalyzer::FindFunctionTemplateResultLookup(NodeId syntax,
+bool Analyzer::FindFunctionTemplateResultLookup(NodeId syntax,
 	LookupResult* result) const
 {
 	if (!result || !active_function_template_result_pattern_) return false;
@@ -447,7 +447,7 @@ bool SemanticAnalyzer::FindFunctionTemplateResultLookup(NodeId syntax,
 	return true;
 }
 
-TypeId SemanticAnalyzer::FunctionTemplateNondeducedTypeShape()
+TypeId Analyzer::FunctionTemplateNondeducedTypeShape()
 {
 	if (function_template_nondeduced_type_shape_ == kNoType)
 	{

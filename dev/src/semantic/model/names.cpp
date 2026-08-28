@@ -6,10 +6,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling,
+NamePath Analyzer::ParseNamePath(const std::string& spelling,
 	NamePathParseFamily family)
 {
 	if (stats_)
@@ -73,7 +73,7 @@ NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling,
 	return result;
 }
 
-NamePath SemanticAnalyzer::GeneratedLibraryPath(GeneratedLibraryName name)
+NamePath Analyzer::GeneratedLibraryPath(GeneratedLibraryName name)
 {
 	const char* terminal = name == GENERATED_LIBRARY_BAD_ALLOC ? "bad_alloc" :
 		name == GENERATED_LIBRARY_TYPE_INFO ? "type_info" : "initializer_list";
@@ -84,7 +84,7 @@ NamePath SemanticAnalyzer::GeneratedLibraryPath(GeneratedLibraryName name)
 	return path;
 }
 
-NamePath SemanticAnalyzer::StructuredNamePath(NodeId syntax)
+NamePath Analyzer::StructuredNamePath(NodeId syntax)
 {
 	if (stats_) ++stats_->structured_name_path_requests;
 	NamePath path;
@@ -109,7 +109,7 @@ NamePath SemanticAnalyzer::StructuredNamePath(NodeId syntax)
 	return path;
 }
 
-NamePath SemanticAnalyzer::SyntaxNamePath(NodeId syntax)
+NamePath Analyzer::SyntaxNamePath(NodeId syntax)
 {
 	if (stats_) ++stats_->syntax_name_path_requests;
 	NamePath path = StructuredNamePath(syntax);
@@ -132,7 +132,7 @@ NamePath SemanticAnalyzer::SyntaxNamePath(NodeId syntax)
 		PayloadSource(syntax), NAME_PATH_PARSE_SYNTAX_FALLBACK);
 }
 
-LookupResult SemanticAnalyzer::LookupSyntaxName(NodeId syntax, ScopeId scope,
+LookupResult Analyzer::LookupSyntaxName(NodeId syntax, ScopeId scope,
 	LookupKind kind)
 {
 	const NodeId structure = syntax == kNoNode ? kNoNode : FindChild(
@@ -143,7 +143,7 @@ LookupResult SemanticAnalyzer::LookupSyntaxName(NodeId syntax, ScopeId scope,
 		LookupPath(scope, SyntaxNamePath(syntax), kind);
 }
 
-LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
+LookupResult Analyzer::LookupSpelling(ScopeId scope,
 	const std::string& spelling, LookupKind kind,
 	NamePathParseFamily family)
 {
@@ -151,7 +151,7 @@ LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
 	return LookupPath(scope, ParseNamePath(spelling, family), kind);
 }
 
-ScopeId SemanticAnalyzer::ResolveScopePath(ScopeId scope,
+ScopeId Analyzer::ResolveScopePath(ScopeId scope,
 	const NamePath& path)
 {
 	const LookupResult result = LookupPath(scope, path, LOOKUP_SCOPE_CARRIER);
@@ -160,13 +160,13 @@ ScopeId SemanticAnalyzer::ResolveScopePath(ScopeId scope,
 		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
 }
 
-ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
+ScopeId Analyzer::ResolveScopeSpelling(ScopeId scope,
 	const std::string& spelling, NamePathParseFamily family)
 {
 	return ResolveScopePath(scope, ParseNamePath(spelling, family));
 }
 
-ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
+ScopeId Analyzer::ResolveOwner(ScopeId scope, const NamePath& name)
 {
 	if (!name.global && name.Size() <= 1) return scope;
 	NamePath owner = name;

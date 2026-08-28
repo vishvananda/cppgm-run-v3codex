@@ -8,10 +8,9 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-using namespace pa11;
 
 void RegisterSwitchEntryDeclaration(const Program& program, ScopeId scope,
 	bool local, bool declaration_only, BindingId object, TypeId type,

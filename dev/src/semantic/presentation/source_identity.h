@@ -7,24 +7,24 @@
 
 namespace cppgm
 {
-namespace pa34_source_identity
+namespace semantic { namespace presentation
 {
 
 struct TemplateBinding
 {
-	pa11::NameId name;
-	pa11::TemplateArgument argument;
+	semantic::NameId name;
+	semantic::TemplateArgument argument;
 
-	TemplateBinding(pa11::NameId name_value,
-		const pa11::TemplateArgument& argument_value)
+	TemplateBinding(semantic::NameId name_value,
+		const semantic::TemplateArgument& argument_value)
 		: name(name_value), argument(argument_value) {}
 };
 
-std::string RenderType(const pa11::Program& program, pa11::TypeId type);
-std::string RenderEntity(const pa11::Program& program, pa11::EntityId entity);
-std::string RenderFunction(const pa11::Program& program,
-	pa11::BindingId binding, pa11::TypeId type,
+std::string RenderType(const semantic::Program& program, semantic::TypeId type);
+std::string RenderEntity(const semantic::Program& program, semantic::EntityId entity);
+std::string RenderFunction(const semantic::Program& program,
+	semantic::BindingId binding, semantic::TypeId type,
 	const std::vector<TemplateBinding>& substitutions);
 
-}
+} }
 }

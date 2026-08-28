@@ -5,11 +5,11 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 const ClassTemplatePartialSelection*
-SemanticAnalyzer::FindClassTemplatePartialSelection(BindingId binding) const
+Analyzer::FindClassTemplatePartialSelection(BindingId binding) const
 {
 	if (binding >= class_template_partial_selection_indices_.size()) return 0;
 	const std::uint32_t stored =
@@ -21,7 +21,7 @@ SemanticAnalyzer::FindClassTemplatePartialSelection(BindingId binding) const
 }
 
 ClassTemplatePartialSelection&
-SemanticAnalyzer::EnsureClassTemplatePartialSelection(BindingId binding)
+Analyzer::EnsureClassTemplatePartialSelection(BindingId binding)
 {
 	if (binding == kNoBinding)
 		throw std::logic_error("invalid class template partial selection owner");

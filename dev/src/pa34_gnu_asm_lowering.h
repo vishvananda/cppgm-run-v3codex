@@ -15,10 +15,10 @@ template <class Derived>
 class GnuAsmLowering
 {
 protected:
-	bool TryLowerGnuAsmStatement(const pa12_semantic_detail::DumpNode& record,
+	bool TryLowerGnuAsmStatement(const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children)
 	{
-		using namespace pa12_semantic_detail;
+		using namespace semantic;
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (record.kind != DUMP_GNU_ASM_STATEMENT) return false;

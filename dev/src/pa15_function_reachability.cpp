@@ -33,7 +33,7 @@ enum RetentionReason
 
 std::uint16_t semantic_retention_reasons(const Symbol& symbol)
 {
-	using namespace pa12_semantic_detail;
+	using namespace semantic;
 	const std::uint16_t demand = symbol.demand_reason_mask;
 	std::uint16_t result = 0;
 	if (demand & (FunctionDemandReasonMask(FUNCTION_DEMAND_LIFECYCLE) |

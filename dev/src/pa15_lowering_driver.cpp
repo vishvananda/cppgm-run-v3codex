@@ -18,7 +18,7 @@
 namespace cppgm
 {
 
-using namespace pa12_semantic_detail;
+using namespace semantic;
 using namespace pa15_lowir_detail;
 using namespace pa15_lowering_detail;
 using namespace pa15_lowering_support;
@@ -138,8 +138,8 @@ void CoalesceLifecycleFunctions(TypedProgram* program,
 			program->functions.begin() + initializer + 1);
 }
 
-void AccumulateLambdaCaptureStats(SemanticAnalysisStats* target,
-	const SemanticAnalysisStats& source)
+void AccumulateLambdaCaptureStats(semantic::Stats* target,
+	const semantic::Stats& source)
 {
 	target->lambda_capture_summary_requests +=
 		source.lambda_capture_summary_requests;
@@ -150,16 +150,16 @@ void AccumulateLambdaCaptureStats(SemanticAnalysisStats* target,
 	target->lambda_capture_name_uses += source.lambda_capture_name_uses;
 }
 
-void AccumulateLifetimeQueryStats(SemanticAnalysisStats* target,
-	const SemanticAnalysisStats& source)
+void AccumulateLifetimeQueryStats(semantic::Stats* target,
+	const semantic::Stats& source)
 {
 	target->enclosing_lifetime_queries += source.enclosing_lifetime_queries;
 	target->initializer_list_lifetime_queries +=
 		source.initializer_list_lifetime_queries;
 }
 
-void AccumulateVirtualBaseStats(SemanticAnalysisStats* target,
-	const SemanticAnalysisStats& source)
+void AccumulateVirtualBaseStats(semantic::Stats* target,
+	const semantic::Stats& source)
 {
 	target->virtual_base_layout_edge_visits +=
 		source.virtual_base_layout_edge_visits;
@@ -174,8 +174,8 @@ void AccumulateVirtualBaseStats(SemanticAnalysisStats* target,
 		source.polymorphic_virtual_view_merges;
 }
 
-void AccumulateFunctionDemandStats(SemanticAnalysisStats* target,
-	const SemanticAnalysisStats& source)
+void AccumulateFunctionDemandStats(semantic::Stats* target,
+	const semantic::Stats& source)
 {
 	target->demand_worklist_pushes += source.demand_worklist_pushes;
 	target->demanded_function_emissions +=
@@ -208,8 +208,8 @@ void AccumulateFunctionDemandStats(SemanticAnalysisStats* target,
 	target->demand_abi_support_requests += source.demand_abi_support_requests;
 }
 
-void AccumulateSemanticStorageStats(SemanticAnalysisStats* target,
-	const SemanticAnalysisStats& source)
+void AccumulateSemanticStorageStats(semantic::Stats* target,
+	const semantic::Stats& source)
 {
 	target->semantic_program_storage_bytes +=
 		source.semantic_program_storage_bytes;
@@ -230,14 +230,14 @@ void AccumulateSemanticStorageStats(SemanticAnalysisStats* target,
 		target->peak_stage_storage_bytes, source.peak_stage_storage_bytes);
 }
 
-void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
-	const SemanticAnalysisStats& source)
+void AccumulateSemanticNameStats(semantic::Stats* target,
+	const semantic::Stats& source)
 {
 	target->name_path_parse_requests += source.name_path_parse_requests;
 	target->name_path_parse_components += source.name_path_parse_components;
 	target->name_path_single_component_parses +=
 		source.name_path_single_component_parses;
-	for (std::size_t family = 0; family < NAME_PATH_PARSE_FAMILY_COUNT;
+	for (std::size_t family = 0; family < semantic::NAME_PATH_PARSE_FAMILY_COUNT;
 		++family)
 		target->name_path_parse_families[family] +=
 			source.name_path_parse_families[family];
@@ -254,7 +254,7 @@ void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
 	target->declarator_name_path_requests +=
 		source.declarator_name_path_requests;
 	for (std::size_t family = 0;
-		family < SEMANTIC_PRESENTATION_FAMILY_COUNT; ++family)
+		family < semantic::SEMANTIC_PRESENTATION_FAMILY_COUNT; ++family)
 	{
 		target->presentation_renders[family] +=
 			source.presentation_renders[family];
@@ -264,7 +264,7 @@ void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
 			source.presentation_render_bytes[family];
 	}
 	for (std::size_t family = 0;
-		family < SEMANTIC_PRESENTATION_READ_FAMILY_COUNT; ++family)
+		family < semantic::SEMANTIC_PRESENTATION_READ_FAMILY_COUNT; ++family)
 	{
 		target->presentation_reads[family] +=
 			source.presentation_reads[family];
@@ -274,7 +274,7 @@ void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
 			source.presentation_retained_bytes[family];
 	}
 	for (std::size_t family = 0;
-		family < SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT; ++family)
+		family < semantic::SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT; ++family)
 	{
 		target->generated_identity_renders[family] +=
 			source.generated_identity_renders[family];
@@ -365,13 +365,13 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 	for (std::size_t i = 0; i < sources.size(); ++i)
 	{
 		GraphConsumer consumer(program, stats, i);
-		SemanticAnalysisStats semantic_stats;
-		ConsumeSemanticTranslationUnit(sources[i].path, sources[i].source, options,
+		semantic::Stats semantic_stats;
+		ConsumeTranslationUnit(sources[i].path, sources[i].source, options,
 			consumer, stats ? &semantic_stats : 0, complete_constructor_unwind,
 			host_object_emission);
 		if (stats)
 		{
-			SemanticAnalysisStats& semantic = stats->semantic;
+			semantic::Stats& semantic = stats->semantic;
 			stats->source_bytes += sources[i].source.size();
 			semantic.interning.Accumulate(semantic_stats.interning);
 			semantic.tokens += semantic_stats.tokens;

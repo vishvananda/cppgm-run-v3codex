@@ -10,7 +10,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -561,7 +561,7 @@ void MergeFunctionTemplateDefaults(FunctionTemplatePattern* retained,
 
 }
 
-void SemanticAnalyzer::InheritFunctionTemplateResultLookups(
+void Analyzer::InheritFunctionTemplateResultLookups(
 	const FunctionTemplatePattern& source,
 	FunctionTemplatePattern* destination)
 {
@@ -759,7 +759,7 @@ void SemanticAnalyzer::InheritFunctionTemplateResultLookups(
 	destination->result_root_namespace = source.result_root_namespace;
 }
 
-void SemanticAnalyzer::AdoptFunctionTemplateDefinition(
+void Analyzer::AdoptFunctionTemplateDefinition(
 	std::size_t pattern_index, FunctionTemplatePattern* retained,
 	FunctionTemplatePattern* incoming, bool explicit_member_definition)
 {
@@ -795,7 +795,7 @@ void SemanticAnalyzer::AdoptFunctionTemplateDefinition(
 	UpgradeFunctionTemplateSpecializations(pattern_index);
 }
 
-void SemanticAnalyzer::AppendConstructorTemplateCandidates(
+void Analyzer::AppendConstructorTemplateCandidates(
 	TypeId initialized_type, const std::vector<ExpressionInfo>& arguments,
 	std::vector<BindingId>* candidates,
 	const std::vector<NodeId>* argument_syntax, ScopeId argument_scope)
@@ -835,7 +835,7 @@ void SemanticAnalyzer::AppendConstructorTemplateCandidates(
 		candidates->push_back(entity_constructors_[entity][i]);
 }
 
-void SemanticAnalyzer::PublishFunctionTemplateFriendGrants(
+void Analyzer::PublishFunctionTemplateFriendGrants(
 	const FunctionTemplatePattern& pattern, BindingId specialization)
 {
 	if (specialization == kNoBinding) return;
@@ -852,7 +852,7 @@ void SemanticAnalyzer::PublishFunctionTemplateFriendGrants(
 	}
 }
 
-void SemanticAnalyzer::RegisterFunctionTemplateFriend(
+void Analyzer::RegisterFunctionTemplateFriend(
 	std::size_t pattern_index, EntityId owner, bool hidden)
 {
 	if (pattern_index >= function_templates_.size() || owner == kNoEntity)
@@ -874,7 +874,7 @@ void SemanticAnalyzer::RegisterFunctionTemplateFriend(
 			pattern, pattern.specialization_bindings[i]);
 }
 
-TypeId SemanticAnalyzer::DependentFunctionTemplateResultShape()
+TypeId Analyzer::DependentFunctionTemplateResultShape()
 {
 	if (function_template_dependent_result_shape_ == kNoType)
 	{
@@ -893,7 +893,7 @@ TypeId SemanticAnalyzer::DependentFunctionTemplateResultShape()
 	return function_template_dependent_result_shape_;
 }
 
-void SemanticAnalyzer::EnsureFunctionTemplateShapeParameters(std::size_t count)
+void Analyzer::EnsureFunctionTemplateShapeParameters(std::size_t count)
 {
 	while (function_template_shape_parameters_.size() < count)
 	{
@@ -913,7 +913,7 @@ void SemanticAnalyzer::EnsureFunctionTemplateShapeParameters(std::size_t count)
 	}
 }
 
-void SemanticAnalyzer::ApplyGenericLambdaSpecializationFacts(
+void Analyzer::ApplyGenericLambdaSpecializationFacts(
 	const FunctionTemplatePattern& pattern, BindingId binding,
 	EntityId member_owner)
 {
@@ -930,7 +930,7 @@ void SemanticAnalyzer::ApplyGenericLambdaSpecializationFacts(
 	function.lambda_this_capture_member = pattern.lambda_this_capture_member;
 }
 
-std::size_t SemanticAnalyzer::FindPriorFunctionTemplatePattern(
+std::size_t Analyzer::FindPriorFunctionTemplatePattern(
 	const FunctionTemplatePattern& pattern, EntityId friend_owner,
 	bool qualified_friend, bool definition)
 {
@@ -979,7 +979,7 @@ std::size_t SemanticAnalyzer::FindPriorFunctionTemplatePattern(
 	return function_templates_.size();
 }
 
-ScopeId SemanticAnalyzer::FunctionTemplateExceptionScope(
+ScopeId Analyzer::FunctionTemplateExceptionScope(
 	const FunctionTemplatePattern& pattern,
 	const FunctionInfo& function)
 {
@@ -1007,7 +1007,7 @@ ScopeId SemanticAnalyzer::FunctionTemplateExceptionScope(
 	return scope;
 }
 
-void SemanticAnalyzer::ConfigureFunctionTemplateException(
+void Analyzer::ConfigureFunctionTemplateException(
 	FunctionTemplatePattern* pattern, NodeId declarator,
 	const DeclaratorInfo& shape)
 {
@@ -1042,7 +1042,7 @@ void SemanticAnalyzer::ConfigureFunctionTemplateException(
 		false : IsNonthrowing(declarator, shape.parameter_scope);
 }
 
-void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
+void Analyzer::RegisterFunctionTemplatePattern(NodeId target,
 	ScopeId scope, AccessKind member_access,
 	const std::vector<TemplateParameter>& parameters, NodeId specifiers,
 	NodeId declarator, bool definition, bool special_member_template,
@@ -1285,7 +1285,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		RegisterFunctionTemplateFriend(index, friend_owner, true);
 }
 
-std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
+std::vector<std::size_t> Analyzer::FindFunctionTemplates(
 	ScopeId scope, const std::string& spelling)
 {
 	NamePath path = ParseNamePath(spelling, NAME_PATH_PARSE_TEMPLATE);
@@ -1293,7 +1293,7 @@ std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
 	return FindFunctionTemplates(scope, path);
 }
 
-std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
+std::vector<std::size_t> Analyzer::FindFunctionTemplates(
 	ScopeId scope, const NamePath& path)
 {
 	if (path.Empty()) return std::vector<std::size_t>();
@@ -1314,7 +1314,7 @@ std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
 	return result;
 }
 
-std::vector<std::size_t> SemanticAnalyzer::FindStructuredFunctionTemplates(
+std::vector<std::size_t> Analyzer::FindStructuredFunctionTemplates(
 	NodeId syntax, ScopeId scope)
 {
 	const NamePath path = StructuredNamePath(syntax);
@@ -1338,7 +1338,7 @@ std::vector<std::size_t> SemanticAnalyzer::FindStructuredFunctionTemplates(
 	return result;
 }
 
-std::vector<ScopeId> SemanticAnalyzer::FindFunctionTemplateOwners(
+std::vector<ScopeId> Analyzer::FindFunctionTemplateOwners(
 	ScopeId scope, const std::string& spelling)
 {
 	NamePath path = ParseNamePath(spelling, NAME_PATH_PARSE_TEMPLATE);
@@ -1346,7 +1346,7 @@ std::vector<ScopeId> SemanticAnalyzer::FindFunctionTemplateOwners(
 	return FindFunctionTemplateOwners(scope, path);
 }
 
-std::vector<ScopeId> SemanticAnalyzer::FindFunctionTemplateOwners(
+std::vector<ScopeId> Analyzer::FindFunctionTemplateOwners(
 	ScopeId scope, const NamePath& path)
 {
 	if (path.Empty()) return std::vector<ScopeId>();
@@ -1368,7 +1368,7 @@ std::vector<ScopeId> SemanticAnalyzer::FindFunctionTemplateOwners(
 	return result;
 }
 
-bool SemanticAnalyzer::BuildFunctionTemplateArgumentOffsets(
+bool Analyzer::BuildFunctionTemplateArgumentOffsets(
 	const std::vector<TemplateParameter>& parameters,
 	std::size_t argument_count, std::vector<std::uint32_t>* offsets) const
 {
@@ -1396,7 +1396,7 @@ bool SemanticAnalyzer::BuildFunctionTemplateArgumentOffsets(
 	return true;
 }
 
-bool SemanticAnalyzer::BuildExplicitFunctionTemplateArguments(
+bool Analyzer::BuildExplicitFunctionTemplateArguments(
 	const FunctionTemplatePattern& pattern,
 	const std::vector<NodeId>& syntax, ScopeId use_scope,
 	std::vector<TemplateArgument>* arguments,
@@ -1455,7 +1455,7 @@ bool SemanticAnalyzer::BuildExplicitFunctionTemplateArguments(
 	return true;
 }
 
-ScopeId SemanticAnalyzer::BindFunctionTemplateArguments(
+ScopeId Analyzer::BindFunctionTemplateArguments(
 	const FunctionTemplatePattern& pattern,
 	const std::vector<TemplateArgument>& arguments,
 	const std::vector<std::uint32_t>& parameter_offsets)
@@ -1489,7 +1489,7 @@ ScopeId SemanticAnalyzer::BindFunctionTemplateArguments(
 	return template_scope;
 }
 
-DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
+DeclaratorInfo Analyzer::BuildFunctionTemplateSpecializationDeclarator(
 	const FunctionTemplatePattern& pattern, ScopeId template_scope,
 	SpecInfo* spec, EntityId* member_owner)
 {
@@ -1604,7 +1604,7 @@ DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
 	return parsed;
 }
 
-void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
+void Analyzer::UpgradeFunctionTemplateSpecializations(
 	std::size_t index)
 {
 	if (index >= function_templates_.size())
@@ -1691,7 +1691,7 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 	}
 }
 
-BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
+BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<TypeId>& arguments)
 {
 	if (index >= function_templates_.size())
@@ -1715,7 +1715,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	return InstantiateFunctionTemplate(index, canonical, offsets);
 }
 
-BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
+BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<TemplateArgument>& arguments)
 {
 	if (index >= function_templates_.size())
@@ -1727,7 +1727,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	return InstantiateFunctionTemplate(index, arguments, offsets);
 }
 
-void SemanticAnalyzer::PublishFunctionTemplateSpecialMemberRole(
+void Analyzer::PublishFunctionTemplateSpecialMemberRole(
 	const FunctionTemplatePattern& pattern, BindingId binding,
 	EntityId member_owner, TypeId function_type)
 {
@@ -1775,7 +1775,7 @@ void SemanticAnalyzer::PublishFunctionTemplateSpecialMemberRole(
 		conversions.end()) conversions.push_back(binding);
 }
 
-bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
+bool Analyzer::MaterializeFunctionTemplateDefaults(
 	const FunctionTemplatePattern& pattern,
 	const std::vector<TemplateArgument>& arguments,
 	const std::vector<std::uint32_t>& parameter_offsets,
@@ -1918,7 +1918,7 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 	return true;
 }
 
-bool SemanticAnalyzer::ReuseFunctionTemplateSpecialization(
+bool Analyzer::ReuseFunctionTemplateSpecialization(
 	const TemplateSpecializationKey& specialization_key,
 	bool needs_defaults,
 	const TemplateSpecializationKey& default_request_key,
@@ -1947,7 +1947,7 @@ bool SemanticAnalyzer::ReuseFunctionTemplateSpecialization(
 	return true;
 }
 
-BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
+BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<TemplateArgument>& arguments,
 	const std::vector<std::uint32_t>& parameter_offsets)
 {
@@ -2186,7 +2186,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	return binding;
 }
 
-void SemanticAnalyzer::EnsureFunctionExceptionSpecification(BindingId binding)
+void Analyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 {
 	if (binding == kNoBinding) return;
 	binding = program_->bindings[binding].canonical;
@@ -2330,14 +2330,14 @@ void SemanticAnalyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 		EXCEPTION_SPECIFICATION_SUCCEEDED;
 }
 
-bool SemanticAnalyzer::FunctionIsNonthrowing(BindingId binding)
+bool Analyzer::FunctionIsNonthrowing(BindingId binding)
 {
 	if (binding == kNoBinding) return false;
 	EnsureFunctionExceptionSpecification(binding);
 	return program_->bindings[program_->bindings[binding].canonical].nonthrowing;
 }
 
-void SemanticAnalyzer::RecordFunctionTemplateUsing(ScopeId owner,
+void Analyzer::RecordFunctionTemplateUsing(ScopeId owner,
 	NameId name, std::size_t pattern, AccessKind access)
 {
 	if (pattern > std::numeric_limits<std::uint32_t>::max())
@@ -2363,7 +2363,7 @@ void SemanticAnalyzer::RecordFunctionTemplateUsing(ScopeId owner,
 		static_cast<std::uint32_t>(pattern), access));
 }
 
-BindingId SemanticAnalyzer::MaterializeFunctionTemplateUsing(ScopeId owner,
+BindingId Analyzer::MaterializeFunctionTemplateUsing(ScopeId owner,
 	NameId name, std::size_t pattern, BindingId specialization)
 {
 	if (specialization == kNoBinding ||

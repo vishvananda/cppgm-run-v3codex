@@ -2,10 +2,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-std::size_t SemanticAnalyzer::TemplatePartialBitIntPackParameter(
+std::size_t Analyzer::TemplatePartialBitIntPackParameter(
 	const TypeRecord& type,
 	const std::vector<TemplateParameter>& parameters) const
 {
@@ -14,7 +14,7 @@ std::size_t SemanticAnalyzer::TemplatePartialBitIntPackParameter(
 		type.dependent_bound_parameter : parameters.size();
 }
 
-bool SemanticAnalyzer::DeduceTemplatePartialBitIntType(
+bool Analyzer::DeduceTemplatePartialBitIntType(
 	const TypeRecord& pattern, const TypeRecord& argument,
 	const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const
@@ -39,7 +39,7 @@ bool SemanticAnalyzer::DeduceTemplatePartialBitIntType(
 		pattern_width, argument_width, parameters, deduced);
 }
 
-bool SemanticAnalyzer::DeduceTemplatePartialVectorType(
+bool Analyzer::DeduceTemplatePartialVectorType(
 	const TypeRecord& pattern, const TypeRecord& argument,
 	const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const

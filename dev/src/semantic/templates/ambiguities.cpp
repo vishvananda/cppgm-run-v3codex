@@ -10,10 +10,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::FunctionalCastPrecedesFunctions(
+bool Analyzer::FunctionalCastPrecedesFunctions(
 	const std::string& spelling, ScopeId scope, TypeId cast_type,
 	NodeId syntax, const std::vector<BindingId>& candidates)
 {
@@ -56,7 +56,7 @@ bool SemanticAnalyzer::FunctionalCastPrecedesFunctions(
 	return type_distance < function_distance;
 }
 
-bool SemanticAnalyzer::AnalyzeRetainedNamedCall(
+bool Analyzer::AnalyzeRetainedNamedCall(
 	NodeId name_syntax, const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments, TypeId target,
@@ -102,7 +102,7 @@ bool SemanticAnalyzer::AnalyzeRetainedNamedCall(
 	return true;
 }
 
-bool SemanticAnalyzer::AnalyzeAmbiguousCallStatement(
+bool Analyzer::AnalyzeAmbiguousCallStatement(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
 	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
@@ -157,7 +157,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousCallStatement(
 	return true;
 }
 
-bool SemanticAnalyzer::AnalyzeAmbiguousRelationalDeclaration(
+bool Analyzer::AnalyzeAmbiguousRelationalDeclaration(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
 	// A token sequence such as
@@ -309,7 +309,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousRelationalDeclaration(
 	return true;
 }
 
-bool SemanticAnalyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
+bool Analyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
 	ScopeId scope, std::uint32_t output_parent, NodeId specifiers,
 	NodeId clause, NameId variable_name)
 {
@@ -409,7 +409,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
 	return true;
 }
 
-bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
+bool Analyzer::AnalyzeAmbiguousDirectInitializer(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
 	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);

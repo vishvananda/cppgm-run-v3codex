@@ -9,7 +9,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-namespace cppgm { namespace pa12_semantic_detail {
+namespace cppgm { namespace semantic {
 namespace
 {
 std::size_t AlignUp(std::size_t value, std::size_t alignment)
@@ -94,7 +94,7 @@ BindingId LocalTypeContext(const Program& program, ScopeId owner,
 	}
 	return kNoBinding;
 }
-TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
+TypeId Analyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const std::string& hint, bool elaborated,
 	const std::string& specialization_name, ScopeId specialization_owner,
 	NameId specialization_identity, bool complete_definition,
@@ -243,7 +243,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	return type;
 }
 
-bool SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
+bool Analyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 	EntityId entity, NamedFlavor flavor,
 	std::vector<DirectBaseEdge>* direct_bases)
 {
@@ -347,7 +347,7 @@ bool SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 	return true;
 }
 
-bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
+bool Analyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 	TypeId type, EntityId entity, NamedFlavor flavor, ScopeId owner,
 	NameId name, NameId lookup_name, ScopeId specialization_owner,
 	NameId specialization_identity, NameId emission_name)
@@ -565,7 +565,7 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		current_class_context_ = previous_class_context;
 		return true;
 }
-void SemanticAnalyzer::CompleteClassMemberDestructionFacts(EntityId entity,
+void Analyzer::CompleteClassMemberDestructionFacts(EntityId entity,
 	bool is_union, bool defaulted_destructor)
 {
 	EntityRecord& owner = program_->entities[entity];
@@ -607,7 +607,7 @@ void SemanticAnalyzer::CompleteClassMemberDestructionFacts(EntityId entity,
 	}
 }
 
-void SemanticAnalyzer::InitializeImplicitBaseConstructorFacts(EntityId entity)
+void Analyzer::InitializeImplicitBaseConstructorFacts(EntityId entity)
 {
 	EntityRecord& owner = program_->entities[entity];
 	owner.default_constructible = true;
@@ -624,7 +624,7 @@ void SemanticAnalyzer::InitializeImplicitBaseConstructorFacts(EntityId entity)
 	}
 }
 
-void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
+void Analyzer::CompleteClassLayout(EntityId entity)
 {
 	if (program_->entities[entity].layout_complete) return;
 	++class_layouts_;
@@ -858,7 +858,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	FinalizeClassVirtualBaseLayout(entity, packing_alignment, &size,
 		&alignment, &natural_alignment, &empty_class);
 }
-BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
+BindingId Analyzer::EnsureImplicitDestructor(EntityId entity)
 {
 	if (entity_destructor_by_entity_.size() <= entity)
 		entity_destructor_by_entity_.resize(
@@ -891,7 +891,7 @@ BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
 	return destructor;
 }
 
-EntityId SemanticAnalyzer::DestructedEntity(TypeId type) const
+EntityId Analyzer::DestructedEntity(TypeId type) const
 {
 	const TypeRecord& initial = program_->types.Get(type);
 	if (initial.kind == TYPE_LVALUE_REFERENCE ||
@@ -908,7 +908,7 @@ EntityId SemanticAnalyzer::DestructedEntity(TypeId type) const
 	return IsClassNamedFlavor(flavor) ? record->entity : kNoEntity;
 }
 
-BindingId SemanticAnalyzer::DestructorForType(TypeId type) const
+BindingId Analyzer::DestructorForType(TypeId type) const
 {
 	const EntityId entity = DestructedEntity(type);
 	if (entity == kNoEntity || entity >= entity_destructor_by_entity_.size())
@@ -916,14 +916,14 @@ BindingId SemanticAnalyzer::DestructorForType(TypeId type) const
 	return entity_destructor_by_entity_[entity];
 }
 
-const std::vector<BindingId>& SemanticAnalyzer::ConstructorCandidates(
+const std::vector<BindingId>& Analyzer::ConstructorCandidates(
 	EntityId entity) const
 {
 	if (entity >= entity_constructors_.size())
 		throw std::logic_error("class is missing its constructor index");
 	return entity_constructors_[entity];
 }
-void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 	TypeId owner_type, AccessKind access)
 {
 	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
@@ -1166,7 +1166,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::AnalyzeBitField(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeBitField(NodeId node, ScopeId scope,
 	TypeId owner_type, AccessKind access)
 {
 	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
@@ -1248,7 +1248,7 @@ void SemanticAnalyzer::AnalyzeBitField(NodeId node, ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
+void Analyzer::PublishVariableDeclarationFacts(BindingId binding,
 	ScopeId declaration_scope, NameId name, TypeId type,
 	const SpecInfo& spec, bool local)
 {
@@ -1290,7 +1290,7 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 	canonical.thread_local_storage = record.thread_local_storage;
 }
 
-void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	TypeId owner_type, AccessKind access)
 {
 	const EntityId entity = EntityOf(owner_type);
@@ -1491,7 +1491,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		(source_definition || (!defaulted && !deleted));
 	RegisterClassSpecialMember(constructor);
 }
-SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
+SpecInfo Analyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 	const std::string& hint, bool has_declarators, bool type_id_context,
 	TypeId deferred_type)
 {
@@ -1722,7 +1722,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 	return result;
 }
 
-TypeId SemanticAnalyzer::BuildTypeId(NodeId node, ScopeId scope)
+TypeId Analyzer::BuildTypeId(NodeId node, ScopeId scope)
 {
 	if (node == kNoNode) throw std::runtime_error("missing type-id");
 	NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ);
@@ -1738,7 +1738,7 @@ TypeId SemanticAnalyzer::BuildTypeId(NodeId node, ScopeId scope)
 			spec.placeholder_auto).type;
 }
 
-NamePath SemanticAnalyzer::DeclaratorNamePath(NodeId node)
+NamePath Analyzer::DeclaratorNamePath(NodeId node)
 {
 	if (stats_) ++stats_->declarator_name_path_requests;
 	const NodeId identifier = FindChild(node, ::cppgm::syntax::STAG_IDENTIFIER);
@@ -1757,7 +1757,7 @@ NamePath SemanticAnalyzer::DeclaratorNamePath(NodeId node)
 		DeclaratorNamePath(FirstSemanticChild(nested));
 }
 
-NodeId SemanticAnalyzer::DeclaratorNameStructure(NodeId node) const
+NodeId Analyzer::DeclaratorNameStructure(NodeId node) const
 {
 	const NodeId identifier = FindChild(node, ::cppgm::syntax::STAG_IDENTIFIER);
 	if (identifier != kNoNode)
@@ -1767,7 +1767,7 @@ NodeId SemanticAnalyzer::DeclaratorNameStructure(NodeId node) const
 		DeclaratorNameStructure(FirstSemanticChild(nested));
 }
 
-NameId SemanticAnalyzer::DeclaratorName(NodeId node)
+NameId Analyzer::DeclaratorName(NodeId node)
 {
 	if (stats_) ++stats_->declarator_name_requests;
 	while (node != kNoNode)
@@ -1784,7 +1784,7 @@ NameId SemanticAnalyzer::DeclaratorName(NodeId node)
 	return 0;
 }
 
-std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
+std::vector<ParameterInfo> Analyzer::BuildParameters(NodeId node,
 	ScopeId scope, bool* variadic,
 	const std::unordered_set<NameId>* template_parameter_names,
 	ScopeId* result_scope)
@@ -1937,7 +1937,7 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 	return result;
 }
 
-DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
+DeclaratorInfo Analyzer::BuildDeclarator(NodeId node, TypeId base,
 	ScopeId scope, bool placeholder_auto, bool member_implicit_object,
 	bool defer_trailing_return,
 	const std::unordered_set<NameId>* template_parameter_names)
@@ -2141,7 +2141,7 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 	return result;
 }
 
-BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
+BindingId Analyzer::DeclareFunction(ScopeId owner, NameId name,
 	TypeId type, const std::vector<ParameterInfo>& parameters, bool definition,
 	bool template_specialization, StorageClass storage_class,
 	LanguageLinkage language_linkage, bool nonthrowing,
@@ -2316,7 +2316,7 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	}
 	return canonical;
 }
-void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool local, AccessKind access)
 {
 	const EntityId class_owner = program_->EntityForScope(scope);
@@ -2490,7 +2490,7 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		PublishUsingAccess(alias, ordinary.ordinary, access);
 	(void)local;
 }
-BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
+BindingId Analyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	bool force_identity)
 {
 	destructor = program_->bindings[destructor].canonical;
@@ -2580,7 +2580,7 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	program_->bindings[destructor].lifecycle_base_entry = base_entry;
 	return base_entry;
 }
-void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
+void Analyzer::PublishUsingAccess(BindingId alias,
 	BindingId source, AccessKind access)
 {
 	if (alias == kNoBinding || source == kNoBinding)
@@ -2607,7 +2607,7 @@ void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
 	target.function_effects = original.function_effects;
 }
 
-void SemanticAnalyzer::ValidateNonmemberOperator(BindingId binding) const
+void Analyzer::ValidateNonmemberOperator(BindingId binding) const
 {
 	const BindingRecord& record = program_->bindings[binding];
 	const FunctionInfo& function = GetFunction(binding);
@@ -2643,7 +2643,7 @@ void SemanticAnalyzer::ValidateNonmemberOperator(BindingId binding) const
 		"nonmember operator requires a class or enumeration parameter");
 }
 
-void SemanticAnalyzer::ValidateFunctionRefQualifier(BindingId binding)
+void Analyzer::ValidateFunctionRefQualifier(BindingId binding)
 {
 	const FunctionInfo& function = GetFunction(binding);
 	const BindingRecord& record = program_->bindings[function.binding];
@@ -2680,7 +2680,7 @@ void SemanticAnalyzer::ValidateFunctionRefQualifier(BindingId binding)
 			"member overload set mixes ref-qualified and unqualified declarations");
 }
 
-const FunctionInfo& SemanticAnalyzer::GetFunction(BindingId binding) const
+const FunctionInfo& Analyzer::GetFunction(BindingId binding) const
 {
 	const BindingId canonical = program_->bindings[binding].canonical;
 	if (canonical >= function_fact_by_binding_.size() ||
@@ -2689,7 +2689,7 @@ const FunctionInfo& SemanticAnalyzer::GetFunction(BindingId binding) const
 	return functions_[function_fact_by_binding_[canonical]];
 }
 
-FunctionInfo& SemanticAnalyzer::GetMutableFunction(BindingId binding)
+FunctionInfo& Analyzer::GetMutableFunction(BindingId binding)
 {
 	const BindingId canonical = program_->bindings[binding].canonical;
 	if (canonical >= function_fact_by_binding_.size() ||
@@ -2697,14 +2697,14 @@ FunctionInfo& SemanticAnalyzer::GetMutableFunction(BindingId binding)
 		throw std::logic_error("missing PA12 function fact");
 	return functions_[function_fact_by_binding_[canonical]];
 }
-void SemanticAnalyzer::DemandFunction(BindingId binding,
+void Analyzer::DemandFunction(BindingId binding,
 	FunctionDemandReason reason)
 {
 	if (binding == kNoBinding || unevaluated_depth_ != 0 ||
 		constexpr_evaluation_depth_ != 0) return;
 	DemandRuntimeFunction(binding, reason);
 }
-void SemanticAnalyzer::DemandVtableFunction(BindingId binding)
+void Analyzer::DemandVtableFunction(BindingId binding)
 {
 	if (binding == kNoBinding) return;
 	DemandRuntimeFunction(binding, FUNCTION_DEMAND_VTABLE);
@@ -2719,7 +2719,7 @@ void SemanticAnalyzer::DemandVtableFunction(BindingId binding)
 	demanded_functions_.push_back(binding);
 	++demand_worklist_pushes_;
 }
-TypeId SemanticAnalyzer::AdaptMemberFunctionType(BindingId binding)
+TypeId Analyzer::AdaptMemberFunctionType(BindingId binding)
 {
 	const FunctionInfo& function = GetFunction(binding);
 	if (function.member_owner == kNoType) return function.type;
@@ -2738,7 +2738,7 @@ TypeId SemanticAnalyzer::AdaptMemberFunctionType(BindingId binding)
 	return program_->types.Function(member_type.child, parameters,
 		member_type.variadic);
 }
-void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
+void Analyzer::EmitDemandedFunction(BindingId binding)
 {
 	binding = program_->bindings[binding].canonical;
 	if (binding >= function_fact_by_binding_.size() ||

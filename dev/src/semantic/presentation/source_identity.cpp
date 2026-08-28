@@ -9,12 +9,11 @@
 
 namespace cppgm
 {
-namespace pa34_source_identity
+namespace semantic { namespace presentation
 {
 namespace
 {
 
-using namespace pa11;
 
 std::string RenderTypeAt(const Program& program, TypeId type,
 	std::size_t depth);
@@ -82,7 +81,7 @@ std::string RenderEntityAt(const Program& program, EntityId entity,
 		throw std::logic_error("source identity entity graph is cyclic");
 	const EntityRecord& record = program.entities[entity];
 	if (record.lambda_closure)
-		return pa22_lambda_presentation::RenderLambdaSourceIdentityName(
+		return semantic::presentation::RenderLambdaSourceIdentityName(
 			program, entity);
 	std::string result;
 	if (record.enclosing_class != kNoEntity)
@@ -225,5 +224,5 @@ std::string RenderFunction(const Program& program, BindingId binding,
 	return result;
 }
 
-}
+} }
 }

@@ -11,26 +11,26 @@ namespace pa15_lowering_detail
 class SourceTypeLowering
 {
 public:
-	explicit SourceTypeLowering(const pa12_semantic_detail::Program& program);
+	explicit SourceTypeLowering(const semantic::Program& program);
 
-	pa15_lowir_detail::LowType Lower(pa11::TypeId type) const;
-	pa15_lowir_detail::LowType LowerExpression(pa11::TypeId type) const;
-	pa15_lowir_detail::LowType LowerStorage(pa11::TypeId type) const;
-	bool IsReference(pa11::TypeId type) const;
-	bool IsArray(pa11::TypeId type) const;
-	bool IsFunction(pa11::TypeId type) const;
-	bool IsClassObject(pa11::TypeId type) const;
-	bool IsComplexObject(pa11::TypeId type) const;
-	bool IsPointerLike(pa11::TypeId type) const;
-	bool IsNullptr(pa11::TypeId type) const;
-	pa11::TypeId RemoveReference(pa11::TypeId type) const;
-	pa11::TypeId RemoveTopQualifiers(pa11::TypeId type) const;
-	pa11::TypeId ExpressionObject(pa11::TypeId type) const;
-	pa11::TypeId ArrayElement(pa11::TypeId type) const;
-	pa11::TypeId Pointee(pa11::TypeId type) const;
+	pa15_lowir_detail::LowType Lower(semantic::TypeId type) const;
+	pa15_lowir_detail::LowType LowerExpression(semantic::TypeId type) const;
+	pa15_lowir_detail::LowType LowerStorage(semantic::TypeId type) const;
+	bool IsReference(semantic::TypeId type) const;
+	bool IsArray(semantic::TypeId type) const;
+	bool IsFunction(semantic::TypeId type) const;
+	bool IsClassObject(semantic::TypeId type) const;
+	bool IsComplexObject(semantic::TypeId type) const;
+	bool IsPointerLike(semantic::TypeId type) const;
+	bool IsNullptr(semantic::TypeId type) const;
+	semantic::TypeId RemoveReference(semantic::TypeId type) const;
+	semantic::TypeId RemoveTopQualifiers(semantic::TypeId type) const;
+	semantic::TypeId ExpressionObject(semantic::TypeId type) const;
+	semantic::TypeId ArrayElement(semantic::TypeId type) const;
+	semantic::TypeId Pointee(semantic::TypeId type) const;
 
 private:
-	const pa12_semantic_detail::Program& program_;
+	const semantic::Program& program_;
 };
 
 }

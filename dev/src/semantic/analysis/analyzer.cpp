@@ -11,7 +11,7 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
-namespace cppgm { namespace pa12_semantic_detail {
+namespace cppgm { namespace semantic {
 namespace {
 bool SyntaxUsesAnyIdentifier(const SyntaxArena& arena, NodeId node,
 	const std::unordered_set<NameId>& identifiers)
@@ -23,26 +23,26 @@ bool SyntaxUsesAnyIdentifier(const SyntaxArena& arena, NodeId node,
 	return false;
 }
 }
-NodeId SemanticAnalyzer::FindChild(NodeId node, const char* tag) const
+NodeId Analyzer::FindChild(NodeId node, const char* tag) const
 {
 	return arena_->FindDirectChildTag(node, tag);
 }
 
-NodeId SemanticAnalyzer::FindChild(NodeId node, SyntaxTagCode tag) const
+NodeId Analyzer::FindChild(NodeId node, SyntaxTagCode tag) const
 {
 	return arena_->FindDirectChildTag(node, tag);
 }
 
-NodeId SemanticAnalyzer::FirstSemanticChild(NodeId node) const
+NodeId Analyzer::FirstSemanticChild(NodeId node) const
 {
 	const std::uint32_t edge = arena_->FirstEdge(node);
 	return edge == kNoEdge ? kNoNode : arena_->EdgeChild(edge);
 }
-const std::string& SemanticAnalyzer::PayloadSource(NodeId node) const
+const std::string& Analyzer::PayloadSource(NodeId node) const
 {
 	return arena_->SemanticPayload(node);
 }
-std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
+std::uint32_t Analyzer::MakeDump(DumpKind kind, TypeId type,
 	ValueCategory category, NameId text, BindingId binding)
 {
 	const std::uint32_t node = dump_.Make(kind);
@@ -61,33 +61,33 @@ std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	}
 	return node;
 }
-TypeId SemanticAnalyzer::EffectiveType(TypeId type) const
+TypeId Analyzer::EffectiveType(TypeId type) const
 {
 	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE ? record.child : type;
 }
-bool SemanticAnalyzer::IsVoid(TypeId type) const
+bool Analyzer::IsVoid(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_FUNDAMENTAL &&
 		record.fundamental == FUND_VOID;
 }
-bool SemanticAnalyzer::IsNullptr(TypeId type) const
+bool Analyzer::IsNullptr(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_FUNDAMENTAL &&
 		record.fundamental == FUND_NULLPTR_T;
 }
-bool SemanticAnalyzer::IsConst(TypeId type) const
+bool Analyzer::IsConst(TypeId type) const
 {
 	type = EffectiveType(type);
 	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_QUALIFIED && (record.cv & CV_CONST) != 0;
 }
-FundamentalKind SemanticAnalyzer::FundamentalOf(TypeId type) const
+FundamentalKind Analyzer::FundamentalOf(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
@@ -95,7 +95,7 @@ FundamentalKind SemanticAnalyzer::FundamentalOf(TypeId type) const
 		throw std::logic_error("fundamental kind requested for non-fundamental");
 	return record.fundamental;
 }
-bool SemanticAnalyzer::IsIntegral(TypeId type, bool allow_scoped_enum) const
+bool Analyzer::IsIntegral(TypeId type, bool allow_scoped_enum) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
@@ -110,7 +110,7 @@ bool SemanticAnalyzer::IsIntegral(TypeId type, bool allow_scoped_enum) const
 		flavor == NAMED_ENUM_CLASS);
 }
 
-bool SemanticAnalyzer::IsFloating(TypeId type) const
+bool Analyzer::IsFloating(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
@@ -118,18 +118,18 @@ bool SemanticAnalyzer::IsFloating(TypeId type) const
 		IsExtendedFloatingFundamental(record.fundamental);
 }
 
-bool SemanticAnalyzer::IsArithmetic(TypeId type) const
+bool Analyzer::IsArithmetic(TypeId type) const
 {
 	return IsIntegral(type) || IsFloating(type);
 }
 
-bool SemanticAnalyzer::IsPointer(TypeId type) const
+bool Analyzer::IsPointer(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	return program_->types.Get(type).kind == TYPE_POINTER;
 }
 
-int SemanticAnalyzer::IntegralRank(TypeId type) const
+int Analyzer::IntegralRank(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
@@ -155,7 +155,7 @@ int SemanticAnalyzer::IntegralRank(TypeId type) const
 	}
 }
 
-TypeId SemanticAnalyzer::IntegralPromotionType(TypeId type) const
+TypeId Analyzer::IntegralPromotionType(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
@@ -170,7 +170,7 @@ TypeId SemanticAnalyzer::IntegralPromotionType(TypeId type) const
 	return type;
 }
 
-TypeId SemanticAnalyzer::CommonArithmeticType(TypeId left, TypeId right) const
+TypeId Analyzer::CommonArithmeticType(TypeId left, TypeId right) const
 {
 	left = program_->types.RemoveTopCv(EffectiveType(left));
 	right = program_->types.RemoveTopCv(EffectiveType(right));
@@ -215,7 +215,7 @@ TypeId SemanticAnalyzer::CommonArithmeticType(TypeId left, TypeId right) const
 	}
 }
 
-TypeId SemanticAnalyzer::Decay(TypeId type) const
+TypeId Analyzer::Decay(TypeId type) const
 {
 	type = EffectiveType(type);
 	const TypeRecord record = program_->types.Get(type);
@@ -224,7 +224,7 @@ TypeId SemanticAnalyzer::Decay(TypeId type) const
 	return program_->types.RemoveTopCv(type);
 }
 
-TypeId SemanticAnalyzer::AdjustParameterType(TypeId type)
+TypeId Analyzer::AdjustParameterType(TypeId type)
 {
 	const TypeRecord record = program_->types.Get(type);
 	if (record.kind == TYPE_ARRAY) return program_->types.Pointer(record.child);
@@ -232,7 +232,7 @@ TypeId SemanticAnalyzer::AdjustParameterType(TypeId type)
 	return program_->types.RemoveTopCv(type);
 }
 
-bool SemanticAnalyzer::SimilarUnqualified(TypeId source, TypeId target) const
+bool Analyzer::SimilarUnqualified(TypeId source, TypeId target) const
 {
 	source = program_->types.RemoveTopCv(source);
 	target = program_->types.RemoveTopCv(target);
@@ -261,7 +261,7 @@ bool SemanticAnalyzer::SimilarUnqualified(TypeId source, TypeId target) const
 	}
 }
 
-bool SemanticAnalyzer::QualificationConversion(TypeId source,
+bool Analyzer::QualificationConversion(TypeId source,
 	TypeId target) const
 {
 	std::vector<std::uint8_t> source_cv;
@@ -304,7 +304,7 @@ bool SemanticAnalyzer::QualificationConversion(TypeId source,
 	return true;
 }
 
-ConversionRank SemanticAnalyzer::Conversion(TypeId source,
+ConversionRank Analyzer::Conversion(TypeId source,
 	ValueCategory category, bool integer_zero, TypeId target) const
 {
 	++conversion_checks_;
@@ -439,14 +439,14 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 	return CONVERSION_INVALID;
 }
 
-ConversionRank SemanticAnalyzer::Conversion(const ExpressionInfo& source,
+ConversionRank Analyzer::Conversion(const ExpressionInfo& source,
 	TypeId target) const
 {
 	return Conversion(source.type, source.category,
 		source.integer_literal_zero, target);
 }
 
-ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
+ExpressionInfo Analyzer::ApplyTarget(ExpressionInfo value,
 	TypeId target, ConversionRank known_conversion)
 {
 	if (value.type == kNoType && CandidateSubstitutionFailed()) return value;
@@ -635,13 +635,13 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 	return value;
 }
 
-bool SemanticAnalyzer::IsModifiableLvalue(const ExpressionInfo& value) const
+bool Analyzer::IsModifiableLvalue(const ExpressionInfo& value) const
 {
 	return value.category == VALUE_LVALUE && !IsConst(value.type) &&
 		!program_->types.IsFunction(EffectiveType(value.type)) &&
 		!IsVoid(value.type);
 }
-ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
+ExpressionInfo Analyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	TypeId target)
 {
 	if (node == kNoNode) throw std::runtime_error("missing expression");
@@ -778,7 +778,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		 PayloadSource(first_child) + ")"));
 }
 
-BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
+BindingId Analyzer::SelectOverload(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
 	const std::vector<BindingId>& candidates,
@@ -1025,7 +1025,7 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	return candidates[champion];
 }
 
-ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
+ExpressionInfo Analyzer::BuildResolvedCall(BindingId selected,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
 	const ExpressionInfo* object, TypeId target, EntityId naming_class,
@@ -1270,7 +1270,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	++expression_count_;
 	return ApplyTarget(result, target);
 }
-ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId target)
+ExpressionInfo Analyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId target)
 {
 	const NodeId callee_syntax = FirstSemanticChild(node);
 	if (callee_syntax == kNoNode) throw std::runtime_error("call without callee");
@@ -1510,7 +1510,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 	++expression_count_;
 	return ApplyTarget(result, target);
 }
-ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 {
 	const std::uint32_t first = arena_->FirstEdge(node);
 	const std::uint32_t second = first == kNoEdge ? kNoEdge :
@@ -1637,7 +1637,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 {
 	const std::uint32_t first = arena_->FirstEdge(node);
 	const std::uint32_t second = first == kNoEdge ? kNoEdge :
@@ -1723,7 +1723,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 	return result;
 }
 
-void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	AccessKind member_access)
 {
 	const NodeId clause = FindChild(node, ::cppgm::syntax::STAG_TEMPLATE_PARAMETER_CLAUSE);
@@ -1860,7 +1860,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 			dependent_exception_specification);
 	}
 }
-void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
 	std::string spelling = arena_->Payload(node);
@@ -1906,7 +1906,7 @@ void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool local)
 {
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_EMPTY_DECLARATION) || arena_->IsTag(node, ::cppgm::syntax::STAG_DEDUCTION_GUIDE_DECLARATION)) return;
@@ -2021,7 +2021,7 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 	throw std::runtime_error("unsupported PA12 declaration: " + arena_->Tag(node));
 }
 
-void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool local, bool qualified_lexical_scope,
 	bool demanded_template_storage)
 {
@@ -2262,7 +2262,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	}
 	current_class_context_ = previous_class_context;
 }
-void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool deferred_member_definition)
 {
 	const NodeId declarator = FindChild(node, ::cppgm::syntax::STAG_DECLARATOR);
@@ -2443,7 +2443,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	current_class_context_ = previous_class;
 	current_function_context_ = previous_function;
 }
-void SemanticAnalyzer::AnalyzeSubstatement(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeSubstatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT))
@@ -2459,7 +2459,7 @@ void SemanticAnalyzer::AnalyzeSubstatement(NodeId node, ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
 	if (AnalyzeHostedSelectionStatement(node, scope, output_parent)) return;
@@ -2680,7 +2680,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	throw std::runtime_error("unsupported PA12 statement: " + arena_->Tag(node));
 }
 
-void SemanticAnalyzer::RenderNode(std::uint32_t node, std::size_t depth)
+void Analyzer::RenderNode(std::uint32_t node, std::size_t depth)
 {
 	RenderLine(dump_.nodes[node], depth);
 	for (std::uint32_t edge = dump_.nodes[node].first_edge;
@@ -2688,18 +2688,18 @@ void SemanticAnalyzer::RenderNode(std::uint32_t node, std::size_t depth)
 		RenderNode(dump_.edges[edge].child, depth + 1);
 }
 
-void SemanticAnalyzer::Render()
+void Analyzer::Render()
 {
 	RenderNode(root_, 0);
 }
 
-SemanticGraphView SemanticGraphStorage::View() const
+SemanticGraphView GraphStorage::View() const
 {
 	return SemanticGraphView(program, dump, namespace_objects,
 		local_static_objects, aggregate_helpers, class_polymorphism, root);
 }
 
-void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
+void Analyzer::Consume(const SyntaxArena& arena, NodeId root)
 {
 	arena_ = &arena;
 	if (&arena.SharedStrings() != &strings_)

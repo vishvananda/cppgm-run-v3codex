@@ -19,7 +19,7 @@ struct VtableThunkLoweringFact
 {
 	pa15_lowir_detail::SymbolId symbol;
 	pa15_lowir_detail::SymbolId target;
-	pa11::BindingId function;
+	semantic::BindingId function;
 	std::int64_t this_adjustment;
 	std::int64_t return_adjustment;
 	std::int64_t return_vtable_offset;
@@ -27,7 +27,7 @@ struct VtableThunkLoweringFact
 	bool return_adjustment_virtual;
 
 	VtableThunkLoweringFact(pa15_lowir_detail::SymbolId symbol_value,
-		pa15_lowir_detail::SymbolId target_value, pa11::BindingId function_value,
+		pa15_lowir_detail::SymbolId target_value, semantic::BindingId function_value,
 		std::int64_t this_adjustment_value,
 		std::int64_t return_adjustment_value,
 		std::int64_t return_vtable_offset_value,
@@ -58,7 +58,7 @@ struct PolymorphismLoweringState
 		class_view_slot_symbols;
 	std::vector<std::vector<std::vector<pa15_lowir_detail::SymbolId> > >
 		class_view_deleting_slot_symbols;
-	std::vector<std::vector<pa12_semantic_detail::VirtualSlotFact> >
+	std::vector<std::vector<semantic::VirtualSlotFact> >
 		class_host_primary_slots;
 	std::vector<std::uint32_t> host_primary_slot_by_binding;
 	std::vector<VtableThunkLoweringFact> vtable_thunks;
@@ -74,9 +74,9 @@ struct PolymorphismLoweringState
 	std::vector<pa15_lowir_detail::SymbolId> exception_object_symbols;
 	std::vector<pa15_lowir_detail::SymbolId> deleting_destructor_symbols;
 	std::vector<std::uint8_t> deleting_destructor_external;
-	std::vector<pa11::BindingId> deallocation_bindings;
-	std::vector<pa11::BindingId> complete_destructor_bindings;
-	std::vector<pa11::BindingId> base_destructor_bindings;
+	std::vector<semantic::BindingId> deallocation_bindings;
+	std::vector<semantic::BindingId> complete_destructor_bindings;
+	std::vector<semantic::BindingId> base_destructor_bindings;
 	std::vector<std::uint8_t> deleting_destructor_calls_complete;
 	pa15_lowir_detail::SymbolId pure_virtual_symbol;
 	pa15_lowir_detail::SymbolId rtti_class_symbol;
@@ -110,41 +110,41 @@ struct PolymorphismLoweringState
 	PolymorphismLoweringState();
 };
 
-bool IsFunctionLocalEntity(const pa11::Program& program,
-	pa11::EntityId entity);
-bool PreferLocalObjectBinding(const pa11::Program& program,
-	pa11::EntityId entity);
+bool IsFunctionLocalEntity(const semantic::Program& program,
+	semantic::EntityId entity);
+bool PreferLocalObjectBinding(const semantic::Program& program,
+	semantic::EntityId entity);
 
 void PreparePolymorphism(
-	const pa12_semantic_detail::SemanticGraphView& graph,
+	const semantic::SemanticGraphView& graph,
 	pa15_lowir_detail::TypedProgram& output, LowIRLoweringStats* stats,
 	std::size_t source_ordinal,
 	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 
 void EmitDeletingDestructors(
-	const pa12_semantic_detail::SemanticGraphView& graph,
+	const semantic::SemanticGraphView& graph,
 	pa15_lowir_detail::TypedProgram& output, LowIRLoweringStats* stats,
 	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 
 void EmitVtableThunks(
-	const pa12_semantic_detail::SemanticGraphView& graph,
+	const semantic::SemanticGraphView& graph,
 	pa15_lowir_detail::TypedProgram& output, LowIRLoweringStats* stats,
 	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 
-std::uint32_t ResolveHostVirtualSlot(const pa11::Program& program,
+std::uint32_t ResolveHostVirtualSlot(const semantic::Program& program,
 	bool host_object_emission, const PolymorphismLoweringState& state,
-	const pa12_semantic_detail::DumpNode& record,
-	pa11::EntityId object_entity);
+	const semantic::DumpNode& record,
+	semantic::EntityId object_entity);
 
 template <class Derived>
 class PolymorphismActionLowering
 {
 protected:
 	pa15_lowir_detail::Operand LowerVirtualCallee(
-		const pa12_semantic_detail::DumpNode& record,
+		const semantic::DumpNode& record,
 		const pa15_lowir_detail::Operand& object, std::uint32_t virtual_slot)
 	{
 		using namespace pa15_lowir_detail;
@@ -160,9 +160,9 @@ protected:
 	}
 
 	void LowerVptrInitializationAction(
-		const pa12_semantic_detail::DumpNode& action)
+		const semantic::DumpNode& action)
 	{
-		using namespace pa11;
+		using namespace semantic;
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.stats_) ++derived.stats_->vptr_stores;
@@ -205,7 +205,7 @@ protected:
 		store.first = address_point;
 		store.second = object;
 		derived.Emit(store);
-		const pa12_semantic_detail::ClassPolymorphismFacts& facts =
+		const semantic::ClassPolymorphismFacts& facts =
 			derived.graph_.class_polymorphism[entity];
 		std::size_t physical_view = 1;
 		if (derived.HasCurrentConstructionVtt() &&
@@ -284,10 +284,10 @@ protected:
 	}
 
 	pa15_lowir_detail::Operand ProjectBaseSubobject(
-		const pa15_lowir_detail::Operand& object, pa11::EntityId entity)
+		const pa15_lowir_detail::Operand& object, semantic::EntityId entity)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		return ProjectBaseSubobjectOffset(object, entity == pa11::kNoEntity ? 0 :
+		return ProjectBaseSubobjectOffset(object, entity == semantic::kNoEntity ? 0 :
 			derived.program_.entities[entity].direct_base_offset);
 	}
 

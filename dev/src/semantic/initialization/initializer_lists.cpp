@@ -4,10 +4,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::IsInitializerListType(
+bool Analyzer::IsInitializerListType(
 	TypeId type, TypeId* element_type) const
 {
 	while (type != kNoType)
@@ -36,7 +36,7 @@ bool SemanticAnalyzer::IsInitializerListType(
 	return true;
 }
 
-bool SemanticAnalyzer::InitializerListDefinitionReplayInProgress(
+bool Analyzer::InitializerListDefinitionReplayInProgress(
 	EntityId entity) const
 {
 	if (entity >= class_template_pattern_by_entity_.size()) return false;
@@ -48,7 +48,7 @@ bool SemanticAnalyzer::InitializerListDefinitionReplayInProgress(
 		class_template_specialization_states_[binding] == 1;
 }
 
-bool SemanticAnalyzer::IsInitializerListFunction(TypeId type) const
+bool Analyzer::IsInitializerListFunction(TypeId type) const
 {
 	const TypeRecord& function = program_->types.Get(type);
 	if (function.kind != TYPE_FUNCTION) return false;
@@ -58,7 +58,7 @@ bool SemanticAnalyzer::IsInitializerListFunction(TypeId type) const
 	return false;
 }
 
-bool SemanticAnalyzer::IsStandardInitializerListTemplate(NameId name,
+bool Analyzer::IsStandardInitializerListTemplate(NameId name,
 	ScopeId owner, const std::vector<TemplateParameter>& parameters) const
 {
 	while (owner != kNoScope && program_->IsInlineNamespace(owner))
@@ -70,7 +70,7 @@ bool SemanticAnalyzer::IsStandardInitializerListTemplate(NameId name,
 		parameters[0].kind == TEMPLATE_ARGUMENT_TYPE && !parameters[0].pack;
 }
 
-void SemanticAnalyzer::ConfigureInitializerListSpecialization(TypeId type)
+void Analyzer::ConfigureInitializerListSpecialization(TypeId type)
 {
 	TypeId element = kNoType;
 	if (!IsInitializerListType(type, &element)) return;
@@ -91,7 +91,7 @@ void SemanticAnalyzer::ConfigureInitializerListSpecialization(TypeId type)
 	record.trivial_destructor = true;
 }
 
-bool SemanticAnalyzer::DeduceInitializerListElementType(
+bool Analyzer::DeduceInitializerListElementType(
 	NodeId list, ScopeId scope, TypeId* element_type)
 {
 	if (list == kNoNode || !arena_->IsTag(list, ::cppgm::syntax::STAG_BRACED_INIT_LIST) ||
@@ -113,7 +113,7 @@ bool SemanticAnalyzer::DeduceInitializerListElementType(
 	return true;
 }
 
-bool SemanticAnalyzer::TryAnalyzeInitializerListVariable(NodeId expression,
+bool Analyzer::TryAnalyzeInitializerListVariable(NodeId expression,
 	ScopeId scope, TypeId type, EntityId class_entity, bool local,
 	ExpressionInfo* initializer)
 {
@@ -128,7 +128,7 @@ bool SemanticAnalyzer::TryAnalyzeInitializerListVariable(NodeId expression,
 	return true;
 }
 
-bool SemanticAnalyzer::ExtendInitializerListVariableLifetime(TypeId type,
+bool Analyzer::ExtendInitializerListVariableLifetime(TypeId type,
 	ScopeId scope, std::uint32_t initializer, bool control_dependent)
 {
 	if (!IsInitializerListType(type) || control_dependent) return false;
@@ -139,7 +139,7 @@ bool SemanticAnalyzer::ExtendInitializerListVariableLifetime(TypeId type,
 	return true;
 }
 
-std::uint32_t SemanticAnalyzer::InitializerListBackingTemporary(
+std::uint32_t Analyzer::InitializerListBackingTemporary(
 	TypeId type, std::uint32_t initializer) const
 {
 	if (!IsInitializerListType(type) || initializer == kNoDumpEdge ||
@@ -154,14 +154,14 @@ std::uint32_t SemanticAnalyzer::InitializerListBackingTemporary(
 		backing : kNoDumpEdge;
 }
 
-bool SemanticAnalyzer::HasActiveInitializerListBacking(ScopeId scope) const
+bool Analyzer::HasActiveInitializerListBacking(ScopeId scope) const
 {
 	++initializer_list_lifetime_queries_;
 	return scope < nearest_initializer_list_lifetime_scopes_.size() &&
 		nearest_initializer_list_lifetime_scopes_[scope] != kNoScope;
 }
 
-void SemanticAnalyzer::MarkInitializerListLifetimeScope(
+void Analyzer::MarkInitializerListLifetimeScope(
 	ScopeId scope, std::uint32_t temporary)
 {
 	if (!dump_.nodes[temporary].initializer_list_backing) return;
@@ -171,7 +171,7 @@ void SemanticAnalyzer::MarkInitializerListLifetimeScope(
 	nearest_initializer_list_lifetime_scopes_[scope] = scope;
 }
 
-void SemanticAnalyzer::MarkInitializerListLifetimeCalls(std::uint32_t node)
+void Analyzer::MarkInitializerListLifetimeCalls(std::uint32_t node)
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
 	DumpNode& record = dump_.nodes[node];
@@ -182,7 +182,7 @@ void SemanticAnalyzer::MarkInitializerListLifetimeCalls(std::uint32_t node)
 		MarkInitializerListLifetimeCalls(dump_.edges[edge].child);
 }
 
-void SemanticAnalyzer::ConfigureInitializerListBackingLifetime(
+void Analyzer::ConfigureInitializerListBackingLifetime(
 	std::uint32_t backing, TypeId element_type)
 {
 	const EntityId entity = DestructedEntity(element_type);
@@ -196,7 +196,7 @@ void SemanticAnalyzer::ConfigureInitializerListBackingLifetime(
 	DemandFunction(destructor);
 }
 
-std::uint32_t SemanticAnalyzer::PrepareNamespaceInitializerListLifetime(
+std::uint32_t Analyzer::PrepareNamespaceInitializerListLifetime(
 	TypeId type, std::uint32_t initializer, std::uint32_t destructor,
 	std::uint32_t* backing)
 {
@@ -211,7 +211,7 @@ std::uint32_t SemanticAnalyzer::PrepareNamespaceInitializerListLifetime(
 	return backing_destructor;
 }
 
-BindingId SemanticAnalyzer::SelectInitializerListConstructorPhase(
+BindingId Analyzer::SelectInitializerListConstructorPhase(
 	ScopeId scope, TypeId initialized_type, NodeId source_list,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<BindingId>& candidates, bool copy_initialization,
@@ -269,7 +269,7 @@ BindingId SemanticAnalyzer::SelectInitializerListConstructorPhase(
 	return selected;
 }
 
-ExpressionInfo SemanticAnalyzer::MaterializeBracedConstructorArgument(
+ExpressionInfo Analyzer::MaterializeBracedConstructorArgument(
 	NodeId syntax, ScopeId scope, TypeId parameter_type)
 {
 	const TypeRecord parameter = program_->types.Get(parameter_type);
@@ -292,7 +292,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeBracedConstructorArgument(
 	return argument;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeInitializerList(
+ExpressionInfo Analyzer::AnalyzeInitializerList(
 	NodeId list, ScopeId scope, TypeId type)
 {
 	TypeId element = kNoType;
@@ -331,7 +331,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeInitializerList(
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildInitializerListFromValues(
+ExpressionInfo Analyzer::BuildInitializerListFromValues(
 	TypeId type, const std::vector<ExpressionInfo>& values)
 {
 	TypeId element = kNoType;

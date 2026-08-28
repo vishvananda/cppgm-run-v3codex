@@ -57,7 +57,7 @@ protected:
 		std::uint32_t child, const pa15_lowir_detail::Operand& slot,
 		pa15_lowir_detail::BlockId end_block)
 	{
-		using namespace pa12_semantic_detail;
+		using namespace semantic;
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.arena_.nodes[child].kind == DUMP_THROW_EXPRESSION)

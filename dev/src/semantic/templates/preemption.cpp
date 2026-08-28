@@ -5,7 +5,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
@@ -95,7 +95,7 @@ void PublishFunctionTemplateInternalEmission(Program* program,
 	program->bindings[canonical].unnamed_namespace_linkage = true;
 }
 
-void SemanticAnalyzer::RegisterClassStaticDataMember(
+void Analyzer::RegisterClassStaticDataMember(
 	EntityId entity, BindingId member)
 {
 	if (entity_static_data_members_.size() <= entity)
@@ -103,7 +103,7 @@ void SemanticAnalyzer::RegisterClassStaticDataMember(
 	entity_static_data_members_[entity].push_back(member);
 }
 
-void SemanticAnalyzer::RegisterClassDataMember(
+void Analyzer::RegisterClassDataMember(
 	EntityId entity, BindingId member, TypeId member_type)
 {
 	if (entity_data_members_.size() <= entity)
@@ -118,7 +118,7 @@ void SemanticAnalyzer::RegisterClassDataMember(
 		ClassLayoutMember(member, member_type));
 }
 
-void SemanticAnalyzer::SetClassExplicitInstantiationSuppression(
+void Analyzer::SetClassExplicitInstantiationSuppression(
 	EntityId entity, bool suppressed)
 {
 	program_->entities[entity].explicit_instantiation_suppressed = suppressed;
@@ -156,7 +156,7 @@ void SemanticAnalyzer::SetClassExplicitInstantiationSuppression(
 		mark(entity_destructor_by_entity_[entity]);
 }
 
-void SemanticAnalyzer::EnsureStaticMemberStorage(
+void Analyzer::EnsureStaticMemberStorage(
 	BindingId member, bool constant_storage)
 {
 	member = program_->bindings[member].canonical;

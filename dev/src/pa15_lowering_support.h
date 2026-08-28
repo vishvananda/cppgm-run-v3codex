@@ -11,9 +11,9 @@
 
 namespace cppgm
 {
-struct SemanticAnalysisStats;
-namespace pa12_semantic_detail
+namespace semantic
 {
+struct Stats;
 struct DumpNode;
 }
 namespace pa15_lowering_support
@@ -24,18 +24,18 @@ std::string SanitizeSymbol(const std::string& name);
 std::vector<unsigned char> DecodeStringLiteral(const std::string& spelling);
 std::int64_t CanonicalIntegerImmediate(std::int64_t value,
 	std::uint8_t width, bool is_signed);
-bool IsNullPointerLiteralCast(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target);
-bool IsIntNullPointerLiteralCast(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target);
+bool IsNullPointerLiteralCast(const semantic::Program& program,
+	const semantic::DumpNode& source, semantic::TypeId target);
+bool IsIntNullPointerLiteralCast(const semantic::Program& program,
+	const semantic::DumpNode& source, semantic::TypeId target);
 bool NeedsAggregateStorageAddress(bool namespace_object, bool has_leaf,
-	const pa11::BindingRecord& binding);
-pa11::EntityId LambdaClosureEntity(
-	const pa11::Program& program, pa11::TypeId type);
+	const semantic::BindingRecord& binding);
+semantic::EntityId LambdaClosureEntity(
+	const semantic::Program& program, semantic::TypeId type);
 bool IsLambdaCaptureMember(
-	const pa11::Program& program, pa11::BindingId binding);
+	const semantic::Program& program, semantic::BindingId binding);
 std::string MissingStorageBindingDetail(
-	const pa11::Program& program, pa11::BindingId binding);
+	const semantic::Program& program, semantic::BindingId binding);
 std::string NormalizeFloatingLiteral(const std::string& spelling,
 	const pa15_lowir_detail::LowType& type);
 bool DecodeFloatingLiteral(const std::string& spelling,
@@ -45,20 +45,20 @@ bool DecodeFloatingLiteral(const std::string& spelling,
 class PresentationNameMap
 {
 	public:
-	PresentationNameMap(const pa11::Program& program,
-		SemanticAnalysisStats* stats);
-	std::string Apply(const pa11::BindingRecord& binding) const;
+	PresentationNameMap(const semantic::Program& program,
+		semantic::Stats* stats);
+	std::string Apply(const semantic::BindingRecord& binding) const;
 
 private:
 	const std::string& ClassTemplatePresentation(
 		std::uint32_t presentation) const;
-	const pa11::Program& program_;
-	SemanticAnalysisStats* stats_;
+	const semantic::Program& program_;
+	semantic::Stats* stats_;
 	std::vector<std::uint32_t> replacement_presentations_;
-	std::vector<pa11::EntityId> presentation_entities_;
+	std::vector<semantic::EntityId> presentation_entities_;
 	mutable std::vector<std::uint32_t> rendered_indices_;
 	mutable std::vector<std::string> rendered_presentations_;
-	mutable std::vector<pa11::NameId> path_;
+	mutable std::vector<semantic::NameId> path_;
 };
 
 class FlatIdMap

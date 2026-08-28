@@ -2,7 +2,7 @@
 
 namespace cppgm
 {
-namespace pa11
+namespace semantic
 {
 
 std::size_t MixHash(std::size_t seed, std::uint64_t value)

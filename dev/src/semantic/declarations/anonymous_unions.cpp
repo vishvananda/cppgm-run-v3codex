@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::AnalyzeDeclaratorlessSimpleDeclaration(
+void Analyzer::AnalyzeDeclaratorlessSimpleDeclaration(
 	NodeId specifiers, ScopeId scope, std::uint32_t output_parent,
 	bool local, const SpecInfo& spec)
 {
@@ -34,7 +34,7 @@ void SemanticAnalyzer::AnalyzeDeclaratorlessSimpleDeclaration(
 	}
 }
 
-void SemanticAnalyzer::DeclareAnonymousUnionObject(NodeId source,
+void Analyzer::DeclareAnonymousUnionObject(NodeId source,
 	ScopeId scope, std::uint32_t output_parent, TypeId type, bool local,
 	StorageClass storage_class)
 {

@@ -5,7 +5,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 bool IsExtendedFloatingFundamental(FundamentalKind kind)
@@ -30,7 +30,7 @@ int FloatingConversionRank(FundamentalKind kind)
 	}
 }
 
-TypeId SemanticAnalyzer::HostedSpecifierType(
+TypeId Analyzer::HostedSpecifierType(
 	const std::string& spelling) const
 {
 	FundamentalKind kind = FUND_VOID;
@@ -50,7 +50,7 @@ TypeId SemanticAnalyzer::HostedSpecifierType(
 	return program_->types.Fundamental(kind);
 }
 
-TypeId SemanticAnalyzer::ApplyGnuVectorAttributes(
+TypeId Analyzer::ApplyGnuVectorAttributes(
 	NodeId node, TypeId type, ScopeId scope)
 {
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;

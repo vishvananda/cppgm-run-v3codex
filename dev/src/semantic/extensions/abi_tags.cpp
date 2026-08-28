@@ -10,13 +10,12 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
 
 using namespace syntax;
-using namespace pa11;
 
 void CollectDirectAbiTags(const SyntaxArena& arena, Program* program,
 	NodeId owner, std::vector<NameId>* tags)
@@ -176,7 +175,7 @@ void ApplyFunctionControlAttributes(Program* program,
 		canonical.function_effects = effects;
 }
 
-void SemanticAnalyzer::ApplyClassAbiTagAttributes(
+void Analyzer::ApplyClassAbiTagAttributes(
 	NodeId declaration, EntityId entity)
 {
 	if (entity == kNoEntity || entity >= program_->entities.size())
@@ -187,7 +186,7 @@ void SemanticAnalyzer::ApplyClassAbiTagAttributes(
 	MergeAbiTags(program_, tags, &record.abi_tag_begin, &record.abi_tag_count);
 }
 
-void SemanticAnalyzer::ApplyFunctionAbiTagAttributes(
+void Analyzer::ApplyFunctionAbiTagAttributes(
 	NodeId declaration, BindingId binding)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size())

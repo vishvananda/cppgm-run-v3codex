@@ -4,10 +4,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::RegisterLocalTypeAbiIdentity(EntityId entity)
+void Analyzer::RegisterLocalTypeAbiIdentity(EntityId entity)
 {
 	if (entity == kNoEntity || entity >= program_->entities.size())
 		throw std::logic_error("local ABI identity has no entity");
@@ -24,7 +24,7 @@ void SemanticAnalyzer::RegisterLocalTypeAbiIdentity(EntityId entity)
 	occurrences.Push(entity);
 }
 
-void SemanticAnalyzer::RegisterInjectedStorageMember(BindingId alias,
+void Analyzer::RegisterInjectedStorageMember(BindingId alias,
 	BindingId storage, BindingId member)
 {
 	if (alias >= program_->bindings.size() ||
@@ -53,7 +53,7 @@ void SemanticAnalyzer::RegisterInjectedStorageMember(BindingId alias,
 	}
 }
 
-bool SemanticAnalyzer::RecordInjectedMemberInitializer(BindingId member,
+bool Analyzer::RecordInjectedMemberInitializer(BindingId member,
 	EntityId owner, NodeId initializer)
 {
 	const std::uint32_t fact = member < injected_fact_by_binding_.size() ?
@@ -89,7 +89,7 @@ bool SemanticAnalyzer::RecordInjectedMemberInitializer(BindingId member,
 	return true;
 }
 
-bool SemanticAnalyzer::AddInjectedStorageInitializationActions(
+bool Analyzer::AddInjectedStorageInitializationActions(
 	BindingId storage, ScopeId scope, std::uint32_t body)
 {
 	const CompactIndexSequence* aliases =
@@ -132,7 +132,7 @@ bool SemanticAnalyzer::AddInjectedStorageInitializationActions(
 	return true;
 }
 
-void SemanticAnalyzer::ClearInjectedConstructorInitializers()
+void Analyzer::ClearInjectedConstructorInitializers()
 {
 	for (std::size_t i = 0;
 		i < injected_constructor_initializer_touched_.size(); ++i)

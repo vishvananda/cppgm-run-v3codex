@@ -9,7 +9,7 @@
 
 namespace cppgm
 {
-namespace pa25_semantic_detail
+namespace semantic
 {
 
 class LambdaCaptureUseTable
@@ -27,7 +27,7 @@ public:
 	LambdaCaptureUseTable();
 	const Fact& FindOrBuild(const syntax::SyntaxArena& arena,
 		syntax::NodeId lambda);
-	pa11::NameId NameAt(const Fact& fact, std::size_t index) const;
+	semantic::NameId NameAt(const Fact& fact, std::size_t index) const;
 	bool IsExplicitAt(const Fact& fact, std::size_t index) const;
 	bool IsReferenceAt(const Fact& fact, std::size_t index) const;
 	std::size_t Requests() const;
@@ -39,10 +39,10 @@ public:
 private:
 	struct BoundName
 	{
-		pa11::NameId name;
+		semantic::NameId name;
 		std::uint32_t previous, depth;
 
-		BoundName(pa11::NameId name_value, std::uint32_t previous_value,
+		BoundName(semantic::NameId name_value, std::uint32_t previous_value,
 			std::uint32_t depth_value)
 			: name(name_value), previous(previous_value), depth(depth_value) {}
 	};
@@ -54,30 +54,30 @@ private:
 		const syntax::SyntaxArena& arena);
 	void Walk(syntax::NodeId node,
 		const syntax::SyntaxArena& arena,
-		std::vector<pa11::NameId>* free_names, bool* captures_this);
+		std::vector<semantic::NameId>* free_names, bool* captures_this);
 	void WalkSimpleDeclaration(syntax::NodeId node,
 		const syntax::SyntaxArena& arena,
-		std::vector<pa11::NameId>* free_names, bool* captures_this);
+		std::vector<semantic::NameId>* free_names, bool* captures_this);
 	void WalkDeclaratorDeclaration(syntax::NodeId node,
 		const syntax::SyntaxArena& arena,
-		std::vector<pa11::NameId>* free_names, bool* captures_this);
+		std::vector<semantic::NameId>* free_names, bool* captures_this);
 	void WalkRangeFor(syntax::NodeId node,
 		const syntax::SyntaxArena& arena,
-		std::vector<pa11::NameId>* free_names, bool* captures_this);
-	pa11::NameId DeclaratorName(
+		std::vector<semantic::NameId>* free_names, bool* captures_this);
+	semantic::NameId DeclaratorName(
 		const syntax::SyntaxArena& arena,
 		syntax::NodeId node) const;
-	pa11::NameId SimpleExpressionName(
+	semantic::NameId SimpleExpressionName(
 		const syntax::SyntaxArena& arena,
 		syntax::NodeId node) const;
-	void AddBound(pa11::NameId name);
-	bool IsBound(pa11::NameId name) const;
+	void AddBound(semantic::NameId name);
+	bool IsBound(semantic::NameId name) const;
 	void RestoreBounds(std::size_t mark);
 
 	std::vector<Fact> facts_;
 	std::vector<std::uint8_t> states_;
 	std::vector<std::uint32_t> slots_;
-	std::vector<pa11::NameId> names_;
+	std::vector<semantic::NameId> names_;
 	std::vector<std::uint8_t> explicit_names_;
 	std::vector<std::uint8_t> reference_names_;
 	std::vector<std::uint32_t> bound_heads_;

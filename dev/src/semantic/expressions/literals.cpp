@@ -14,7 +14,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -182,7 +182,7 @@ bool StringLiteralTokenEnd(const std::string& spelling, std::size_t* end)
 	return false;
 }
 
-std::int64_t SemanticAnalyzer::ParseInteger(const std::string& spelling) const
+std::int64_t Analyzer::ParseInteger(const std::string& spelling) const
 {
 	if (stats_) ++stats_->semantic_integer_parses;
 	const std::size_t quote = spelling.find('\'');
@@ -259,12 +259,12 @@ std::int64_t SemanticAnalyzer::ParseInteger(const std::string& spelling) const
 	return static_cast<std::int64_t>(value);
 }
 
-NameId SemanticAnalyzer::InternNumber(std::int64_t value)
+NameId Analyzer::InternNumber(std::int64_t value)
 {
 	return program_->names.Intern(std::to_string(value));
 }
 
-std::int64_t SemanticAnalyzer::ApplyConstantBinary(
+std::int64_t Analyzer::ApplyConstantBinary(
 	const std::string& operation, std::int64_t left, std::int64_t right,
 	TypeId operand_type) const
 {
@@ -384,7 +384,7 @@ std::int64_t SemanticAnalyzer::ApplyConstantBinary(
 		NormalizeIntegralConstant(operand_type, value) : value;
 }
 
-ExpressionInfo SemanticAnalyzer::MakeLiteral(TypeId type, NameId text,
+ExpressionInfo Analyzer::MakeLiteral(TypeId type, NameId text,
 	ValueCategory category)
 {
 	ExpressionInfo result;
@@ -395,7 +395,7 @@ ExpressionInfo SemanticAnalyzer::MakeLiteral(TypeId type, NameId text,
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::MakeStringLiteral(
+ExpressionInfo Analyzer::MakeStringLiteral(
 	const std::string& spelling, std::size_t* character_count)
 {
 	FundamentalType decoded_type = FT_CHAR;
@@ -421,7 +421,7 @@ ExpressionInfo SemanticAnalyzer::MakeStringLiteral(
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::MakeBuiltinScalarLiteral(
+ExpressionInfo Analyzer::MakeBuiltinScalarLiteral(
 	const std::string& spelling, NodeId syntax)
 {
 	FundamentalType retained_type = FT_VOID;
@@ -499,7 +499,7 @@ ExpressionInfo SemanticAnalyzer::MakeBuiltinScalarLiteral(
 	return result;
 }
 
-bool SemanticAnalyzer::TryAnalyzeUserDefinedStringLiteral(
+bool Analyzer::TryAnalyzeUserDefinedStringLiteral(
 	const std::string& spelling, ScopeId scope, TypeId target,
 	ExpressionInfo* result)
 {
@@ -551,7 +551,7 @@ bool SemanticAnalyzer::TryAnalyzeUserDefinedStringLiteral(
 	return true;
 }
 
-bool SemanticAnalyzer::TryAnalyzeUserDefinedNumericLiteral(
+bool Analyzer::TryAnalyzeUserDefinedNumericLiteral(
 	const std::string& spelling, ScopeId scope, TypeId target,
 	ExpressionInfo* result)
 {
@@ -629,7 +629,7 @@ bool SemanticAnalyzer::TryAnalyzeUserDefinedNumericLiteral(
 	return true;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeThisExpression(ScopeId scope)
 {
 	const NameId name = program_->names.Intern("this");
 	const LookupResult found = program_->LookupName(
@@ -711,7 +711,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
+ExpressionInfo Analyzer::AnalyzeNamedValue(
 	const std::string& spelling, ScopeId scope, TypeId target, NodeId syntax)
 {
 	ExpressionInfo local;
@@ -951,7 +951,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	return ApplyTarget(result, target);
 }
 
-TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
+TypeId Analyzer::DecltypeType(NodeId node, ScopeId scope)
 {
 	if (node == kNoNode) throw std::runtime_error("empty decltype");
 	bool parenthesized = false;

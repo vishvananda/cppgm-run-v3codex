@@ -10,10 +10,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::PublishCallImplicitObject(
+void Analyzer::PublishCallImplicitObject(
 	std::uint32_t call, std::uint32_t object)
 {
 	dump_.Add(call, object);
@@ -21,7 +21,7 @@ void SemanticAnalyzer::PublishCallImplicitObject(
 		dump_.nodes[object].contains_temporary_object;
 }
 
-std::vector<NodeId> SemanticAnalyzer::CollectCallArgumentSyntax(
+std::vector<NodeId> Analyzer::CollectCallArgumentSyntax(
 	NodeId call, NodeId* arguments_node) const
 {
 	*arguments_node = FindChild(call, ::cppgm::syntax::STAG_ARGUMENT_LIST);
@@ -41,25 +41,25 @@ std::vector<NodeId> SemanticAnalyzer::CollectCallArgumentSyntax(
 	return result;
 }
 
-bool SemanticAnalyzer::CandidateSubstitutionActive() const
+bool Analyzer::CandidateSubstitutionActive() const
 {
 	return !candidate_substitution_failures_.empty();
 }
 
-bool SemanticAnalyzer::CandidateSubstitutionFailed() const
+bool Analyzer::CandidateSubstitutionFailed() const
 {
 	return CandidateSubstitutionActive() &&
 		candidate_substitution_failures_.back() != 0;
 }
 
-void SemanticAnalyzer::RecordCandidateSubstitutionFailure()
+void Analyzer::RecordCandidateSubstitutionFailure()
 {
 	if (!CandidateSubstitutionActive())
 		throw std::logic_error("candidate substitution failure has no owner");
 	candidate_substitution_failures_.back() = 1;
 }
 
-TypeId SemanticAnalyzer::CandidateTypeFormation(
+TypeId Analyzer::CandidateTypeFormation(
 	TypeId type, const char* message)
 {
 	if (type != kNoType) return type;
@@ -68,13 +68,13 @@ TypeId SemanticAnalyzer::CandidateTypeFormation(
 	return kNoType;
 }
 
-ExpressionInfo SemanticAnalyzer::CandidateSubstitutionFailure()
+ExpressionInfo Analyzer::CandidateSubstitutionFailure()
 {
 	RecordCandidateSubstitutionFailure();
 	return ExpressionInfo();
 }
 
-BindingId SemanticAnalyzer::CandidateOverloadFailure(const char* message)
+BindingId Analyzer::CandidateOverloadFailure(const char* message)
 {
 	if (CandidateSubstitutionActive())
 	{
@@ -84,14 +84,14 @@ BindingId SemanticAnalyzer::CandidateOverloadFailure(const char* message)
 	throw std::runtime_error(message);
 }
 
-ExpressionInfo SemanticAnalyzer::CandidateExpressionFailure(
+ExpressionInfo Analyzer::CandidateExpressionFailure(
 	const char* message)
 {
 	if (CandidateSubstitutionActive()) return CandidateSubstitutionFailure();
 	throw std::runtime_error(message);
 }
 
-std::uint8_t SemanticAnalyzer::ArrayElementCv(TypeId type) const
+std::uint8_t Analyzer::ArrayElementCv(TypeId type) const
 {
 	const TypeRecord& record = program_->types.Get(type);
 	if (record.kind == TYPE_QUALIFIED)
@@ -100,7 +100,7 @@ std::uint8_t SemanticAnalyzer::ArrayElementCv(TypeId type) const
 	return record.kind == TYPE_ARRAY ? ArrayElementCv(record.child) : CV_NONE;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinInvoke(ScopeId scope,
+ExpressionInfo Analyzer::AnalyzeBuiltinInvoke(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target)
 {
@@ -220,7 +220,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinInvoke(ScopeId scope,
 	return ApplyTarget(result, target);
 }
 
-bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
+bool Analyzer::TryAnalyzeImmediateBuiltinCall(
 	const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
@@ -290,7 +290,7 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 	return true;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildBoundIntrinsicCallShell(
+ExpressionInfo Analyzer::BuildBoundIntrinsicCallShell(
 	BindingId binding, const std::vector<ExpressionInfo>& arguments,
 	TypeId result_type)
 {
@@ -310,7 +310,7 @@ ExpressionInfo SemanticAnalyzer::BuildBoundIntrinsicCallShell(
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildBuiltinIntrinsicCall(
+ExpressionInfo Analyzer::BuildBuiltinIntrinsicCall(
 	BuiltinFunctionKind kind, const std::vector<ExpressionInfo>& arguments,
 	TypeId result_type, TypeId target)
 {
@@ -321,7 +321,7 @@ ExpressionInfo SemanticAnalyzer::BuildBuiltinIntrinsicCall(
 	return ApplyTarget(result, target);
 }
 
-BindingId SemanticAnalyzer::EnsureIntegerIntrinsicFunction(
+BindingId Analyzer::EnsureIntegerIntrinsicFunction(
 	hosted_builtin::IntegerIntrinsicKind kind)
 {
 	using namespace hosted_builtin;
@@ -366,7 +366,7 @@ BindingId SemanticAnalyzer::EnsureIntegerIntrinsicFunction(
 	return binding;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildIntegerIntrinsicCall(
+ExpressionInfo Analyzer::BuildIntegerIntrinsicCall(
 	hosted_builtin::IntegerIntrinsicKind kind,
 	const std::vector<ExpressionInfo>& arguments, TypeId result_type,
 	TypeId target)
@@ -440,7 +440,7 @@ ExpressionInfo SemanticAnalyzer::BuildIntegerIntrinsicCall(
 	return ApplyTarget(result, target);
 }
 
-bool SemanticAnalyzer::TryAnalyzeIntegerIntrinsicCall(
+bool Analyzer::TryAnalyzeIntegerIntrinsicCall(
 	const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
@@ -491,7 +491,7 @@ bool SemanticAnalyzer::TryAnalyzeIntegerIntrinsicCall(
 	return true;
 }
 
-BindingId SemanticAnalyzer::EnsureFloatingIntrinsicFunction(
+BindingId Analyzer::EnsureFloatingIntrinsicFunction(
 	hosted_builtin::FloatingIntrinsicKind kind)
 {
 	using namespace hosted_builtin;
@@ -552,7 +552,7 @@ BindingId SemanticAnalyzer::EnsureFloatingIntrinsicFunction(
 	return binding;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildFloatingIntrinsicCall(
+ExpressionInfo Analyzer::BuildFloatingIntrinsicCall(
 	hosted_builtin::FloatingIntrinsicKind kind,
 	const std::vector<ExpressionInfo>& arguments, TypeId result_type,
 	TypeId target)
@@ -567,7 +567,7 @@ ExpressionInfo SemanticAnalyzer::BuildFloatingIntrinsicCall(
 	return ApplyTarget(result, target);
 }
 
-bool SemanticAnalyzer::TryAnalyzeFloatingIntrinsicCall(
+bool Analyzer::TryAnalyzeFloatingIntrinsicCall(
 	const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
@@ -622,7 +622,7 @@ bool SemanticAnalyzer::TryAnalyzeFloatingIntrinsicCall(
 	return true;
 }
 
-BindingId SemanticAnalyzer::EnsureMemoryIntrinsicFunction(
+BindingId Analyzer::EnsureMemoryIntrinsicFunction(
 	hosted_builtin::MemoryIntrinsicKind kind)
 {
 	using namespace hosted_builtin;
@@ -722,7 +722,7 @@ BindingId SemanticAnalyzer::EnsureMemoryIntrinsicFunction(
 	return binding;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildMemoryIntrinsicCall(
+ExpressionInfo Analyzer::BuildMemoryIntrinsicCall(
 	hosted_builtin::MemoryIntrinsicKind kind,
 	const std::vector<ExpressionInfo>& arguments, TypeId result_type,
 	TypeId target)
@@ -737,7 +737,7 @@ ExpressionInfo SemanticAnalyzer::BuildMemoryIntrinsicCall(
 	return ApplyTarget(result, target);
 }
 
-bool SemanticAnalyzer::TryAnalyzeMemoryIntrinsicCall(
+bool Analyzer::TryAnalyzeMemoryIntrinsicCall(
 	const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
@@ -811,7 +811,7 @@ bool SemanticAnalyzer::TryAnalyzeMemoryIntrinsicCall(
 	return true;
 }
 
-bool SemanticAnalyzer::TryAnalyzeVectorIntrinsicCall(
+bool Analyzer::TryAnalyzeVectorIntrinsicCall(
 	const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
@@ -866,7 +866,7 @@ bool SemanticAnalyzer::TryAnalyzeVectorIntrinsicCall(
 	return true;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeAtomicOrderArgument(
+ExpressionInfo Analyzer::AnalyzeAtomicOrderArgument(
 	NodeId syntax, ScopeId scope)
 {
 	ExpressionInfo order = AnalyzeExpression(syntax, scope);
@@ -884,7 +884,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAtomicOrderArgument(
 	return order;
 }
 
-TypeId SemanticAnalyzer::AtomicPointerValueType(
+TypeId Analyzer::AtomicPointerValueType(
 	const ExpressionInfo& pointer, bool require_atomic) const
 {
 	const TypeId decayed = program_->types.RemoveTopCv(Decay(pointer.type));
@@ -902,7 +902,7 @@ TypeId SemanticAnalyzer::AtomicPointerValueType(
 	return value;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildAtomicIntrinsicCall(
+ExpressionInfo Analyzer::BuildAtomicIntrinsicCall(
 	hosted_builtin::AtomicIntrinsicKind kind,
 	const std::vector<ExpressionInfo>& arguments, TypeId value_type,
 	TypeId result_type, TypeId target)
@@ -936,7 +936,7 @@ ExpressionInfo SemanticAnalyzer::BuildAtomicIntrinsicCall(
 	return ApplyTarget(result, target);
 }
 
-bool SemanticAnalyzer::TryAnalyzeAtomicIntrinsicCall(
+bool Analyzer::TryAnalyzeAtomicIntrinsicCall(
 	const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
@@ -1080,7 +1080,7 @@ bool SemanticAnalyzer::TryAnalyzeAtomicIntrinsicCall(
 	return true;
 }
 
-bool SemanticAnalyzer::TryAnalyzeVariadicBuiltinCall(
+bool Analyzer::TryAnalyzeVariadicBuiltinCall(
 	const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
@@ -1144,7 +1144,7 @@ bool SemanticAnalyzer::TryAnalyzeVariadicBuiltinCall(
 	return true;
 }
 
-bool SemanticAnalyzer::TryAnalyzeClassExpressionInitializer(
+bool Analyzer::TryAnalyzeClassExpressionInitializer(
 	NodeId expression, ScopeId scope, TypeId type,
 	ExpressionInfo* initializer)
 {
@@ -1168,7 +1168,7 @@ bool SemanticAnalyzer::TryAnalyzeClassExpressionInitializer(
 	return true;
 }
 
-TypeId SemanticAnalyzer::ResolveArrowOperand(
+TypeId Analyzer::ResolveArrowOperand(
 	ExpressionInfo* object, ScopeId scope, NodeId object_syntax)
 {
 	TypeId owner_type = EffectiveType(object->type);
@@ -1196,7 +1196,7 @@ TypeId SemanticAnalyzer::ResolveArrowOperand(
 	return program_->types.Get(pointer_type).child;
 }
 
-bool SemanticAnalyzer::RefQualifierViable(const ExpressionInfo& object,
+bool Analyzer::RefQualifierViable(const ExpressionInfo& object,
 	const TypeRecord& function_type) const
 {
 	if (function_type.ref_qualifier == FUNCTION_REF_NONE) return true;
@@ -1207,7 +1207,7 @@ bool SemanticAnalyzer::RefQualifierViable(const ExpressionInfo& object,
 		(function_type.cv & CV_VOLATILE) == 0;
 }
 
-int SemanticAnalyzer::CompareImplicitObjectBindings(ValueCategory category,
+int Analyzer::CompareImplicitObjectBindings(ValueCategory category,
 	const TypeRecord& left, const TypeRecord& right) const
 {
 	if (category != VALUE_LVALUE &&
@@ -1221,7 +1221,7 @@ int SemanticAnalyzer::CompareImplicitObjectBindings(ValueCategory category,
 	return 0;
 }
 
-ConversionRank SemanticAnalyzer::MemberCandidateSelectionRank(
+ConversionRank Analyzer::MemberCandidateSelectionRank(
 	const ExpressionInfo& object, BindingId candidate,
 	ConversionRank actual, std::size_t* base_distance) const
 {
@@ -1245,7 +1245,7 @@ ConversionRank SemanticAnalyzer::MemberCandidateSelectionRank(
 	return selection;
 }
 
-int SemanticAnalyzer::CompareReferenceBindings(
+int Analyzer::CompareReferenceBindings(
 	const ExpressionInfo& argument, TypeId left, TypeId right) const
 {
 	const TypeKind left_kind = program_->types.Get(left).kind;
@@ -1321,7 +1321,7 @@ int SemanticAnalyzer::CompareReferenceBindings(
 	return 0;
 }
 
-BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
+BindingId Analyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 {
 	if (kind == BUILTIN_FUNCTION_NONE)
 		throw std::logic_error("missing builtin function kind");
@@ -1434,7 +1434,7 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 	return binding;
 }
 
-bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
+bool Analyzer::AnalyzeBuiltinCall(const std::string& spelling,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
 {
@@ -1488,7 +1488,7 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 	return true;
 }
 
-TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
+TypeId Analyzer::ResolveFunctionalCastType(ScopeId scope,
 	const std::string& spelling, NodeId syntax)
 {
 	const NodeId structure = syntax == kNoNode ? kNoNode :
@@ -1571,7 +1571,7 @@ TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
 	return program_->types.Fundamental(kind);
 }
 
-bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
+bool Analyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
 {
@@ -1778,7 +1778,7 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	return true;
 }
 
-bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
+bool Analyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
 {
@@ -1945,7 +1945,7 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	return true;
 }
 
-std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
+std::vector<BindingId> Analyzer::FunctionCandidates(ScopeId scope,
 	const std::string& spelling, EntityId* naming_class, NodeId syntax,
 	bool exclude_template_specializations)
 {
@@ -2049,7 +2049,7 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 		found, naming_class, exclude_template_specializations);
 }
 
-std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(
+std::vector<BindingId> Analyzer::FunctionCandidates(
 	ScopeId scope, NameId name, EntityId* naming_class,
 	bool exclude_template_specializations)
 {
@@ -2057,7 +2057,7 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(
 		naming_class, exclude_template_specializations);
 }
 
-std::vector<BindingId> SemanticAnalyzer::CollectFunctionCandidates(
+std::vector<BindingId> Analyzer::CollectFunctionCandidates(
 	const LookupResult& found, EntityId* naming_class,
 	bool exclude_template_specializations)
 {
@@ -2078,7 +2078,7 @@ std::vector<BindingId> SemanticAnalyzer::CollectFunctionCandidates(
 	return result;
 }
 
-std::vector<BindingId> SemanticAnalyzer::FunctionCallCandidates(
+std::vector<BindingId> Analyzer::FunctionCallCandidates(
 	ScopeId scope, const std::string& spelling, EntityId* naming_class,
 	NodeId syntax, bool exclude_template_specializations)
 {
@@ -2091,7 +2091,7 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCallCandidates(
 		}), result.end());
 	return result;
 }
-TypeId SemanticAnalyzer::ParameterBindingType(
+TypeId Analyzer::ParameterBindingType(
 	const ParameterInfo& parameter) const
 {
 	const TypeKind kind = program_->types.Get(parameter.declared_type).kind;
@@ -2099,7 +2099,7 @@ TypeId SemanticAnalyzer::ParameterBindingType(
 		parameter.function_type : parameter.declared_type;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeMember(NodeId node, ScopeId scope)
 {
 	const std::uint32_t first = arena_->FirstEdge(node);
 	const std::uint32_t second = first == kNoEdge ? kNoEdge :
@@ -2248,7 +2248,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	return result;
 }
 
-std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding,
+std::vector<BindingId> Analyzer::FunctionSet(BindingId binding,
 	bool exclude_template_specializations)
 {
 	std::vector<BindingId> result;
@@ -2256,7 +2256,7 @@ std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding,
 	return result;
 }
 
-void SemanticAnalyzer::AppendFunctionSet(BindingId binding,
+void Analyzer::AppendFunctionSet(BindingId binding,
 	std::vector<BindingId>* result, bool exclude_template_specializations)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size() ||

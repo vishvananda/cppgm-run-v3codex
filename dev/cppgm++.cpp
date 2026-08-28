@@ -892,7 +892,7 @@ lowir_model::LowirProgram build_source_lowir(
 }
 
 void report_generated_identity_stats(
-	const cppgm::SemanticAnalysisStats & semantic)
+	const cppgm::semantic::Stats & semantic)
 {
 	static const char * const names[] = {
 		"local_type",
@@ -911,10 +911,10 @@ void report_generated_identity_stats(
 		"structured_binding_storage"
 	};
 	static_assert(sizeof(names) / sizeof(names[0]) ==
-		cppgm::SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT,
+		cppgm::semantic::SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT,
 		"generated identity stats labels are incomplete");
 	for (std::size_t family = 0;
-		family < cppgm::SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT; ++family)
+		family < cppgm::semantic::SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT; ++family)
 	{
 		cerr << " generated_identity_" << names[family] << "_renders="
 			 << semantic.generated_identity_renders[family]
@@ -965,7 +965,7 @@ void report_source_compile_stats(
 	const lowir_model::LowirPreparationStats & preparation_stats,
 	const SourceCompileTimings & timings)
 {
-		const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
+		const cppgm::semantic::Stats & semantic = stats.semantic;
 		cerr << "pa30_compile_stats"
 				 << " file=" << path
 				 << " source_bytes=" << stats.source_bytes
@@ -1019,54 +1019,54 @@ void report_source_compile_stats(
 			 << semantic.name_path_single_component_parses
 			 << " name_path_parse_syntax_fallbacks="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_SYNTAX_FALLBACK]
+				cppgm::semantic::NAME_PATH_PARSE_SYNTAX_FALLBACK]
 			 << " name_path_parse_declarations="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_DECLARATION_CLASS] +
+				cppgm::semantic::NAME_PATH_PARSE_DECLARATION_CLASS] +
 				semantic.name_path_parse_families[
-					cppgm::NAME_PATH_PARSE_DECLARATION_ENUM] +
+					cppgm::semantic::NAME_PATH_PARSE_DECLARATION_ENUM] +
 				semantic.name_path_parse_families[
-					cppgm::NAME_PATH_PARSE_DECLARATION_PARAMETER] +
+					cppgm::semantic::NAME_PATH_PARSE_DECLARATION_PARAMETER] +
 				semantic.name_path_parse_families[
-					cppgm::NAME_PATH_PARSE_DECLARATION_MEMBER_POINTER] +
+					cppgm::semantic::NAME_PATH_PARSE_DECLARATION_MEMBER_POINTER] +
 				semantic.name_path_parse_families[
-					cppgm::NAME_PATH_PARSE_DECLARATION_USING]
+					cppgm::semantic::NAME_PATH_PARSE_DECLARATION_USING]
 			 << " name_path_parse_declaration_classes="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_DECLARATION_CLASS]
+				cppgm::semantic::NAME_PATH_PARSE_DECLARATION_CLASS]
 			 << " name_path_parse_declaration_enums="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_DECLARATION_ENUM]
+				cppgm::semantic::NAME_PATH_PARSE_DECLARATION_ENUM]
 			 << " name_path_parse_declaration_parameters="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_DECLARATION_PARAMETER]
+				cppgm::semantic::NAME_PATH_PARSE_DECLARATION_PARAMETER]
 			 << " name_path_parse_declaration_member_pointers="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_DECLARATION_MEMBER_POINTER]
+				cppgm::semantic::NAME_PATH_PARSE_DECLARATION_MEMBER_POINTER]
 			 << " name_path_parse_declaration_using="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_DECLARATION_USING]
+				cppgm::semantic::NAME_PATH_PARSE_DECLARATION_USING]
 			 << " name_path_parse_calls="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_CALL]
+				cppgm::semantic::NAME_PATH_PARSE_CALL]
 			 << " name_path_parse_literals="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_LITERAL]
+				cppgm::semantic::NAME_PATH_PARSE_LITERAL]
 			 << " name_path_parse_templates="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_TEMPLATE]
+				cppgm::semantic::NAME_PATH_PARSE_TEMPLATE]
 			 << " name_path_parse_friends="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_FRIEND]
+				cppgm::semantic::NAME_PATH_PARSE_FRIEND]
 			 << " name_path_parse_generated_library="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_GENERATED_LIBRARY]
+				cppgm::semantic::NAME_PATH_PARSE_GENERATED_LIBRARY]
 			 << " name_path_parse_semantic_id_recovery="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_SEMANTIC_ID_RECOVERY]
+				cppgm::semantic::NAME_PATH_PARSE_SEMANTIC_ID_RECOVERY]
 			 << " name_path_parse_ambiguity="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_AMBIGUITY]
+				cppgm::semantic::NAME_PATH_PARSE_AMBIGUITY]
 			 << " structured_name_paths="
 			 << semantic.structured_name_path_requests
 			 << " syntax_name_paths="
@@ -1093,112 +1093,112 @@ void report_source_compile_stats(
 			 << semantic.scope_prefix_cache_hits
 			 << " presentation_scope_prefix_renders="
 			 << semantic.presentation_renders[
-				cppgm::SEMANTIC_PRESENTATION_SCOPE_PREFIX]
+				cppgm::semantic::SEMANTIC_PRESENTATION_SCOPE_PREFIX]
 			 << " presentation_scope_prefix_components="
 			 << semantic.presentation_render_components[
-				cppgm::SEMANTIC_PRESENTATION_SCOPE_PREFIX]
+				cppgm::semantic::SEMANTIC_PRESENTATION_SCOPE_PREFIX]
 			 << " presentation_scope_prefix_bytes="
 			 << semantic.presentation_render_bytes[
-				cppgm::SEMANTIC_PRESENTATION_SCOPE_PREFIX]
+				cppgm::semantic::SEMANTIC_PRESENTATION_SCOPE_PREFIX]
 			 << " presentation_display_name_renders="
 			 << semantic.presentation_renders[
-				cppgm::SEMANTIC_PRESENTATION_DISPLAY_NAME]
+				cppgm::semantic::SEMANTIC_PRESENTATION_DISPLAY_NAME]
 			 << " presentation_display_name_components="
 			 << semantic.presentation_render_components[
-				cppgm::SEMANTIC_PRESENTATION_DISPLAY_NAME]
+				cppgm::semantic::SEMANTIC_PRESENTATION_DISPLAY_NAME]
 			 << " presentation_display_name_bytes="
 			 << semantic.presentation_render_bytes[
-				cppgm::SEMANTIC_PRESENTATION_DISPLAY_NAME]
+				cppgm::semantic::SEMANTIC_PRESENTATION_DISPLAY_NAME]
 			 << " presentation_emission_name_renders="
 			 << semantic.presentation_renders[
-				cppgm::SEMANTIC_PRESENTATION_EMISSION_NAME]
+				cppgm::semantic::SEMANTIC_PRESENTATION_EMISSION_NAME]
 			 << " presentation_emission_name_components="
 			 << semantic.presentation_render_components[
-				cppgm::SEMANTIC_PRESENTATION_EMISSION_NAME]
+				cppgm::semantic::SEMANTIC_PRESENTATION_EMISSION_NAME]
 			 << " presentation_emission_name_bytes="
 			 << semantic.presentation_render_bytes[
-				cppgm::SEMANTIC_PRESENTATION_EMISSION_NAME]
+				cppgm::semantic::SEMANTIC_PRESENTATION_EMISSION_NAME]
 			 << " presentation_class_specialization_renders="
 			 << semantic.presentation_renders[
-				cppgm::SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION]
+				cppgm::semantic::SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION]
 			 << " presentation_class_specialization_components="
 			 << semantic.presentation_render_components[
-				cppgm::SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION]
+				cppgm::semantic::SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION]
 			 << " presentation_class_specialization_bytes="
 			 << semantic.presentation_render_bytes[
-				cppgm::SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION]
+				cppgm::semantic::SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION]
 			 << " presentation_class_storage_renders="
 			 << semantic.presentation_renders[
-				cppgm::SEMANTIC_PRESENTATION_CLASS_STORAGE]
+				cppgm::semantic::SEMANTIC_PRESENTATION_CLASS_STORAGE]
 			 << " presentation_class_storage_components="
 			 << semantic.presentation_render_components[
-				cppgm::SEMANTIC_PRESENTATION_CLASS_STORAGE]
+				cppgm::semantic::SEMANTIC_PRESENTATION_CLASS_STORAGE]
 			 << " presentation_class_storage_bytes="
 			 << semantic.presentation_render_bytes[
-				cppgm::SEMANTIC_PRESENTATION_CLASS_STORAGE]
+				cppgm::semantic::SEMANTIC_PRESENTATION_CLASS_STORAGE]
 			 << " presentation_class_scope_slot_renders="
 			 << semantic.presentation_renders[
-				cppgm::SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT]
+				cppgm::semantic::SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT]
 			 << " presentation_class_scope_slot_components="
 			 << semantic.presentation_render_components[
-				cppgm::SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT]
+				cppgm::semantic::SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT]
 			 << " presentation_class_scope_slot_bytes="
 			 << semantic.presentation_render_bytes[
-				cppgm::SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT]
+				cppgm::semantic::SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT]
 			 << " presentation_lambda_identity_renders="
 			 << semantic.presentation_renders[
-				cppgm::SEMANTIC_PRESENTATION_LAMBDA_IDENTITY]
+				cppgm::semantic::SEMANTIC_PRESENTATION_LAMBDA_IDENTITY]
 			 << " presentation_lambda_identity_components="
 			 << semantic.presentation_render_components[
-				cppgm::SEMANTIC_PRESENTATION_LAMBDA_IDENTITY]
+				cppgm::semantic::SEMANTIC_PRESENTATION_LAMBDA_IDENTITY]
 			 << " presentation_lambda_identity_bytes="
 			 << semantic.presentation_render_bytes[
-				cppgm::SEMANTIC_PRESENTATION_LAMBDA_IDENTITY]
+				cppgm::semantic::SEMANTIC_PRESENTATION_LAMBDA_IDENTITY]
 			 << " presentation_generated_identity_renders="
 			 << semantic.presentation_renders[
-				cppgm::SEMANTIC_PRESENTATION_GENERATED_IDENTITY]
+				cppgm::semantic::SEMANTIC_PRESENTATION_GENERATED_IDENTITY]
 			 << " presentation_generated_identity_components="
 			 << semantic.presentation_render_components[
-				cppgm::SEMANTIC_PRESENTATION_GENERATED_IDENTITY]
+				cppgm::semantic::SEMANTIC_PRESENTATION_GENERATED_IDENTITY]
 			 << " presentation_generated_identity_bytes="
 			 << semantic.presentation_render_bytes[
-				cppgm::SEMANTIC_PRESENTATION_GENERATED_IDENTITY]
+				cppgm::semantic::SEMANTIC_PRESENTATION_GENERATED_IDENTITY]
 			 << " presentation_function_display_reads="
 			 << semantic.presentation_reads[
-				cppgm::SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY]
 			 << " presentation_function_display_retained="
 			 << semantic.presentation_retained_values[
-				cppgm::SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY]
 			 << " presentation_function_display_retained_bytes="
 			 << semantic.presentation_retained_bytes[
-				cppgm::SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY]
 			 << " presentation_binding_qualified_reads="
 			 << semantic.presentation_reads[
-				cppgm::SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED]
 			 << " presentation_binding_qualified_retained="
 			 << semantic.presentation_retained_values[
-				cppgm::SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED]
 			 << " presentation_binding_qualified_retained_bytes="
 			 << semantic.presentation_retained_bytes[
-				cppgm::SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED]
 			 << " presentation_entity_presentation_reads="
 			 << semantic.presentation_reads[
-				cppgm::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION]
 			 << " presentation_entity_presentation_retained="
 			 << semantic.presentation_retained_values[
-				cppgm::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION]
 			 << " presentation_entity_presentation_retained_bytes="
 			 << semantic.presentation_retained_bytes[
-				cppgm::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION]
 			 << " presentation_scope_emission_reads="
 			 << semantic.presentation_reads[
-				cppgm::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION]
 			 << " presentation_scope_emission_retained="
 			 << semantic.presentation_retained_values[
-				cppgm::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION]
 			 << " presentation_scope_emission_retained_bytes="
 			 << semantic.presentation_retained_bytes[
-				cppgm::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION]
+				cppgm::semantic::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION]
 			 << " lookup_queries=" << semantic.lookup_queries
 			 << " lookup_scope_visits=" << semantic.lookup_scope_visits
 			 << " lookup_edge_visits=" << semantic.lookup_edge_visits
@@ -1799,8 +1799,8 @@ int run_emit_types_mode(const vector<string> & args)
     const string source((istreambuf_iterator<char>(input)),
                         istreambuf_iterator<char>());
     output << "start translation unit " << i + 1 << '\n';
-    cppgm::TypeAnalysisStats stats;
-    cppgm::WriteTypeTranslationUnit(path, source, options, output,
+    cppgm::semantic::TypeViewStats stats;
+    cppgm::semantic::WriteTypeView(path, source, options, output,
         invocation.collect_stats ? &stats : 0);
     if(invocation.collect_stats) {
       cerr << "pa11_stats file=" << path
@@ -1822,30 +1822,30 @@ int run_emit_types_mode(const vector<string> & args)
            << stats.name_path_single_component_parses
            << " name_path_parse_using="
            << stats.name_path_parse_families[
-              cppgm::TYPE_NAME_PATH_PARSE_USING]
+              cppgm::semantic::TYPE_NAME_PATH_PARSE_USING]
            << " name_path_parse_classes="
            << stats.name_path_parse_families[
-              cppgm::TYPE_NAME_PATH_PARSE_CLASS]
+              cppgm::semantic::TYPE_NAME_PATH_PARSE_CLASS]
            << " name_path_parse_enums="
            << stats.name_path_parse_families[
-              cppgm::TYPE_NAME_PATH_PARSE_ENUM]
+              cppgm::semantic::TYPE_NAME_PATH_PARSE_ENUM]
            << " name_path_parse_declarators="
            << stats.name_path_parse_families[
-              cppgm::TYPE_NAME_PATH_PARSE_DECLARATOR]
+              cppgm::semantic::TYPE_NAME_PATH_PARSE_DECLARATOR]
            << " name_path_parse_type_lookup="
            << stats.name_path_parse_families[
-              cppgm::TYPE_NAME_PATH_PARSE_TYPE_LOOKUP]
+              cppgm::semantic::TYPE_NAME_PATH_PARSE_TYPE_LOOKUP]
            << " name_path_parse_expressions="
            << stats.name_path_parse_families[
-              cppgm::TYPE_NAME_PATH_PARSE_EXPRESSION]
+              cppgm::semantic::TYPE_NAME_PATH_PARSE_EXPRESSION]
            << " lookup_spelling_requests="
            << stats.lookup_spelling_requests
            << " lookup_spelling_type_lookup="
            << stats.lookup_spelling_families[
-              cppgm::TYPE_NAME_PATH_PARSE_TYPE_LOOKUP]
+              cppgm::semantic::TYPE_NAME_PATH_PARSE_TYPE_LOOKUP]
            << " lookup_spelling_expressions="
            << stats.lookup_spelling_families[
-              cppgm::TYPE_NAME_PATH_PARSE_EXPRESSION]
+              cppgm::semantic::TYPE_NAME_PATH_PARSE_EXPRESSION]
            << " structured_name_paths="
            << stats.structured_name_path_requests
            << " syntax_name_paths=" << stats.syntax_name_path_requests
@@ -1871,7 +1871,7 @@ int run_emit_types_mode(const vector<string> & args)
 }
 
 void append_pa12_template_stats(
-	ostream & output, const cppgm::SemanticAnalysisStats & stats)
+	ostream & output, const cppgm::semantic::Stats & stats)
 {
 	output << " function_template_default_materializations="
 		 << stats.function_template_default_materializations
@@ -1953,8 +1953,8 @@ int run_emit_semantics_mode(const vector<string> & args)
     const string source((istreambuf_iterator<char>(input)),
                         istreambuf_iterator<char>());
     output << "start translation unit " << i + 1 << '\n';
-    cppgm::SemanticAnalysisStats stats;
-    cppgm::WriteSemanticTranslationUnit(path, source, options, output,
+    cppgm::semantic::Stats stats;
+    cppgm::semantic::WriteTranslationUnit(path, source, options, output,
         invocation.collect_stats ? &stats : 0);
     if(invocation.collect_stats) {
       cerr << "pa12_stats file=" << path
@@ -2190,7 +2190,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 
 void report_lowir_semantic_stats(const cppgm::LowIRLoweringStats & stats)
 {
-	const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
+	const cppgm::semantic::Stats & semantic = stats.semantic;
 	cerr << "pa15_stats"
 			 << " source_bytes=" << stats.source_bytes
 			 << " tokens=" << semantic.tokens
@@ -2370,7 +2370,7 @@ void report_lowir_semantic_stats(const cppgm::LowIRLoweringStats & stats)
 
 void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 {
-	const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
+	const cppgm::semantic::Stats & semantic = stats.semantic;
 	cerr << " template_partial_deduction_visits="
 				 << semantic.template_partial_deduction_visits
 				 << " function_template_deduction_visits="

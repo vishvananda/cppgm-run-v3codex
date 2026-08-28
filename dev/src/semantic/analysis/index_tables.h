@@ -8,10 +8,9 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-using namespace pa11;
 
 struct FunctionSignatureKey
 {

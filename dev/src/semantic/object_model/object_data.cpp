@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -27,7 +27,7 @@ bool IsTokenSafeElfSectionName(const std::string& name)
 
 }
 
-void SemanticAnalyzer::ApplyVariableObjectAttributes(
+void Analyzer::ApplyVariableObjectAttributes(
 	NodeId declaration, BindingId binding)
 {
 	BindingRecord& record = program_->bindings[binding];
@@ -75,7 +75,7 @@ void SemanticAnalyzer::ApplyVariableObjectAttributes(
 	}
 }
 
-std::uint32_t SemanticAnalyzer::MakeVariableDeclarationDump(
+std::uint32_t Analyzer::MakeVariableDeclarationDump(
 	TypeId type, NameId name, BindingId binding, bool local,
 	bool has_initializer, bool* declaration_only)
 {

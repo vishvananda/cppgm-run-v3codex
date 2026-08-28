@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-TypeId SemanticAnalyzer::CompleteQualifiedStaticArrayType(
+TypeId Analyzer::CompleteQualifiedStaticArrayType(
 	BindingId prior, TypeId declared) const
 {
 	if (prior == kNoBinding || prior >= program_->bindings.size() ||
@@ -22,7 +22,7 @@ TypeId SemanticAnalyzer::CompleteQualifiedStaticArrayType(
 		candidate.IsIncompleteArray() ? prior_type : declared;
 }
 
-bool SemanticAnalyzer::IsStaticConstantDefinition(
+bool Analyzer::IsStaticConstantDefinition(
 	BindingId binding, NodeId initializer) const
 {
 	const BindingRecord& declared = program_->bindings[binding];
@@ -41,7 +41,7 @@ bool SemanticAnalyzer::IsStaticConstantDefinition(
 	return definition;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeStringArrayInitializer(
+ExpressionInfo Analyzer::AnalyzeStringArrayInitializer(
 	const ExpressionInfo& source, TypeId type, bool local)
 {
 	const TypeRecord declared = program_->types.Get(type);
@@ -91,7 +91,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeStringArrayInitializer(
 	return local ? BuildLocalAggregateArrayActions(result) : result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeArrayAggregateInit(TypeId type,
+ExpressionInfo Analyzer::AnalyzeArrayAggregateInit(TypeId type,
 	ScopeId scope, std::uint32_t* element_edge)
 {
 	const TypeRecord array = program_->types.Get(
@@ -157,7 +157,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeArrayAggregateInit(TypeId type,
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
+ExpressionInfo Analyzer::AnalyzeAggregateInit(TypeId type,
 	ScopeId scope, std::uint32_t* element_edge)
 {
 	const EntityId entity = EntityOf(type);
@@ -211,7 +211,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildLocalAggregateArrayActions(
+ExpressionInfo Analyzer::BuildLocalAggregateArrayActions(
 	const ExpressionInfo& initializer)
 {
 	const TypeRecord array = program_->types.Get(
@@ -249,7 +249,7 @@ ExpressionInfo SemanticAnalyzer::BuildLocalAggregateArrayActions(
 	return initializer;
 }
 
-bool SemanticAnalyzer::MaterializeConstantDefinitionInitializer(
+bool Analyzer::MaterializeConstantDefinitionInitializer(
 	BindingId binding, TypeId* type, ExpressionInfo* initializer)
 {
 	if (!program_->bindings[binding].constant) return false;

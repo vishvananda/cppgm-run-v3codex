@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-namespace cppgm { namespace pa12_semantic_detail {
+namespace cppgm { namespace semantic {
 
-void SemanticAnalyzer::RecordSourceTypeOverride(
+void Analyzer::RecordSourceTypeOverride(
 	BindingId binding, TypeId type)
 {
 	if (!source_type_view_ || binding == kNoBinding ||
@@ -17,7 +17,7 @@ void SemanticAnalyzer::RecordSourceTypeOverride(
 	source_type_override_types_.push_back(type);
 }
 
-void SemanticAnalyzer::ApplySourceTypeOverrides()
+void Analyzer::ApplySourceTypeOverrides()
 {
 	if (source_type_override_bindings_.size() !=
 		source_type_override_types_.size())
@@ -27,7 +27,7 @@ void SemanticAnalyzer::ApplySourceTypeOverrides()
 			source_type_override_types_[i];
 }
 
-void SemanticAnalyzer::ProjectSourceClassTemplate(
+void Analyzer::ProjectSourceClassTemplate(
 	NodeId declaration, ScopeId scope,
 	const std::vector<TemplateParameter>& parameters)
 {

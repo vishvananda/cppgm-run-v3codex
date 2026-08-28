@@ -4,10 +4,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-NameId SemanticAnalyzer::DumpFunctionText(const DumpNode& node)
+NameId Analyzer::DumpFunctionText(const DumpNode& node)
 {
 	// Function presentation is demanded here, at the dump output boundary,
 	// rather than being rendered when the node is created.
@@ -17,7 +17,7 @@ NameId SemanticAnalyzer::DumpFunctionText(const DumpNode& node)
 	return ReadFunctionDisplayName(GetFunction(node.binding));
 }
 
-void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
+void Analyzer::RenderLine(const DumpNode& node, std::size_t depth)
 {
 	for (std::size_t i = 0; i < depth; ++i) output_ << "  ";
 	const char* category = node.category == VALUE_LVALUE ? "lvalue" :

@@ -54,10 +54,10 @@ bool HasStandardAttribute(const syntax::SyntaxArena& arena,
 	return false;
 }
 
-pa11::TypeId ApplyIntegerSignedness(pa11::TypeTable& types,
-	pa11::TypeId type, bool is_unsigned)
+semantic::TypeId ApplyIntegerSignedness(semantic::TypeTable& types,
+	semantic::TypeId type, bool is_unsigned)
 {
-	using namespace pa11;
+	using namespace semantic;
 	if (type == kNoType || !is_unsigned) return type;
 	const TypeRecord& explicit_type = types.Get(type);
 	return explicit_type.kind == TYPE_FUNDAMENTAL &&

@@ -7,15 +7,15 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 std::uint8_t FunctionControlAttributeMask(
 	const syntax::SyntaxArena& arena,
 	syntax::NodeId declaration);
 
-void ApplyFunctionControlAttributes(pa11::Program* program,
-	pa11::BindingId binding, std::uint8_t attributes);
+void ApplyFunctionControlAttributes(semantic::Program* program,
+	semantic::BindingId binding, std::uint8_t attributes);
 
 }
 }

@@ -27,7 +27,7 @@ struct LowIRLoweringStats
 {
 	pa15_local_presentation::LocalPresentationCounters local_presentation;
 	std::size_t source_bytes;
-	SemanticAnalysisStats semantic;
+	semantic::Stats semantic;
 	std::size_t lowered_nodes;
 	std::size_t functions;
 	std::size_t globals;

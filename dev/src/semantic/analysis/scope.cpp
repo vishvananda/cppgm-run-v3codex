@@ -6,11 +6,11 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 std::string RenderBindingPresentation(const Program& program,
-	const BindingRecord& binding, SemanticAnalysisStats* stats)
+	const BindingRecord& binding, semantic::Stats* stats)
 {
 	const NameId terminal = binding.presentation_name_override != 0 ?
 		binding.presentation_name_override : binding.name;
@@ -30,7 +30,7 @@ std::string RenderBindingPresentation(const Program& program,
 	return rendered;
 }
 
-NameId SemanticAnalyzer::ReadFunctionDisplayName(
+NameId Analyzer::ReadFunctionDisplayName(
 	const FunctionInfo& function)
 {
 	// Semantic dump and action presentation: a lifecycle base entry shares
@@ -57,7 +57,7 @@ NameId SemanticAnalyzer::ReadFunctionDisplayName(
 	return program_->names.Intern(qualified);
 }
 
-NameId SemanticAnalyzer::ReadFunctionSourceDisplayName(
+NameId Analyzer::ReadFunctionSourceDisplayName(
 	const FunctionInfo& function)
 {
 	if (stats_)
@@ -70,7 +70,7 @@ NameId SemanticAnalyzer::ReadFunctionSourceDisplayName(
 		{
 			std::size_t components = 0;
 			const std::string rendered =
-				pa22_lambda_presentation::
+				semantic::presentation::
 					RenderLambdaInvocationEmissionName(*program_,
 						binding.lambda_invocation_owner, binding.owner,
 						&components, stats_);
@@ -87,12 +87,12 @@ NameId SemanticAnalyzer::ReadFunctionSourceDisplayName(
 	return terminal == 0 ? 0 : DisplayName(function.owner, terminal);
 }
 
-const std::string& SemanticAnalyzer::ScopePrefix(ScopeId scope)
+const std::string& Analyzer::ScopePrefix(ScopeId scope)
 {
 	return program_->names.Get(ScopePrefixId(scope));
 }
 
-NameId SemanticAnalyzer::ScopePrefixId(ScopeId scope)
+NameId Analyzer::ScopePrefixId(ScopeId scope)
 {
 	if (stats_) ++stats_->scope_prefix_requests;
 	const NameId deferred = std::numeric_limits<NameId>::max();
@@ -139,7 +139,7 @@ NameId SemanticAnalyzer::ScopePrefixId(ScopeId scope)
 	return scope_prefixes_[scope];
 }
 
-NameId SemanticAnalyzer::DisplayName(ScopeId owner, NameId name)
+NameId Analyzer::DisplayName(ScopeId owner, NameId name)
 {
 	// ScopePrefix may intern a deferred prefix and invalidate string references.
 	const std::string terminal = program_->names.Get(name);
@@ -150,7 +150,7 @@ NameId SemanticAnalyzer::DisplayName(ScopeId owner, NameId name)
 	return program_->names.Intern(qualified);
 }
 
-void SemanticAnalyzer::InitializeInitializerListLifetimeScope(
+void Analyzer::InitializeInitializerListLifetimeScope(
 	ScopeId scope, ScopeId parent)
 {
 	if (nearest_initializer_list_lifetime_scopes_.size() <= scope)
@@ -161,7 +161,7 @@ void SemanticAnalyzer::InitializeInitializerListLifetimeScope(
 			nearest_initializer_list_lifetime_scopes_[parent] : kNoScope;
 }
 
-ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
+ScopeId Analyzer::NewScope(ScopeId parent, ScopeKind kind,
 	NameId name, NameId prefix)
 {
 	const ScopeId scope = program_->NewScope(parent, kind, name);
@@ -200,7 +200,7 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 	return scope;
 }
 
-ScopeId SemanticAnalyzer::NewNamedScope(ScopeId parent, ScopeKind kind,
+ScopeId Analyzer::NewNamedScope(ScopeId parent, ScopeKind kind,
 	NameId lookup_name, ScopeId presentation_owner, NameId presentation_name)
 {
 	const NameId deferred = std::numeric_limits<NameId>::max();
@@ -210,12 +210,12 @@ ScopeId SemanticAnalyzer::NewNamedScope(ScopeId parent, ScopeKind kind,
 	return scope;
 }
 
-bool SemanticAnalyzer::HasInternalLinkageScope(ScopeId scope) const
+bool Analyzer::HasInternalLinkageScope(ScopeId scope) const
 {
 	return program_->HasInternalLinkageScope(scope);
 }
 
-void SemanticAnalyzer::PublishInlineFunctionFacts(BindingId binding,
+void Analyzer::PublishInlineFunctionFacts(BindingId binding,
 	bool inline_specifier)
 {
 	if (!inline_specifier) return;

@@ -8,7 +8,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 class DumpArena;
 }
@@ -57,8 +57,8 @@ public:
 
 	void Reset(bool retain_names,
 		LocalPresentationCounters* counters = 0);
-	void CollectSourceNames(const pa11::Program& program,
-		const pa12_semantic_detail::DumpArena& arena, std::uint32_t root,
+	void CollectSourceNames(const semantic::Program& program,
+		const semantic::DumpArena& arena, std::uint32_t root,
 		lowir_model::GeneratedNameReservations* generated);
 	std::string UniqueSlotName(const std::string& requested);
 	std::string GeneratedSlotName(const std::string& prefix);

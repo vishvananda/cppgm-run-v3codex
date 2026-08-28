@@ -8,10 +8,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::AccessIsBaseOf(EntityId base, EntityId derived) const
+bool Analyzer::AccessIsBaseOf(EntityId base, EntityId derived) const
 {
 	if (base == kNoEntity || derived == kNoEntity ||
 		base >= program_->entities.size() || derived >= program_->entities.size())
@@ -20,7 +20,7 @@ bool SemanticAnalyzer::AccessIsBaseOf(EntityId base, EntityId derived) const
 	return program_->QueryBasePath(derived, base, 0, 0);
 }
 
-bool SemanticAnalyzer::HasClassPrivilege(EntityId owner) const
+bool Analyzer::HasClassPrivilege(EntityId owner) const
 {
 	if (owner == kNoEntity) return false;
 	for (EntityId context = current_class_context_; context != kNoEntity;
@@ -57,7 +57,7 @@ bool SemanticAnalyzer::HasClassPrivilege(EntityId owner) const
 	return false;
 }
 
-bool SemanticAnalyzer::HasDerivedClassPrivilege(EntityId base) const
+bool Analyzer::HasDerivedClassPrivilege(EntityId base) const
 {
 	for (EntityId context = current_class_context_; context != kNoEntity;
 		context = program_->entities[context].enclosing_class)
@@ -77,7 +77,7 @@ bool SemanticAnalyzer::HasDerivedClassPrivilege(EntityId base) const
 	return false;
 }
 
-bool SemanticAnalyzer::HasProtectedObjectPrivilege(EntityId owner,
+bool Analyzer::HasProtectedObjectPrivilege(EntityId owner,
 	EntityId object_class) const
 {
 	if (owner == kNoEntity || object_class == kNoEntity) return false;
@@ -127,7 +127,7 @@ bool SemanticAnalyzer::HasProtectedObjectPrivilege(EntityId owner,
 	return false;
 }
 
-bool SemanticAnalyzer::CanAccessMember(BindingId member,
+bool Analyzer::CanAccessMember(BindingId member,
 	EntityId naming_class, EntityId object_class) const
 {
 	++access_checks_;
@@ -200,7 +200,7 @@ bool SemanticAnalyzer::CanAccessMember(BindingId member,
 		HasProtectedObjectPrivilege(owner, object_class));
 }
 
-bool SemanticAnalyzer::BaseConversionAllowed(EntityId derived,
+bool Analyzer::BaseConversionAllowed(EntityId derived,
 	EntityId base) const
 {
 	++access_checks_;
@@ -243,7 +243,7 @@ bool SemanticAnalyzer::BaseConversionAllowed(EntityId derived,
 	return current == base;
 }
 
-std::size_t SemanticAnalyzer::BaseConversionDistance(TypeId source,
+std::size_t Analyzer::BaseConversionDistance(TypeId source,
 	TypeId target) const
 {
 	const TypeRecord source_top = program_->types.Get(source);
@@ -273,7 +273,7 @@ std::size_t SemanticAnalyzer::BaseConversionDistance(TypeId source,
 		std::numeric_limits<std::size_t>::max();
 }
 
-std::size_t SemanticAnalyzer::BaseProjectionCount(TypeId source,
+std::size_t Analyzer::BaseProjectionCount(TypeId source,
 	TypeId target, std::uint64_t* offset) const
 {
 	const TypeRecord source_top = program_->types.Get(source);
@@ -306,7 +306,7 @@ std::size_t SemanticAnalyzer::BaseProjectionCount(TypeId source,
 	return distance == 0 ? 0 : 1;
 }
 
-ConversionRank SemanticAnalyzer::MemberObjectConversion(
+ConversionRank Analyzer::MemberObjectConversion(
 	const ExpressionInfo& source, TypeId target, BindingId member) const
 {
 	const ConversionRank ordinary = Conversion(source, target);
@@ -345,7 +345,7 @@ ConversionRank SemanticAnalyzer::MemberObjectConversion(
 		CONVERSION_DERIVED_TO_BASE : CONVERSION_INVALID;
 }
 
-ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
+ExpressionInfo Analyzer::ApplyMemberObjectTarget(
 	ExpressionInfo value, TypeId target, BindingId member,
 	const ObjectConversionFact* conversion_fact)
 {
@@ -411,7 +411,7 @@ ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
 	return value;
 }
 
-bool SemanticAnalyzer::ApplyQualifiedMemberNamingTarget(ExpressionInfo* value,
+bool Analyzer::ApplyQualifiedMemberNamingTarget(ExpressionInfo* value,
 	EntityId naming_class, BindingId member)
 {
 	if (!value || naming_class == kNoEntity || member == kNoBinding ||
@@ -449,7 +449,7 @@ bool SemanticAnalyzer::ApplyQualifiedMemberNamingTarget(ExpressionInfo* value,
 	return true;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeCast(NodeId node, ScopeId scope)
 {
 	const NodeId type_id = FindChild(node, ::cppgm::syntax::STAG_TYPE_ID);
 	if (type_id == kNoNode) throw std::runtime_error("cast without type-id");
@@ -819,7 +819,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	return result;
 }
 
-void SemanticAnalyzer::AppendParenthesizedCallArguments(NodeId node,
+void Analyzer::AppendParenthesizedCallArguments(NodeId node,
 	std::vector<NodeId>* arguments) const
 {
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_BINARY_EXPRESSION) &&
@@ -834,7 +834,7 @@ void SemanticAnalyzer::AppendParenthesizedCallArguments(NodeId node,
 	arguments->push_back(node);
 }
 
-bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
+bool Analyzer::AnalyzeParenthesizedFunctionTemplateCast(
 	NodeId type_id, NodeId operand, ScopeId scope, ExpressionInfo* result)
 {
 	const NodeId specifiers = FindChild(type_id, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ);
@@ -871,7 +871,7 @@ bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
 	return true;
 }
 
-bool SemanticAnalyzer::AnalyzeParenthesizedValueBinaryCast(
+bool Analyzer::AnalyzeParenthesizedValueBinaryCast(
 	NodeId type_id, NodeId operand, ScopeId scope, ExpressionInfo* result)
 {
 	const NodeId specifiers = FindChild(type_id, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ);
@@ -912,7 +912,7 @@ bool SemanticAnalyzer::AnalyzeParenthesizedValueBinaryCast(
 	return true;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
+ExpressionInfo Analyzer::AnalyzeImplicitDataMember(
 	BindingId member_binding, ScopeId scope, TypeId target,
 	EntityId naming_class)
 {
@@ -1023,7 +1023,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 	return ApplyTarget(result, target);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 {
 	std::vector<NodeId> children;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;

@@ -11,7 +11,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -169,7 +169,7 @@ bool TypeIdNamesDependentQualifiedType(const SyntaxArena& arena,
 }
 
 std::string ExplicitArgumentPresentation(const Program& program,
-	const TemplateArgument& argument, SemanticAnalysisStats* stats)
+	const TemplateArgument& argument, semantic::Stats* stats)
 {
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE ||
 		argument.kind == TEMPLATE_ARGUMENT_TEMPLATE)
@@ -215,7 +215,7 @@ std::string ExplicitArgumentPresentation(const Program& program,
 
 std::string ExplicitClassSpecializationName(const Program& program,
 	NameId primary, const std::vector<TemplateArgument>& arguments,
-	SemanticAnalysisStats* stats)
+	semantic::Stats* stats)
 {
 	std::string source = program.names.Get(primary) + "<";
 	for (std::size_t i = 0; i < arguments.size(); ++i)
@@ -247,7 +247,7 @@ std::string ExplicitClassSpecializationName(const Program& program,
 
 }
 
-void SemanticAnalyzer::ResetClassTemplateSpecializationDefinition(
+void Analyzer::ResetClassTemplateSpecializationDefinition(
 	BindingId specialization)
 {
 	if (specialization == kNoBinding ||
@@ -296,7 +296,7 @@ void SemanticAnalyzer::ResetClassTemplateSpecializationDefinition(
 		class_template_demanded_member_definition_counts_[specialization] = 0;
 }
 
-bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
+bool Analyzer::AnalyzeExplicitTemplateSpecialization(
 	NodeId target, ScopeId scope, AccessKind)
 {
 	NodeId declarator = FindChild(target, ::cppgm::syntax::STAG_DECLARATOR);
@@ -839,7 +839,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	return true;
 }
 
-std::vector<std::size_t> SemanticAnalyzer::FindVariableTemplates(
+std::vector<std::size_t> Analyzer::FindVariableTemplates(
 	ScopeId scope, const NamePath& path)
 {
 	std::vector<std::size_t> result;
@@ -901,7 +901,7 @@ std::vector<std::size_t> SemanticAnalyzer::FindVariableTemplates(
 	return result;
 }
 
-BindingId SemanticAnalyzer::InstantiateVariableTemplate(
+BindingId Analyzer::InstantiateVariableTemplate(
 	NodeId syntax, ScopeId scope)
 {
 	NamePath path;
@@ -1163,7 +1163,7 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	return binding;
 }
 
-bool SemanticAnalyzer::IsNonTypeTemplateParameterType(TypeId type) const
+bool Analyzer::IsNonTypeTemplateParameterType(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(type);
 	const TypeRecord& record = program_->types.Get(type);
@@ -1172,7 +1172,7 @@ bool SemanticAnalyzer::IsNonTypeTemplateParameterType(TypeId type) const
 		record.kind == TYPE_MEMBER_POINTER || IsIntegral(type, true);
 }
 
-bool SemanticAnalyzer::FormNonTypeTemplateArgumentValue(
+bool Analyzer::FormNonTypeTemplateArgumentValue(
 	ExpressionInfo expression, TemplateArgument* argument)
 {
 	if (!argument || argument->kind != TEMPLATE_ARGUMENT_INTEGRAL)
@@ -1234,7 +1234,7 @@ bool SemanticAnalyzer::FormNonTypeTemplateArgumentValue(
 	return true;
 }
 
-void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
+void Analyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 	std::vector<TemplateParameter>* parameters,
 	std::vector<NameId>* names, std::vector<NodeId>* defaults,
 	const std::unordered_set<NameId>* enclosing_dependent_names)
@@ -1244,7 +1244,7 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 		names, defaults, &visible_local_names, enclosing_dependent_names);
 }
 
-void SemanticAnalyzer::ParseTemplateParametersWithDependentNames(
+void Analyzer::ParseTemplateParametersWithDependentNames(
 	NodeId list, ScopeId scope,
 	std::vector<TemplateParameter>* parameters,
 	std::vector<NameId>* names, std::vector<NodeId>* defaults,
@@ -1326,7 +1326,7 @@ void SemanticAnalyzer::ParseTemplateParametersWithDependentNames(
 		visible_local_names->erase(introduced_names[i]);
 }
 
-bool SemanticAnalyzer::CollectExplicitTemplateArguments(NodeId syntax,
+bool Analyzer::CollectExplicitTemplateArguments(NodeId syntax,
 	NamePath* base, std::vector<NodeId>* arguments)
 {
 	if (syntax == kNoNode) return false;
@@ -1351,7 +1351,7 @@ bool SemanticAnalyzer::CollectExplicitTemplateArguments(NodeId syntax,
 	return true;
 }
 
-TypeId SemanticAnalyzer::ResolveTemplateParameterType(
+TypeId Analyzer::ResolveTemplateParameterType(
 	const TemplateParameter& parameter, ScopeId parameter_scope)
 {
 	if (parameter.kind != TEMPLATE_ARGUMENT_INTEGRAL)
@@ -1376,7 +1376,7 @@ TypeId SemanticAnalyzer::ResolveTemplateParameterType(
 	return type;
 }
 
-void SemanticAnalyzer::BindTemplateArgument(ScopeId scope,
+void Analyzer::BindTemplateArgument(ScopeId scope,
 	const TemplateParameter& parameter, const TemplateArgument& argument)
 {
 	if (parameter.name == 0) return;
@@ -1429,7 +1429,7 @@ void SemanticAnalyzer::BindTemplateArgument(ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::BindTemplateArgumentPack(ScopeId scope,
+void Analyzer::BindTemplateArgumentPack(ScopeId scope,
 	const TemplateParameter& parameter,
 	const std::vector<TemplateArgument>& arguments, std::size_t first,
 	std::size_t last)
@@ -1448,7 +1448,7 @@ void SemanticAnalyzer::BindTemplateArgumentPack(ScopeId scope,
 	}
 }
 
-bool SemanticAnalyzer::LookupTemplateArgumentPack(ScopeId scope, NameId name,
+bool Analyzer::LookupTemplateArgumentPack(ScopeId scope, NameId name,
 	std::vector<TemplateArgument>* arguments) const
 {
 	for (ScopeId current = scope; current != kNoScope;
@@ -1473,7 +1473,7 @@ bool SemanticAnalyzer::LookupTemplateArgumentPack(ScopeId scope, NameId name,
 	return false;
 }
 
-bool SemanticAnalyzer::LookupFunctionParameterPack(ScopeId scope, NameId name,
+bool Analyzer::LookupFunctionParameterPack(ScopeId scope, NameId name,
 	std::vector<BindingId>* bindings) const
 {
 	for (ScopeId current = scope; current != kNoScope;
@@ -1493,7 +1493,7 @@ bool SemanticAnalyzer::LookupFunctionParameterPack(ScopeId scope, NameId name,
 	return false;
 }
 
-bool SemanticAnalyzer::AppendTemplateArgument(
+bool Analyzer::AppendTemplateArgument(
 	const std::vector<TemplateParameter>& parameters, NodeId source,
 	ScopeId source_scope, ScopeId parameter_scope,
 	const std::unordered_set<NameId>* source_dependent_names,
@@ -1702,7 +1702,7 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 	return true;
 }
 
-bool SemanticAnalyzer::BuildTemplateArguments(
+bool Analyzer::BuildTemplateArguments(
 	const std::vector<TemplateParameter>& parameters,
 	const std::vector<NodeId>& syntax, ScopeId use_scope,
 	ScopeId lexical_scope, std::vector<TemplateArgument>* arguments,
@@ -1877,7 +1877,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 	return true;
 }
 
-TypeId SemanticAnalyzer::BuildCanonicalTemplateTypeArgument(NodeId type_id,
+TypeId Analyzer::BuildCanonicalTemplateTypeArgument(NodeId type_id,
 	ScopeId source_scope,
 	const std::unordered_set<NameId>* dependent_names)
 {
@@ -1923,7 +1923,7 @@ TypeId SemanticAnalyzer::BuildCanonicalTemplateTypeArgument(NodeId type_id,
 	return ClassTemplateNondeducedTypeShape();
 }
 
-TypeId SemanticAnalyzer::ClassTemplateNondeducedTypeShape()
+TypeId Analyzer::ClassTemplateNondeducedTypeShape()
 {
 	if (class_template_nondeduced_type_shape_ == kNoType)
 	{
@@ -1942,7 +1942,7 @@ TypeId SemanticAnalyzer::ClassTemplateNondeducedTypeShape()
 	return class_template_nondeduced_type_shape_;
 }
 
-std::vector<TemplateArgument> SemanticAnalyzer::TypeTemplateArguments(
+std::vector<TemplateArgument> Analyzer::TypeTemplateArguments(
 	const std::vector<TypeId>& arguments) const
 {
 	std::vector<TemplateArgument> result;
@@ -1953,7 +1953,7 @@ std::vector<TemplateArgument> SemanticAnalyzer::TypeTemplateArguments(
 	return result;
 }
 
-std::vector<TemplateArgument> SemanticAnalyzer::StoredTemplateArguments(
+std::vector<TemplateArgument> Analyzer::StoredTemplateArguments(
 	std::size_t first, std::size_t count) const
 {
 	if (first > program_->template_arguments.size() ||
@@ -1966,7 +1966,7 @@ std::vector<TemplateArgument> SemanticAnalyzer::StoredTemplateArguments(
 	return result;
 }
 
-TemplateArgument SemanticAnalyzer::StoredTemplateArgument(
+TemplateArgument Analyzer::StoredTemplateArgument(
 	std::size_t index) const
 {
 	if (index >= program_->template_arguments.size())
@@ -1976,14 +1976,14 @@ TemplateArgument SemanticAnalyzer::StoredTemplateArgument(
 			TEMPLATE_ARGUMENT_TYPE, program_->template_arguments[index]);
 }
 
-TemplateSpecializationKey SemanticAnalyzer::CanonicalTemplateSpecializationKey(
+TemplateSpecializationKey Analyzer::CanonicalTemplateSpecializationKey(
 	std::size_t pattern, const std::vector<TemplateArgument>& arguments)
 {
 	return TemplateSpecializationKey(pattern,
 		program_->InternTemplateArgumentList(arguments));
 }
 
-TemplateSpecializationKey SemanticAnalyzer::CanonicalTemplateSpecializationKey(
+TemplateSpecializationKey Analyzer::CanonicalTemplateSpecializationKey(
 	std::size_t pattern, const std::vector<TemplateArgument>& arguments,
 	const std::vector<std::uint32_t>& parameter_offsets)
 {
@@ -1992,7 +1992,7 @@ TemplateSpecializationKey SemanticAnalyzer::CanonicalTemplateSpecializationKey(
 		template_argument_partitions_.Intern(parameter_offsets));
 }
 
-void SemanticAnalyzer::StoreTemplateArguments(
+void Analyzer::StoreTemplateArguments(
 	const std::vector<TemplateArgument>& arguments,
 	TemplateArgumentListId* identity, std::uint32_t* first,
 	std::uint32_t* count)
@@ -2002,7 +2002,7 @@ void SemanticAnalyzer::StoreTemplateArguments(
 	*identity = program_->InternTemplateArgumentList(arguments, first, count);
 }
 
-bool SemanticAnalyzer::ClassTemplateHasNonTypeParameter(EntityId entity) const
+bool Analyzer::ClassTemplateHasNonTypeParameter(EntityId entity) const
 {
 	if (entity >= class_template_pattern_by_entity_.size()) return false;
 	const std::uint32_t pattern = class_template_pattern_by_entity_[entity];

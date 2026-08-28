@@ -5,7 +5,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
@@ -25,7 +25,7 @@ BindingId SelectedConversionFunction(const CallConversionFact& conversion)
 
 }
 
-ExpressionInfo SemanticAnalyzer::MakeBuiltinTraitOperand(TypeId type) const
+ExpressionInfo Analyzer::MakeBuiltinTraitOperand(TypeId type) const
 {
 	ExpressionInfo result;
 	const TypeRecord top = program_->types.Get(type);
@@ -38,7 +38,7 @@ ExpressionInfo SemanticAnalyzer::MakeBuiltinTraitOperand(TypeId type) const
 	return result;
 }
 
-bool SemanticAnalyzer::BuiltinConversionIsUsable(
+bool Analyzer::BuiltinConversionIsUsable(
 	const CallConversionFact& conversion) const
 {
 	if (conversion.rank == CONVERSION_INVALID) return false;
@@ -58,7 +58,7 @@ bool SemanticAnalyzer::BuiltinConversionIsUsable(
 	return true;
 }
 
-bool SemanticAnalyzer::BuiltinConversionIsNonthrowing(
+bool Analyzer::BuiltinConversionIsNonthrowing(
 	const CallConversionFact& conversion)
 {
 	if (!BuiltinConversionIsUsable(conversion)) return false;
@@ -73,7 +73,7 @@ bool SemanticAnalyzer::BuiltinConversionIsNonthrowing(
 	return true;
 }
 
-bool SemanticAnalyzer::EvaluateBuiltinConstructibility(
+bool Analyzer::EvaluateBuiltinConstructibility(
 	const std::vector<TypeId>& operands, BindingId* selected,
 	std::vector<CallConversionFact>* argument_conversions)
 {
@@ -143,7 +143,7 @@ bool SemanticAnalyzer::EvaluateBuiltinConstructibility(
 	return true;
 }
 
-bool SemanticAnalyzer::EvaluateBuiltinConvertibility(
+bool Analyzer::EvaluateBuiltinConvertibility(
 	TypeId source_type, TypeId target)
 {
 	const bool source_void = IsVoid(source_type);
@@ -185,7 +185,7 @@ bool SemanticAnalyzer::EvaluateBuiltinConvertibility(
 		construction, &selected, &argument_conversions);
 }
 
-bool SemanticAnalyzer::BuiltinDefaultConstructionIsNonthrowing(EntityId entity)
+bool Analyzer::BuiltinDefaultConstructionIsNonthrowing(EntityId entity)
 {
 	const std::vector<BindingId>& candidates = ConstructorCandidates(entity);
 	BindingId selected = kNoBinding;
@@ -231,7 +231,7 @@ bool SemanticAnalyzer::BuiltinDefaultConstructionIsNonthrowing(EntityId entity)
 	return true;
 }
 
-bool SemanticAnalyzer::BuiltinConstructionIsNonthrowing(TypeId target,
+bool Analyzer::BuiltinConstructionIsNonthrowing(TypeId target,
 	BindingId selected,
 	const std::vector<CallConversionFact>& argument_conversions)
 {
@@ -248,7 +248,7 @@ bool SemanticAnalyzer::BuiltinConstructionIsNonthrowing(TypeId target,
 		BuiltinDefaultConstructionIsNonthrowing(entity);
 }
 
-bool SemanticAnalyzer::BuiltinConstructionIsTrivial(TypeId target,
+bool Analyzer::BuiltinConstructionIsTrivial(TypeId target,
 	BindingId selected,
 	const std::vector<CallConversionFact>& argument_conversions) const
 {
@@ -269,7 +269,7 @@ bool SemanticAnalyzer::BuiltinConstructionIsTrivial(TypeId target,
 		program_->entities[entity].trivial_default_constructor;
 }
 
-bool SemanticAnalyzer::EvaluateBuiltinAssignability(TypeId target,
+bool Analyzer::EvaluateBuiltinAssignability(TypeId target,
 	TypeId source_type, ScopeId scope, BindingId* selected,
 	std::vector<CallConversionFact>* argument_conversions)
 {
@@ -360,7 +360,7 @@ bool SemanticAnalyzer::EvaluateBuiltinAssignability(TypeId target,
 	return true;
 }
 
-bool SemanticAnalyzer::BuiltinAssignmentIsNonthrowing(BindingId selected,
+bool Analyzer::BuiltinAssignmentIsNonthrowing(BindingId selected,
 	const std::vector<CallConversionFact>& argument_conversions)
 {
 	if (selected != kNoBinding && !FunctionIsNonthrowing(selected)) return false;
@@ -369,7 +369,7 @@ bool SemanticAnalyzer::BuiltinAssignmentIsNonthrowing(BindingId selected,
 	return true;
 }
 
-bool SemanticAnalyzer::BuiltinAssignmentIsTrivial(BindingId selected,
+bool Analyzer::BuiltinAssignmentIsTrivial(BindingId selected,
 	const std::vector<CallConversionFact>& argument_conversions) const
 {
 	for (std::size_t i = 0; i < argument_conversions.size(); ++i)
@@ -382,7 +382,7 @@ bool SemanticAnalyzer::BuiltinAssignmentIsTrivial(BindingId selected,
 		function.trivial_special_member;
 }
 
-bool SemanticAnalyzer::EvaluateBuiltinTriviallyCopyable(TypeId type) const
+bool Analyzer::EvaluateBuiltinTriviallyCopyable(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const EntityId entity = EntityOf(type);
@@ -408,7 +408,7 @@ bool SemanticAnalyzer::EvaluateBuiltinTriviallyCopyable(TypeId type) const
 	return eligible;
 }
 
-bool SemanticAnalyzer::EvaluateBuiltinStandardLayout(TypeId type) const
+bool Analyzer::EvaluateBuiltinStandardLayout(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const EntityId entity = EntityOf(type);
@@ -457,7 +457,7 @@ bool SemanticAnalyzer::EvaluateBuiltinStandardLayout(TypeId type) const
 	return true;
 }
 
-bool SemanticAnalyzer::EvaluateBuiltinTrivialLayoutTrait(
+bool Analyzer::EvaluateBuiltinTrivialLayoutTrait(
 	hosted_builtin::TypeTraitKind trait, TypeId type,
 	const TypeRecord& shape, const EntityRecord* named) const
 {
@@ -476,7 +476,7 @@ bool SemanticAnalyzer::EvaluateBuiltinTrivialLayoutTrait(
 		 named->trivial_default_constructor);
 }
 
-bool SemanticAnalyzer::EvaluateBuiltinNothrowCopy(TypeId type)
+bool Analyzer::EvaluateBuiltinNothrowCopy(TypeId type)
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const EntityId entity = EntityOf(type);
@@ -491,7 +491,7 @@ bool SemanticAnalyzer::EvaluateBuiltinNothrowCopy(TypeId type)
 		FunctionIsNonthrowing(copy);
 }
 
-HostedTraitTemplateKind SemanticAnalyzer::ClassifyHostedTraitTemplate(
+HostedTraitTemplateKind Analyzer::ClassifyHostedTraitTemplate(
 	ScopeId owner, NameId name,
 	const std::vector<TemplateParameter>& parameters) const
 {
@@ -517,7 +517,7 @@ HostedTraitTemplateKind SemanticAnalyzer::ClassifyHostedTraitTemplate(
 	return HOSTED_TRAIT_TEMPLATE_NONE;
 }
 
-bool SemanticAnalyzer::EvaluateBuiltinInvocability(
+bool Analyzer::EvaluateBuiltinInvocability(
 	const std::vector<TypeId>& operands, ScopeId scope, bool* nonthrowing)
 {
 	if (nonthrowing) *nonthrowing = false;
@@ -600,7 +600,7 @@ bool SemanticAnalyzer::EvaluateBuiltinInvocability(
 	return true;
 }
 
-bool SemanticAnalyzer::CompleteHostedTraitTemplateSpecialization(
+bool Analyzer::CompleteHostedTraitTemplateSpecialization(
 	std::size_t pattern_index, BindingId specialization,
 	const std::vector<TemplateArgument>& arguments)
 {

@@ -7,14 +7,17 @@
 
 namespace cppgm
 {
-struct SemanticAnalysisStats;
-namespace pa19_template_presentation
+namespace semantic
+{
+struct Stats;
+namespace presentation
 {
 
 std::string RenderClassTemplateSpecializationName(
-	const pa11::Program& program, pa11::NameId primary,
-	const pa11::TemplateArgument* arguments, std::size_t argument_count,
-	SemanticAnalysisStats* stats);
+	const semantic::Program& program, semantic::NameId primary,
+	const semantic::TemplateArgument* arguments, std::size_t argument_count,
+	semantic::Stats* stats);
 
+}
 }
 }

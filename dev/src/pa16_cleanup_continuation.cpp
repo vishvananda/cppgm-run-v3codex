@@ -28,7 +28,7 @@ bool ActionKey::operator==(const ActionKey& other) const
 Action::Action(const ActionKey& key_value, std::uint32_t node)
 	: key(key_value), representative_node(node) {}
 
-ActionKey MakeActionKey(const pa12_semantic_detail::DumpNode& action)
+ActionKey MakeActionKey(const semantic::DumpNode& action)
 {
 	ActionKey key;
 	key.lifetime_object = action.lifetime_object;

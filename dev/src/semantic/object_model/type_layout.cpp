@@ -7,7 +7,7 @@
 
 namespace cppgm
 {
-namespace pa11
+namespace semantic
 {
 
 std::size_t Program::SizeOf(TypeId type) const

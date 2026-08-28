@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -59,7 +59,7 @@ EntityId VirtualResultEntity(const Program& program, BindingId binding)
 
 }
 
-void SemanticAnalyzer::BeginPolymorphicVirtualViewIndex(
+void Analyzer::BeginPolymorphicVirtualViewIndex(
 	const ClassPolymorphismFacts& facts)
 {
 	if (polymorphic_virtual_view_marks_.size() < program_->entities.size())
@@ -84,7 +84,7 @@ void SemanticAnalyzer::BeginPolymorphicVirtualViewIndex(
 	}
 }
 
-void SemanticAnalyzer::MergeSharedVirtualView(PolymorphicViewFact* retained,
+void Analyzer::MergeSharedVirtualView(PolymorphicViewFact* retained,
 	const PolymorphicViewFact& incoming)
 {
 	if (retained->entity != incoming.entity ||
@@ -132,7 +132,7 @@ void SemanticAnalyzer::MergeSharedVirtualView(PolymorphicViewFact* retained,
 	}
 }
 
-void SemanticAnalyzer::AppendPolymorphicView(ClassPolymorphismFacts* facts,
+void Analyzer::AppendPolymorphicView(ClassPolymorphismFacts* facts,
 	const PolymorphicViewFact& view)
 {
 	if (!view.virtual_base)
@@ -161,7 +161,7 @@ void SemanticAnalyzer::AppendPolymorphicView(ClassPolymorphismFacts* facts,
 	facts->views.push_back(view);
 }
 
-void SemanticAnalyzer::PublishVirtualBaseStats()
+void Analyzer::PublishVirtualBaseStats()
 {
 	stats_->virtual_base_layout_edge_visits = virtual_base_layout_edge_visits_;
 	stats_->virtual_base_layout_facts = virtual_base_layout_facts_;
@@ -175,7 +175,7 @@ void SemanticAnalyzer::PublishVirtualBaseStats()
 		polymorphic_virtual_view_merges_;
 }
 
-std::size_t SemanticAnalyzer::PreferredClassLayoutBaseOrdinal(
+std::size_t Analyzer::PreferredClassLayoutBaseOrdinal(
 	EntityId entity) const
 {
 	const EntityRecord& owner = program_->entities[entity];
@@ -188,7 +188,7 @@ std::size_t SemanticAnalyzer::PreferredClassLayoutBaseOrdinal(
 	return owner.direct_base_count;
 }
 
-const EntityRecord* SemanticAnalyzer::InitializeClassBaseLayout(
+const EntityRecord* Analyzer::InitializeClassBaseLayout(
 	EntityId entity, std::size_t packing_alignment, std::size_t* size,
 	std::size_t* alignment, std::size_t* natural_alignment)
 {
@@ -256,7 +256,7 @@ const EntityRecord* SemanticAnalyzer::InitializeClassBaseLayout(
 	return primary;
 }
 
-void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
+void Analyzer::CompleteClassPolymorphism(EntityId entity)
 {
 	if (class_polymorphism_.size() <= entity)
 		class_polymorphism_.resize(static_cast<std::size_t>(entity) + 1);
@@ -455,7 +455,7 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 	facts.complete = true;
 }
 
-void SemanticAnalyzer::FinalizeClassPolymorphismViews(EntityId entity)
+void Analyzer::FinalizeClassPolymorphismViews(EntityId entity)
 {
 	if (entity >= class_polymorphism_.size()) return;
 	ClassPolymorphismFacts& facts = class_polymorphism_[entity];

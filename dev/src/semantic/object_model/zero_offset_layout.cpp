@@ -6,10 +6,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-EntityId SemanticAnalyzer::ZeroOffsetClassEntity(TypeId type) const
+EntityId Analyzer::ZeroOffsetClassEntity(TypeId type) const
 {
 	const TypeRecord* record = &program_->types.Get(type);
 	while (record->kind == TYPE_ARRAY || record->kind == TYPE_QUALIFIED)
@@ -22,7 +22,7 @@ EntityId SemanticAnalyzer::ZeroOffsetClassEntity(TypeId type) const
 	return IsClassNamedFlavor(flavor) ? record->entity : kNoEntity;
 }
 
-bool SemanticAnalyzer::VisitZeroOffsetSubobjects(EntityId root,
+bool Analyzer::VisitZeroOffsetSubobjects(EntityId root,
 	std::uint32_t marker, std::uint32_t conflict_marker)
 {
 	zero_offset_subobject_scratch_.clear();
@@ -61,7 +61,7 @@ bool SemanticAnalyzer::VisitZeroOffsetSubobjects(EntityId root,
 	return false;
 }
 
-std::uint32_t SemanticAnalyzer::BeginClassZeroOffsetSubobjects(EntityId entity)
+std::uint32_t Analyzer::BeginClassZeroOffsetSubobjects(EntityId entity)
 {
 	const std::size_t member_count = entity_layout_members_[entity].size();
 	if (member_count >= std::numeric_limits<std::uint32_t>::max())
@@ -89,7 +89,7 @@ std::uint32_t SemanticAnalyzer::BeginClassZeroOffsetSubobjects(EntityId entity)
 	return occupied_marker;
 }
 
-bool SemanticAnalyzer::ClassZeroOffsetSubobjectConflict(TypeId member_type,
+bool Analyzer::ClassZeroOffsetSubobjectConflict(TypeId member_type,
 	std::uint32_t occupied_marker)
 {
 	const EntityId member = ZeroOffsetClassEntity(member_type);
@@ -99,7 +99,7 @@ bool SemanticAnalyzer::ClassZeroOffsetSubobjectConflict(TypeId member_type,
 		member, candidate_marker, occupied_marker);
 }
 
-void SemanticAnalyzer::MarkClassZeroOffsetSubobject(TypeId member_type,
+void Analyzer::MarkClassZeroOffsetSubobject(TypeId member_type,
 	std::uint32_t occupied_marker)
 {
 	const EntityId member = ZeroOffsetClassEntity(member_type);

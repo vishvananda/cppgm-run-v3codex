@@ -9,7 +9,7 @@
 
 namespace cppgm
 {
-namespace pa19_template_presentation
+namespace semantic { namespace presentation
 {
 namespace
 {
@@ -31,10 +31,9 @@ std::string TemplateArgumentTypeName(const std::string& source)
 	return spelling;
 }
 
-std::string RenderTemplateArgument(const pa11::Program& program,
-	const pa11::TemplateArgument& argument, SemanticAnalysisStats* stats)
+std::string RenderTemplateArgument(const semantic::Program& program,
+	const semantic::TemplateArgument& argument, semantic::Stats* stats)
 {
-	using namespace pa11;
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE ||
 		argument.kind == TEMPLATE_ARGUMENT_TEMPLATE)
 	{
@@ -80,7 +79,7 @@ std::string RenderTemplateArgument(const pa11::Program& program,
 		if (argument.value_binding >= program.bindings.size())
 			throw std::logic_error("template argument binding is invalid");
 		const BindingRecord& binding = program.bindings[argument.value_binding];
-		std::string result = pa12_semantic_detail::RenderBindingPresentation(
+		std::string result = semantic::RenderBindingPresentation(
 			program, binding, stats);
 		const TypeRecord& type = program.types.Get(
 			program.types.RemoveTopCv(argument.type));
@@ -102,9 +101,9 @@ std::string RenderTemplateArgument(const pa11::Program& program,
 }
 
 std::string RenderClassTemplateSpecializationName(
-	const pa11::Program& program, pa11::NameId primary,
-	const pa11::TemplateArgument* arguments, std::size_t argument_count,
-	SemanticAnalysisStats* stats)
+	const semantic::Program& program, semantic::NameId primary,
+	const semantic::TemplateArgument* arguments, std::size_t argument_count,
+	semantic::Stats* stats)
 {
 	std::string source = program.names.Get(primary) + "<";
 	for (std::size_t i = 0; i < argument_count; ++i)
@@ -134,5 +133,5 @@ std::string RenderClassTemplateSpecializationName(
 	return result;
 }
 
-}
+} }
 }

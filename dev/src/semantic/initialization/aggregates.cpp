@@ -6,16 +6,16 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::IsStructuredBindingDeclarator(NodeId declarator) const
+bool Analyzer::IsStructuredBindingDeclarator(NodeId declarator) const
 {
 	return declarator != kNoNode &&
 		FindChild(declarator, ::cppgm::syntax::STAG_STRUCTURED_BINDING) != kNoNode;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeDesignatedAggregateInit(
+ExpressionInfo Analyzer::AnalyzeDesignatedAggregateInit(
 	TypeId type, ScopeId scope, std::uint32_t* element_edge)
 {
 	const EntityId entity = EntityOf(type);
@@ -132,7 +132,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDesignatedAggregateInit(
 	return result;
 }
 
-void SemanticAnalyzer::AnalyzeStructuredBindingDeclaration(
+void Analyzer::AnalyzeStructuredBindingDeclaration(
 	NodeId item, NodeId declarator, const SpecInfo& spec, ScopeId scope,
 	std::uint32_t output_parent, bool local)
 {
@@ -147,7 +147,7 @@ void SemanticAnalyzer::AnalyzeStructuredBindingDeclaration(
 		scope, output_parent, local, false);
 }
 
-void SemanticAnalyzer::EmitStructuredBindingStorage(
+void Analyzer::EmitStructuredBindingStorage(
 	NodeId source, NodeId declarator, const SpecInfo& spec,
 	DeclaratorInfo parsed, ExpressionInfo initializer, ScopeId scope,
 	std::uint32_t output_parent, bool local, bool range_variable)

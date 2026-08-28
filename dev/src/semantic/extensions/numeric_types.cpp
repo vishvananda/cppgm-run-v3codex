@@ -4,7 +4,7 @@
 
 namespace cppgm
 {
-namespace pa11
+namespace semantic
 {
 
 TypeId TypeTable::TryZeroLengthArray(TypeId type)

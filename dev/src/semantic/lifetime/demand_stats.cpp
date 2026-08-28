@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::RecordFunctionDemand(BindingId binding,
+void Analyzer::RecordFunctionDemand(BindingId binding,
 	FunctionDemandReason reason)
 {
 	if (binding == kNoBinding) return;
@@ -39,7 +39,7 @@ void SemanticAnalyzer::RecordFunctionDemand(BindingId binding,
 		FunctionDemandEdge(caller, binding, reason, next));
 }
 
-void SemanticAnalyzer::PublishFunctionDemandStats()
+void Analyzer::PublishFunctionDemandStats()
 {
 	if (!stats_) return;
 	std::vector<FunctionDemandEdge> unique_edges = function_demand_edges_;

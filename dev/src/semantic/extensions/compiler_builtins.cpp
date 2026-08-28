@@ -8,7 +8,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 namespace
 {
@@ -39,7 +39,7 @@ std::string QuoteNarrowString(const std::string& value)
 void AppendTemplateSubstitutions(const Program& program,
 	const std::vector<TemplateParameter>& parameters,
 	std::uint32_t first, std::uint32_t count,
-	std::vector<pa34_source_identity::TemplateBinding>* output)
+	std::vector<semantic::presentation::TemplateBinding>* output)
 {
 	if (count == 0) return;
 	if (parameters.empty() || first > program.canonical_template_arguments.size() ||
@@ -50,14 +50,14 @@ void AppendTemplateSubstitutions(const Program& program,
 		const TemplateParameter& parameter =
 			TemplateParameterForArgument(parameters, i);
 		if (parameter.name != 0)
-			output->push_back(pa34_source_identity::TemplateBinding(
+			output->push_back(semantic::presentation::TemplateBinding(
 				parameter.name, program.canonical_template_arguments[first + i]));
 	}
 }
 
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzePredefinedFunctionName(
+ExpressionInfo Analyzer::AnalyzePredefinedFunctionName(
 	NodeId syntax, TypeId target, bool pretty)
 {
 	if (current_function_context_ == kNoBinding)
@@ -73,7 +73,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzePredefinedFunctionName(
 	}
 	else
 	{
-		std::vector<pa34_source_identity::TemplateBinding> substitutions;
+		std::vector<semantic::presentation::TemplateBinding> substitutions;
 		const BindingRecord& record = program_->bindings[binding];
 		std::vector<EntityId> owners;
 		for (EntityId owner = record.member_owner; owner != kNoEntity;)
@@ -109,13 +109,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzePredefinedFunctionName(
 				record.template_argument_begin,
 				record.template_argument_count, &substitutions);
 		}
-		name = pa34_source_identity::RenderFunction(
+		name = semantic::presentation::RenderFunction(
 			*program_, binding, function.type, substitutions);
 	}
 	return ApplyTarget(MakeStringLiteral(QuoteNarrowString(name)), target);
 }
 
-bool SemanticAnalyzer::TryAnalyzeCompilerPredefinedValue(
+bool Analyzer::TryAnalyzeCompilerPredefinedValue(
 	const std::string& spelling, NodeId syntax, TypeId target,
 	ExpressionInfo* result)
 {
@@ -134,7 +134,7 @@ bool SemanticAnalyzer::TryAnalyzeCompilerPredefinedValue(
 	return true;
 }
 
-bool SemanticAnalyzer::TryAnalyzeTypeofFunctionalCast(NodeId callee,
+bool Analyzer::TryAnalyzeTypeofFunctionalCast(NodeId callee,
 	const std::vector<NodeId>& arguments, ScopeId scope,
 	TypeId target, ExpressionInfo* result)
 {
@@ -159,7 +159,7 @@ bool SemanticAnalyzer::TryAnalyzeTypeofFunctionalCast(NodeId callee,
 	return true;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinOffsetof(
+ExpressionInfo Analyzer::AnalyzeBuiltinOffsetof(
 	NodeId syntax, ScopeId scope, TypeId target)
 {
 	const std::uint32_t type_edge = arena_->FirstEdge(syntax);
@@ -221,7 +221,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinOffsetof(
 	return ApplyTarget(result, target);
 }
 
-bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
+bool Analyzer::TryAnalyzeCompilerFunctionBuiltin(
 	const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, NodeId call_syntax,
 	TypeId target, ExpressionInfo* result)
@@ -409,7 +409,7 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
 	return true;
 }
 
-bool SemanticAnalyzer::TryAnalyzeCompilerFunctionAlias(
+bool Analyzer::TryAnalyzeCompilerFunctionAlias(
 	const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)

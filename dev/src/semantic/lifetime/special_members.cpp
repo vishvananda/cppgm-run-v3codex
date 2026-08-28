@@ -7,7 +7,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -125,7 +125,7 @@ EntityId SubobjectClass(const Program& program, TypeId type,
 
 }
 
-BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
+BindingId Analyzer::EnsureImplicitConstructor(EntityId entity)
 {
 	if (entity >= implicit_constructor_by_entity_.size())
 		implicit_constructor_by_entity_.resize(
@@ -159,7 +159,7 @@ BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
 	return constructor;
 }
 
-void SemanticAnalyzer::InheritConstructors(EntityId entity,
+void Analyzer::InheritConstructors(EntityId entity,
 	const std::vector<BindingId>& constructors,
 	bool materialize_default_constructors)
 {
@@ -230,7 +230,7 @@ void SemanticAnalyzer::InheritConstructors(EntityId entity,
 	}
 }
 
-bool SemanticAnalyzer::TryInheritConstructors(EntityId entity, ScopeId scope,
+bool Analyzer::TryInheritConstructors(EntityId entity, ScopeId scope,
 	ScopeId target_owner, NameId target_name, bool names_owner_alias,
 	const std::vector<BindingId>& constructors,
 	const std::vector<std::size_t>& template_patterns)
@@ -273,7 +273,7 @@ bool SemanticAnalyzer::TryInheritConstructors(EntityId entity, ScopeId scope,
 	return true;
 }
 
-BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
+BindingId Analyzer::EnsureConstructorBaseEntry(BindingId constructor)
 {
 	constructor = program_->bindings[constructor].canonical;
 	if (program_->bindings[constructor].constructor_base_entry)
@@ -354,7 +354,7 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	return base_entry;
 }
 
-void SemanticAnalyzer::RegisterClassSpecialMember(BindingId binding)
+void Analyzer::RegisterClassSpecialMember(BindingId binding)
 {
 	binding = program_->bindings[binding].canonical;
 	FunctionInfo& function = GetMutableFunction(binding);
@@ -426,7 +426,7 @@ void SemanticAnalyzer::RegisterClassSpecialMember(BindingId binding)
 	else facts.user_move_assignment = true;
 }
 
-void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
+void Analyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 	NodeId initializer, bool defaulted_inline)
 {
 	binding = program_->bindings[binding].canonical;
@@ -504,7 +504,7 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 	}
 }
 
-bool SemanticAnalyzer::AnalyzeQualifiedAssignmentStatement(NodeId node,
+bool Analyzer::AnalyzeQualifiedAssignmentStatement(NodeId node,
 	ScopeId scope, std::uint32_t output_parent)
 {
 	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
@@ -577,7 +577,7 @@ bool SemanticAnalyzer::AnalyzeQualifiedAssignmentStatement(NodeId node,
 	return true;
 }
 
-BindingId SemanticAnalyzer::AssignmentForSubobject(TypeId type,
+BindingId Analyzer::AssignmentForSubobject(TypeId type,
 	SpecialMemberKind kind) const
 {
 	++special_member_fact_lookups_;
@@ -596,7 +596,7 @@ BindingId SemanticAnalyzer::AssignmentForSubobject(TypeId type,
 	return facts.copy_assignment;
 }
 
-BindingId SemanticAnalyzer::ConstructorForSubobject(TypeId type,
+BindingId Analyzer::ConstructorForSubobject(TypeId type,
 	SpecialMemberKind kind) const
 {
 	++special_member_fact_lookups_;
@@ -615,7 +615,7 @@ BindingId SemanticAnalyzer::ConstructorForSubobject(TypeId type,
 	return facts.copy_constructor;
 }
 
-void SemanticAnalyzer::EvaluateSynthesizedConstructor(EntityId entity,
+void Analyzer::EvaluateSynthesizedConstructor(EntityId entity,
 	SpecialMemberKind kind, bool* deleted, bool* trivial,
 	bool* nonthrowing) const
 {
@@ -667,7 +667,7 @@ void SemanticAnalyzer::EvaluateSynthesizedConstructor(EntityId entity,
 			visit(program_->bindings[entity_data_members_[entity][i]].type);
 }
 
-void SemanticAnalyzer::EvaluateSynthesizedAssignment(EntityId entity,
+void Analyzer::EvaluateSynthesizedAssignment(EntityId entity,
 	SpecialMemberKind kind, bool* deleted, bool* trivial,
 	bool* nonthrowing) const
 {
@@ -719,7 +719,7 @@ void SemanticAnalyzer::EvaluateSynthesizedAssignment(EntityId entity,
 			visit(program_->bindings[entity_data_members_[entity][i]].type);
 }
 
-void SemanticAnalyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
+void Analyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
 	FunctionInfo* function) const
 {
 	function->synthesized_prefix_size = 0;
@@ -781,7 +781,7 @@ void SemanticAnalyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
 	}
 }
 
-BindingId SemanticAnalyzer::DeclareImplicitCopyMoveConstructor(
+BindingId Analyzer::DeclareImplicitCopyMoveConstructor(
 	EntityId entity, SpecialMemberKind kind)
 {
 	if (kind != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
@@ -843,7 +843,7 @@ BindingId SemanticAnalyzer::DeclareImplicitCopyMoveConstructor(
 	return constructor;
 }
 
-BindingId SemanticAnalyzer::DeclareImplicitAssignment(EntityId entity,
+BindingId Analyzer::DeclareImplicitAssignment(EntityId entity,
 	SpecialMemberKind kind)
 {
 	if (!IsAssignmentSpecialMember(kind))
@@ -900,7 +900,7 @@ BindingId SemanticAnalyzer::DeclareImplicitAssignment(EntityId entity,
 	return assignment;
 }
 
-void SemanticAnalyzer::CompleteClassSpecialMembers(EntityId entity)
+void Analyzer::CompleteClassSpecialMembers(EntityId entity)
 {
 	if (class_special_members_.size() <= entity)
 		class_special_members_.resize(static_cast<std::size_t>(entity) + 1);
@@ -1050,7 +1050,7 @@ void SemanticAnalyzer::CompleteClassSpecialMembers(EntityId entity)
 			entity, &GetMutableFunction(facts.move_assignment));
 }
 
-void SemanticAnalyzer::AddSynthesizedConstructorBody(
+void Analyzer::AddSynthesizedConstructorBody(
 	const FunctionInfo& function, const std::vector<BindingId>& parameters,
 	std::uint32_t body)
 {
@@ -1186,7 +1186,7 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 	++expression_count_;
 }
 
-void SemanticAnalyzer::DemandSynthesizedConstructorDependencies(
+void Analyzer::DemandSynthesizedConstructorDependencies(
 	BindingId constructor)
 {
 	const FunctionInfo& function = GetFunction(constructor);
@@ -1220,7 +1220,7 @@ void SemanticAnalyzer::DemandSynthesizedConstructorDependencies(
 	}
 }
 
-void SemanticAnalyzer::AddSynthesizedAssignmentBody(
+void Analyzer::AddSynthesizedAssignmentBody(
 	const FunctionInfo& function, const std::vector<BindingId>& parameters,
 	std::uint32_t body)
 {
@@ -1345,7 +1345,7 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 	++expression_count_;
 }
 
-void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
+void Analyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	ScopeId scope, ScopeId declaration_scope, bool defer_demand)
 {
 	const NodeId declarator = FindChild(node, ::cppgm::syntax::STAG_DECLARATOR);

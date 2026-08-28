@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeCompound(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
 	const ScopeId block = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefixId(scope));
@@ -25,7 +25,7 @@ void SemanticAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope,
 	AppendScopeDestructionActions(block, compound, CompoundCleanupStop(scope));
 }
 
-NodeId SemanticAnalyzer::FunctionDefinitionPart(
+NodeId Analyzer::FunctionDefinitionPart(
 	NodeId node, const char* tag) const
 {
 	const NodeId direct = FindChild(node, tag);
@@ -34,7 +34,7 @@ NodeId SemanticAnalyzer::FunctionDefinitionPart(
 	return function_try == kNoNode ? kNoNode : FindChild(function_try, tag);
 }
 
-std::uint32_t SemanticAnalyzer::BeginFunctionTryRegion(
+std::uint32_t Analyzer::BeginFunctionTryRegion(
 	std::uint32_t function, NodeId syntax, std::uint32_t* region)
 {
 	*region = kNoDumpEdge;
@@ -44,7 +44,7 @@ std::uint32_t SemanticAnalyzer::BeginFunctionTryRegion(
 	return *region;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeStatementExpression(
+ExpressionInfo Analyzer::AnalyzeStatementExpression(
 	NodeId node, ScopeId scope, TypeId target)
 {
 	const NodeId body = FindChild(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT);
@@ -86,7 +86,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeStatementExpression(
 	return ApplyTarget(value, target);
 }
 
-void SemanticAnalyzer::AnalyzeFunctionTryHandlers(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeFunctionTryHandlers(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, FunctionTryBodyKind body_kind)
 {
 	if (body_kind == FUNCTION_TRY_BODY_NONE)

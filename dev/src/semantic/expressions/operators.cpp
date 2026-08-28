@@ -8,7 +8,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 static LogicalOperation ClassifyBuiltinLogicalOperation(
@@ -20,7 +20,7 @@ static LogicalOperation ClassifyBuiltinLogicalOperation(
 		kind == OP_LOR ? LOGICAL_OPERATION_OR : LOGICAL_OPERATION_NONE;
 }
 
-bool SemanticAnalyzer::IsMeasurableObjectType(
+bool Analyzer::IsMeasurableObjectType(
 	TypeId type, bool alignment_query)
 {
 	std::size_t multiplier = 1;
@@ -73,7 +73,7 @@ bool SemanticAnalyzer::IsMeasurableObjectType(
 	}
 }
 
-bool SemanticAnalyzer::IsPointerToCompleteObject(TypeId type)
+bool Analyzer::IsPointerToCompleteObject(TypeId type)
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord pointer = program_->types.Get(type);
@@ -100,7 +100,7 @@ bool SemanticAnalyzer::IsPointerToCompleteObject(TypeId type)
 	}
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 {
 	const NodeId operand = FirstSemanticChild(node);
 	if (operand == kNoNode) throw std::runtime_error("empty sizeof");
@@ -226,7 +226,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target) {
+ExpressionInfo Analyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target) {
 	const bool postfix = arena_->IsTag(node, ::cppgm::syntax::STAG_POSTFIX_EXPRESSION); const std::string operation = PayloadSource(node);
 	const int op = PayloadTokenKind(node);
 	const NodeId operand_syntax = FirstSemanticChild(node); const TypeId address_context_target = UnaryAddressContextTarget(operation, target, operand_syntax, scope);
@@ -440,7 +440,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 	return result;
 }
 
-void SemanticAnalyzer::RecordUnaryDereferenceConstant(
+void Analyzer::RecordUnaryDereferenceConstant(
 	const std::string& operation, std::uint32_t lvalue_address,
 	TypeId result_type, ExpressionInfo* result)
 {
@@ -472,7 +472,7 @@ void SemanticAnalyzer::RecordUnaryDereferenceConstant(
 		SetExpressionScalar(result, loaded);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 {
 	const std::uint32_t first_edge = arena_->FirstEdge(node);
 	if (first_edge == kNoEdge) throw std::runtime_error("empty binary expression");
@@ -504,7 +504,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 		left_syntax, right_syntax, left, right, scope);
 }
 
-bool SemanticAnalyzer::PrepareBuiltinComparison(const std::string& operation,
+bool Analyzer::PrepareBuiltinComparison(const std::string& operation,
 	ExpressionInfo* left, ExpressionInfo* right, TypeId* operand_type)
 {
 	const int op = ClassifyOperationSpelling(operation);
@@ -613,7 +613,7 @@ bool SemanticAnalyzer::PrepareBuiltinComparison(const std::string& operation,
 	return true;
 }
 
-TypeId SemanticAnalyzer::PrepareBuiltinArithmetic(
+TypeId Analyzer::PrepareBuiltinArithmetic(
 	const std::string& operation, const ExpressionInfo& left,
 	const ExpressionInfo& right)
 {
@@ -634,7 +634,7 @@ TypeId SemanticAnalyzer::PrepareBuiltinArithmetic(
 		CommonArithmeticType(left.type, right.type);
 }
 
-ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
+ExpressionInfo Analyzer::BuildBinaryExpression(
 	const std::string& operation, std::string display_operation,
 	NodeId left_syntax, NodeId right_syntax, ExpressionInfo left,
 	ExpressionInfo right, ScopeId scope)

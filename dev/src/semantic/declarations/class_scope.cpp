@@ -1,9 +1,9 @@
 // Stable class-definition scope creation and injected class-name bindings.
 #include "semantic/analysis/analyzer.h"
 
-namespace cppgm { namespace pa12_semantic_detail {
+namespace cppgm { namespace semantic {
 
-ScopeId SemanticAnalyzer::OpenClassDefinitionScope(
+ScopeId Analyzer::OpenClassDefinitionScope(
 	TypeId type, EntityId entity, NamedFlavor flavor, ScopeId owner,
 	ScopeId scope, NameId name, NameId lookup_name,
 	ScopeId specialization_owner, NameId specialization_identity,

@@ -20,10 +20,10 @@ namespace pa15_lowering_abi
 namespace
 {
 
-bool IsTrivialLifecycleBinding(const pa11::Program& program,
-	pa11::BindingId binding)
+bool IsTrivialLifecycleBinding(const semantic::Program& program,
+	semantic::BindingId binding)
 {
-	using namespace pa11;
+	using namespace semantic;
 	if (binding == kNoBinding || binding >= program.bindings.size())
 		return false;
 	const BindingRecord& record = program.bindings[binding];
@@ -39,9 +39,9 @@ bool IsTrivialLifecycleBinding(const pa11::Program& program,
 		 program.entities[record.member_owner].trivial_destructor);
 }
 
-bool IsCompleteBoundaryObject(const pa11::Program& program, pa11::TypeId type)
+bool IsCompleteBoundaryObject(const semantic::Program& program, semantic::TypeId type)
 {
-	using namespace pa11;
+	using namespace semantic;
 	const TypeRecord* record = &program.types.Get(type);
 	while (record->kind == TYPE_QUALIFIED)
 	{
@@ -63,14 +63,14 @@ bool IsCompleteBoundaryObject(const pa11::Program& program, pa11::TypeId type)
 
 }
 
-void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& node,
+void ApplyLifecycleSymbolMetadata(const semantic::Program& program,
+	const semantic::DumpNode& node,
 	pa15_lowir_detail::TypedProgram* output,
 	pa15_lowir_detail::SymbolId symbol,
 	abi_mangle::AbiMangleContext* context,
 	abi_mangle::AbiMangleStats* stats)
 {
-	using namespace pa11;
+	using namespace semantic;
 	using namespace pa15_lowir_detail;
 	const BindingRecord& binding = program.bindings[node.binding];
 	const TypeRecord& function = program.types.Get(node.type);
@@ -88,7 +88,7 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 	if ((trivial_constructor || trivial_destructor) && !record.no_inline)
 		record.force_inline = true;
 	if (output->host_object_emission && record.internal_linkage &&
-		node.kind == pa12_semantic_detail::DUMP_FUNCTION_DEFINITION &&
+		node.kind == semantic::DUMP_FUNCTION_DEFINITION &&
 		(binding.constructor || binding.destructor))
 		record.object_output_root = true;
 	const bool complete_entry =
@@ -103,7 +103,7 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 		(binding.lifecycle_base_entry == kNoBinding ||
 		 binding.lifecycle_base_entry == binding.canonical);
 	if (!output->host_object_emission ||
-		node.kind != pa12_semantic_detail::DUMP_FUNCTION_DEFINITION ||
+		node.kind != semantic::DUMP_FUNCTION_DEFINITION ||
 		!shared_base_entry) return;
 	const std::string alias =
 		MangleFunction(program, node, true, stats, context);
@@ -116,7 +116,7 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 namespace
 {
 
-using namespace pa11;
+using namespace semantic;
 
 bool MakeBuiltinAbiType(const Program& program, const TypeRecord& source,
 	abi_mangle::AbiType* result)
@@ -414,19 +414,19 @@ class AbiFactBuilder
 			std::size_t id_value) : key(key_value), id(id_value) {}
 	};
 
-	const pa11::Program& program_;
+	const semantic::Program& program_;
 	abi_mangle::AbiTypedCase& facts_;
 	abi_mangle::AbiMangleContext* context_;
 	abi_mangle::AbiMangleStats* stats_;
 	std::size_t next_argument_;
 	std::vector<TypeArgumentCacheEntry> type_argument_cache_;
 	std::vector<std::uint32_t> type_argument_cache_slots_;
-	std::vector<pa11::NameId> semantic_path_scratch_;
+	std::vector<semantic::NameId> semantic_path_scratch_;
 	std::vector<std::size_t> resolved_path_scratch_;
 
-	TypeArgumentCacheKey TypeArgumentKey(pa11::TypeId type,
-		const pa11::BindingRecord* function,
-		const pa11::FunctionTemplateAbiRecipe* recipe) const
+	TypeArgumentCacheKey TypeArgumentKey(semantic::TypeId type,
+		const semantic::BindingRecord* function,
+		const semantic::FunctionTemplateAbiRecipe* recipe) const
 	{
 		const BindingId function_id = function ?
 			function->canonical : kNoBinding;
@@ -499,14 +499,14 @@ class AbiFactBuilder
 			static_cast<std::uint32_t>(type_argument_cache_.size());
 	}
 
-	std::size_t ResolvePath(pa11::ScopeId owner, pa11::NameId terminal)
+	std::size_t ResolvePath(semantic::ScopeId owner, semantic::NameId terminal)
 	{
 		program_.BuildEmissionPath(owner, terminal, &semantic_path_scratch_);
 		return ResolvePath(semantic_path_scratch_, 0,
 			semantic_path_scratch_.size());
 	}
 
-	std::size_t ResolvePath(const std::vector<pa11::NameId>& path,
+	std::size_t ResolvePath(const std::vector<semantic::NameId>& path,
 		std::size_t begin, std::size_t end)
 	{
 		if (begin >= end || end > path.size())
@@ -515,19 +515,19 @@ class AbiFactBuilder
 		resolved_path_scratch_.reserve(end - begin);
 		for (std::size_t i = begin; i < end; ++i)
 		{
-			const pa11::NameId name = path[i];
+			const semantic::NameId name = path[i];
 			resolved_path_scratch_.push_back(context_->resolve_external_name(
 				name, program_.names.Get(name)));
 		}
 		return context_->resolve_path(resolved_path_scratch_);
 	}
 
-	std::size_t ResolveName(pa11::NameId name)
+	std::size_t ResolveName(semantic::NameId name)
 	{
 		return context_->resolve_external_name(name, program_.names.Get(name));
 	}
 
-	std::size_t ResolveScopePath(pa11::ScopeId owner)
+	std::size_t ResolveScopePath(semantic::ScopeId owner)
 	{
 		program_.BuildEmissionPath(owner, 0, &semantic_path_scratch_);
 		if (!semantic_path_scratch_.empty())
@@ -538,7 +538,7 @@ class AbiFactBuilder
 			semantic_path_scratch_.size());
 	}
 
-	std::size_t ResolveGeneratedPath(pa11::ScopeId owner,
+	std::size_t ResolveGeneratedPath(semantic::ScopeId owner,
 		const std::string& terminal)
 	{
 		program_.BuildEmissionPath(owner, 0, &semantic_path_scratch_);
@@ -548,7 +548,7 @@ class AbiFactBuilder
 		resolved_path_scratch_.reserve(semantic_path_scratch_.size() + 1);
 		for (std::size_t i = 0; i < semantic_path_scratch_.size(); ++i)
 		{
-			const pa11::NameId name = semantic_path_scratch_[i];
+			const semantic::NameId name = semantic_path_scratch_[i];
 			resolved_path_scratch_.push_back(
 				context_->resolve_external_name(
 					name, program_.names.Get(name)));
@@ -593,26 +593,26 @@ class AbiFactBuilder
 
 public:
 	void SetPath(abi_mangle::AbiFunctionTarget* target,
-		pa11::ScopeId owner, pa11::NameId terminal)
+		semantic::ScopeId owner, semantic::NameId terminal)
 	{
 		target->resolved_path = ResolvePath(owner, terminal);
 	}
 
 	void SetGeneratedPath(abi_mangle::AbiFunctionTarget* target,
-		pa11::ScopeId owner, const std::string& terminal)
+		semantic::ScopeId owner, const std::string& terminal)
 	{
 		target->resolved_path = ResolveGeneratedPath(owner, terminal);
 	}
 
 	void SetNamespaceLambda(abi_mangle::AbiFunctionTarget* target,
-		pa11::ScopeId owner, std::uint32_t ordinal)
+		semantic::ScopeId owner, std::uint32_t ordinal)
 	{
 		target->resolved_path = ResolveScopePath(owner);
 		target->resolved_context_identity = ordinal;
 	}
 
 	void SetNamespaceLambda(abi_mangle::AbiType* type,
-		pa11::ScopeId owner, std::uint32_t ordinal)
+		semantic::ScopeId owner, std::uint32_t ordinal)
 	{
 		const std::size_t path = ResolveScopePath(owner);
 		type->index = path == abi_mangle::ABI_NO_RESOLVED_REFERENCE ?
@@ -621,25 +621,25 @@ public:
 	}
 
 	void SetPath(abi_mangle::AbiFunctionTarget* target,
-		const std::vector<pa11::NameId>& path)
+		const std::vector<semantic::NameId>& path)
 	{
 		target->resolved_path = ResolvePath(path, 0, path.size());
 	}
 
 	void SetSourceName(abi_mangle::AbiFunctionTarget* target,
-		pa11::NameId name)
+		semantic::NameId name)
 	{
 		target->set_resolved_source_name(ResolveName(name));
 	}
 
 	void SetSourceName(abi_mangle::AbiFunctionRecord* target,
-		pa11::NameId name)
+		semantic::NameId name)
 	{
 		target->set_resolved_source_name(ResolveName(name));
 	}
 
 	void SetLocalSourceName(abi_mangle::AbiFunctionRecord* target,
-		pa11::NameId name)
+		semantic::NameId name)
 	{
 		target->type.index = ResolveName(name) + 1;
 	}
@@ -651,14 +651,14 @@ public:
 	}
 
 	void AppendNameComponent(abi_mangle::AbiFunctionRecord* target,
-		pa11::NameId name, std::size_t* path)
+		semantic::NameId name, std::size_t* path)
 	{
 		const std::size_t resolved_name = ResolveName(name);
 		*path = context_->resolve_path_component(*path, resolved_name);
 		target->set_resolved_name_component(*path, resolved_name);
 	}
 
-	AbiFactBuilder(const pa11::Program& program,
+	AbiFactBuilder(const semantic::Program& program,
 		abi_mangle::AbiTypedCase& facts,
 		abi_mangle::AbiMangleContext* context,
 		abi_mangle::AbiMangleStats* stats)
@@ -670,9 +670,9 @@ public:
 			throw std::logic_error("typed ABI builder has no graph context");
 	}
 
-	std::size_t AddTypeArgument(pa11::TypeId type,
-		const pa11::BindingRecord* function = 0,
-		const pa11::FunctionTemplateAbiRecipe* recipe = 0)
+	std::size_t AddTypeArgument(semantic::TypeId type,
+		const semantic::BindingRecord* function = 0,
+		const semantic::FunctionTemplateAbiRecipe* recipe = 0)
 	{
 		using namespace abi_mangle;
 		const TypeArgumentCacheKey key =
@@ -690,10 +690,10 @@ public:
 		return id;
 	}
 
-	std::size_t AddEntity(pa11::BindingId source)
+	std::size_t AddEntity(semantic::BindingId source)
 	{
 		using namespace abi_mangle;
-		using namespace pa11;
+		using namespace semantic;
 		if (source == kNoBinding || source >= program_.bindings.size())
 			throw std::logic_error("ABI template argument entity is invalid");
 		source = program_.bindings[source].canonical;
@@ -731,12 +731,12 @@ public:
 	}
 
 	std::size_t AddTemplateArgument(std::size_t argument,
-		const pa11::BindingRecord* function = 0,
-		const pa11::FunctionTemplateAbiRecipe* recipe = 0,
-		std::size_t source_parameter = pa11::kNoTemplateParameter)
+		const semantic::BindingRecord* function = 0,
+		const semantic::FunctionTemplateAbiRecipe* recipe = 0,
+		std::size_t source_parameter = semantic::kNoTemplateParameter)
 	{
 		using namespace abi_mangle;
-		using namespace pa11;
+		using namespace semantic;
 		if (argument >= program_.template_arguments.size())
 			throw std::logic_error("ABI template argument index is invalid");
 		if (argument >= program_.canonical_template_arguments.size() ||
@@ -965,8 +965,8 @@ public:
 	}
 
 	std::size_t AddTemplateArgumentPack(std::size_t first, std::size_t count,
-		const pa11::BindingRecord* function = 0,
-		const pa11::FunctionTemplateAbiRecipe* recipe = 0)
+		const semantic::BindingRecord* function = 0,
+		const semantic::FunctionTemplateAbiRecipe* recipe = 0)
 	{
 		using namespace abi_mangle;
 		if (first > program_.template_arguments.size() ||
@@ -991,16 +991,16 @@ public:
 		return context_->resolve_expression(expression);
 	}
 
-	abi_mangle::AbiType AddContextType(pa11::TypeId type)
+	abi_mangle::AbiType AddContextType(semantic::TypeId type)
 	{
 		++next_argument_;
 		return MakeType(type);
 	}
 
-	LocalContextHandle AddLocalContext(pa11::BindingId binding)
+	LocalContextHandle AddLocalContext(semantic::BindingId binding)
 	{
 		using namespace abi_mangle;
-		using namespace pa11;
+		using namespace semantic;
 		if (binding == kNoBinding || binding >= program_.bindings.size())
 			throw std::logic_error("local ABI type has no function context");
 		const BindingRecord& function = program_.bindings[binding];
@@ -1213,12 +1213,12 @@ public:
 		return StoreLocalContext(context_fact, identity);
 	}
 
-	bool FunctionTemplateParameter(pa11::TypeId type,
-		const pa11::BindingRecord* function,
-		const pa11::FunctionTemplateAbiRecipe* recipe,
+	bool FunctionTemplateParameter(semantic::TypeId type,
+		const semantic::BindingRecord* function,
+		const semantic::FunctionTemplateAbiRecipe* recipe,
 		std::size_t* index) const
 	{
-		using namespace pa11;
+		using namespace semantic;
 		if (recipe)
 		{
 			const TypeRecord& shape = program_.types.Get(type);
@@ -1258,14 +1258,14 @@ public:
 		return false;
 	}
 
-	abi_mangle::AbiType MakeType(pa11::TypeId type)
+	abi_mangle::AbiType MakeType(semantic::TypeId type)
 	{
 		return MakeType(type, 0, 0);
 	}
 
-	abi_mangle::AbiType MakeFunctionTemplateType(pa11::TypeId type,
-		const pa11::BindingRecord& function,
-		const pa11::FunctionTemplateAbiRecipe* recipe = 0)
+	abi_mangle::AbiType MakeFunctionTemplateType(semantic::TypeId type,
+		const semantic::BindingRecord& function,
+		const semantic::FunctionTemplateAbiRecipe* recipe = 0)
 	{
 		// Only the retained pattern recipe can prove that a type occurrence is
 		// dependent.  Inferring dependence by comparing an instantiated type
@@ -1275,9 +1275,9 @@ public:
 		return recipe ? MakeType(type, &function, recipe) : MakeType(type);
 	}
 
-	abi_mangle::AbiType MakeType(pa11::TypeId type,
-		const pa11::BindingRecord* function,
-		const pa11::FunctionTemplateAbiRecipe* recipe)
+	abi_mangle::AbiType MakeType(semantic::TypeId type,
+		const semantic::BindingRecord* function,
+		const semantic::FunctionTemplateAbiRecipe* recipe)
 	{
 		const TypeArgumentCacheKey key =
 			TypeArgumentKey(type, function, recipe);
@@ -1303,11 +1303,11 @@ public:
 		return direct;
 	}
 
-	pa11::FunctionTemplateAbiTypeId FunctionTemplateParameterAbiType(
-		const pa11::FunctionTemplateAbiRecipe& recipe,
+	semantic::FunctionTemplateAbiTypeId FunctionTemplateParameterAbiType(
+		const semantic::FunctionTemplateAbiRecipe& recipe,
 		std::size_t parameter) const
 	{
-		using namespace pa11;
+		using namespace semantic;
 		if (parameter >= recipe.function_parameter_count ||
 			recipe.function_parameter_type_begin >
 				program_.function_template_abi_function_parameter_types.size() ||
@@ -1321,11 +1321,11 @@ public:
 	}
 
 	std::size_t AddFunctionTemplateAbiExpression(
-		pa11::FunctionTemplateAbiExpressionId expression,
-		const pa11::FunctionTemplateAbiRecipe& recipe)
+		semantic::FunctionTemplateAbiExpressionId expression,
+		const semantic::FunctionTemplateAbiRecipe& recipe)
 	{
 		using namespace abi_mangle;
-		using namespace pa11;
+		using namespace semantic;
 		if (expression == kNoFunctionTemplateAbiExpression ||
 			expression >= program_.function_template_abi_expressions.size())
 			throw std::logic_error(
@@ -1415,11 +1415,11 @@ public:
 	}
 
 	std::size_t AddFunctionTemplateAbiArgument(
-		const pa11::FunctionTemplateAbiArgument& source,
-		const pa11::FunctionTemplateAbiRecipe& recipe)
+		const semantic::FunctionTemplateAbiArgument& source,
+		const semantic::FunctionTemplateAbiRecipe& recipe)
 	{
 		using namespace abi_mangle;
-		using namespace pa11;
+		using namespace semantic;
 		++next_argument_;
 		AbiTemplateArgument target;
 		if (source.kind == FUNCTION_TEMPLATE_ABI_ARGUMENT_TYPE)
@@ -1438,11 +1438,11 @@ public:
 	}
 
 	abi_mangle::AbiType MakeFunctionTemplateAbiType(
-		pa11::FunctionTemplateAbiTypeId type,
-		const pa11::FunctionTemplateAbiRecipe& recipe)
+		semantic::FunctionTemplateAbiTypeId type,
+		const semantic::FunctionTemplateAbiRecipe& recipe)
 	{
 		using namespace abi_mangle;
-		using namespace pa11;
+		using namespace semantic;
 		if (type == kNoFunctionTemplateAbiType ||
 			type >= program_.function_template_abi_types.size())
 			throw std::logic_error("function template ABI result recipe is invalid");
@@ -1575,11 +1575,11 @@ public:
 		return result;
 	}
 
-	bool UsesFunctionTemplateParameter(pa11::TypeId type,
-		const pa11::BindingRecord& function,
-		const pa11::FunctionTemplateAbiRecipe& recipe) const
+	bool UsesFunctionTemplateParameter(semantic::TypeId type,
+		const semantic::BindingRecord& function,
+		const semantic::FunctionTemplateAbiRecipe& recipe) const
 	{
-		using namespace pa11;
+		using namespace semantic;
 		std::vector<TypeId> pending(1, type);
 		std::vector<unsigned char> visited(program_.types.Size() + 1, 0);
 		while (!pending.empty())
@@ -1645,13 +1645,13 @@ public:
 	}
 
 	bool MakeTemplateParameterSpecialization(
-		const pa11::EntityRecord& entity,
-		const pa11::BindingRecord* function,
-		const pa11::FunctionTemplateAbiRecipe* recipe,
+		const semantic::EntityRecord& entity,
+		const semantic::BindingRecord* function,
+		const semantic::FunctionTemplateAbiRecipe* recipe,
 		abi_mangle::AbiType* result)
 	{
 		using namespace abi_mangle;
-		using namespace pa11;
+		using namespace semantic;
 		if (!recipe || entity.template_parameter_ordinal >=
 			recipe->template_parameter_count ||
 			entity.template_argument_count == 0) return false;
@@ -1679,12 +1679,12 @@ public:
 		return true;
 	}
 
-	void AppendClassTemplateArguments(const pa11::EntityRecord& entity,
-		const pa11::BindingRecord* function,
-		const pa11::FunctionTemplateAbiRecipe* recipe,
+	void AppendClassTemplateArguments(const semantic::EntityRecord& entity,
+		const semantic::BindingRecord* function,
+		const semantic::FunctionTemplateAbiRecipe* recipe,
 		abi_mangle::AbiType* result)
 	{
-		using namespace pa11;
+		using namespace semantic;
 		const std::size_t first = entity.template_argument_begin;
 		if (first > program_.template_arguments.size() ||
 			entity.template_argument_count >
@@ -1704,9 +1704,9 @@ public:
 				first + fixed, entity.template_argument_count - fixed,
 				function, recipe));
 	}
-	abi_mangle::AbiType MakeBlockPointerType(pa11::TypeId function_type,
-		const pa11::BindingRecord* function,
-		const pa11::FunctionTemplateAbiRecipe* recipe,
+	abi_mangle::AbiType MakeBlockPointerType(semantic::TypeId function_type,
+		const semantic::BindingRecord* function,
+		const semantic::FunctionTemplateAbiRecipe* recipe,
 		abi_mangle::AbiType result)
 	{
 		result.kind = abi_mangle::ABI_TYPE_VENDOR_QUALIFIED;
@@ -1737,12 +1737,12 @@ public:
 		return true;
 	}
 
-	abi_mangle::AbiType MakeTypeCore(pa11::TypeId type,
-		const pa11::BindingRecord* function,
-		const pa11::FunctionTemplateAbiRecipe* recipe)
+	abi_mangle::AbiType MakeTypeCore(semantic::TypeId type,
+		const semantic::BindingRecord* function,
+		const semantic::FunctionTemplateAbiRecipe* recipe)
 	{
 		using namespace abi_mangle;
-		using namespace pa11;
+		using namespace semantic;
 		std::vector<AbiTypeModifier> modifiers;
 		const TypeRecord* record = &program_.types.Get(type);
 		std::size_t template_parameter = 0;
@@ -1946,12 +1946,12 @@ public:
 	}
 };
 
-bool AppendClassTemplateOwner(const pa11::Program& program,
-	const pa11::BindingRecord& binding, AbiFactBuilder* builder,
+bool AppendClassTemplateOwner(const semantic::Program& program,
+	const semantic::BindingRecord& binding, AbiFactBuilder* builder,
 	abi_mangle::AbiTypedCase* facts, bool retain_complete_substitution)
 {
 	using namespace abi_mangle;
-	using namespace pa11;
+	using namespace semantic;
 	if (binding.member_owner == kNoEntity) return false;
 	const EntityRecord& entity = program.entities[binding.member_owner];
 	if (!IsClassTemplateSpecialization(entity)) return false;
@@ -2102,7 +2102,7 @@ std::string MangleProductionCase(const abi_mangle::AbiTypedCase& fact_case,
 
 }
 
-std::string MangleType(const pa11::Program& program, pa11::TypeId type,
+std::string MangleType(const semantic::Program& program, semantic::TypeId type,
 	abi_mangle::AbiMangleStats* stats,
 	abi_mangle::AbiMangleContext* context)
 {
@@ -2123,10 +2123,10 @@ std::string MangleType(const pa11::Program& program, pa11::TypeId type,
 	return MangleProductionCase(fact_case, stats, context);
 }
 
-bool IsFunctionEmissionDemanded(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& node, bool host_object_emission)
+bool IsFunctionEmissionDemanded(const semantic::Program& program,
+	const semantic::DumpNode& node, bool host_object_emission)
 {
-	using namespace pa11;
+	using namespace semantic;
 	if (node.binding == kNoBinding) return false;
 	const BindingId binding = program.bindings[node.binding].canonical;
 	if (program.bindings[binding].builtin_function ==
@@ -2138,11 +2138,11 @@ bool IsFunctionEmissionDemanded(const pa11::Program& program,
 		program.bindings[binding].emission_demanded;
 }
 
-bool IsFunctionDeclarationBoundaryComplete(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& node)
+bool IsFunctionDeclarationBoundaryComplete(const semantic::Program& program,
+	const semantic::DumpNode& node)
 {
-	using namespace pa11;
-	if (node.kind != pa12_semantic_detail::DUMP_FUNCTION_DECLARATION)
+	using namespace semantic;
+	if (node.kind != semantic::DUMP_FUNCTION_DECLARATION)
 		return true;
 	const TypeRecord& function = program.types.Get(node.type);
 	if (function.kind != TYPE_FUNCTION) return false;
@@ -2152,21 +2152,21 @@ bool IsFunctionDeclarationBoundaryComplete(const pa11::Program& program,
 	return true;
 }
 
-bool IsVariableDeclarationOnly(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& node, bool has_initializer)
+bool IsVariableDeclarationOnly(const semantic::Program& program,
+	const semantic::DumpNode& node, bool has_initializer)
 {
-	const pa11::BindingRecord& binding = program.bindings[node.binding];
+	const semantic::BindingRecord& binding = program.bindings[node.binding];
 	return node.declaration_only ||
 		program.bindings[binding.canonical].explicit_instantiation_suppressed ||
-		(!has_initializer && binding.storage_class == pa11::STORAGE_CLASS_EXTERN);
+		(!has_initializer && binding.storage_class == semantic::STORAGE_CLASS_EXTERN);
 }
 
 bool HasWeakLinkage(
-	const pa11::Program& program, pa11::BindingId binding, bool function)
+	const semantic::Program& program, semantic::BindingId binding, bool function)
 {
-	const pa11::BindingRecord& record = program.bindings[binding];
-	const pa11::BindingRecord& canonical = program.bindings[record.canonical];
-	const bool class_template_member = record.member_owner != pa11::kNoEntity &&
+	const semantic::BindingRecord& record = program.bindings[binding];
+	const semantic::BindingRecord& canonical = program.bindings[record.canonical];
+	const bool class_template_member = record.member_owner != semantic::kNoEntity &&
 		IsClassTemplateSpecialization(program.entities[record.member_owner]);
 	const bool primary_template_member = class_template_member &&
 		!program.entities[record.member_owner].explicit_template_specialization;
@@ -2179,10 +2179,10 @@ bool HasWeakLinkage(
 }
 
 void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
-	pa11::BuiltinFunctionKind kind,
+	semantic::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind)
 {
-	using namespace pa11;
+	using namespace semantic;
 	using pa15_lowir_detail::Symbol;
 	if (kind == BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC)
 	{
@@ -2245,10 +2245,10 @@ void ApplyNativeRuntimeSymbolMetadata(
 }
 
 void ApplyBuiltinParameterAliasMetadata(pa15_lowir_detail::Parameter* parameter,
-	pa11::BuiltinFunctionKind kind,
+	semantic::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind, std::size_t index)
 {
-	using namespace pa11;
+	using namespace semantic;
 	using pa15_lowir_detail::Parameter;
 	if (kind == BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC)
 	{
@@ -2262,14 +2262,14 @@ void ApplyBuiltinParameterAliasMetadata(pa15_lowir_detail::Parameter* parameter,
 	}
 }
 
-void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
-	const pa11::BindingRecord& binding,
-	const pa11::TypeRecord& function_type,
-	const pa11::FunctionTemplateAbiRecipe* recipe,
+void AppendFunctionTemplateArgumentsAndResult(const semantic::Program& program,
+	const semantic::BindingRecord& binding,
+	const semantic::TypeRecord& function_type,
+	const semantic::FunctionTemplateAbiRecipe* recipe,
 	AbiFactBuilder* facts, abi_mangle::AbiTypedCase* output)
 {
 	using namespace abi_mangle;
-	using namespace pa11;
+	using namespace semantic;
 	if (binding.template_argument_count == 0) return;
 	const std::size_t first = binding.template_argument_begin;
 	const std::size_t count = binding.template_argument_count;
@@ -2328,13 +2328,13 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 	AppendTypedFact(output, &result);
 }
 
-std::string MangleLambdaCallOperator(const pa11::Program& program,
-	const pa11::BindingRecord& binding,
-	const pa11::EntityRecord& lambda, abi_mangle::AbiMangleStats* stats,
+std::string MangleLambdaCallOperator(const semantic::Program& program,
+	const semantic::BindingRecord& binding,
+	const semantic::EntityRecord& lambda, abi_mangle::AbiMangleStats* stats,
 	abi_mangle::AbiMangleContext* context)
 {
 	using namespace abi_mangle;
-	using namespace pa11;
+	using namespace semantic;
 	if (!context)
 		throw std::logic_error("lambda ABI mangling has no graph context");
 	if (binding.operator_kind != OPERATOR_CALL)
@@ -2417,13 +2417,13 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 	return MangleProductionCase(fact_case, stats, context);
 }
 
-void AppendLocalFunctionOwner(const pa11::Program& program,
-	const pa11::BindingRecord& binding, AbiFactBuilder* facts,
+void AppendLocalFunctionOwner(const semantic::Program& program,
+	const semantic::BindingRecord& binding, AbiFactBuilder* facts,
 	abi_mangle::AbiMangleContext* context,
 	abi_mangle::AbiTypedCase* fact_case)
 {
 	using namespace abi_mangle;
-	const pa11::EntityRecord& owner =
+	const semantic::EntityRecord& owner =
 		program.entities[binding.member_owner];
 	AbiFactRecord local;
 	local.set_kind(ABI_FACT_RECORD_FUNCTION);
@@ -2432,7 +2432,7 @@ void AppendLocalFunctionOwner(const pa11::Program& program,
 		facts->AddLocalContext(owner.local_context));
 	if (owner.lambda_closure)
 		facts->SetGeneratedLocalSourceName(&local.function,
-			pa22_lambda_presentation::RenderLambdaEntityTerminal(
+			semantic::presentation::RenderLambdaEntityTerminal(
 				program, binding.member_owner));
 	else if (!owner.unnamed_class)
 		facts->SetLocalSourceName(&local.function, owner.identity_name);
@@ -2445,12 +2445,12 @@ void AppendLocalFunctionOwner(const pa11::Program& program,
 	AppendComponentAbiTagFacts(program, owner, context, fact_case);
 }
 
-void AppendMemberFunctionQualifiers(const pa11::Program& program,
-	const pa11::BindingRecord& binding, bool member,
+void AppendMemberFunctionQualifiers(const semantic::Program& program,
+	const semantic::BindingRecord& binding, bool member,
 	abi_mangle::AbiTypedCase* fact_case)
 {
 	using namespace abi_mangle;
-	using namespace pa11;
+	using namespace semantic;
 	if (!member) return;
 	const TypeRecord& declared_type = program.types.Get(binding.type);
 	AbiFactRecord qualifier;
@@ -2472,13 +2472,13 @@ void AppendMemberFunctionQualifiers(const pa11::Program& program,
 		AppendTypedFact(fact_case, &qualifier);
 }
 
-std::string MangleFunction(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& node,
+std::string MangleFunction(const semantic::Program& program,
+	const semantic::DumpNode& node,
 	bool force_lifecycle_base_entry, abi_mangle::AbiMangleStats* stats,
 	abi_mangle::AbiMangleContext* context)
 {
 	using namespace abi_mangle;
-	using namespace pa11;
+	using namespace semantic;
 	const BindingRecord& binding = program.bindings[node.binding];
 	if (binding.assembly_name != 0)
 	{
@@ -2562,7 +2562,7 @@ std::string MangleFunction(const pa11::Program& program,
 	{
 		if (binding.lambda_invocation)
 			facts.SetGeneratedPath(&target.target.function, binding.owner,
-				pa22_lambda_presentation::RenderLambdaEntityTerminal(
+				semantic::presentation::RenderLambdaEntityTerminal(
 					program, binding.lambda_invocation_owner));
 		else facts.SetPath(
 			&target.target.function, binding.owner, binding.name);
@@ -2716,13 +2716,13 @@ std::string MangleFunction(const pa11::Program& program,
 	return MangleProductionCase(fact_case, stats, context);
 }
 
-std::string MangleVariable(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& node,
+std::string MangleVariable(const semantic::Program& program,
+	const semantic::DumpNode& node,
 	abi_mangle::AbiMangleStats* stats,
 	abi_mangle::AbiMangleContext* context)
 {
 	using namespace abi_mangle;
-	using namespace pa11;
+	using namespace semantic;
 	const BindingRecord& binding = program.bindings[node.binding];
 	if (binding.language_linkage == LANGUAGE_LINKAGE_C &&
 		binding.storage_class != STORAGE_CLASS_STATIC)
@@ -2825,13 +2825,13 @@ std::string MangleVariable(const pa11::Program& program,
 	return MangleProductionCase(fact_case, stats, context);
 }
 
-std::string MangleThreadLocalWrapper(const pa11::Program& program,
-	pa11::BindingId binding_id, pa11::NameId fallback_name,
+std::string MangleThreadLocalWrapper(const semantic::Program& program,
+	semantic::BindingId binding_id, semantic::NameId fallback_name,
 	abi_mangle::AbiMangleStats* stats,
 	abi_mangle::AbiMangleContext* context)
 {
 	using namespace abi_mangle;
-	using namespace pa11;
+	using namespace semantic;
 	if (binding_id == kNoBinding || binding_id >= program.bindings.size())
 		throw std::logic_error("invalid thread-local wrapper binding");
 	const BindingRecord& binding = program.bindings[binding_id];

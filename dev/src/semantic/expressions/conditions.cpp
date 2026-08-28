@@ -4,10 +4,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool switch_condition)
 {
 	const std::uint32_t condition = MakeDump(DUMP_CONDITION);

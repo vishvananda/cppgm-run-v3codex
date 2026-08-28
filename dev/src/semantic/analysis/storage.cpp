@@ -2,10 +2,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-std::size_t SemanticAnalyzer::SideStorageBytes() const
+std::size_t Analyzer::SideStorageBytes() const
 {
 	std::size_t bytes =
 		string_literal_units_.capacity() * sizeof(std::uint32_t) +

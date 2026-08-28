@@ -5,10 +5,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::BuildClassDeclarationNamePath(NodeId node,
+void Analyzer::BuildClassDeclarationNamePath(NodeId node,
 	const std::string& hint, const std::string& specialization_name,
 	std::string* spelling, NamePath* path, bool* generated_identity)
 {
@@ -54,7 +54,7 @@ void SemanticAnalyzer::BuildClassDeclarationNamePath(NodeId node,
 	path->Push(program_->names.Intern(*spelling));
 }
 
-void SemanticAnalyzer::BuildEnumDeclarationNamePath(NodeId node,
+void Analyzer::BuildEnumDeclarationNamePath(NodeId node,
 	const std::string& hint, std::string* spelling, NamePath* path,
 	bool* generated_identity)
 {

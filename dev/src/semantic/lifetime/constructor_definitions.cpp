@@ -2,10 +2,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::ValidateConstexprConstructorDefinition(
+void Analyzer::ValidateConstexprConstructorDefinition(
 	const FunctionInfo& constructor)
 {
 	if (!constructor.constructor || !constructor.constexpr_function ||
@@ -65,7 +65,7 @@ void SemanticAnalyzer::ValidateConstexprConstructorDefinition(
 	}
 }
 
-void SemanticAnalyzer::CompleteOutOfClassDefaultedConstructor(EntityId entity,
+void Analyzer::CompleteOutOfClassDefaultedConstructor(EntityId entity,
 	BindingId constructor)
 {
 	FunctionInfo& info = GetMutableFunction(constructor);
@@ -99,7 +99,7 @@ void SemanticAnalyzer::CompleteOutOfClassDefaultedConstructor(EntityId entity,
 			"out-of-class defaulted constructor is deleted");
 }
 
-void SemanticAnalyzer::CompleteDefaultedDefaultConstructor(EntityId entity,
+void Analyzer::CompleteDefaultedDefaultConstructor(EntityId entity,
 	BindingId constructor)
 {
 	bool deleted = false;
@@ -166,7 +166,7 @@ void SemanticAnalyzer::CompleteDefaultedDefaultConstructor(EntityId entity,
 	program_->bindings[constructor].nonthrowing = !deleted && trivial;
 }
 
-bool SemanticAnalyzer::EvaluateDestructorSubobjects(EntityId entity,
+bool Analyzer::EvaluateDestructorSubobjects(EntityId entity,
 	bool defaulted_destructor, bool* deleted)
 {
 	if (deleted) *deleted = false;
@@ -214,7 +214,7 @@ bool SemanticAnalyzer::EvaluateDestructorSubobjects(EntityId entity,
 	return nonthrowing;
 }
 
-void SemanticAnalyzer::CompleteDefaultedDestructor(EntityId entity,
+void Analyzer::CompleteDefaultedDestructor(EntityId entity,
 	BindingId destructor)
 {
 	bool deleted = false;

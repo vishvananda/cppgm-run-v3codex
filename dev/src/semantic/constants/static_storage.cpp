@@ -5,23 +5,11 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-const SemanticAnalyzer::StaticConstantInitializerFact*
-SemanticAnalyzer::FindStaticConstantInitializer(BindingId binding) const
-{
-	if (binding >= static_constant_initializer_indices_.size()) return 0;
-	const std::uint32_t stored =
-		static_constant_initializer_indices_[binding];
-	if (stored == 0) return 0;
-	if (stored > static_constant_initializers_.size())
-		throw std::logic_error("invalid static constant initializer index");
-	return &static_constant_initializers_[stored - 1];
-}
-
-SemanticAnalyzer::StaticConstantInitializerFact*
-SemanticAnalyzer::FindMutableStaticConstantInitializer(BindingId binding)
+const Analyzer::StaticConstantInitializerFact*
+Analyzer::FindStaticConstantInitializer(BindingId binding) const
 {
 	if (binding >= static_constant_initializer_indices_.size()) return 0;
 	const std::uint32_t stored =
@@ -32,8 +20,20 @@ SemanticAnalyzer::FindMutableStaticConstantInitializer(BindingId binding)
 	return &static_constant_initializers_[stored - 1];
 }
 
-SemanticAnalyzer::StaticConstantInitializerFact&
-SemanticAnalyzer::EnsureStaticConstantInitializer(BindingId binding)
+Analyzer::StaticConstantInitializerFact*
+Analyzer::FindMutableStaticConstantInitializer(BindingId binding)
+{
+	if (binding >= static_constant_initializer_indices_.size()) return 0;
+	const std::uint32_t stored =
+		static_constant_initializer_indices_[binding];
+	if (stored == 0) return 0;
+	if (stored > static_constant_initializers_.size())
+		throw std::logic_error("invalid static constant initializer index");
+	return &static_constant_initializers_[stored - 1];
+}
+
+Analyzer::StaticConstantInitializerFact&
+Analyzer::EnsureStaticConstantInitializer(BindingId binding)
 {
 	if (binding == kNoBinding)
 		throw std::logic_error("invalid static constant initializer owner");

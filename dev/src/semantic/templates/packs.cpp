@@ -7,7 +7,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -38,7 +38,7 @@ bool HasFunctionParameterPack(const SyntaxArena& arena, NodeId node)
 
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeSizeofPackExpression(
+ExpressionInfo Analyzer::AnalyzeSizeofPackExpression(
 	NodeId node, ScopeId scope)
 {
 	const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
@@ -63,7 +63,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeofPackExpression(
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeFoldExpression(NodeId node, ScopeId scope)
+ExpressionInfo Analyzer::AnalyzeFoldExpression(NodeId node, ScopeId scope)
 {
 	const bool unary_left = FindChild(node, ::cppgm::syntax::STAG_FOLD_LEFT) != kNoNode;
 	const bool unary_right = FindChild(node, ::cppgm::syntax::STAG_FOLD_RIGHT) != kNoNode;
@@ -171,7 +171,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeFoldExpression(NodeId node, ScopeId scop
 	return result;
 }
 
-void SemanticAnalyzer::InitializeFunctionTemplatePackShape(
+void Analyzer::InitializeFunctionTemplatePackShape(
 	FunctionTemplatePattern* pattern, const DeclaratorInfo& shape)
 {
 	pattern->function_parameter_pack =
@@ -184,7 +184,7 @@ void SemanticAnalyzer::InitializeFunctionTemplatePackShape(
 		--pattern->required_parameter_count;
 }
 
-void SemanticAnalyzer::BindFunctionParameterPackElement(
+void Analyzer::BindFunctionParameterPackElement(
 	ScopeId scope, NameId pack, BindingId binding)
 {
 	if (pack == 0) return;
@@ -195,7 +195,7 @@ void SemanticAnalyzer::BindFunctionParameterPackElement(
 	if (binding != kNoBinding) elements.Push(binding);
 }
 
-NameId SemanticAnalyzer::FunctionParameterPackName(NodeId declarator)
+NameId Analyzer::FunctionParameterPackName(NodeId declarator)
 {
 	if (declarator == kNoNode) return 0;
 	if (arena_->IsTag(declarator, ::cppgm::syntax::STAG_PARAMETER_DECLARATION))
@@ -214,13 +214,13 @@ NameId SemanticAnalyzer::FunctionParameterPackName(NodeId declarator)
 	return 0;
 }
 
-void SemanticAnalyzer::CollectPackExpansionNames(NodeId node, ScopeId scope,
+void Analyzer::CollectPackExpansionNames(NodeId node, ScopeId scope,
 	std::vector<NameId>* names) const
 {
 	CollectPackExpansionNamesImpl(node, scope, names, true);
 }
 
-void SemanticAnalyzer::CollectPackExpansionNamesImpl(NodeId node, ScopeId scope,
+void Analyzer::CollectPackExpansionNamesImpl(NodeId node, ScopeId scope,
 	std::vector<NameId>* names, bool root) const
 {
 	if (node == kNoNode ||
@@ -261,7 +261,7 @@ void SemanticAnalyzer::CollectPackExpansionNamesImpl(NodeId node, ScopeId scope,
 			arena_->EdgeChild(edge), scope, names, false);
 }
 
-bool SemanticAnalyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
+bool Analyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 	std::vector<ScopeId>* element_scopes)
 {
 	std::vector<NameId> names;
@@ -339,7 +339,7 @@ bool SemanticAnalyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 	return true;
 }
 
-void SemanticAnalyzer::BindLexicalTypeNames(NodeId pattern,
+void Analyzer::BindLexicalTypeNames(NodeId pattern,
 	ScopeId lexical_owner, ScopeId target_scope)
 {
 	if (pattern == kNoNode) return;
@@ -363,7 +363,7 @@ void SemanticAnalyzer::BindLexicalTypeNames(NodeId pattern,
 			lexical_owner, target_scope);
 }
 
-void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
+void Analyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 	std::vector<NodeId>* syntax,
 	std::vector<ExpressionInfo>* expressions)
 {
@@ -466,7 +466,7 @@ void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 	}
 }
 
-bool SemanticAnalyzer::TryAnalyzeExpandedBracedInit(
+bool Analyzer::TryAnalyzeExpandedBracedInit(
 	NodeId node, ScopeId scope, TypeId target, ExpressionInfo* result)
 {
 	bool has_expansion = false;
@@ -619,7 +619,7 @@ bool SemanticAnalyzer::TryAnalyzeExpandedBracedInit(
 	return true;
 }
 
-bool SemanticAnalyzer::ExpandCallArgumentPacks(
+bool Analyzer::ExpandCallArgumentPacks(
 	const std::vector<NodeId>& original, ScopeId scope,
 	std::vector<NodeId>* syntax, std::vector<ExpressionInfo>* arguments)
 {

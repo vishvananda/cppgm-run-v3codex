@@ -4,10 +4,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::AnalyzeHostedSelectionStatement(
+bool Analyzer::AnalyzeHostedSelectionStatement(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
 	if (!arena_->IsTag(node, ::cppgm::syntax::STAG_IF_STATEMENT)) return false;

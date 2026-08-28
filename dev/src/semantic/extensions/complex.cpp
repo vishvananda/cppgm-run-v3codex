@@ -4,10 +4,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-TypeId SemanticAnalyzer::BuildComplexSpecifierType(TypeId element)
+TypeId Analyzer::BuildComplexSpecifierType(TypeId element)
 {
 	const TypeId result = program_->types.TryComplex(
 		program_->types.RemoveTopCv(element));
@@ -16,7 +16,7 @@ TypeId SemanticAnalyzer::BuildComplexSpecifierType(TypeId element)
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeComplexConstruction(ScopeId scope,
+ExpressionInfo Analyzer::AnalyzeComplexConstruction(ScopeId scope,
 	const std::vector<NodeId>& arguments, TypeId target)
 {
 	if (arguments.size() != 2)
@@ -46,7 +46,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeComplexConstruction(ScopeId scope,
 	return ApplyTarget(result, target);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeComplexComponent(
+ExpressionInfo Analyzer::AnalyzeComplexComponent(
 	const std::string& operation, const ExpressionInfo& operand, TypeId target)
 {
 	const TypeId complex_type = program_->types.RemoveTopCv(

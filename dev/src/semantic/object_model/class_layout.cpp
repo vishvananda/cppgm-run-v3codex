@@ -2,10 +2,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::IsVolatileSubobjectType(TypeId type) const
+bool Analyzer::IsVolatileSubobjectType(TypeId type) const
 {
 	const TypeRecord& record = program_->types.Get(type);
 	if (record.kind == TYPE_QUALIFIED)
@@ -20,7 +20,7 @@ bool SemanticAnalyzer::IsVolatileSubobjectType(TypeId type) const
 		entity.has_volatile_subobject;
 }
 
-bool SemanticAnalyzer::TypeContainsUnionSubobject(TypeId type) const
+bool Analyzer::TypeContainsUnionSubobject(TypeId type) const
 {
 	const TypeRecord& record = program_->types.Get(type);
 	if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_ARRAY)
@@ -31,7 +31,7 @@ bool SemanticAnalyzer::TypeContainsUnionSubobject(TypeId type) const
 	return entity.flavor == NAMED_UNION || entity.has_union_subobject;
 }
 
-void SemanticAnalyzer::InitializeClassZeroSpanFacts(EntityId entity)
+void Analyzer::InitializeClassZeroSpanFacts(EntityId entity)
 {
 	EntityRecord& owner = program_->entities[entity];
 	owner.has_volatile_subobject = false;
@@ -48,7 +48,7 @@ void SemanticAnalyzer::InitializeClassZeroSpanFacts(EntityId entity)
 	}
 }
 
-void SemanticAnalyzer::AccumulateClassZeroSpanFacts(
+void Analyzer::AccumulateClassZeroSpanFacts(
 	EntityId entity, TypeId type)
 {
 	EntityRecord& owner = program_->entities[entity];
@@ -58,7 +58,7 @@ void SemanticAnalyzer::AccumulateClassZeroSpanFacts(
 		TypeContainsUnionSubobject(type);
 }
 
-bool SemanticAnalyzer::ClassBasesAreEmpty(EntityId entity) const
+bool Analyzer::ClassBasesAreEmpty(EntityId entity) const
 {
 	const EntityRecord& owner = program_->entities[entity];
 	for (std::size_t base_index = 0;
@@ -69,7 +69,7 @@ bool SemanticAnalyzer::ClassBasesAreEmpty(EntityId entity) const
 	return true;
 }
 
-void SemanticAnalyzer::SetBindingRequestedAlignment(
+void Analyzer::SetBindingRequestedAlignment(
 	BindingRecord& binding, std::size_t alignment)
 {
 	if (alignment != 0)

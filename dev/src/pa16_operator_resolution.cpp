@@ -9,10 +9,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-void SemanticAnalyzer::BeginAssociatedLookup()
+void Analyzer::BeginAssociatedLookup()
 {
 	++associated_generation_;
 	if (associated_generation_ == 0)
@@ -36,7 +36,7 @@ void SemanticAnalyzer::BeginAssociatedLookup()
 		associated_type_marks_.resize(program_->types.Size(), 0);
 }
 
-void SemanticAnalyzer::AddAssociatedEntity(EntityId entity)
+void Analyzer::AddAssociatedEntity(EntityId entity)
 {
 	if (entity == kNoEntity || entity >= program_->entities.size()) return;
 	if (associated_entity_marks_.size() <= entity)
@@ -46,7 +46,7 @@ void SemanticAnalyzer::AddAssociatedEntity(EntityId entity)
 	associated_entities_.push_back(entity);
 }
 
-void SemanticAnalyzer::AddAssociatedScope(ScopeId scope)
+void Analyzer::AddAssociatedScope(ScopeId scope)
 {
 	if (scope == kNoScope) return;
 	if (associated_scope_marks_.size() <= scope)
@@ -56,7 +56,7 @@ void SemanticAnalyzer::AddAssociatedScope(ScopeId scope)
 	associated_scopes_.push_back(scope);
 }
 
-void SemanticAnalyzer::AddAssociatedType(TypeId type)
+void Analyzer::AddAssociatedType(TypeId type)
 {
 	if (type == kNoType || type >= program_->types.Size()) return;
 	associated_type_scratch_.push_back(type);
@@ -96,7 +96,7 @@ void SemanticAnalyzer::AddAssociatedType(TypeId type)
 	}
 }
 
-void SemanticAnalyzer::BeginCandidateCollection()
+void Analyzer::BeginCandidateCollection()
 {
 	++candidate_generation_;
 	if (candidate_generation_ == 0)
@@ -108,7 +108,7 @@ void SemanticAnalyzer::BeginCandidateCollection()
 		candidate_marks_.resize(program_->bindings.size(), 0);
 }
 
-void SemanticAnalyzer::AddCandidate(BindingId binding,
+void Analyzer::AddCandidate(BindingId binding,
 	std::vector<BindingId>* candidates)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size()) return;
@@ -120,7 +120,7 @@ void SemanticAnalyzer::AddCandidate(BindingId binding,
 	candidates->push_back(binding);
 }
 
-TypeId SemanticAnalyzer::EnumOperatorOperandType(TypeId type) const
+TypeId Analyzer::EnumOperatorOperandType(TypeId type) const
 {
 	const TypeRecord* shape = &program_->types.Get(type);
 	if (shape->kind == TYPE_LVALUE_REFERENCE ||
@@ -140,7 +140,7 @@ TypeId SemanticAnalyzer::EnumOperatorOperandType(TypeId type) const
 		type : kNoType;
 }
 
-bool SemanticAnalyzer::MatchesEnumOnlyOperatorCandidate(BindingId binding,
+bool Analyzer::MatchesEnumOnlyOperatorCandidate(BindingId binding,
 	const std::vector<ExpressionInfo>& operands) const
 {
 	const FunctionInfo& function = GetFunction(binding);
@@ -159,7 +159,7 @@ bool SemanticAnalyzer::MatchesEnumOnlyOperatorCandidate(BindingId binding,
 	return false;
 }
 
-void SemanticAnalyzer::IndexEnumOperatorCandidate(BindingId binding)
+void Analyzer::IndexEnumOperatorCandidate(BindingId binding)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size()) return;
 	const BindingRecord& record = program_->bindings[binding];
@@ -183,7 +183,7 @@ void SemanticAnalyzer::IndexEnumOperatorCandidate(BindingId binding)
 	}
 }
 
-void SemanticAnalyzer::AppendIndexedEnumOperatorCandidates(ScopeId owner,
+void Analyzer::AppendIndexedEnumOperatorCandidates(ScopeId owner,
 	NameId name, const std::vector<ExpressionInfo>& operands,
 	std::vector<BindingId>* candidates)
 {
@@ -207,7 +207,7 @@ void SemanticAnalyzer::AppendIndexedEnumOperatorCandidates(ScopeId owner,
 	}
 }
 
-void SemanticAnalyzer::AppendVisibleEnumOperatorCandidates(ScopeId scope,
+void Analyzer::AppendVisibleEnumOperatorCandidates(ScopeId scope,
 	NameId name, const std::vector<ExpressionInfo>& operands,
 	std::vector<BindingId>* candidates)
 {
@@ -224,7 +224,7 @@ void SemanticAnalyzer::AppendVisibleEnumOperatorCandidates(ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::AppendDirectFunctionCandidates(ScopeId owner,
+void Analyzer::AppendDirectFunctionCandidates(ScopeId owner,
 	NameId name, bool exclude_template_specializations,
 	std::vector<BindingId>* candidates)
 {
@@ -240,7 +240,7 @@ void SemanticAnalyzer::AppendDirectFunctionCandidates(ScopeId owner,
 	}
 }
 
-void SemanticAnalyzer::AppendHiddenFriendCandidates(EntityId owner,
+void Analyzer::AppendHiddenFriendCandidates(EntityId owner,
 	NameId name, const std::vector<ExpressionInfo>& arguments,
 	bool enum_operator_only,
 	std::vector<BindingId>* candidates,
@@ -283,7 +283,7 @@ void SemanticAnalyzer::AppendHiddenFriendCandidates(EntityId owner,
 	}
 }
 
-void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
+void Analyzer::AppendArgumentDependentCandidates(NameId name,
 	const std::vector<ExpressionInfo>& arguments,
 	std::vector<BindingId>* candidates, bool enum_operator_only,
 	const std::vector<NodeId>* explicit_syntax, ScopeId use_scope,
@@ -394,7 +394,7 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 			argument_syntax);
 }
 
-void SemanticAnalyzer::CompleteArgumentDependentCallCandidates(NameId name,
+void Analyzer::CompleteArgumentDependentCallCandidates(NameId name,
 	const std::vector<NodeId>* explicit_syntax, ScopeId use_scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
@@ -426,7 +426,7 @@ void SemanticAnalyzer::CompleteArgumentDependentCallCandidates(NameId name,
 	candidates->swap(canonical);
 }
 
-CallConversionFact SemanticAnalyzer::ConvertingConstructor(
+CallConversionFact Analyzer::ConvertingConstructor(
 	const ExpressionInfo& source, TypeId target)
 {
 	CallConversionFact result;
@@ -568,7 +568,7 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 	return result;
 }
 
-void SemanticAnalyzer::AppendConversionFunctions(EntityId entity,
+void Analyzer::AppendConversionFunctions(EntityId entity,
 	std::vector<BindingId>* candidates) const
 {
 	std::vector<EntityId> pending(1, entity);
@@ -589,7 +589,7 @@ void SemanticAnalyzer::AppendConversionFunctions(EntityId entity,
 	}
 }
 
-void SemanticAnalyzer::AppendBuiltinConversionTargets(
+void Analyzer::AppendBuiltinConversionTargets(
 	const ExpressionInfo& source, std::vector<TypeId>* targets) const
 {
 	std::vector<BindingId> functions;
@@ -605,7 +605,7 @@ void SemanticAnalyzer::AppendBuiltinConversionTargets(
 	}
 }
 
-bool SemanticAnalyzer::BuiltinBinaryParameterTypes(
+bool Analyzer::BuiltinBinaryParameterTypes(
 	const std::string& operation, const ExpressionInfo& left,
 	TypeId left_type, const ExpressionInfo& right, TypeId right_type,
 	TypeId* left_target, TypeId* right_target)
@@ -738,7 +738,7 @@ bool SemanticAnalyzer::BuiltinBinaryParameterTypes(
 	return true;
 }
 
-bool SemanticAnalyzer::ApplyBuiltinUnaryConversion(
+bool Analyzer::ApplyBuiltinUnaryConversion(
 	const std::string& operation, ExpressionInfo* operand)
 {
 	// The subscript resolver passes the synthesized "[]" pseudo-spelling.
@@ -807,7 +807,7 @@ bool SemanticAnalyzer::ApplyBuiltinUnaryConversion(
 	return true;
 }
 
-bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
+bool Analyzer::ApplyBuiltinBinaryConversions(
 	const std::string& operation, ExpressionInfo* left,
 	ExpressionInfo* right, std::vector<ConversionRank>* selected_ranks,
 	bool apply)
@@ -997,7 +997,7 @@ bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
 	return true;
 }
 
-bool SemanticAnalyzer::ApplyBuiltinAssignmentConversion(
+bool Analyzer::ApplyBuiltinAssignmentConversion(
 	const std::string& operation, const ExpressionInfo& left,
 	ExpressionInfo* right)
 {
@@ -1019,7 +1019,7 @@ bool SemanticAnalyzer::ApplyBuiltinAssignmentConversion(
 		operation.substr(0, operation.size() - 1), &left_copy, right);
 }
 
-CallConversionFact SemanticAnalyzer::ConvertingFunction(
+CallConversionFact Analyzer::ConvertingFunction(
 	const ExpressionInfo& source, TypeId target, bool allow_explicit)
 {
 	CallConversionFact result;
@@ -1114,7 +1114,7 @@ CallConversionFact SemanticAnalyzer::ConvertingFunction(
 	return result;
 }
 
-int SemanticAnalyzer::CompareCallConversions(
+int Analyzer::CompareCallConversions(
 	const CallConversionFact& left, const CallConversionFact& right) const
 {
 	if (left.initializer_list_conversion != right.initializer_list_conversion)
@@ -1145,7 +1145,7 @@ int SemanticAnalyzer::CompareCallConversions(
 	return 0;
 }
 
-ExpressionInfo SemanticAnalyzer::PrepareConversionFunctionObject(
+ExpressionInfo Analyzer::PrepareConversionFunctionObject(
 	ExpressionInfo value, BindingId conversion_function)
 {
 	if (!retain_lowering_facts_ || conversion_function == kNoBinding ||
@@ -1163,7 +1163,7 @@ ExpressionInfo SemanticAnalyzer::PrepareConversionFunctionObject(
 	return MaterializeTemporary(value);
 }
 
-ExpressionInfo SemanticAnalyzer::ApplyExplicitConversion(
+ExpressionInfo Analyzer::ApplyExplicitConversion(
 	ExpressionInfo value, TypeId target)
 {
 	const ConversionRank standard = Conversion(value, target);
@@ -1188,7 +1188,7 @@ ExpressionInfo SemanticAnalyzer::ApplyExplicitConversion(
 		&object_conversion, 0);
 }
 
-CallConversionFact SemanticAnalyzer::CallConversion(
+CallConversionFact Analyzer::CallConversion(
 	const ExpressionInfo& source, TypeId target,
 	CallConversionTable* cache, std::size_t source_ordinal)
 {
@@ -1238,7 +1238,7 @@ CallConversionFact SemanticAnalyzer::CallConversion(
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
+ExpressionInfo Analyzer::BuildConvertingArgument(
 	const ExpressionInfo& source, TypeId target,
 	const CallConversionFact& conversion)
 {
@@ -1340,7 +1340,7 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 	return ApplyTarget(result, target);
 }
 
-ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
+ExpressionInfo Analyzer::ApplyCallArgument(
 	ExpressionInfo value, TypeId target, const CallConversionFact* conversion)
 {
 	const CallConversionFact resolved = conversion ? *conversion :
@@ -1544,7 +1544,7 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 	return value;
 }
 
-ExpressionInfo SemanticAnalyzer::MakeImplicitObjectPointer(
+ExpressionInfo Analyzer::MakeImplicitObjectPointer(
 	const ExpressionInfo& object)
 {
 	ExpressionInfo addressable = object;
@@ -1575,7 +1575,7 @@ ExpressionInfo SemanticAnalyzer::MakeImplicitObjectPointer(
 	return result;
 }
 
-BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
+BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 	const std::vector<NodeId>& operand_syntax,
 	const std::vector<ExpressionInfo>& operands,
 	const std::vector<BindingId>& candidates,
@@ -1797,7 +1797,7 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 	return candidates[champion];
 }
 
-bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
+bool Analyzer::TryAnalyzeOverloadedOperator(
 	const std::string& operation, ScopeId scope,
 	const std::vector<NodeId>& operand_syntax,
 	const std::vector<ExpressionInfo>& operands, bool member_only,
@@ -1950,7 +1950,7 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	return true;
 }
 
-bool SemanticAnalyzer::TryAnalyzeCallOperator(ScopeId scope,
+bool Analyzer::TryAnalyzeCallOperator(ScopeId scope,
 	const ExpressionInfo& callee,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target,
@@ -1968,7 +1968,7 @@ bool SemanticAnalyzer::TryAnalyzeCallOperator(ScopeId scope,
 		operands, true, target, result);
 }
 
-bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
+bool Analyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 	const ExpressionInfo& callee,
 	const std::vector<ExpressionInfo>& arguments, TypeId target,
 	ExpressionInfo* result)

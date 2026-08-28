@@ -3,7 +3,7 @@
 // at the semantic input boundary and memoized by ID.
 #include "semantic/analysis/analyzer.h"
 
-namespace cppgm { namespace pa12_semantic_detail {
+namespace cppgm { namespace semantic {
 
 namespace
 {
@@ -36,7 +36,7 @@ int ClassifyOperationSpelling(const std::string& operation)
 		static_cast<int>(kind) : -1;
 }
 
-int SemanticAnalyzer::PayloadTokenKind(NodeId node)
+int Analyzer::PayloadTokenKind(NodeId node)
 {
 	const ::cppgm::syntax::TextId payload =
 		arena_->SemanticPayloadId(node);
@@ -54,7 +54,7 @@ int SemanticAnalyzer::PayloadTokenKind(NodeId node)
 	return static_cast<int>(slot) - 1;
 }
 
-std::uint8_t SemanticAnalyzer::OperationKindForName(NameId text)
+std::uint8_t Analyzer::OperationKindForName(NameId text)
 {
 	if (text == 0) return 0;
 	if (operation_kind_by_name_.size() <= text)

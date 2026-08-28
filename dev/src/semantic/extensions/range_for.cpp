@@ -7,10 +7,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-NameId SemanticAnalyzer::NextRangeForHiddenName(const char* prefix)
+NameId Analyzer::NextRangeForHiddenName(const char* prefix)
 {
 	if (current_function_context_ == kNoBinding)
 		throw std::logic_error("range-for is not owned by a function");
@@ -29,7 +29,7 @@ NameId SemanticAnalyzer::NextRangeForHiddenName(const char* prefix)
 	return program_->names.Intern(generated);
 }
 
-ExpressionInfo SemanticAnalyzer::MakeRangeForBindingExpression(
+ExpressionInfo Analyzer::MakeRangeForBindingExpression(
 	BindingId binding)
 {
 	if (binding >= program_->bindings.size())
@@ -45,7 +45,7 @@ ExpressionInfo SemanticAnalyzer::MakeRangeForBindingExpression(
 	return result;
 }
 
-BindingId SemanticAnalyzer::AddRangeForLocal(ScopeId scope,
+BindingId Analyzer::AddRangeForLocal(ScopeId scope,
 	std::uint32_t output_parent, NameId name, TypeId type,
 	ExpressionInfo initializer, bool array_initializer)
 {
@@ -118,7 +118,7 @@ BindingId SemanticAnalyzer::AddRangeForLocal(ScopeId scope,
 	return binding;
 }
 
-void SemanticAnalyzer::FinishRangeForLocalInitializer(ScopeId scope,
+void Analyzer::FinishRangeForLocalInitializer(ScopeId scope,
 	std::uint32_t declaration, TypeId type,
 	const ExpressionInfo& initializer)
 {
@@ -140,7 +140,7 @@ void SemanticAnalyzer::FinishRangeForLocalInitializer(ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::FinishRangeForFullExpression(ScopeId scope,
+void Analyzer::FinishRangeForFullExpression(ScopeId scope,
 	std::uint32_t owner, const ExpressionInfo& expression)
 {
 	const std::size_t edge_count = dump_.edges.size();
@@ -150,7 +150,7 @@ void SemanticAnalyzer::FinishRangeForFullExpression(ScopeId scope,
 	AppendUnwindDestructionActions(scope, owner);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeRangeForUnary(const char* operation,
+ExpressionInfo Analyzer::AnalyzeRangeForUnary(const char* operation,
 	const char* display, ExpressionInfo operand, ScopeId scope)
 {
 	std::vector<NodeId> syntax(1, kNoNode);
@@ -190,7 +190,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeRangeForUnary(const char* operation,
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeRangeForSubscript(
+ExpressionInfo Analyzer::AnalyzeRangeForSubscript(
 	ExpressionInfo range, ExpressionInfo index, ScopeId)
 {
 	(void)ApplyBuiltinBinaryConversions("[]", &range, &index);
@@ -213,7 +213,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeRangeForSubscript(
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeRangeForMemberCall(
+ExpressionInfo Analyzer::AnalyzeRangeForMemberCall(
 	ExpressionInfo object, ScopeId scope, const LookupResult& found)
 {
 	if (found.ordinary == kNoBinding ||
@@ -241,7 +241,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeRangeForMemberCall(
 		&argument_conversions);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeRangeForAdlCall(
+ExpressionInfo Analyzer::AnalyzeRangeForAdlCall(
 	ExpressionInfo object, ScopeId scope, NameId name)
 {
 	std::vector<NodeId> argument_syntax(1, kNoNode);
@@ -260,7 +260,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeRangeForAdlCall(
 		0, kNoType, kNoEntity, 0, &argument_conversions);
 }
 
-void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
+void Analyzer::AddRangeForLoopVariable(NodeId declaration,
 	ExpressionInfo initializer, ScopeId scope, std::uint32_t output_parent)
 {
 	const NodeId specifiers = FindChild(declaration, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
@@ -356,7 +356,7 @@ void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
 	FinishRangeForLocalInitializer(scope, simple, parsed.type, initializer);
 }
 
-void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
+void Analyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
 	const NodeId declaration = FindChild(node, ::cppgm::syntax::STAG_RANGE_DECLARATION);

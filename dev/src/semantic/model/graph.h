@@ -13,15 +13,15 @@
 
 namespace cppgm
 {
-struct SemanticAnalysisStats;
-namespace pa12_semantic_detail
+namespace semantic
 {
 
+struct Stats;
+
 using namespace syntax;
-using namespace pa11;
 
 std::string RenderBindingPresentation(const Program& program,
-	const BindingRecord& binding, SemanticAnalysisStats* stats = 0);
+	const BindingRecord& binding, semantic::Stats* stats = 0);
 
 enum ValueCategory : std::uint8_t
 {

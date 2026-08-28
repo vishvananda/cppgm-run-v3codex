@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
 namespace
@@ -21,7 +21,7 @@ std::size_t AlignVirtualBase(std::size_t value, std::size_t alignment)
 
 }
 
-void SemanticAnalyzer::CollectVirtualBaseLayouts(EntityId entity,
+void Analyzer::CollectVirtualBaseLayouts(EntityId entity,
 	std::vector<VirtualBaseLayout>* layouts)
 {
 	layouts->clear();
@@ -72,7 +72,7 @@ void SemanticAnalyzer::CollectVirtualBaseLayouts(EntityId entity,
 	}
 }
 
-void SemanticAnalyzer::FinalizeClassVirtualBaseLayout(EntityId entity,
+void Analyzer::FinalizeClassVirtualBaseLayout(EntityId entity,
 	std::size_t packing_alignment, std::size_t* size,
 	std::size_t* alignment, std::size_t* natural_alignment, bool* empty_class)
 {
@@ -139,7 +139,7 @@ void SemanticAnalyzer::FinalizeClassVirtualBaseLayout(EntityId entity,
 	owner.layout_complete = true;
 }
 
-void SemanticAnalyzer::AddVirtualBaseInitializationActions(EntityId entity,
+void Analyzer::AddVirtualBaseInitializationActions(EntityId entity,
 	ScopeId function_scope, const std::vector<NodeId>& initializers,
 	const std::vector<ScopeId>& initializer_scopes,
 	const std::vector<std::uint8_t>& initializer_expanded, std::uint32_t body)

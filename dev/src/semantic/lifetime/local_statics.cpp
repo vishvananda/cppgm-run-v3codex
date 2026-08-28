@@ -6,10 +6,10 @@
 
 namespace cppgm
 {
-namespace pa12_semantic_detail
+namespace semantic
 {
 
-bool SemanticAnalyzer::ShouldDeferClassTemplateMemberExceptionSpecification(
+bool Analyzer::ShouldDeferClassTemplateMemberExceptionSpecification(
 	NodeId declarator) const
 {
 	if (current_class_context_ == kNoEntity ||
@@ -20,7 +20,7 @@ bool SemanticAnalyzer::ShouldDeferClassTemplateMemberExceptionSpecification(
 		FirstSemanticChild(qualifier) != kNoNode;
 }
 
-bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope,
+bool Analyzer::IsNonthrowing(NodeId declarator, ScopeId scope,
 	bool force_evaluation)
 {
 	const NodeId qualifier = FindChild(declarator, ::cppgm::syntax::STAG_FUNCTION_QUALIFIER);
@@ -58,7 +58,7 @@ bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope,
 	return expression.value != 0;
 }
 
-void SemanticAnalyzer::ConfigureFunctionExceptionSpecification(
+void Analyzer::ConfigureFunctionExceptionSpecification(
 	BindingId binding, NodeId declarator, ScopeId scope,
 	bool force_evaluation)
 {
@@ -143,7 +143,7 @@ void SemanticAnalyzer::ConfigureFunctionExceptionSpecification(
 	function.exception_specification_configured = true;
 }
 
-bool SemanticAnalyzer::IsConstexprLiteralType(TypeId type) const
+bool Analyzer::IsConstexprLiteralType(TypeId type) const
 {
 	const TypeRecord& top = program_->types.Get(type);
 	if (top.kind == TYPE_QUALIFIED)
@@ -201,7 +201,7 @@ bool SemanticAnalyzer::IsConstexprLiteralType(TypeId type) const
 	return true;
 }
 
-bool SemanticAnalyzer::IsConstexprConstructorOwnerType(EntityId entity) const
+bool Analyzer::IsConstexprConstructorOwnerType(EntityId entity) const
 {
 	if (entity == kNoEntity || entity >= program_->entities.size()) return false;
 	const EntityRecord& owner = program_->entities[entity];
@@ -220,7 +220,7 @@ bool SemanticAnalyzer::IsConstexprConstructorOwnerType(EntityId entity) const
 	return true;
 }
 
-bool SemanticAnalyzer::IsConstexprDefaultConstructibleType(TypeId type) const
+bool Analyzer::IsConstexprDefaultConstructibleType(TypeId type) const
 {
 	const TypeRecord& top = program_->types.Get(type);
 	if (top.kind == TYPE_QUALIFIED || top.kind == TYPE_ARRAY)
@@ -256,7 +256,7 @@ bool SemanticAnalyzer::IsConstexprDefaultConstructibleType(TypeId type) const
 	return false;
 }
 
-bool SemanticAnalyzer::IsConstexprImplicitDefaultConstructor(
+bool Analyzer::IsConstexprImplicitDefaultConstructor(
 	EntityId entity) const
 {
 	if (entity == kNoEntity || entity >= program_->entities.size())
@@ -280,7 +280,7 @@ bool SemanticAnalyzer::IsConstexprImplicitDefaultConstructor(
 	return true;
 }
 
-bool SemanticAnalyzer::IsConstexprCallableType(TypeId type,
+bool Analyzer::IsConstexprCallableType(TypeId type,
 	bool constructor) const
 {
 	const TypeRecord& function = program_->types.Get(type);
@@ -293,7 +293,7 @@ bool SemanticAnalyzer::IsConstexprCallableType(TypeId type,
 	return true;
 }
 
-TypeId SemanticAnalyzer::ApplyConstexprMemberFunctionType(TypeId type,
+TypeId Analyzer::ApplyConstexprMemberFunctionType(TypeId type,
 	EntityId owner, bool static_member)
 {
 	if (owner == kNoEntity || static_member) return type;
@@ -310,7 +310,7 @@ TypeId SemanticAnalyzer::ApplyConstexprMemberFunctionType(TypeId type,
 		function.variadic, function.cv | CV_CONST, function.ref_qualifier);
 }
 
-TypeId SemanticAnalyzer::ApplyConstexprDeclaredFunctionType(TypeId type,
+TypeId Analyzer::ApplyConstexprDeclaredFunctionType(TypeId type,
 	ScopeId owner, NameId name, EntityId entity)
 {
 	bool static_member = false;
@@ -333,7 +333,7 @@ TypeId SemanticAnalyzer::ApplyConstexprDeclaredFunctionType(TypeId type,
 	return ApplyConstexprMemberFunctionType(type, entity, static_member);
 }
 
-void SemanticAnalyzer::ValidateConstexprCallableType(TypeId type,
+void Analyzer::ValidateConstexprCallableType(TypeId type,
 	bool constructor) const
 {
 	if (!IsConstexprCallableType(type, constructor))
@@ -341,7 +341,7 @@ void SemanticAnalyzer::ValidateConstexprCallableType(TypeId type,
 			"constexpr callable uses a non-literal result or parameter type");
 }
 
-void SemanticAnalyzer::ValidateConstexprClassDeclarations(
+void Analyzer::ValidateConstexprClassDeclarations(
 	EntityId entity)
 {
 	if (entity == kNoEntity || entity >= program_->entities.size())
@@ -418,7 +418,7 @@ void SemanticAnalyzer::ValidateConstexprClassDeclarations(
 		}
 }
 
-void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
+void Analyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 	BindingId object, TypeId type, std::uint32_t initializer,
 	NameId source_file, std::uint32_t source_line,
 	std::uint32_t source_column, std::uint32_t source_token_first,
@@ -485,7 +485,7 @@ void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 		source_identity_presentation));
 }
 
-void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
+void Analyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 	bool local, bool declaration_only, std::uint32_t variable,
 	BindingId object, TypeId type, NameId source_file,
 	std::uint32_t source_line, std::uint32_t source_column,
@@ -529,7 +529,7 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 	}
 }
 
-bool SemanticAnalyzer::DemandRuntimeInitializerFunctions(
+bool Analyzer::DemandRuntimeInitializerFunctions(
 	std::uint32_t initializer, bool function_addresses_only)
 {
 	bool specialization_owned_address = false;
