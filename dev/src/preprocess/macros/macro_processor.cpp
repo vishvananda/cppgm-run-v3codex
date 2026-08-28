@@ -1,4 +1,4 @@
-#include "macro_processor.h"
+#include "preprocess/macros/macro_processor.h"
 
 #include <algorithm>
 #include <cctype>
@@ -18,12 +18,12 @@
 #include <utility>
 #include <vector>
 
-#include "control_expression.h"
-#include "flat_hash_map.h"
-#include "hosted_preprocessor_probes.h"
-#include "IPPTokenStream.h"
-#include "macro_operator_code.h"
-#include "pp_tokenizer.h"
+#include "preprocess/expressions/control_expression.h"
+#include "support/containers/flat_hash_map.h"
+#include "preprocess/hosted/preprocessor_probes.h"
+#include "preprocess/tokens/IPPTokenStream.h"
+#include "preprocess/macros/macro_operator_code.h"
+#include "preprocess/tokens/pp_tokenizer.h"
 
 namespace cppgm
 {

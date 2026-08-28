@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "cy86_program.h"
-#include "post_tokenizer.h"
+#include "preprocess/tokens/post_tokenizer.h"
 
 namespace cppgm
 {

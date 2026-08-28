@@ -1,4 +1,4 @@
-#include "hosted_builtin_registry.h"
+#include "preprocess/hosted/builtin_registry.h"
 
 #include <cstddef>
 #include <stdexcept>

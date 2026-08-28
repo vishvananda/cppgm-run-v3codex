@@ -1,5 +1,5 @@
 #include "pa10_syntax_model.h"
-#include "post_tokenizer.h"
+#include "preprocess/tokens/post_tokenizer.h"
 
 #include <algorithm>
 #include <cstdint>

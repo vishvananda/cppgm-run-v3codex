@@ -1,6 +1,6 @@
 #include "pa30_lowir_adapter.h"
 
-#include "decimal_spelling.h"
+#include "support/numeric/decimal_spelling.h"
 #include "function_demand_reason.h"
 
 #include <algorithm>

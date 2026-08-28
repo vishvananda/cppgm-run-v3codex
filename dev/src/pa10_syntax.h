@@ -5,8 +5,8 @@
 #include <iosfwd>
 #include <string>
 
-#include "frontend_intern.h"
-#include "macro_processor.h"
+#include "support/interning/frontend_intern.h"
+#include "preprocess/macros/macro_processor.h"
 
 namespace cppgm
 {

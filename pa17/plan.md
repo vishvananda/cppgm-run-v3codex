@@ -58,7 +58,7 @@ represented semantic input or emitted IR.
 | Templates and repeated work | Pass for the inherited declaration-only template surface available through PA17. Canonical template identity plus canonical arguments key specialization reuse, and monotonic demand emits once. Template-aware class-value semantics and general body instantiation remain explicitly outside PA17. |
 | Lowering and backend | Pass through typed LowIR. Functions and ABI entries lower once from semantic facts. The only whole-program pass coalesces cross-translation-unit lifecycle roles. Machine IR, native code, and ELF are later assignments and are not claimed here. |
 | Allocation and scaling | Pass. Translation-unit semantic arenas, compact IDs/indexes, inline-small sequences, geometric vectors, and function-local lowering state own hot data. Large fixed class arrays now lower to loops, and destructor-chain decisions are memoized. |
-| Self-containment | Pass. Production sources contain no reference/host compiler invocation, cached answers, test/source-name branches, or subprocess output path. `dev/src/test_runner.cpp` is test harness infrastructure and is not used to produce compiler output. |
+| Self-containment | Pass. Production sources contain no reference/host compiler invocation, cached answers, test/source-name branches, or subprocess output path. `dev/src/support/testing/test_runner.cpp` is test harness infrastructure and is not used to produce compiler output. |
 
 The file audit's 11 header-division advisories are unchanged and non-fatal.
 They identify established CRTP/model headers; this audit added no new source

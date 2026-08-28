@@ -4,7 +4,7 @@
 #include "pa12_semantic_model.h"
 #include "pa19_template_presentation.h"
 #include "pa22_lambda_presentation.h"
-#include "post_tokenizer.h"
+#include "preprocess/tokens/post_tokenizer.h"
 
 #include <algorithm>
 #include <limits>

@@ -1,5 +1,5 @@
 #include "pa12_semantic_detail.h"
-#include "post_tokenizer.h"
+#include "preprocess/tokens/post_tokenizer.h"
 
 #include <stdexcept>
 #include <string>

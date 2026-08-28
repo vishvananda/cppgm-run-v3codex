@@ -3,7 +3,7 @@
 
 #include "pa10_syntax_model.h"
 #include "pa10_parser_token_classification.h"
-#include "hosted_builtin_registry.h"
+#include "preprocess/hosted/builtin_registry.h"
 
 #include <cstddef>
 #include <limits>

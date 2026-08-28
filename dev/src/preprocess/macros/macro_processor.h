@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "control_expression.h"
+#include "preprocess/expressions/control_expression.h"
 
 namespace cppgm
 {

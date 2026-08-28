@@ -95,7 +95,7 @@ $(BUILTIN_HOST_CONFIG): FORCE
 		perl gen_builtin_host_config.pl > $@.tmp
 	@if ! cmp -s $@.tmp $@ 2>/dev/null; then mv -f $@.tmp $@; else rm -f $@.tmp; fi
 
-$(OBJDIR)/preprocessor.o: $(BUILTIN_HOST_CONFIG)
+$(OBJDIR)/$(FRONTEND_BUILTIN_CONFIG_SOURCE_ID).o: $(BUILTIN_HOST_CONFIG)
 
 $(COMPILE_CONFIG_STAMP): FORCE | $(OBJDIR)
 	@printf '%s\n%s\n' "$(CC_FLAGS)" "$(ENTRY_CC_FLAGS)" > $@.tmp
@@ -107,7 +107,7 @@ $(RUNNER_STATE_STAMP): FORCE | $(OBJDIR)
 		printf '%s\n' '$(CPPGM_TEST_RUNNER)' > $@; \
 	fi
 
-$(OBJDIR)/test_runner_enabled.o: $(SRC)/test_runner.cpp $(COMPILE_CONFIG_STAMP)
+$(OBJDIR)/test_runner_enabled.o: $(SRC)/$(FRONTEND_TEST_RUNNER_SOURCE_ID).cpp $(COMPILE_CONFIG_STAMP)
 	@mkdir -p $(@D) $(DEPDIR)
 	$(call quiet,CXX,$@)
 	$(Q)$(CXX) $(CC_FLAGS) $(TEST_RUNNER_SHARED_FLAGS) $(INC) -c -MT $@ -MMD -MP -MF $(DEPDIR)/test_runner_enabled.Td -o $@ $<

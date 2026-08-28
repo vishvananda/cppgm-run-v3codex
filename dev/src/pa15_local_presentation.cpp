@@ -1,5 +1,5 @@
 #include "pa15_local_presentation.h"
-#include "decimal_spelling.h"
+#include "support/numeric/decimal_spelling.h"
 #include "pa12_semantic_model.h"
 
 #include <algorithm>

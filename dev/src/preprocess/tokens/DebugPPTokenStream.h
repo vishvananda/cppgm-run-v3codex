@@ -5,7 +5,7 @@
 #include <iostream>
 #include <string>
 
-#include "IPPTokenStream.h"
+#include "preprocess/tokens/IPPTokenStream.h"
 
 struct DebugPPTokenStream : IPPTokenStream
 {

@@ -1,11 +1,11 @@
 // Student-facing scaffold for the PA29 `lowir2native` binary.
 
-#include "exceptions.h"
+#include "support/exceptions.h"
 #include "lowir_model.h"
 #include "lowir_native.h"
 #include "lowir_native_stats_report.h"
 #include "mir_model.h"
-#include "tool_help_text.h"
+#include "support/tool_help_text.h"
 
 #include <chrono>
 #include <cstdlib>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hosted_builtin_registry.h"
+#include "preprocess/hosted/builtin_registry.h"
 #include "pa10_syntax_model.h"
 
 #include <string>

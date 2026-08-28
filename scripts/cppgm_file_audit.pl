@@ -288,8 +288,8 @@ sub is_source_file {
 
 sub is_exempt_file {
     my ($rel) = @_;
-    return $rel =~ m{^dev/src/test_runner\.cpp$} ||
-        $rel =~ m{^dev/src/tool_help_text\.h$};
+    return $rel =~ m{^dev/src/support/testing/test_runner\.cpp$} ||
+        $rel =~ m{^dev/src/support/tool_help_text\.h$};
 }
 
 sub is_top_level_dev_tool {

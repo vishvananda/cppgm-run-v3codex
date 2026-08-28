@@ -1,6 +1,6 @@
 #include "lowir_cy86.h"
 #include "lowir_model.h"
-#include "tool_help_text.h"
+#include "support/tool_help_text.h"
 
 #include <chrono>
 #include <cstdlib>

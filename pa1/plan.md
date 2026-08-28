@@ -4,7 +4,8 @@
 
 PA1 owns the `immutable source bytes -> preprocessing-token event stream`
 boundary.  `dev/pptoken.cpp` reads one source buffer and adapts the shared stage
-to the required debug format.  `dev/src/pp_tokenizer.cpp` pulls each byte through
+to the required debug format.  `dev/src/preprocess/tokens/pp_tokenizer.cpp`
+pulls each byte through
 UTF-8 decoding, trigraph/UCN translation, line splicing, and a phase-3
 maximal-munch lexer.  Raw-string contents temporarily read physical code points
 so phase-1/2 transformations are reverted as required.  Header-name state is

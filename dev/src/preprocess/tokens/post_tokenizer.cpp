@@ -1,4 +1,4 @@
-#include "post_tokenizer.h"
+#include "preprocess/tokens/post_tokenizer.h"
 
 #include <algorithm>
 #include <chrono>
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "IPPTokenStream.h"
+#include "preprocess/tokens/IPPTokenStream.h"
 
 namespace cppgm
 {

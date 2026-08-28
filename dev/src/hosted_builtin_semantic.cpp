@@ -1,6 +1,6 @@
 #include "pa12_semantic_detail.h"
 
-#include "hosted_builtin_registry.h"
+#include "preprocess/hosted/builtin_registry.h"
 
 #include <stdexcept>
 #include <string>

@@ -1,4 +1,4 @@
-#include "control_expression.h"
+#include "preprocess/expressions/control_expression.h"
 
 #include <algorithm>
 #include <chrono>
@@ -8,8 +8,8 @@
 #include <stdexcept>
 #include <vector>
 
-#include "IPPTokenStream.h"
-#include "pp_tokenizer.h"
+#include "preprocess/tokens/IPPTokenStream.h"
+#include "preprocess/tokens/pp_tokenizer.h"
 
 namespace cppgm
 {

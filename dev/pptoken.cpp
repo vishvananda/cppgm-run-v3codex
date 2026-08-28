@@ -4,8 +4,8 @@
 #include <iterator>
 #include <string>
 
-#include "DebugPPTokenStream.h"
-#include "pp_tokenizer.h"
+#include "preprocess/tokens/DebugPPTokenStream.h"
+#include "preprocess/tokens/pp_tokenizer.h"
 
 int main(int argc, char** argv)
 {

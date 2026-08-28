@@ -1,6 +1,6 @@
 // Student-facing scaffold for the PA10+ `cppgm++` binary.
 
-#include "exceptions.h"
+#include "support/exceptions.h"
 #include "pa10_syntax.h"
 #include "pa11_semantic.h"
 #include "pa12_semantic.h"
@@ -15,9 +15,9 @@
 #include "lowir_native.h"
 #include "lowir_native_stats_report.h"
 #include "lowir_opt.h"
-#include "preprocessor.h"
+#include "preprocess/preprocessor.h"
 #include "lowir_line_table_debug.h"
-#include "tool_help_text.h"
+#include "support/tool_help_text.h"
 
 #include <chrono>
 #include <cctype>

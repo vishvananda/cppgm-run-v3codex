@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "post_tokenizer.h"
+#include "preprocess/tokens/post_tokenizer.h"
 
 namespace cppgm
 {

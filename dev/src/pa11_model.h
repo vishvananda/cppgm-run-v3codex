@@ -1,7 +1,7 @@
 #pragma once
 
-#include "frontend_intern.h"
-#include "hosted_builtin_registry.h"
+#include "support/interning/frontend_intern.h"
+#include "preprocess/hosted/builtin_registry.h"
 
 #include <cstddef>
 #include <cstdint>

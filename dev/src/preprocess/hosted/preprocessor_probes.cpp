@@ -1,6 +1,6 @@
-#include "hosted_preprocessor_probes.h"
+#include "preprocess/hosted/preprocessor_probes.h"
 
-#include "hosted_builtin_registry.h"
+#include "preprocess/hosted/builtin_registry.h"
 
 #include <cstddef>
 

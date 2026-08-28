@@ -4,7 +4,7 @@
 #include <iterator>
 #include <string>
 
-#include "post_tokenizer.h"
+#include "preprocess/tokens/post_tokenizer.h"
 
 namespace
 {

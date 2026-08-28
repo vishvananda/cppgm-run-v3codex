@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-#include "IPPTokenStream.h"
-#include "pp_tokenizer.h"
+#include "preprocess/tokens/IPPTokenStream.h"
+#include "preprocess/tokens/pp_tokenizer.h"
 
 namespace cppgm
 {

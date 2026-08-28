@@ -1,5 +1,5 @@
 #include "pa15_lowering.h"
-#include "decimal_spelling.h"
+#include "support/numeric/decimal_spelling.h"
 #include "pa15_graph_lowering.h"
 #include "pa15_control_flow_lowering.h"
 #include "pa15_conditional_lowering.h"

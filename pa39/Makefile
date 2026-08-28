@@ -86,8 +86,8 @@ INCEPTION_HOST_ALLOC_LIBS ?= $(if $(wildcard /usr/lib/x86_64-linux-gnu/libjemall
 INCEPTION_LINK_FLAGS = -std=gnu++11 $(CPPGM_STDLIB_FLAGS) $(INCEPTION_LINKER_DETERMINISM_FLAGS)
 include ../dev/frontend_source_sets.mk
 
-FRONTEND_TEST_RUNNER_SOURCE_ID ?= test_runner
-FRONTEND_BUILTIN_CONFIG_SOURCE_ID ?= preprocessor
+FRONTEND_TEST_RUNNER_SOURCE_ID ?= support/testing/test_runner
+FRONTEND_BUILTIN_CONFIG_SOURCE_ID ?= preprocess/preprocessor
 
 ifeq ($(abspath $(CXX)),$(abspath ../dev/cppgm++))
 INCEPTION_COMPILER_FLAVOR ?= selfhost

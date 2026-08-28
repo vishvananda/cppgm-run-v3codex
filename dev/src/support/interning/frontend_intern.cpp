@@ -1,4 +1,4 @@
-#include "frontend_intern.h"
+#include "support/interning/frontend_intern.h"
 
 #include <algorithm>
 #include <limits>

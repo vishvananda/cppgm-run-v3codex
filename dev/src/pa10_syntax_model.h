@@ -1,6 +1,6 @@
 #pragma once
 
-#include "frontend_intern.h"
+#include "support/interning/frontend_intern.h"
 #include "pa10_syntax.h"
 #include "pa10_syntax_tags.h"
 
