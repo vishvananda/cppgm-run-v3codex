@@ -936,6 +936,31 @@ private:
     }
   }
 
+  void finish_successful_inline(std::size_t target, bool used_single_call)
+  {
+    const std::size_t cloned_instructions = instruction_counts_[target];
+    const bool inline_hint = program_.functions[target].metadata.inline_hint;
+    discard_single_call_body(target, used_single_call);
+    ++rewrites_;
+    if(!stats_) return;
+    ++stats_->inline_calls;
+    if(inline_hint) ++stats_->inline_hint_calls;
+    stats_->inline_cloned_instructions += cloned_instructions;
+    if(used_single_call) {
+      if(definition_removing_only_) {
+        ++stats_->post_prune_inline_calls;
+        stats_->post_prune_inline_instructions += cloned_instructions;
+      } else {
+        ++stats_->inline_single_call_calls;
+        stats_->inline_single_call_instructions += cloned_instructions;
+      }
+    }
+    if(optimized_late_wave_) {
+      ++stats_->late_inline_calls;
+      stats_->late_inline_cloned_instructions += cloned_instructions;
+    }
+  }
+
   bool instruction_can_unwind(const Instruction & instruction) const
   {
     if(instruction.kind == Instruction::IK_THROW ||
@@ -1513,33 +1538,10 @@ private:
           rebuilt.push_back(std::move(source[i]));
           continue;
         }
-        const std::size_t cloned_instructions = instruction_counts_[target];
-        const bool inline_hint =
-          program_.functions[target].metadata.inline_hint;
         inline_leaf_call(function_index, ins, program_.functions[target],
           used_single_call, names, replacements, &rebuilt);
-        discard_single_call_body(target, used_single_call);
-        ++rewrites_;
+        finish_successful_inline(target, used_single_call);
         changed = true;
-        if(stats_) {
-          ++stats_->inline_calls;
-          if(inline_hint) ++stats_->inline_hint_calls;
-          stats_->inline_cloned_instructions += cloned_instructions;
-          if(used_single_call) {
-            if(definition_removing_only_) {
-              ++stats_->post_prune_inline_calls;
-              stats_->post_prune_inline_instructions += cloned_instructions;
-            } else {
-              ++stats_->inline_single_call_calls;
-              stats_->inline_single_call_instructions += cloned_instructions;
-            }
-          }
-          if(optimized_late_wave_) {
-            ++stats_->late_inline_calls;
-            stats_->late_inline_cloned_instructions +=
-              cloned_instructions;
-          }
-        }
         continue;
       }
       rebuilt.push_back(std::move(source[i]));
@@ -1610,35 +1612,10 @@ private:
               ++j;
               continue;
             }
-            const std::size_t cloned_instructions = instruction_counts_[target];
-            const bool inline_hint =
-              program_.functions[target].metadata.inline_hint;
             inline_call(function_index, b, j, program_.functions[target],
               used_single_call, &names, &replacements, &block_eh, active);
-            discard_single_call_body(target, used_single_call);
-            ++rewrites_;
+            finish_successful_inline(target, used_single_call);
             changed = true;
-            if(stats_) {
-              ++stats_->inline_calls;
-              if(inline_hint) ++stats_->inline_hint_calls;
-              stats_->inline_cloned_instructions += cloned_instructions;
-              if(used_single_call) {
-                if(definition_removing_only_) {
-                  ++stats_->post_prune_inline_calls;
-                  stats_->post_prune_inline_instructions +=
-                    cloned_instructions;
-                } else {
-                  ++stats_->inline_single_call_calls;
-                  stats_->inline_single_call_instructions +=
-                    cloned_instructions;
-                }
-              }
-              if(optimized_late_wave_) {
-                ++stats_->late_inline_calls;
-                stats_->late_inline_cloned_instructions +=
-                  cloned_instructions;
-              }
-            }
             continue;
           }
         }

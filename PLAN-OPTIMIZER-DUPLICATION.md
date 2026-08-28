@@ -955,6 +955,31 @@ This plan is complete only when:
   are `229e05d7...`/5,788,736 and `ea5e215c...`/5,026,165.  Retain: this shares
   the mechanics and makes the semantic policies explicit without runtime
   indirection or a confirmed performance regression.
+- **D4-P3 (INLINER POST-SUCCESS ACCOUNTING, RETAINED).** On the tree based on
+  `fdf1576a`, `finish_successful_inline` now captures cloned size and hint
+  state before optional single-call body discard, then owns rewrite and
+  ordinary/hinted/single-call/post-prune/late statistic accounting.  Budget
+  eligibility and consumption remain in the existing shared
+  `consume_inline_budget`; leaf rebuilding and general block/EH/call mutation
+  remain distinct.  `lowir_inline_o1.cpp` falls by 23 lines to 1,693.  PA37 is
+  188/188, PA38 is 45/45, `git diff --check` is clean, the default audit
+  improves from 36 to 35 warnings with zero fatal findings, and the tight
+  optimizer audit improves from 14 to 13 warnings.  Fresh
+  exact-candidate-source private logs cover all 215 translation units: every
+  non-timing optimizer counter and all 215 objects match, and old/candidate
+  compilers link the same `1f704cc9...` output.  The benchmark compiler shrinks
+  from `2e084ad5...`/8,647,335 to `1f704cc9...`/8,646,551 text bytes, with data
+  unchanged at 334,888 bytes.  Two clean paired self lanes are candidate
+  31.63/31.19 seconds wall and 900.19/896.40 aggregate CPU, versus old
+  31.56/31.60 wall and 899.96/897.83 CPU.  Means are 31.410/898.295 versus
+  31.580/898.895: wall improves 0.538%, aggregate CPU improves 0.067%, and
+  mean peak RSS is 230,520 versus 229,146 KiB.  Exact-source GCC lanes are
+  29.46/29.37 wall and 569.02/567.99 CPU; Clang lanes are 30.22/30.06 wall and
+  642.17/643.86 CPU.  Candidate ratios are 1.068x GCC and 1.042x Clang.
+  GCC/Clang hashes and text are `643ffb31...`/5,788,048 and
+  `4bf349c4...`/5,025,861.  Retain: the audit-visible exact duplicate is gone,
+  output is exact, and performance improves slightly without merging the
+  inliners' deliberate mutation mechanics.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
