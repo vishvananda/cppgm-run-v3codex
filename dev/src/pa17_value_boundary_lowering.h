@@ -2,7 +2,7 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
-#include "pa15_lowering_abi.h"
+#include "lowering/abi/itanium.h"
 #include "lowering/support/utilities.h"
 #include "lowering/ir/types.h"
 

@@ -1,6 +1,6 @@
 #include "pa18_polymorphism_lowering.h"
 
-#include "pa15_lowering_abi.h"
+#include "lowering/abi/itanium.h"
 #include "pa15_local_presentation.h"
 #include "lowering/support/utilities.h"
 #include "lowering/types/source_type.h"

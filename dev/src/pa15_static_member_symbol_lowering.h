@@ -1,7 +1,7 @@
 #ifndef CPPGM_PA15_STATIC_MEMBER_SYMBOL_LOWERING_H
 #define CPPGM_PA15_STATIC_MEMBER_SYMBOL_LOWERING_H
 
-#include "pa15_lowering_abi.h"
+#include "lowering/abi/itanium.h"
 #include "lowering/support/utilities.h"
 
 #include <stdexcept>

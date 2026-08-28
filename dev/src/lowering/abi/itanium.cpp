@@ -1,4 +1,4 @@
-#include "pa15_lowering_abi.h"
+#include "lowering/abi/itanium.h"
 
 #include "abi/itanium/abi_mangle.h"
 #include "lowering/ir/model.h"
