@@ -797,3 +797,31 @@ not reuse measurements from a different source tree.
   order-alternated, CPU-pinned Clang pairs have median walls of 4.775 seconds
   before and 4.765 seconds after (identical 4.275-second mean user time), so
   the extraction is performance-neutral within measurement noise.
+- **C5 COVERAGE AND STATE-OWNERSHIP AUDIT.** The exact common function-entry
+  state is the active function, temporary counter, tracked slot maps, CFG
+  incoming counts, full-expression/exception/initializer-list caches,
+  break/continue targets, labels, current bit-field unit, local presentation,
+  and the neutral current-this/member baseline.  Result shape, lifetime-return
+  planning, parameter position, source-name collection, and virtual-base
+  preparation are ordinary-only policy; synthetic result and virtual-base
+  setup stay synthetic.  Current block selection, statement-task draining,
+  constructor/destructor return routing, and namespace-initializer switches are
+  scoped or finalization invariants rather than resettable common state, while
+  symbol/type/entity maps are translation-unit caches.  Existing focused tests
+  already exercise multiple ordinary functions, ordinary-to-synthetic
+  aggregate helpers, local-static helpers, exception-cache reuse, and host TLS
+  lifecycle wrappers; those five controls pass 5/5, so no source-specific
+  coverage backfill is justified before the ownership-only extraction.
+- **C5 (COMMON FUNCTION-LOWERING RESET).**
+  `ResetCommonFunctionLoweringState` now owns exactly the state shared by
+  ordinary and synthetic function entry.  Ordinary result/lifetime/parameter
+  and virtual-base setup and synthetic result/entry setup remain local.  The
+  focused transition controls pass 5/5; PA15, PA16, PA21, PA26, and PA33 pass
+  781/781, and the 32-way through-PA33 report passes 4,626/4,626.  GCC-O3 text
+  falls 676 bytes and Clang-O3 text falls 956 bytes; all frozen O0 objects are
+  exact.  With ASLR disabled, six pinned, order-alternated GCC pairs have
+  median walls of 4.545 seconds before and 4.535 seconds after.  Clang's clean
+  samples center at 4.77--4.79 seconds (about +0.4% after, below the oracle's
+  approximately 1% resolution); one isolated 6.74-second candidate sample did
+  not recur in six immediate repetitions.  The extraction is retained as
+  size-positive and performance-neutral within the measurement floor.

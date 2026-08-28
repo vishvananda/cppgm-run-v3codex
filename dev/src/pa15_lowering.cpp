@@ -868,12 +868,9 @@ private:
 			output_.strings.intern(normalized) : lowir_model::StringId(),
 			type, low, high);
 	}
-	void BeginSyntheticFunction(Function* function)
+	void ResetCommonFunctionLoweringState(Function* function)
 	{
 		function_ = function;
-		current_result_ = LowVoid();
-		current_result_reference_ = false;
-		current_indirect_result_ = false;
 		temp_counter_ = 0;
 		ResetFunctionSlots(); ResetControlFlowReachability();
 		ResetFullExpressionFunctionState();
@@ -886,6 +883,13 @@ private:
 			stats_ ? &stats_->local_presentation : 0);
 		current_this_binding_ = kNoBinding;
 		current_member_owner_ = kNoEntity;
+	}
+	void BeginSyntheticFunction(Function* function)
+	{
+		ResetCommonFunctionLoweringState(function);
+		current_result_ = LowVoid();
+		current_result_reference_ = false;
+		current_indirect_result_ = false;
 		ResetVirtualBaseBoundary();
 		current_class_value_boundary_ = false;
 		SelectBlock(AddBlock("entry"));
@@ -952,23 +956,13 @@ private:
 		result.entry = entry_binding.owner == program_.GlobalScope() &&
 			program_.names.Get(entry_binding.name) == "main";
 		FillBoundary(node, &result.parameters, &result.result, &result.variadic);
-		function_ = &result;
+		ResetCommonFunctionLoweringState(&result);
 		current_result_ = result.result;
 		current_class_value_boundary_ = FunctionHasClassValueBoundary(record.type);
 		const TypeRecord& source_function = program_.types.Get(record.type); current_indirect_result_ = UsesIndirectClassResult(source_function.child, record.binding);
 		current_result_reference_ = IsReferenceType(source_function.child);
-		temp_counter_ = 0;
-		break_targets_.clear();
-		continue_targets_.clear();
-		label_blocks_.Clear();
-		ResetInitializedBitFieldUnit();
-		local_presentation_.Reset(output_.retain_local_names,
-			stats_ ? &stats_->local_presentation : 0);
-		ResetFunctionSlots(); ResetControlFlowReachability();
-		ResetLifetimeFunctionState(); ResetFullExpressionFunctionState();
-		ResetExceptionFunctionState(); ResetInitializerListFunctionState();
+		ResetLifetimeFunctionState();
 		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
-		current_this_binding_ = kNoBinding;
 		current_member_owner_ = record.binding == kNoBinding ? kNoEntity : program_.bindings[record.binding].member_owner;
 		const NodeChildren children = Children(node);
 		PrepareVirtualBaseBoundary(node, result.parameters);
