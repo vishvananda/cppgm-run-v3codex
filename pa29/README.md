@@ -42,9 +42,9 @@ The starter kit contains:
 - the `pa29/lowir2native.cpp` symlink back to `../dev/lowir2native.cpp`
 - shared support sources and headers under `dev/src/`
 - optional typed LowIR and machine-IR model scaffolding in
-  `dev/src/lowir/model/program.h` and `dev/src/mir_model.h`, with shared
-  exported-symbol and register support in `dev/src/ir_symbol_model.h` and
-  `dev/src/x86_register_model.h`
+  `dev/src/lowir/model/program.h` and `dev/src/native/mir/mir_model.h`, with
+  shared exported-symbol and register support in `dev/src/ir_symbol_model.h`
+  and `dev/src/native/mir/x86_register_model.h`
 - a local test suite under `pa29/tests/`
 - the grammar for this assignment called `pa29.gram`
 - the authoritative LowIR specification in `../pa13/lowir.md`
@@ -110,8 +110,8 @@ deterministic machine-IR dump to `<mirfile>`.
 
 The machine-IR dump is the serialized form of the backend model used for native
 emission. You may keep a typed MIR internally, and the optional
-`dev/src/mir_model.h` scaffold gives one possible representation, but the dump
-must describe the same program that native emission consumes.
+`dev/src/native/mir/mir_model.h` scaffold gives one possible representation,
+but the dump must describe the same program that native emission consumes.
 
 Integer immediates must preserve the complete input value, including values
 that use the high half of an `i128`. Floating immediates must be interpreted as

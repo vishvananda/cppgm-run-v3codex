@@ -38,8 +38,9 @@ The starter kit supplies:
 - `pa38/lowir2native.cpp`, linked to the editable `dev/lowir2native.cpp`
 - a `dev/lowir2native.cpp` scaffold based on `dev/lowir2native-scaffold.cpp`
 - shared machine-IR and native backend support under `dev/src/`
-- optional typed machine-IR model scaffolding in `dev/src/mir_model.h`, with
-  shared register support in `dev/src/x86_register_model.h`
+- optional typed machine-IR model scaffolding in
+  `dev/src/native/mir/mir_model.h`, with shared register support in
+  `dev/src/native/mir/x86_register_model.h`
 - test directories under `pa38/tests/`
 - harness scripts under `pa38/scripts/`
 - checked-in structural machine-IR and generated-program oracle sidecars

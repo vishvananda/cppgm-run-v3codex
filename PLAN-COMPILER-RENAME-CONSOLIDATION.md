@@ -1454,3 +1454,31 @@ checkpoint where applicable, commit, and push state.
   R9 exits with private serialization bytes, symbol/link order, foreign ELF
   import behavior, presentation policy, diagnostics, and performance intact.
   Push: with this amended tier-closure checkpoint.
+- `94acca09`, `3e85a667`, and `e5bc895d` — R10 LowIR and native path
+  checkpoint.  Grouped the LowIR model, I/O, analyses, optimizers, CY86
+  conversion, and driver under their final domain directories, then removed
+  redundant `lowir_` prefixes from the LowIR leaf names.  Grouped the native
+  backend under `mir`, `analysis`, `lowering`, `allocation`, `frame`,
+  `encoding`, `eh`, `object`, and `driver` while deliberately retaining its
+  leaf names for the next, separately audited vocabulary increment.  PA29 and
+  PA38 student documentation now points at the relocated optional MIR model
+  and register scaffolds.  Source count and canonical link order are exact.
+
+  The initial LowIR directory move and the native directory move left
+  `cppgm++`, `lowir2cy86`, `lowiropt`, and `lowir2native` byte-for-byte exact.
+  The LowIR leaf rename changed only path/symbol/build-id material: after
+  stripping symbols and the GNU build-id, all four old/new executables were
+  exact.  Their allocated sizes remained 7,085,510/21,712/6,792 bytes for
+  `cppgm++`, 412,387/3,736/1,728 for `lowir2cy86`,
+  1,127,673/3,904/1,736 for `lowiropt`, and
+  1,400,829/4,864/2,496 for `lowir2native` (text/data/bss).  Performance
+  measurement is not applicable because all meaningful executable contents
+  are exact.
+
+  Focused PA13, PA29-PA31, PA37, and PA38 gates passed, and all 18 frozen
+  output surfaces remained exact.  The three-commit cumulative checkpoint
+  passed 5471/5471; LowIR remained 124/99, semantic ownership remained 850/0,
+  lowering ownership remained 100/13/45/0, layout remained 0/0/0/18, and the
+  file audit remained zero-fatal/32-warning.  R10 remains open for native leaf
+  and identifier vocabulary plus the explicit mixed-owner audit.  Push: with
+  this amended checkpoint.

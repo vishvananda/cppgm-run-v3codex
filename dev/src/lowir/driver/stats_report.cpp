@@ -5,7 +5,7 @@
 #include "lowir/analysis/inline.h"
 #include "lowir/optimize/pipeline.h"
 #include "lowir/io/prepare.h"
-#include "mir_model.h"
+#include "native/mir/mir_model.h"
 #include "lowering/api.h"
 
 #include <ostream>

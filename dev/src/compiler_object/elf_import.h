@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lowir_native.h"
+#include "native/lowering/lowir_native.h"
 
 #include <cstddef>
 #include <string>
