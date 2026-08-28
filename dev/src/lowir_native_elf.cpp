@@ -1520,7 +1520,9 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     emit_integer_alu(out, instruction, 0x29, 5, function);
     return;
   case mir_model::MirInstruction::MI_AND:
-    emit_integer_alu(out, instruction, 0x21, 4, function);
+    emit_integer_alu(out, instruction, 0x21, 4, function,
+                     instruction.type.kind == lowir_model::LTK_INVALID ?
+                       64 : type_width(instruction.type));
     return;
   case mir_model::MirInstruction::MI_OR:
     emit_integer_alu(out, instruction, 0x09, 1, function);

@@ -199,6 +199,16 @@ protected:
         lowir_model::lowir_operation_text(instruction.op));
     }
 
+    const bool zero_extending_and =
+      instruction.op.kind == LowOperation::LOP_AND &&
+      instruction.type.kind == lowir_model::LTK_I64 &&
+      ((left.kind == MirOperand::OP_IMM && left.imm >= 0 &&
+        left.imm <= 0xffffffffLL) ||
+       (right.kind == MirOperand::OP_IMM && right.imm >= 0 &&
+        right.imm <= 0xffffffffLL));
+    const lowir_model::LowType & operation_type = zero_extending_and ?
+      machine_type(lowir_model::LTK_I32) : instruction.type;
+
     const bool three_operand_add = lowerer.optimization_level_ >= 1 &&
       instruction.op.kind == LowOperation::LOP_ADD &&
       (instruction.type.kind == lowir_model::LTK_I64 ||
@@ -229,7 +239,7 @@ protected:
       out.push_back(operation);
       if(lowerer.stats_) ++lowerer.stats_->three_operand_adds_selected;
     } else {
-      MirInstruction operation = machine_instruction(opcode, instruction.type);
+      MirInstruction operation = machine_instruction(opcode, operation_type);
       append_operand(operation, destination);
       append_operand(operation, right);
       out.push_back(operation);
