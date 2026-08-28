@@ -756,6 +756,34 @@ This plan is complete only when:
   rule and restore the three local walkers; sharing definition storage through
   a future already-built index remains a distinct experiment only if it
   eliminates work rather than adding a call boundary.
+- **D3-S1 (CROSS-MODULE SLOT PROMOTION SPLIT, REJECTED).** On the tree based
+  on `4479ea9a`, the dead-slot-store and scalar-slot-promotion implementation
+  moved from `lowir_opt.cpp` into the existing `lowir_slot_promotion.cpp`.
+  This reduced `lowir_opt.cpp` from 2,997 to 1,923 lines and left the slot
+  module at 1,212 lines.  A narrow internal interface kept constant folding,
+  storage-temporary census, and the structured-EH predicate single-owned, but
+  those helpers then crossed the translation-unit boundary.  Focused PA37
+  controls 389, 508, 524, and 525 pass; PA37 is 188/188, PA38 is 45/45,
+  `git diff --check` is clean, and the default audit remains zero-fatal with
+  36 warnings.  Exact candidate-source private logs cover all 215 translation
+  units: every non-timing optimizer counter and all 215 objects match, and
+  old/candidate self compilers link the same `4f64e08e...` output.  The
+  candidate benchmark compiler grows from `a460771a...`/8,637,371 text bytes
+  to `4f64e08e...`/8,641,187, a 3,816-byte increase.  Three clean paired self
+  lanes are candidate 32.37/31.45/31.24 seconds wall and
+  904.33/898.50/899.38 aggregate CPU, versus old 31.65/31.30/31.27 wall and
+  904.08/900.86/897.25 CPU.  Means are 31.687/900.737 versus
+  31.407/900.730: wall regresses 0.892% while CPU is flat.  Exact-source GCC
+  lanes are 29.61/29.48 wall and 571.28/572.51 CPU; Clang lanes are
+  30.39/30.78 wall and 646.82/651.34 CPU.  Candidate ratios are 1.072x GCC and
+  1.036x Clang, both worse than the old compiler's 1.063x/1.027x on the same
+  source.  GCC/Clang hashes/text are `b9d32f8e...`/5,788,620 and
+  `1d0cf297...`/5,027,845.  Two extra balanced pairs were excluded after old
+  lanes rose to 33.13/35.36 wall with aggregate CPU 915.87/909.99, materially
+  above the clean window; they do not overturn the exact clean-CPU result.
+  Reject and restore the original ownership.  A future D3 boundary must move
+  a cohesive helper unit rather than adding cross-module leaf calls merely to
+  satisfy a line-count target.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
