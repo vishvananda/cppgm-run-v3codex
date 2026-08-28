@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pa8_internal.h"
+#include "namespace_initialization/internal.h"
 
 namespace cppgm
 {

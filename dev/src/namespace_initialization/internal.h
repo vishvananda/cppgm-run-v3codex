@@ -4,8 +4,8 @@
 #include <cstddef>
 #include <vector>
 
-#include "pa8_types.h"
-#include "pa8_semantic.h"
+#include "namespace_initialization/types.h"
+#include "namespace_initialization/driver.h"
 
 namespace cppgm
 {

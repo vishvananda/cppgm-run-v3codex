@@ -1,4 +1,4 @@
-#include "pa8_semantic.h"
+#include "namespace_initialization/driver.h"
 
 #include <algorithm>
 #include <chrono>
@@ -6,7 +6,7 @@
 #include <limits>
 #include <stdexcept>
 
-#include "pa8_program.h"
+#include "namespace_initialization/program.h"
 
 namespace cppgm
 {

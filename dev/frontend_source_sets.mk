@@ -17,7 +17,7 @@ ABI_MANGLE_TOOL_SOURCES := abi/itanium/abi_mangle_model abi/itanium/abi_mangle_p
 
 RECOGNITION_SOURCES := recognition/recognizer
 NAMESPACE_SEMANTIC_SOURCES := namespace_semantics/analysis
-NAMESPACE_INITIALIZATION_SOURCES := pa8_model pa8_parser pa8_semantic
+NAMESPACE_INITIALIZATION_SOURCES := namespace_initialization/model namespace_initialization/parser namespace_initialization/driver
 CY86_SOURCES := cy86/cy86_frontend cy86/cy86_backend cy86/cy86_program
 
 CPPGM_PREPROCESS_SOURCES := preprocess/tokens/pp_tokenizer preprocess/tokens/post_tokenizer preprocess/expressions/control_expression preprocess/hosted/preprocessor_probes preprocess/macros/macro_operator_code preprocess/macros/macro_processor preprocess/preprocessor support/interning/frontend_intern preprocess/hosted/builtin_registry hosted_extension_registry

@@ -1,4 +1,4 @@
-#include "pa8_program.h"
+#include "namespace_initialization/program.h"
 
 #include <algorithm>
 #include <cmath>
