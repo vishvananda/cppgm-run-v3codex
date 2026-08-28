@@ -10,7 +10,7 @@ namespace cppgm
 namespace compiler_object
 {
 
-lowir_native::RelocatableObject ReadElfRelocatableObject(
+lowir_native::RelocatableObject ImportElfRelocatable(
 	const std::string& path, std::size_t object_ordinal);
 
 }

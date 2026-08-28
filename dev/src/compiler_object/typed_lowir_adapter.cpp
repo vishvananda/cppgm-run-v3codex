@@ -12,6 +12,8 @@
 
 namespace cppgm
 {
+namespace compiler_object
+{
 namespace
 {
 
@@ -825,7 +827,7 @@ void DiscardObjectOnlyPresentation(lowir_model::LowirProgram* program)
 
 }
 
-lowir_model::LowirProgram AdaptTypedLowIRForNative(
+lowir_model::LowirProgram AdaptTypedLowirForBackend(
 	lowering::ir::Program&& source,
 	lowir_model::LowirPreparationStats* preparation_stats,
 	lowir_model::PresentationPolicy presentation_policy)
@@ -1074,4 +1076,5 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	return target;
 }
 
-}
+}  // namespace compiler_object
+}  // namespace cppgm

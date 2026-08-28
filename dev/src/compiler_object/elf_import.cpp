@@ -105,7 +105,7 @@ std::string LocalSymbol(std::size_t object, std::size_t symbol)
 
 }
 
-lowir_native::RelocatableObject ReadElfRelocatableObject(
+lowir_native::RelocatableObject ImportElfRelocatable(
 	const std::string& path, std::size_t object_ordinal)
 {
 	const ElfReader in(path);

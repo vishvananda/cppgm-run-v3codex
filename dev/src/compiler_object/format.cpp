@@ -28,7 +28,7 @@ const std::uint64_t kMaxObjectElements = UINT64_C(1) << 28;
 class Writer
 {
 public:
-	Writer(std::vector<unsigned char>& output, ObjectSerializationStats* stats)
+	Writer(std::vector<unsigned char>& output, SerializationStats* stats)
 		: output_(output), stats_(stats) {}
 
 	void Byte(std::uint8_t value)
@@ -80,7 +80,7 @@ private:
 	}
 
 	std::vector<unsigned char>& output_;
-	ObjectSerializationStats* stats_;
+	SerializationStats* stats_;
 };
 
 std::size_t EstimateProgramPayloadSize(const lowir_model::LowirProgram& program)
@@ -1001,18 +1001,18 @@ LinkStats::LinkStats()
 	: objects(0), symbols(0), symbol_probes(0), rename_probes(0),
 	  definitions(0), coalesced_weak_definitions(0), link_nanoseconds(0) {}
 
-bool UsesPrivateCompilerObjectFormat(const std::string& path)
+bool UsesPrivateFormat(const std::string& path)
 {
 	static const std::string suffix = ".obj";
 	return path.size() >= suffix.size() &&
 		path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-void WriteCompilerObject(const std::string& path,
-	const CompilerObject& object, ObjectSerializationStats* stats)
+void Write(const std::string& path,
+	const Object& object, SerializationStats* stats)
 {
 	const std::vector<unsigned char> bytes =
-		SerializeCompilerObject(object, stats);
+		Serialize(object, stats);
 	std::ofstream output(path.c_str(),
 		std::ios::out | std::ios::binary | std::ios::trunc);
 	if (!output) throw std::runtime_error("unable to open object output: " + path);
@@ -1021,12 +1021,12 @@ void WriteCompilerObject(const std::string& path,
 	if (!output) throw std::runtime_error("unable to write object output: " + path);
 }
 
-std::vector<unsigned char> SerializeCompilerObject(
-	const CompilerObject& object, ObjectSerializationStats* stats)
+std::vector<unsigned char> Serialize(
+	const Object& object, SerializationStats* stats)
 {
 	const std::chrono::steady_clock::time_point started =
 		std::chrono::steady_clock::now();
-	if (stats) *stats = ObjectSerializationStats();
+	if (stats) *stats = SerializationStats();
 	std::vector<unsigned char> output;
 	const std::size_t reserve = EstimateProgramPayloadSize(object.lowir);
 	if (reserve) output.reserve(reserve);
@@ -1046,14 +1046,14 @@ std::vector<unsigned char> SerializeCompilerObject(
 	return output;
 }
 
-bool IsCompilerObject(const std::string& path)
+bool IsObject(const std::string& path)
 {
 	std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
 	if (!input) return false;
 	return FindCompilerPayload(input).found;
 }
 
-CompilerObject ReadCompilerObject(const std::string& path)
+Object Read(const std::string& path)
 {
 	std::ifstream file(path.c_str(), std::ios::in | std::ios::binary);
 	if (!file) throw std::runtime_error("unable to open object file: " + path);
@@ -1070,15 +1070,15 @@ CompilerObject ReadCompilerObject(const std::string& path)
 	Reader input(file, location.size - (sizeof(kMagic) - 1));
 	if (input.U32() != kVersion)
 		throw std::runtime_error("unsupported cppgm object version");
-	CompilerObject result;
+	Object result;
 	result.target = input.String();
 	result.lowir = ReadProgram(input);
 	input.RequireEnd();
 	return result;
 }
 
-lowir_model::LowirProgram LinkCompilerObjects(
-	std::vector<CompilerObject> objects, const std::string& target,
+lowir_model::LowirProgram Link(
+	std::vector<Object> objects, const std::string& target,
 	lowir_model::PresentationPolicy presentation_policy,
 	LinkStats* stats)
 {

@@ -12,7 +12,7 @@ namespace cppgm
 namespace compiler_object
 {
 
-struct CompilerObject
+struct Object
 {
 	std::string target;
 	lowir_model::LowirProgram lowir;
@@ -31,7 +31,7 @@ struct LinkStats
 	LinkStats();
 };
 
-struct ObjectSerializationStats
+struct SerializationStats
 {
 	std::size_t reserved_bytes = 0;
 	std::size_t output_bytes = 0;
@@ -40,16 +40,16 @@ struct ObjectSerializationStats
 	std::uint64_t elapsed_nanoseconds = 0;
 };
 
-bool UsesPrivateCompilerObjectFormat(const std::string& path);
-void WriteCompilerObject(const std::string& path,
-	const CompilerObject& object, ObjectSerializationStats* stats = 0);
-std::vector<unsigned char> SerializeCompilerObject(
-	const CompilerObject& object, ObjectSerializationStats* stats = 0);
-CompilerObject ReadCompilerObject(const std::string& path);
-bool IsCompilerObject(const std::string& path);
+bool UsesPrivateFormat(const std::string& path);
+void Write(const std::string& path,
+	const Object& object, SerializationStats* stats = 0);
+std::vector<unsigned char> Serialize(
+	const Object& object, SerializationStats* stats = 0);
+Object Read(const std::string& path);
+bool IsObject(const std::string& path);
 
-lowir_model::LowirProgram LinkCompilerObjects(
-	std::vector<CompilerObject> objects,
+lowir_model::LowirProgram Link(
+	std::vector<Object> objects,
 	const std::string& target,
 	lowir_model::PresentationPolicy presentation_policy =
 		lowir_model::PRESENTATION_OBJECT_ONLY,
