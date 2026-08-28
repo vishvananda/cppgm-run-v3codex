@@ -1182,3 +1182,13 @@ not reuse measurements from a different source tree.
   one 986-second candidate lane are reciprocal load outliers and receive no
   retention credit.  C11 is therefore performance-neutral so far, while the
   now-more-accurate GCC-relative gap remains a final closure item.
+- **C11-3 COVERAGE AUDIT (VARIADIC MACRO CLOSE).** PA4 already states that a
+  function-like macro may use either `(...)` or `(identifier-list, ...)`, and
+  existing positive fixtures exercise both forms.  No fixture rejected a token
+  between either ellipsis and the closing parenthesis, even though that is the
+  exact validation repeated in `ParseParameters`.  Two reference-generated
+  negative reducers now cover those two student-visible grammar boundaries;
+  they do not inspect implementation source.  GNU named variadic parameters
+  retain their separate state transition and are not part of this extraction.
+  The focused reducers pass 2/2, PA4 passes 74/74, and report-through-PA4
+  passes 173/173.  This fixture commit precedes the production extraction.
