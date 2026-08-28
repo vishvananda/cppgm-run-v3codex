@@ -1,4 +1,5 @@
 #include "lowir_native_host_eh.h"
+#include "lowir_native_mir_control_flow.h"
 
 #include <stdexcept>
 #include <unordered_map>
@@ -208,17 +209,6 @@ bool is_branch(mir_model::MirInstruction::Opcode opcode)
     opcode == mir_model::MirInstruction::MI_JNE;
 }
 
-bool is_unconditional_exit(const mir_model::MirInstruction & instruction)
-{
-  return instruction.opcode == mir_model::MirInstruction::MI_JMP ||
-    instruction.opcode == mir_model::MirInstruction::MI_JMP_INDIRECT ||
-    instruction.opcode == mir_model::MirInstruction::MI_RET ||
-    instruction.opcode == mir_model::MirInstruction::MI_FRET ||
-    instruction.opcode == mir_model::MirInstruction::MI_RESUME ||
-    instruction.opcode == mir_model::MirInstruction::MI_THROW ||
-    instruction.opcode == mir_model::MirInstruction::MI_EXIT;
-}
-
 bool is_function_exit(const mir_model::MirInstruction & instruction)
 {
   return instruction.opcode == mir_model::MirInstruction::MI_RET ||
@@ -411,7 +401,8 @@ HostEhRegionPlan analyze_host_eh_regions(
     }
     if(i + 1 < function.blocks.size() &&
        (function.blocks[i].instructions.empty() ||
-        !is_unconditional_exit(function.blocks[i].instructions.back())))
+        !mir_control_flow::ends_unconditional_control_flow(
+          function.blocks[i].instructions.back().opcode)))
       catch_entry_blocks[i + 1] = true;
   }
 
@@ -516,7 +507,8 @@ HostEhRegionPlan analyze_host_eh_regions(
         throw std::logic_error(
           "host EH protected region remains active at function exit: " +
           function_name + " block " + block_name(block.id));
-      if(is_unconditional_exit(instruction)) unconditional_exit = true;
+      if(mir_control_flow::ends_unconditional_control_flow(instruction.opcode))
+        unconditional_exit = true;
     }
     if(!unconditional_exit && block_number + 1 < function.blocks.size()) {
       ++result.edge_count;

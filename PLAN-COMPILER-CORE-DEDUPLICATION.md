@@ -894,3 +894,22 @@ not reuse measurements from a different source tree.
   confirmation pair at -0.01 seconds.  Four Clang pairs have a +0.005-second
   median paired delta.  Both are performance-neutral at the timing floor.  The
   32-way C7 inception checkpoint matches every object and the final compiler.
+- **C8-1 COVERAGE AUDIT (UNCONDITIONAL MIR CONTROL FLOW).** Ordinary native
+  block-entry discovery and host-EH region analysis share only the exact
+  unconditional terminator opcode set.  PA38 branch-fallthrough cleanup and
+  fallthrough-jump elision exercise ordinary block termination; PA31 shared
+  resume after stack cleanup and ordered typed catches exercise host-EH
+  terminal handling.  Conditional-branch classification and function-return
+  classification remain separate policies.  Existing structural, object, and
+  behavioral controls cover this ownership-only extraction, so no fixture is
+  added.
+- **C8-1 (UNCONDITIONAL MIR CONTROL-FLOW PREDICATE).** A neutral native-MIR
+  helper now owns the exact JMP, indirect-JMP, RET, FRET, RESUME, THROW, and
+  EXIT terminator set used by ordinary host block-entry discovery and host-EH
+  region analysis.  Branch and function-exit predicates stay local.  Focused
+  PA29/PA31/PA38 controls pass 5/5; the affected assignment gates pass PA29
+  49/49, PA31 21/21, and all PA38 suites and property controls.  Both audits
+  remain clean with the file audit at 34 warnings.  The frozen O0 object is
+  exact and GCC-O3 compiler text grows 124 bytes.  Post-inception machine load
+  roughly doubled absolute wall time and the two paired deltas reverse at
+  -0.56 and +0.69 seconds, providing no directional regression signal.

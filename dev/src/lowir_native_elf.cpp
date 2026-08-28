@@ -9,6 +9,7 @@
 #include "lowir_native_host_eh.h"
 #include "lowir_native_integer_encoding.h"
 #include "lowir_native_lsda.h"
+#include "lowir_native_mir_control_flow.h"
 #include "lowir_native_opt.h"
 #include "lowir_native_encoding.h"
 #include "lowir_native_frame_forwarding.h"
@@ -58,18 +59,6 @@ struct HostEhStackCleanup
   std::size_t stack_bytes = 0;
 };
 
-bool ends_host_block_control_flow(
-    const mir_model::MirInstruction & instruction)
-{
-  return instruction.opcode == mir_model::MirInstruction::MI_JMP ||
-    instruction.opcode == mir_model::MirInstruction::MI_JMP_INDIRECT ||
-    instruction.opcode == mir_model::MirInstruction::MI_RET ||
-    instruction.opcode == mir_model::MirInstruction::MI_FRET ||
-    instruction.opcode == mir_model::MirInstruction::MI_RESUME ||
-    instruction.opcode == mir_model::MirInstruction::MI_THROW ||
-    instruction.opcode == mir_model::MirInstruction::MI_EXIT;
-}
-
 std::vector<unsigned char> ordinary_host_block_entries(
     const mir_model::MirFunction & function)
 {
@@ -89,7 +78,8 @@ std::vector<unsigned char> ordinary_host_block_entries(
     }
     if(i + 1 >= function.blocks.size() ||
        (!block.instructions.empty() &&
-        ends_host_block_control_flow(block.instructions.back()))) continue;
+        mir_control_flow::ends_unconditional_control_flow(
+          block.instructions.back().opcode))) continue;
     const std::uint32_t target = function.blocks[i + 1].id;
     if(target < result.size()) result[target] = 1;
   }
