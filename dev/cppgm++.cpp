@@ -1565,62 +1565,9 @@ int run_compile_driver(const DriverInvocation & invocation,
 		 << " native_literal_parse_ns="
 		 << native_stats.native_literal_parse_nanoseconds
 		 << " elf_string_table_ns="
-		 << native_stats.elf_string_table_nanoseconds
-         << " functions=" << native_stats.functions
-         << " lowir_instructions=" << native_stats.lowir_instructions
-         << " mir_instructions=" << native_stats.mir_instructions
-         << " machine_opt_input="
-         << native_stats.machine_opt_input_instructions
-         << " machine_opt_output="
-         << native_stats.machine_opt_output_instructions
-         << " machine_opt_visits="
-         << native_stats.machine_opt_instruction_visits
-         << " machine_opt_cfg_edges="
-         << native_stats.machine_opt_cfg_edge_visits
-         << " machine_opt_pushes="
-         << native_stats.machine_opt_worklist_pushes
-         << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
-         << " machine_opt_identity_moves="
-         << native_stats.machine_opt_identity_moves
-         << " machine_opt_frameless_functions="
-         << native_stats.machine_opt_frameless_functions
-         << " machine_opt_frameless_call_functions="
-         << native_stats.machine_opt_frameless_call_functions
-         << " machine_opt_frameless_saved_registers="
-         << native_stats.machine_opt_frameless_saved_registers
-         << " machine_opt_peak_bytes="
-         << native_stats.machine_opt_peak_analysis_bytes
-         << " live_location_scans=" << native_stats.live_location_scans
-         << " live_location_value_visits="
-         << native_stats.live_location_value_visits
-         << " live_location_alias_queries="
-         << native_stats.live_location_alias_queries
-         << " live_location_updates=" << native_stats.live_location_updates
-         << " spill_attempts=" << native_stats.spill_attempts
-         << " spill_value_visits=" << native_stats.spill_value_visits
-         << " spill_candidates=" << native_stats.spill_candidates
-         << " spill_full_scan_fallbacks="
-         << native_stats.spill_full_scan_fallbacks
-         << " spills=" << native_stats.spills
-         << " temporary_frame_homes_created="
-         << native_stats.temporary_frame_homes_created
-         << " temporary_frame_homes_reused="
-         << native_stats.temporary_frame_homes_reused
-         << " exact_forward_edge_values="
-         << native_stats.exact_forward_edge_values
-         << " exact_forward_edge_register_retains="
-         << native_stats.exact_forward_edge_register_retains
-         << " planned_edge_register_retains="
-         << native_stats.planned_edge_register_retains
-         << " planned_value_registers="
-         << native_stats.planned_value_registers
-         << " planned_register_grants="
-         << native_stats.planned_register_grants
-         << " planned_edge_residencies="
-         << native_stats.planned_edge_residencies
-         << " planned_interval_releases="
-         << native_stats.planned_interval_releases
-         << " span_free_edge_releases="
+		 << native_stats.elf_string_table_nanoseconds;
+	lowir_native::report_codegen_pipeline_stats(cerr, native_stats);
+	cerr << " span_free_edge_releases="
          << native_stats.span_free_edge_releases
          << " planned_phi_registers="
          << native_stats.planned_phi_registers
@@ -1827,63 +1774,10 @@ int run_link_driver(const DriverInvocation & invocation,
          << " symbols=" << link_stats.symbols
          << " symbol_probes=" << link_stats.symbol_probes
 		 << " rename_probes=" << link_stats.rename_probes
-         << " definitions=" << link_stats.definitions
-         << " weak_coalesces=" << link_stats.coalesced_weak_definitions
-         << " functions=" << native_stats.functions
-         << " lowir_instructions=" << native_stats.lowir_instructions
-         << " mir_instructions=" << native_stats.mir_instructions
-		 << " machine_opt_input="
-		 << native_stats.machine_opt_input_instructions
-		 << " machine_opt_output="
-		 << native_stats.machine_opt_output_instructions
-		 << " machine_opt_visits="
-		 << native_stats.machine_opt_instruction_visits
-		 << " machine_opt_cfg_edges="
-		 << native_stats.machine_opt_cfg_edge_visits
-		 << " machine_opt_pushes="
-		 << native_stats.machine_opt_worklist_pushes
-		 << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
-		 << " machine_opt_identity_moves="
-		 << native_stats.machine_opt_identity_moves
-		 << " machine_opt_frameless_functions="
-		 << native_stats.machine_opt_frameless_functions
-		 << " machine_opt_frameless_call_functions="
-		 << native_stats.machine_opt_frameless_call_functions
-		 << " machine_opt_frameless_saved_registers="
-		 << native_stats.machine_opt_frameless_saved_registers
-		 << " machine_opt_peak_bytes="
-		 << native_stats.machine_opt_peak_analysis_bytes
-			 << " live_location_scans=" << native_stats.live_location_scans
-			 << " live_location_value_visits="
-			 << native_stats.live_location_value_visits
-			 << " live_location_alias_queries="
-			 << native_stats.live_location_alias_queries
-			 << " live_location_updates=" << native_stats.live_location_updates
-			 << " spill_attempts=" << native_stats.spill_attempts
-			 << " spill_value_visits=" << native_stats.spill_value_visits
-			 << " spill_candidates=" << native_stats.spill_candidates
-			 << " spill_full_scan_fallbacks="
-			 << native_stats.spill_full_scan_fallbacks
-			 << " spills=" << native_stats.spills
-			 << " temporary_frame_homes_created="
-			 << native_stats.temporary_frame_homes_created
-			 << " temporary_frame_homes_reused="
-			 << native_stats.temporary_frame_homes_reused
-			 << " exact_forward_edge_values="
-			 << native_stats.exact_forward_edge_values
-			 << " exact_forward_edge_register_retains="
-			 << native_stats.exact_forward_edge_register_retains
-			 << " planned_edge_register_retains="
-			 << native_stats.planned_edge_register_retains
-			 << " planned_value_registers="
-			 << native_stats.planned_value_registers
-			 << " planned_register_grants="
-			 << native_stats.planned_register_grants
-			 << " planned_edge_residencies="
-			 << native_stats.planned_edge_residencies
-			 << " planned_interval_releases="
-			 << native_stats.planned_interval_releases
-			 << " planned_phi_registers="
+		 << " definitions=" << link_stats.definitions
+		 << " weak_coalesces=" << link_stats.coalesced_weak_definitions;
+	lowir_native::report_codegen_pipeline_stats(cerr, native_stats);
+	cerr << " planned_phi_registers="
 			 << native_stats.planned_phi_registers
 			 << " phi_register_homes="
 			 << native_stats.phi_register_homes

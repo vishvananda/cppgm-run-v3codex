@@ -585,3 +585,22 @@ rejected abstraction, cumulative verification, inception run, performance
 decision, and push checkpoint.  Each entry names the exact revision and does
 not reuse measurements from a different source tree.
 
+- **C0 (BASELINE).** Production source is unchanged from `d27de604`.  No
+  stale Cachegrind, Valgrind, perf-recording, benchmark, or inception process
+  was running; the process inspection matched only its own command line.
+  Root `make -j32 test-report-through-pa38` passes 5,465/5,465.  The default
+  PA38 audit passes with zero fatal findings and 35 warnings.  The report-only
+  six-line/100-character scan reports 164 heuristic windows across the broad
+  non-optimizer scope; these remain classification input rather than a target
+  count.
+- **C1 (DRIVER NATIVE-STATS PREFIX).** `lowir_native_stats_report` now owns
+  the exact common codegen-pipeline diagnostic prefix through planned interval
+  releases.  Compile-only and link modes retain their distinct record names,
+  surrounding fields, timing suffixes, and function census.  Normalized
+  diagnostic key order is unchanged; the focused compile object and linked
+  executable are byte-identical before and after.  PA30 passes 100/100, PA31
+  passes 31/31, and report-through-PA31 passes 4,377/4,377.  The original
+  `cppgm++.cpp:1832` duplicate is gone.  The audit remains zero-fatal/35
+  warnings because removing it exposes another previously shadowed exact ABI
+  statistics block in `cppgm++.cpp`; that newly visible driver-report family
+  is assigned to a separate C1 follow-up rather than hidden in this commit.

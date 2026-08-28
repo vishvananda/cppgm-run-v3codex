@@ -44,6 +44,52 @@ void report_elf_string_table_stats(std::ostream & output,
          << stats.final_string_suffix_aliases;
 }
 
+void report_codegen_pipeline_stats(std::ostream & output,
+    const Stats & stats)
+{
+  output << " functions=" << stats.functions
+         << " lowir_instructions=" << stats.lowir_instructions
+         << " mir_instructions=" << stats.mir_instructions
+         << " machine_opt_input=" << stats.machine_opt_input_instructions
+         << " machine_opt_output=" << stats.machine_opt_output_instructions
+         << " machine_opt_visits=" << stats.machine_opt_instruction_visits
+         << " machine_opt_cfg_edges=" << stats.machine_opt_cfg_edge_visits
+         << " machine_opt_pushes=" << stats.machine_opt_worklist_pushes
+         << " machine_opt_rewrites=" << stats.machine_opt_rewrites
+         << " machine_opt_identity_moves=" << stats.machine_opt_identity_moves
+         << " machine_opt_frameless_functions="
+         << stats.machine_opt_frameless_functions
+         << " machine_opt_frameless_call_functions="
+         << stats.machine_opt_frameless_call_functions
+         << " machine_opt_frameless_saved_registers="
+         << stats.machine_opt_frameless_saved_registers
+         << " machine_opt_peak_bytes=" << stats.machine_opt_peak_analysis_bytes
+         << " live_location_scans=" << stats.live_location_scans
+         << " live_location_value_visits="
+         << stats.live_location_value_visits
+         << " live_location_alias_queries="
+         << stats.live_location_alias_queries
+         << " live_location_updates=" << stats.live_location_updates
+         << " spill_attempts=" << stats.spill_attempts
+         << " spill_value_visits=" << stats.spill_value_visits
+         << " spill_candidates=" << stats.spill_candidates
+         << " spill_full_scan_fallbacks=" << stats.spill_full_scan_fallbacks
+         << " spills=" << stats.spills
+         << " temporary_frame_homes_created="
+         << stats.temporary_frame_homes_created
+         << " temporary_frame_homes_reused="
+         << stats.temporary_frame_homes_reused
+         << " exact_forward_edge_values=" << stats.exact_forward_edge_values
+         << " exact_forward_edge_register_retains="
+         << stats.exact_forward_edge_register_retains
+         << " planned_edge_register_retains="
+         << stats.planned_edge_register_retains
+         << " planned_value_registers=" << stats.planned_value_registers
+         << " planned_register_grants=" << stats.planned_register_grants
+         << " planned_edge_residencies=" << stats.planned_edge_residencies
+         << " planned_interval_releases=" << stats.planned_interval_releases;
+}
+
 void report_code_shape_stats(std::ostream & output, const Stats & stats)
 {
   output << " three_operand_adds_selected="
