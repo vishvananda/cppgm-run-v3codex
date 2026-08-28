@@ -662,3 +662,21 @@ not reuse measurements from a different source tree.
   immediate focused rerun passed, and a second complete through-PA38 run was
   clean.  No source or fixture was changed in response to the transient.
   `git diff --check` is clean.
+- **C2-A2 COVERAGE AUDIT (TRIVIAL LIFECYCLE FACT).** The two private predicates
+  at the top of `pa15_lowering_abi.cpp` have the same invalid-binding,
+  member-owner, function-type, zero-explicit-parameter, constructor/base-entry,
+  and destructor truth table.  Their consumers remain intentionally distinct:
+  lifecycle symbol metadata combines that binding fact with the lowered
+  implicit-object parameter and `no_inline`, whereas host-object emission uses
+  it only to omit a semantically trivial helper.  PA16 README's lifecycle
+  contract owns both policies.  Existing structural controls include the
+  unnamed-namespace constructor's `trivial_lifecycle`/alias relationship and
+  the local-class trivial-lifecycle fixture; PA16 object-lifetime and PA30
+  object/link suites cover demanded and omitted helper behavior.  Fast gates
+  are PA15, PA16, and PA30 followed by report-through-PA30 and the audit.
+- **C2-A2 (TRIVIAL LIFECYCLE FACT).** `IsTrivialLifecycleBinding` is now the
+  sole owner of the exact validated binding fact; metadata and emission policy
+  remain at their callers.  GCC-O3 compiler text falls 320 bytes from
+  7,066,657 to 7,066,337.  PA15 passes 121/121, PA16 300/300, PA30 100/100,
+  report-through-PA30 passes 4,346/4,346, the audit remains zero-fatal/34, and
+  `git diff --check` is clean.
