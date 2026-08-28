@@ -266,9 +266,9 @@ record ownership; they do not authorize a generic framework.
 | `pa12_*` and later `*_semantic*` files | the semantic subdirectory named by behavior |
 | `pa15_lowir_*` | `lowering/ir/` |
 | PA15-PA34 `*_lowering*` files | the lowering subdirectory named by behavior |
-| `pa30_object*` | `compiler_object/format` and `compiler_object/link` |
-| `pa30_elf_object*` | `compiler_object/elf_reader` |
-| `pa30_lowir_adapter*` | `lowir/io/frontend_adapter` |
+| `pa30_object*` | `compiler_object/model`, `serialization`, and `linker` |
+| `pa30_elf_object*` | `compiler_object/elf_import` |
+| `pa30_lowir_adapter*` | `compiler_object/typed_lowir_adapter` |
 | `pa30_region_*` | split among syntax, semantic, and lowering extension owners |
 | `abi_mangle_*` | `abi/itanium/` |
 | token, macro, hosted preprocessor files | `preprocess/` |
@@ -301,8 +301,8 @@ Representative leaf destinations make the intended naming concrete:
 | `pa15_lowering.cpp` | `lowering/core/program_lowerer.cpp` |
 | `pa15_lowering_abi.{h,cpp}` | `lowering/abi/abi_lowering.{h,cpp}` before symbol-family redistribution |
 | `pa18_polymorphism_lowering.{h,cpp}` | `lowering/objects/polymorphism.{h,cpp}` |
-| `pa30_object.{h,cpp}` | `compiler_object/format.{h,cpp}` plus `link.cpp` |
-| `pa30_lowir_adapter.{h,cpp}` | `lowir/io/frontend_adapter.{h,cpp}` |
+| `pa30_object.{h,cpp}` | `compiler_object/model.h`, `serialization.{h,cpp}`, and `linker.{h,cpp}` |
+| `pa30_lowir_adapter.{h,cpp}` | `compiler_object/typed_lowir_adapter.{h,cpp}` |
 | `lowir_inline_o1.{h,cpp}` | `lowir/optimize/inline_o1.{h,cpp}` |
 | `lowir_native_frame_layout.{h,cpp}` | `native/frame/layout.{h,cpp}` |
 | `lowir_native_elf.cpp` | `native/object/elf_writer.cpp` after ownership audit |
@@ -1399,3 +1399,22 @@ checkpoint where applicable, commit, and push state.
   `75e9321418e67dc21671c39b0e7c16b652181150858680ece851bed759bb0d43`.
   R8 exits with no arbitrary lowering-generation split and no retained output
   or performance regression.  Push: with this amended closure checkpoint.
+- `900fde85`, `2da200c0`, and this commit — R9 compiler-object paths and
+  vocabulary.  Grouped the typed-LowIR backend adapter, private object format,
+  and ELF import under `compiler_object/`; migrated the historical `pa30`
+  namespace to `cppgm::compiler_object`; and replaced assignment-numbered
+  object, serialization, linking, ELF-import, and backend-adaptation names with
+  responsibility names.  No compatibility alias or forwarding API remains.
+  The already-separated region syntax, semantics, and lowering owners were
+  audited and require no R9 move.
+
+  Every allocated non-`NOBITS` section of the stripped compiler remained exact
+  through all three increments, including unchanged 7,059,254-byte text.
+  Focused PA30, PA31, and PA32 gates passed and all 18 frozen output surfaces
+  were exact.  The scheduled cumulative report passed 5471/5471; LowIR
+  remained 124/99, semantic ownership remained 850/0, lowering ownership
+  remained 100/13/45/0, and the file audit remained zero-fatal/32-warning.
+  The layout census improved from 6/6/4/18 to 0 legacy paths, 0 legacy
+  includes, 0 legacy namespaces, and 18 legacy identifiers.  Performance
+  measurement is not applicable because all meaningful allocated executable
+  contents were exact.  Push: with this amended ledger checkpoint.

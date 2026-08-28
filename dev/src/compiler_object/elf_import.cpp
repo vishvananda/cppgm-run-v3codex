@@ -16,10 +16,10 @@ namespace compiler_object
 namespace
 {
 
-class ElfReader
+class ElfObjectReader
 {
 public:
-	explicit ElfReader(const std::string& path)
+	explicit ElfObjectReader(const std::string& path)
 	{
 		std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
 		if (!input) throw std::runtime_error("unable to open ELF object: " + path);
@@ -108,7 +108,7 @@ std::string LocalSymbol(std::size_t object, std::size_t symbol)
 lowir_native::RelocatableObject ImportElfRelocatable(
 	const std::string& path, std::size_t object_ordinal)
 {
-	const ElfReader in(path);
+	const ElfObjectReader in(path);
 	if (in.U32(0) != UINT32_C(0x464c457f) || in.U16(16) != 1 ||
 		in.U16(18) != 62 || in.U32(20) != 1)
 		throw std::runtime_error("unsupported ELF relocatable object: " + path);
