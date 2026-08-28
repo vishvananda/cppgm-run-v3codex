@@ -1166,3 +1166,19 @@ not reuse measurements from a different source tree.
   GCC-O3, and Clang-O3 object text changes by +20/-3/-128 bytes, respectively,
   all below a meaningful runtime threshold; cumulative C11 timing follows
   after this third retained commit.
+- **C11 CUMULATIVE CHECKPOINT A.** Commits `617144de`, `157ca0a4`, and
+  `458e7484` pass the 32-way report-through-PA38 gate at 5,469/5,469; the file
+  audit remains zero-fatal/33.  Clean current-source medians are 31.79 seconds
+  self, 20.85 GCC-built, and 21.66 Clang-built, giving corrected ratios of
+  1.525x self/GCC and 1.468x self/Clang.  Median clean self aggregate CPU is
+  906.31 seconds.  The self/GCC ratio is above the target because the two GCC
+  lanes are consistently faster than the previously load-inflated denominator,
+  not because self time increased.  Self and GCC lanes reproduce final compiler
+  SHA-256 `203d8748...` and object census `f9caeb33...`; Clang's internally
+  exact family has final SHA-256 `0815f263...` and census `4b0461b8...`.
+  A direct pre-C11/current comparison on identical current source has clean
+  baseline/candidate wall medians of 31.805/31.970 seconds and aggregate-CPU
+  medians of 905.22/906.07 seconds (+0.09% CPU).  One 955-second baseline and
+  one 986-second candidate lane are reciprocal load outliers and receive no
+  retention credit.  C11 is therefore performance-neutral so far, while the
+  now-more-accurate GCC-relative gap remains a final closure item.
