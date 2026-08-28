@@ -16,7 +16,7 @@ PREPROCESS_MACRO_SOURCES := $(PREPROCESS_CONTROL_SOURCES) preprocess/hosted/buil
 ABI_MANGLE_TOOL_SOURCES := abi/itanium/abi_mangle_model abi/itanium/abi_mangle_parse abi/itanium/abi_mangle_identity abi/itanium/abi_mangle_graph_argument abi/itanium/abi_mangle_graph_type abi/itanium/abi_mangle_type_vocabulary abi/itanium/abi_mangle_presentation abi/itanium/abi_mangle_substitution abi/itanium/abi_mangle
 
 RECOGNITION_SOURCES := recognition/recognizer
-NAMESPACE_SEMANTIC_SOURCES := pa7_semantic
+NAMESPACE_SEMANTIC_SOURCES := namespace_semantics/analysis
 NAMESPACE_INITIALIZATION_SOURCES := pa8_model pa8_parser pa8_semantic
 CY86_SOURCES := cy86/cy86_frontend cy86/cy86_backend cy86/cy86_program
 

@@ -1,4 +1,4 @@
-#include "pa7_semantic.h"
+#include "namespace_semantics/analysis.h"
 
 #include <algorithm>
 #include <array>

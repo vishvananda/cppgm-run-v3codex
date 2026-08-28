@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "pa7_semantic.h"
+#include "namespace_semantics/analysis.h"
 
 namespace
 {
