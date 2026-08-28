@@ -637,8 +637,8 @@ dev/src/semantic/presentation/type_projection.cpp	ProjectSourceClassTemplate	1	d
 dev/src/semantic/presentation/type_projection.cpp	RecordSourceTypeOverride	1	dev/src/semantic/presentation/type_projection.cpp	keep
 dev/src/semantic/presentation/vocabulary.cpp	OperationKindForName	1	dev/src/semantic/presentation/vocabulary.cpp	keep
 dev/src/semantic/presentation/vocabulary.cpp	PayloadTokenKind	1	dev/src/semantic/presentation/vocabulary.cpp	keep
-dev/src/semantic/render.cpp	DumpFunctionText	1	R6:presentation-semantic_view	review
-dev/src/semantic/render.cpp	RenderLine	1	R6:presentation-semantic_view	review
+dev/src/semantic/presentation/render.cpp	DumpFunctionText	1	dev/src/semantic/presentation/render.cpp	keep
+dev/src/semantic/presentation/render.cpp	RenderLine	1	dev/src/semantic/presentation/render.cpp	keep
 dev/src/semantic/templates/aliases_and_lambdas.cpp	AnalyzeExplicitFunctionInstantiation	1	R6:templates-lambdas-lifetime	review
 dev/src/semantic/templates/aliases_and_lambdas.cpp	AnalyzeLambdaExpression	1	R6:templates-lambdas-lifetime	review
 dev/src/semantic/templates/aliases_and_lambdas.cpp	BuildLambdaInvocationPointer	1	R6:templates-lambdas-lifetime	review
