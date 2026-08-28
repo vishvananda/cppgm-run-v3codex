@@ -992,3 +992,46 @@ not reuse measurements from a different source tree.
   Two pinned, ASLR-disabled frozen blocks are exact for both families; GCC
   baseline/candidate medians are 4.54/4.52 seconds and Clang medians are
   4.725/4.695 seconds.  C8 therefore preserves the fully optimized best case.
+- **C9 COVERAGE AUDIT (FINAL-EMISSION PEEPHOLE CHAIN).** The ordinary and
+  host-EH loops have the same ordered pre-fallback chain: carried scratch
+  store, address fold, constant division, fused integer normalization,
+  delayed frame forwarding, forwarded reload, constant byte-store
+  coalescing, flag-safe zero materialization, redundant normalization, then
+  shared return.  The ordinary fallback remains `emit_instruction`; the host
+  fallback must continue to derive landing identity and call
+  `emit_host_instruction`.  PA29 has focused generated-behavior controls for
+  every common family, including its stats-bearing scratch/redundancy cases
+  and multiple-return epilogue case.  PA31 host-EH execution/object controls
+  cover protected calls, cleanup-only resume, landing pads, unwind ranges,
+  and O1 forwarding, while PA38's layout-policy guard contains both ordinary
+  and host-EH functions.  These tests plus exact frozen-object comparison
+  cover the shared boundary without adding a source-specific fixture, so no
+  README or test backfill is needed.
+- **C9 (FINAL-EMISSION PEEPHOLE CHAIN).** One allocation-free per-block
+  emitter now owns the frozen ten-stage chain and returns the exact number of
+  MIR instructions consumed.  A force-inlined eight-opcode eligibility check
+  (`mov`, `lea`, load/store, sign/zero extension, and integer/floating return)
+  keeps all other instructions off the shared call boundary.  Ordinary and
+  host-EH fallback emission remains entirely local.  Ten focused PA29
+  programs have exact baseline/candidate MIR and native executables, and a
+  focused O1 host-EH object is exact.  PA29 passes 291/291, PA31 31/31, PA38
+  45/45, and root 32-way report-through-PA38 passes 5,467/5,467.  Both audits
+  pass; the file audit drops from 34 to 33 warnings, its actionable native
+  duplicate is gone, and `lowir_native_elf.cpp` falls from 2,983 to 2,980
+  lines.  GCC-O3 text falls 1,852 bytes, Clang-O3 falls 676, and self/GCC/Clang
+  O1 text moves +16/-260/-380 bytes.  Three current-source timing lanes have
+  median wall times of 31.77 seconds self, 21.60 GCC, and 21.34 Clang, or
+  1.471x self/GCC and 1.489x self/Clang; median self aggregate CPU is 901.50
+  seconds, at the established pre-C9 level.  A direct old/current self ABBA
+  has one load outlier but no repeated regression, and every final compiler
+  is exact.  Two pinned frozen blocks are exact at `b0d3d8d3...` for GCC and
+  `1fe5f0e4...` for Clang; baseline/candidate medians are 4.535/4.555 seconds
+  (+0.44%) for GCC and 4.755/4.730 for Clang.  Explicit-O1 inception with all
+  three job settings at 32 matches every object and the final compiler.
+- **C9 REJECTED SHAPES.** Calling the plain outlined chain for every MIR
+  instruction left the parity result at the 1.5 boundary and exposed a hot
+  per-instruction call in the self compiler.  Forcing the complete chain
+  inline instead grew self O1 text by 3,136 bytes and produced 34.91/33.60
+  second self lanes, clearly worse than the retained guarded outline.  Both
+  experiments were removed; only the small exact eligibility predicate is
+  force-inlined in the retained implementation.

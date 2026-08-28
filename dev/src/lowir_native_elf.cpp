@@ -1781,6 +1781,95 @@ std::size_t emit_forwarded_frame_reload(
   return 2;
 }
 
+__attribute__((always_inline)) inline bool common_peephole_candidate(
+    mir_model::MirInstruction::Opcode opcode)
+{
+  using mir_model::MirInstruction;
+  return opcode == MirInstruction::MI_MOV ||
+    opcode == MirInstruction::MI_LEA ||
+    opcode == MirInstruction::MI_STORE ||
+    opcode == MirInstruction::MI_LOAD ||
+    opcode == MirInstruction::MI_SEXT ||
+    opcode == MirInstruction::MI_ZEXT ||
+    opcode == MirInstruction::MI_RET ||
+    opcode == MirInstruction::MI_FRET;
+}
+
+class CommonPeepholeEmitter
+{
+public:
+  CommonPeepholeEmitter(
+      CodeBuffer & out, const mir_model::MirFunction & function,
+      const mir_model::MirBlock & block, std::size_t block_index,
+      const frame_forwarding::FrameReloadPlan & frame_reload_plan,
+      const address_folding::TransientScratchUsePlan & scratch_uses,
+      const epilogue_detail::Plan & epilogue_plan,
+      lowir_model::LocalLabelId epilogue, Stats * stats)
+    : out_(out), function_(function), block_(block),
+      block_index_(block_index), frame_reload_plan_(frame_reload_plan),
+      scratch_uses_(scratch_uses), epilogue_plan_(epilogue_plan),
+      epilogue_(epilogue), stats_(stats) {}
+
+  std::size_t emit(std::size_t instruction_index, bool flags_live) const
+  {
+    const std::vector<mir_model::MirInstruction> & instructions =
+      block_.instructions;
+    const frame_forwarding::FrameReloadPlan::InstructionAction action =
+      frame_reload_plan_.action(block_index_, instruction_index);
+    // The carry replaces the store before the peepholes run: a fold that
+    // consumed the store would orphan the paired scratch forward.
+    if(frame_forwarding::emit_carry_scratch_store(
+         out_, instructions[instruction_index], action, stats_))
+      return 1;
+    const address_folding::MemoryFoldKind fold_kind =
+      address_folding::classify_memory_fold(instructions, instruction_index);
+    if(fold_kind != address_folding::MFK_NONE) {
+      const std::size_t folded = address_folding::emit_memory_fold(
+        out_, instructions, instruction_index, function_, fold_kind,
+        scratch_uses_);
+      if(folded) return folded;
+    }
+    const std::size_t divided = emit_constant_division(
+      out_, instructions, instruction_index);
+    if(divided) return divided;
+    const std::size_t normalized = emit_fused_integer_normalization_move(
+      out_, instructions, instruction_index);
+    if(normalized) {
+      if(stats_) ++stats_->fused_integer_normalization_moves;
+      return normalized;
+    }
+    if(frame_forwarding::emit_delayed_frame_forwarding(
+         out_, instructions[instruction_index], action))
+      return 1;
+    const std::size_t forwarded = emit_forwarded_frame_reload(
+      out_, instructions, instruction_index, function_, action);
+    if(forwarded) return forwarded;
+    const std::size_t coalesced = emit_coalesced_constant_byte_stores(
+      out_, instructions, instruction_index, function_);
+    if(coalesced) return coalesced;
+    if(emit_flag_safe_zero_move(
+         out_, instructions[instruction_index], flags_live))
+      return 1;
+    if(is_redundant_integer_normalization(instructions, instruction_index)) {
+      if(stats_) ++stats_->redundant_integer_normalizations_omitted;
+      return 1;
+    }
+    return emit_shared_return(out_, instructions[instruction_index], function_,
+      epilogue_plan_, block_index_, instruction_index, epilogue_) ? 1 : 0;
+  }
+
+private:
+  CodeBuffer & out_;
+  const mir_model::MirFunction & function_;
+  const mir_model::MirBlock & block_;
+  std::size_t block_index_;
+  const frame_forwarding::FrameReloadPlan & frame_reload_plan_;
+  const address_folding::TransientScratchUsePlan & scratch_uses_;
+  const epilogue_detail::Plan & epilogue_plan_;
+  lowir_model::LocalLabelId epilogue_;
+  Stats * stats_;
+};
+
 void emit_prepared_function(
     CodeBuffer & out, const mir_model::MirFunction & function, Stats * stats)
 {
@@ -1808,62 +1897,16 @@ void emit_prepared_function(
       block.instructions);
     const std::vector<bool> flags_live =
       condition_flags_live_before(block.instructions);
+    const CommonPeepholeEmitter peepholes(
+      out, function, block, i, frame_reload_plan, scratch_uses,
+      epilogue_plan, epilogue, stats);
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
-      const frame_forwarding::FrameReloadPlan::InstructionAction
-        frame_reload_action = frame_reload_plan.action(i, j);
-      // The carry replaces the store before the peepholes run: a fold that
-      // consumed the store would orphan the paired scratch forward.
-      if(frame_forwarding::emit_carry_scratch_store(
-           out, block.instructions[j], frame_reload_action, stats))
-        continue;
-      std::size_t folded = 0;
-      const address_folding::MemoryFoldKind fold_kind =
-        address_folding::classify_memory_fold(block.instructions, j);
-      if(fold_kind != address_folding::MFK_NONE)
-        folded = address_folding::emit_memory_fold(
-          out, block.instructions, j, function, fold_kind, scratch_uses);
-      if(folded) {
-        j += folded - 1;
+      const std::size_t consumed = common_peephole_candidate(
+        block.instructions[j].opcode) ? peepholes.emit(j, flags_live[j]) : 0;
+      if(consumed) {
+        j += consumed - 1;
         continue;
       }
-      const std::size_t divided = emit_constant_division(
-        out, block.instructions, j);
-      if(divided) {
-        j += divided - 1;
-        continue;
-      }
-      const std::size_t normalized = emit_fused_integer_normalization_move(
-        out, block.instructions, j);
-      if(normalized) {
-        if(stats) ++stats->fused_integer_normalization_moves;
-        j += normalized - 1;
-        continue;
-      }
-      if(frame_forwarding::emit_delayed_frame_forwarding(
-           out, block.instructions[j], frame_reload_action))
-        continue;
-      const std::size_t forwarded = emit_forwarded_frame_reload(
-        out, block.instructions, j, function, frame_reload_action);
-      if(forwarded) {
-        j += forwarded - 1;
-        continue;
-      }
-      const std::size_t coalesced = emit_coalesced_constant_byte_stores(
-        out, block.instructions, j, function);
-      if(coalesced) {
-        j += coalesced - 1;
-        continue;
-      }
-      if(emit_flag_safe_zero_move(
-           out, block.instructions[j], flags_live[j]))
-        continue;
-      if(is_redundant_integer_normalization(block.instructions, j)) {
-        if(stats) ++stats->redundant_integer_normalizations_omitted;
-        continue;
-      }
-      if(emit_shared_return(out, block.instructions[j], function,
-           epilogue_plan, i, j, epilogue))
-        continue;
       emit_instruction(out, block.instructions[j], &function);
     }
   }
@@ -2528,62 +2571,16 @@ HostFunctionLayout emit_prepared_host_function(
         actual_frame_offset(function, function.host_eh_selector_offset),
         XR_RDX, 64);
     }
+    const CommonPeepholeEmitter peepholes(
+      out, function, block, i, frame_reload_plan, scratch_uses,
+      epilogue_plan, epilogue, stats);
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
-      const frame_forwarding::FrameReloadPlan::InstructionAction
-        frame_reload_action = frame_reload_plan.action(i, j);
-      // The carry replaces the store before the peepholes run: a fold that
-      // consumed the store would orphan the paired scratch forward.
-      if(frame_forwarding::emit_carry_scratch_store(
-           out, block.instructions[j], frame_reload_action, stats))
-        continue;
-      std::size_t folded = 0;
-      const address_folding::MemoryFoldKind fold_kind =
-        address_folding::classify_memory_fold(block.instructions, j);
-      if(fold_kind != address_folding::MFK_NONE)
-        folded = address_folding::emit_memory_fold(
-          out, block.instructions, j, function, fold_kind, scratch_uses);
-      if(folded) {
-        j += folded - 1;
+      const std::size_t consumed = common_peephole_candidate(
+        block.instructions[j].opcode) ? peepholes.emit(j, flags_live[j]) : 0;
+      if(consumed) {
+        j += consumed - 1;
         continue;
       }
-      const std::size_t divided = emit_constant_division(
-        out, block.instructions, j);
-      if(divided) {
-        j += divided - 1;
-        continue;
-      }
-      const std::size_t normalized = emit_fused_integer_normalization_move(
-        out, block.instructions, j);
-      if(normalized) {
-        if(stats) ++stats->fused_integer_normalization_moves;
-        j += normalized - 1;
-        continue;
-      }
-      if(frame_forwarding::emit_delayed_frame_forwarding(
-           out, block.instructions[j], frame_reload_action))
-        continue;
-      const std::size_t forwarded = emit_forwarded_frame_reload(
-        out, block.instructions, j, function, frame_reload_action);
-      if(forwarded) {
-        j += forwarded - 1;
-        continue;
-      }
-      const std::size_t coalesced = emit_coalesced_constant_byte_stores(
-        out, block.instructions, j, function);
-      if(coalesced) {
-        j += coalesced - 1;
-        continue;
-      }
-      if(emit_flag_safe_zero_move(
-           out, block.instructions[j], flags_live[j]))
-        continue;
-      if(is_redundant_integer_normalization(block.instructions, j)) {
-        if(stats) ++stats->redundant_integer_normalizations_omitted;
-        continue;
-      }
-      if(emit_shared_return(out, block.instructions[j], function,
-           epilogue_plan, i, j, epilogue))
-        continue;
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;
       const lowir_model::BlockId landing = landing_block ?
