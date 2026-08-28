@@ -812,3 +812,38 @@ old/new path and symbol manifest, mutation class, affected tools and earliest
 assignment, fast and cumulative tests, exact-output hashes, compiler-binary
 delta classification, file/layout audits, performance measurements, inception
 checkpoint where applicable, commit, and push state.
+
+- `6cf37205` — R1 source-set factoring.  Mutation: build plumbing only; all 14
+  expanded source lists and their order remained byte-for-byte exact.  All 14
+  dev binaries were byte-identical.  A temporary nested source ID passed dev
+  depfile reload, PA39 object probing, and 32/32/32 inception before removal.
+  Pushed.
+- `8c6a1955` — R0 developer oracles.  Mutation: audit/test infrastructure only;
+  no compiler source or source-set change.  Added the 454-file legacy manifest,
+  the contract-string allowlist, and 18-surface output oracle.  Both layout and
+  output oracles rejected deliberate negative seeds; the file audit remained
+  zero-fatal/33-warning and the LowIR audit passed 124/99.  Pushed.
+- `cf23f305` — R2 support and preprocessing paths.  Moved generic support into
+  `support/` and token, expression, macro, hosted, and pipeline sources into
+  `preprocess/`; identifiers and translation-unit order were unchanged.
+  Earliest assignment PA1; all 18 output surfaces were exact, PA1-PA8 passed
+  401/401, and the cumulative report passed 5471/5471.  Seven binaries remained
+  byte-identical; the other seven differed only because `__FILE__` basenames
+  changed from `hosted_builtin_registry.cpp`/`hosted_preprocessor_probes.cpp`
+  to their responsibility names.  Layout counts, zero-fatal/33-warning file
+  audit, and LowIR 124/99 audit were unchanged; 32/32/32 inception matched.
+  Performance: not applicable to this non-hot path-only batch.  Pushed.
+- `c1166c55` — R2 CY86 paths.  Moved the model, frontend, backend, and internal
+  headers into `cy86/`; identifiers and link order were unchanged.  Earliest
+  assignment PA9; PA9 passed 20/20, all 18 output surfaces were exact, and all
+  affected binaries were byte-identical.  The layout audit was unchanged and
+  32/32/32 inception matched.  Performance: not applicable to this path-only
+  batch.  Pushed.
+- `b30a4397` — R2 Itanium ABI paths.  Moved the mangling model, graph,
+  substitution, vocabulary, and rendering sources into `abi/itanium/`;
+  identifiers and link order were unchanged.  Earliest assignment PA14; PA14
+  passed 117/117, all 18 output surfaces and affected binaries were exact, and
+  32/32/32 inception matched.  The closing R2 cumulative report passed
+  5471/5471; layout and LowIR audits passed and the file audit remained
+  zero-fatal/33-warning.  Performance: not applicable to this path-only batch.
+  Push: with this ledger checkpoint.
