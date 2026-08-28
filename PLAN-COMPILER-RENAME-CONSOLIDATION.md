@@ -1277,3 +1277,23 @@ checkpoint where applicable, commit, and push state.
   audit remained zero-fatal/33-warning.  Performance measurement is not
   applicable to this batch because executable bytes or every meaningful
   allocated object section were exact.  Push: with this ledger checkpoint.
+- `cf7c0acd`, `99ac8e66`, and this commit — R8 call, storage, and lifetime
+  ownership paths.  Placed special-member and destructor invocation lowering
+  with `lowering/calls/`; grouped slot planning, initialization, array and
+  aggregate lifetime, temporary cleanup, local/static lifetime, and cleanup
+  continuations under `lowering/objects/`.  The obsolete `lowering/lifetime/`,
+  `lowering/initialization/`, and `lowering/storage/` divisions are empty and
+  no production include refers to them.  Source-set and link order did not
+  change.
+
+  Header-only moves left the compiler exact within each compiled-object batch.
+  The static-initialization, zero-initialization, and cleanup-continuation
+  objects retained 17/17, 4/4, and 11/11 exact allocated non-`NOBITS` sections.
+  Focused PA16, PA18, PA21, PA32, and PA34 gates passed, all 18 frozen output
+  surfaces remained exact, and the three-commit checkpoint passed 5471/5471.
+  LowIR remained 124/99, semantic ownership remained 850/0, the layout census
+  remained 6/6/4/18, and the file audit improved from 33 to 32 warnings after
+  the vague `aggregate_helpers` leaf acquired a responsibility name.
+  Performance measurement is not applicable because the executable or every
+  meaningful allocated moved-object section was exact.  Push: with this
+  ledger checkpoint.

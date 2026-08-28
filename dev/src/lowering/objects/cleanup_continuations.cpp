@@ -1,4 +1,4 @@
-#include "lowering/lifetime/cleanup_continuations.h"
+#include "lowering/objects/cleanup_continuations.h"
 
 #include <stdexcept>
 

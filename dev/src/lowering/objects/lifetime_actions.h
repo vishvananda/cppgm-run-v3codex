@@ -4,7 +4,7 @@
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
-#include "lowering/lifetime/cleanup_continuations.h"
+#include "lowering/objects/cleanup_continuations.h"
 
 #include <cstdint>
 #include <stdexcept>
