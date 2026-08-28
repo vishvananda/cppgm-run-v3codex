@@ -1,9 +1,9 @@
 #pragma once
 
-#include "native/lowering/lowir_native_selection.h"
-#include "native/lowering/lowir_native_integer_lowering.h"
-#include "native/lowering/lowir_native_value.h"
-#include "native/lowering/lowir_native_wide.h"
+#include "native/lowering/selection.h"
+#include "native/lowering/integers.h"
+#include "native/lowering/values.h"
+#include "native/lowering/wide.h"
 
 #include <cstddef>
 #include <string>

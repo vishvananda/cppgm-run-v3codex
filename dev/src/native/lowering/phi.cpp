@@ -1,4 +1,4 @@
-#include "native/lowering/lowir_native_phi_lowering.h"
+#include "native/lowering/phi.h"
 
 #include <cstddef>
 #include <stdexcept>

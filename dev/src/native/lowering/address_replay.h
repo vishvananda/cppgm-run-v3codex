@@ -1,7 +1,7 @@
 #pragma once
 
 #include "native/mir/construction.h"
-#include "native/lowering/lowir_native_value.h"
+#include "native/lowering/values.h"
 
 #include <vector>
 

@@ -1,4 +1,4 @@
-#include "native/lowering/lowir_native_control_flow.h"
+#include "native/lowering/control_flow.h"
 
 #include <algorithm>
 

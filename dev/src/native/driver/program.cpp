@@ -1,7 +1,7 @@
 #include "native/driver/program.h"
 
 #include "native/mir/construction.h"
-#include "native/lowering/lowir_native_selection.h"
+#include "native/lowering/selection.h"
 
 #include <stdexcept>
 

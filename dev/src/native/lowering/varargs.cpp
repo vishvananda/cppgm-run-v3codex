@@ -1,4 +1,4 @@
-#include "native/lowering/lowir_native_varargs.h"
+#include "native/lowering/varargs.h"
 
 #include "native/mir/construction.h"
 

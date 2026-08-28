@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <string>
 
-#include "native/lowering/lowir_native_abi.h"
+#include "native/lowering/abi.h"
 #include "native/analysis/function.h"
 #include "lowir/model/program.h"
 #include "native/mir/model.h"

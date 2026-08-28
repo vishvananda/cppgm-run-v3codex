@@ -1,4 +1,4 @@
-#include "native/lowering/lowir_native_selection.h"
+#include "native/lowering/selection.h"
 
 #include <stdexcept>
 

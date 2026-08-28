@@ -1,4 +1,4 @@
-#include "native/lowering/lowir_native_wide.h"
+#include "native/lowering/wide.h"
 
 #include "native/mir/construction.h"
 

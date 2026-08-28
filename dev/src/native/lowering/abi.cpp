@@ -1,4 +1,4 @@
-#include "native/lowering/lowir_native_abi.h"
+#include "native/lowering/abi.h"
 
 #include <algorithm>
 #include <stdexcept>

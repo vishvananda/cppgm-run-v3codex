@@ -1,8 +1,8 @@
 #pragma once
 
-#include "native/lowering/lowir_native_division_lowering.h"
+#include "native/lowering/division.h"
 #include "native/mir/construction.h"
-#include "native/lowering/lowir_native_selection.h"
+#include "native/lowering/selection.h"
 
 #include <cstddef>
 #include <stdexcept>

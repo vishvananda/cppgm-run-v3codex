@@ -3,7 +3,7 @@
 #include "native/analysis/function.h"
 #include "native/mir/construction.h"
 #include "native/mir/optimize.h"
-#include "native/lowering/lowir_native_value.h"
+#include "native/lowering/values.h"
 
 #include <algorithm>
 #include <cstddef>

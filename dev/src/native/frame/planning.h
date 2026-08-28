@@ -3,7 +3,7 @@
 #include "native/analysis/function.h"
 #include "native/frame/layout.h"
 #include "native/eh/host_regions.h"
-#include "native/lowering/lowir_native_varargs.h"
+#include "native/lowering/varargs.h"
 
 #include <cstddef>
 #include <stdexcept>

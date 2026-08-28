@@ -1,6 +1,6 @@
 #include "native/frame/home_planning.h"
 
-#include "native/lowering/lowir_native_abi.h"
+#include "native/lowering/abi.h"
 #include "native/frame/layout.h"
 #include "native/mir/construction.h"
 

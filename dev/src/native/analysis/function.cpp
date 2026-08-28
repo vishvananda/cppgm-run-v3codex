@@ -2,7 +2,7 @@
 
 #include "native/lowering/lowir_native.h"
 #include "native/analysis/forward_edges.h"
-#include "native/lowering/lowir_native_memcpy.h"
+#include "native/lowering/memcpy.h"
 
 #include <algorithm>
 #include <array>

@@ -1,10 +1,10 @@
 #pragma once
 
 #include "native/mir/construction.h"
-#include "native/lowering/lowir_native_selection.h"
+#include "native/lowering/selection.h"
 #include "native/frame/stack.h"
-#include "native/lowering/lowir_native_varargs.h"
-#include "native/lowering/lowir_native_value.h"
+#include "native/lowering/varargs.h"
+#include "native/lowering/values.h"
 
 #include <stdexcept>
 #include <vector>

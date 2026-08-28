@@ -1,9 +1,9 @@
 #pragma once
 
-#include "native/lowering/lowir_native_abi.h"
+#include "native/lowering/abi.h"
 #include "native/mir/construction.h"
-#include "native/lowering/lowir_native_selection.h"
-#include "native/lowering/lowir_native_wide.h"
+#include "native/lowering/selection.h"
+#include "native/lowering/wide.h"
 
 #include <stdexcept>
 #include <vector>

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "native/lowering/lowir_native_abi.h"
+#include "native/lowering/abi.h"
 #include "native/analysis/function.h"
-#include "native/lowering/lowir_native_selection.h"
+#include "native/lowering/selection.h"
 
 namespace lowir_native {
 namespace frame_layout {

@@ -1,7 +1,7 @@
 #include "native/allocation/location_planning.h"
 
 #include "native/lowering/lowir_native.h"
-#include "native/lowering/lowir_native_control_flow.h"
+#include "native/lowering/control_flow.h"
 
 #include <algorithm>
 #include <limits>
