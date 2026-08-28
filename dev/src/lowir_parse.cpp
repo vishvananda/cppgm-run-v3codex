@@ -559,9 +559,9 @@ private:
     program.global_declarations.push_back(result);
   }
 
-  void parse_function_declaration(Program & program)
+  template <typename FunctionRecord>
+  void parse_function_header(Program & program, FunctionRecord & result)
   {
-    FunctionDeclaration result;
     result.symbol = append_lowir_symbol(
       program, named_id('@', "function name"));
     expect("(");
@@ -569,7 +569,14 @@ private:
     expect(")");
     expect("->");
     result.return_type = type();
-    apply_symbol_metadata(metadata(), result.metadata, &result.boundary, 0, false);
+    apply_symbol_metadata(
+      metadata(), result.metadata, &result.boundary, 0, false);
+  }
+
+  void parse_function_declaration(Program & program)
+  {
+    FunctionDeclaration result;
+    parse_function_header(program, result);
     program.function_declarations.push_back(result);
   }
 
@@ -660,14 +667,7 @@ private:
   void parse_function_definition(Program & program)
   {
     Function result;
-    result.symbol = append_lowir_symbol(
-      program, named_id('@', "function name"));
-    expect("(");
-    result.params = parameter_list();
-    expect(")");
-    expect("->");
-    result.return_type = type();
-    apply_symbol_metadata(metadata(), result.metadata, &result.boundary, 0, false);
+    parse_function_header(program, result);
     result.debug_location = debug_location();
     for(std::size_t i = 0; i < result.params.size(); ++i)
       result.params[i].value = append_lowir_value(

@@ -851,3 +851,21 @@ not reuse measurements from a different source tree.
   ASLR-disabled GCC pairs have a +0.01-second median paired wall delta, and six
   Clang pairs average +0.015 seconds (+0.3%).  Both are performance-neutral at
   the timing floor, so the coherent ownership and source reduction are kept.
+- **C7-A COVERAGE AUDIT (FUNCTION HEADER PARSING).** Declaration and definition
+  parsing share symbol, named typed parameters, return type, and function/symbol
+  metadata.  Parameter value allocation, function debug location, slots,
+  blocks, labels, and instructions remain definition-only.  Existing PA13
+  controls cover declarations, both header forms with boundary metadata,
+  definition debug facts, and malformed duplicate parameters; the focused set
+  passes 4/4.  The malformed metadata suite also exercises both declaration
+  and definition headers, so no new syntax-specific fixture is justified.
+- **C7-A (SHARED FUNCTION HEADER PARSER).** One typed helper now parses the
+  symbol, parameters, return type, boundary facts, and symbol metadata for both
+  function declarations and definitions.  Definitions still allocate parameter
+  values and parse debug facts, slots, blocks, labels, and instructions only
+  after that header.  PA13, PA29, and PA37 pass 601/601, and the 32-way
+  through-PA37 report passes 5,422/5,422; the audit remains zero-fatal/34.
+  GCC-O3 text is byte-count unchanged, Clang-O3 text falls 92 bytes, and all
+  frozen O0 objects are exact.  Four
+  pinned, ASLR-disabled pairs have zero median paired wall delta with GCC and
+  +0.005 seconds with Clang, both below the timing floor.
