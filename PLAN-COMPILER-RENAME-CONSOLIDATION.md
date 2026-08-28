@@ -1185,3 +1185,43 @@ checkpoint where applicable, commit, and push state.
   the final compiler.  Performance is unchanged because every moved
   implementation object's allocated sections are exact.  Push: with this
   ledger checkpoint.
+- `de45c72a` — R7 lowering foundation namespaces.  Migrated support, Itanium
+  ABI lowering, local presentation, reachability, and typed force-inline policy
+  to their final `cppgm::lowering::*` namespaces with explicit C++11 nesting
+  and no aliases.  Section sizes stayed exact; expected mangling-driven text
+  and rodata layout changed.  PA15, all 18 output surfaces, the 5471/5471
+  cumulative report, and fresh 216-object explicit-O1 inception passed.
+
+  Six identical-current-source lanes per self producer measured old/new hot-TU
+  wall medians 7.575/7.625 seconds; paired wall and user changes were +0.20%
+  and +0.28%.  Frozen optimized-host paired changes were GCC-O3 -0.33% wall
+  and tied user, and Clang-O3 +0.31% wall / -0.12% user.  All results are within
+  the measurement floor, so the namespace batch is retained.
+- `73907b00` — R7 standalone service namespaces.  Migrated cleanup
+  continuations, zero initialization, and constant-template pooling to
+  `lowering::cleanup`, `lowering::zero_initialization`, and
+  `lowering::constant_pool`.  PA21 passed 149/149 and all 18 output surfaces
+  were exact.
+- `511c11a0` — R7 consolidated lowering implementation namespace.  Merged all
+  twelve PA15-PA34 CRTP detail namespaces into `cppgm::lowering`, renamed the
+  central `GraphLowerer` to `ProgramLowerer`, and named the lowering driver
+  consumer `lowering::SemanticGraphConsumer`.  The only declaration collision
+  was the intended consumer/base leaf name; explicit namespace qualification
+  resolved it without an alias or weaker name.  PA34 passed 375/375 and all 18
+  output surfaces were exact.
+
+  The scheduled cumulative report passed 5471/5471; LowIR remained 124/99,
+  semantic ownership remained 850/0, file audit remained zero-fatal/33-warning,
+  and fresh explicit-O1 32/32/32 inception matched all 216 objects and the
+  final compiler.  Legacy namespace declarations fell from 59 after the
+  foundation batch to 4, all belonging to the PA30 compiler-object namespace
+  reserved for R9.
+
+  Six identical-current-source lanes per self producer measured the service
+  plus CRTP merge at old/new wall medians 7.520/7.535 seconds; paired wall and
+  user changes were +0.07% and +0.14%.  Current hot-TU self/GCC/Clang medians
+  were 7.585/4.760/4.605 seconds.  Those single-TU ratios are recorded as local
+  diagnostics, not substituted for the plan's 216-source parallel-build exit
+  oracle.  Frozen optimized-host paired changes were GCC-O3 -0.64% wall /
+  -0.24% user and Clang-O3 -0.31% wall / -0.69% user.  The namespace merge is
+  therefore performance-neutral.  Push: with this ledger checkpoint.
