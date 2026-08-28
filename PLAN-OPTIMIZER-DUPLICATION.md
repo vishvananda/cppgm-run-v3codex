@@ -1,6 +1,6 @@
 # Plan: Audit and Reduce Optimizer Duplication
 
-Status: executing; D0-D5 complete, D6 re-audit next
+Status: executing; D0-D6 complete, D7 final checkpoint next
 
 Date: 2026-08-27
 
@@ -1096,6 +1096,54 @@ This plan is complete only when:
   to `613e97a9...` with 8,647,175 text and 334,936 data bytes.  No stale
   compiler, profiler, Valgrind, Cachegrind, or perf-recording process preceded
   the checkpoint.
+- **D6-P1 (COLD-SINK ROLE-NEUTRAL OPERAND VIEW, RETAINED).** The D6 re-audit
+  found that both complete operand scans in `sink_cold_only_definitions` still
+  open-coded first/second/third/args traversal despite the allocation-free,
+  serialized-order operand view established in D1.  Both scans inspect only
+  temporary identity, so they now use `all_operand_count`/`all_operand_at`.
+  The staged-copy scan remains explicit because its store/plumbing decisions
+  interpret the operand index as a role.  PA37 is 188/188, including the
+  focused cold-only definition reducer, PA38 is 45/45, `git diff --check` is
+  clean, and the default audit remains zero-fatal/35-warning.  The tight audit
+  falls from 13 to 11 warnings, removing both the internal cleanup match and
+  the misleading cleanup/staged-copy syntax match.  Fresh
+  exact-candidate-source private logs cover all 215 translation units: every
+  non-timing optimizer counter and object matches, and old/candidate compilers
+  link the same `beef91a2...` output.  Compiler text changes from 8,647,175 to
+  8,647,263 bytes, with data unchanged at 334,936 bytes.  Two reverse-order
+  paired self lanes are candidate 31.35/31.25 seconds wall and
+  897.18/896.15 aggregate CPU, versus old 31.09/32.12 wall and
+  896.65/897.55 CPU.  Means are 31.300/896.665 versus 31.605/897.100: wall
+  improves 0.965%, aggregate CPU improves 0.048%, and mean peak RSS is 229,694
+  versus 230,282 KiB.  Clean exact-source GCC lanes are 29.22/29.45 wall and
+  567.68/569.24 CPU; a 30.35/573.97 lane with elevated aggregate CPU was
+  replaced.  Clang lanes are 30.80/30.00 wall and 644.37/644.68 CPU.
+  Candidate ratios are 1.067x GCC and 1.030x Clang.  GCC/Clang hashes and text
+  are `8864af1c...`/5,788,632 and `122b0dc0...`/5,026,313.  Retain: an existing
+  exact contract now owns the role-neutral walks, role-sensitive traversal is
+  still local, output is exact, and measured performance improves.
+- **D6-A1 (FINAL TIGHT-WARNING CLASSIFICATION; TOOLING UNCHANGED).** The
+  six-line/100-character optimizer-only report now has 11 warnings.  Six are
+  include/namespace/`using` preambles: loop-simplify versus loop-opt,
+  memory-GVN versus loop-opt, the pipeline versus cleanup, PRE versus
+  memory-GVN, slot-forwarding versus loop-simplify, and small-object promotion
+  versus loop-opt.  They express no runtime ownership and need no helper.
+  The five semantic matches are deliberately local: (1) optimized and
+  post-prune inliner entry points visibly select different cleanup and
+  single-call policies even though both snapshot current body sizes; (2) the
+  two native address-folding reducers retain different sequence, liveness,
+  index, and offset eligibility before the shared D5 emission; (3) ordinary
+  and crossing placement retain different pools, span structures, i128
+  exclusions, and claim publication after the shared D5 ordering prefix;
+  (4) debug-register and debug-frame-offset queries remain typed predicates
+  rather than a sentinel-bearing generic debug-location matcher; and (5) the
+  scalar duplicate-load and Boolean-predicate memory whitelists intentionally
+  disagree on unreachable instructions and volatile/nonvolatile loads.  The
+  global 28-line production audit therefore remains unchanged.  Lowering it
+  to the report-only threshold would add known syntax noise and make these
+  policy distinctions look like defects; no stable semantic family remains
+  that would justify a new normalized scoped gate without forbidden
+  function-name or source-snippet matching.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

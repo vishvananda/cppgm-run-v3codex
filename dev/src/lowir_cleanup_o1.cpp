@@ -23,6 +23,8 @@ using lowir_model::FunctionBoundaryMetadata;
 using lowir_model::Instruction;
 using lowir_model::InstructionDebugLocation;
 using lowir_model::Operand;
+using optimizer_support::all_operand_at;
+using optimizer_support::all_operand_count;
 using optimizer_support::combine_hash;
 
 struct ResumeKey
@@ -911,14 +913,8 @@ bool sink_cold_only_definitions(Function * function,
     for(std::size_t index = 0;
         index < function->blocks[block].instructions.size(); ++index) {
       const Instruction & ins = function->blocks[block].instructions[index];
-      const Operand * fixed[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t operand = 0;
-          operand < sizeof(fixed) / sizeof(fixed[0]) + ins.args.size();
-          ++operand) {
-        const Operand & use =
-          operand < sizeof(fixed) / sizeof(fixed[0]) ?
-          *fixed[operand] :
-          ins.args[operand - sizeof(fixed) / sizeof(fixed[0])];
+      for(std::size_t operand = 0; operand < all_operand_count(ins); ++operand) {
+        const Operand & use = all_operand_at(ins, operand);
         if(use.kind != Operand::OP_TEMP) continue;
         const std::uint32_t value = static_cast<std::uint32_t>(use.value);
         if(value >= values) continue;
@@ -987,14 +983,8 @@ bool sink_cold_only_definitions(Function * function,
                                   lowir_model::ValueId value) {
     for(std::size_t index = 0; index < body.size(); ++index) {
       const Instruction & ins = body[index];
-      const Operand * fixed[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t operand = 0;
-          operand < sizeof(fixed) / sizeof(fixed[0]) + ins.args.size();
-          ++operand) {
-        const Operand & use =
-          operand < sizeof(fixed) / sizeof(fixed[0]) ?
-          *fixed[operand] :
-          ins.args[operand - sizeof(fixed) / sizeof(fixed[0])];
+      for(std::size_t operand = 0; operand < all_operand_count(ins); ++operand) {
+        const Operand & use = all_operand_at(ins, operand);
         if(use.kind == Operand::OP_TEMP && use.value == value) return index;
       }
     }
