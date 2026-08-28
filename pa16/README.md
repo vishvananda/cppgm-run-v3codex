@@ -281,6 +281,10 @@ PA16 supports the following in addition to the PA15 procedural subset:
 - local and namespace-scope class object lifetime:
   - constructor execution at declaration time / program startup
   - destructor execution at block exit, `return`, loop exit, and program shutdown
+  - a `goto` that leaves one or more active object scopes destroys those
+    objects in reverse construction order before transferring control; a
+    backward `goto` within one scope likewise destroys objects initialized
+    after the target label before reconstructing them on the next pass
   - per-thread initialization for namespace-scope `thread_local` class objects,
     with collision-free internal wrapper, guard, and initializer symbols
 - shared LowIR cleanup continuations for equal lexical destructor suffixes;

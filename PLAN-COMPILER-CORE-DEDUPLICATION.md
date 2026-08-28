@@ -747,3 +747,17 @@ not reuse measurements from a different source tree.
   change.  No test source, reference, or production behavior was changed to
   cover it.  The ordinary default-concurrency exit criterion remains open for
   final closure.
+- **C3-A2 COVERAGE AUDIT AND BACKFILL (GOTO CLEANUP RANGES).** The two reverse
+  loops in `ResolveControlFlowGoto` build the same ordinary/temporary
+  destructor action, append it to the goto, and increment the lexical visit
+  count; they differ only in validated begin/end indices for exited scopes and
+  the common scope.  Ordinary lexical and unwind cleanup have different
+  traversal/error/counter policy and remain outside this first extraction.
+  Existing PA15 goto fixtures have no class lifetime, and PA32 covers only one
+  goto out of a `try`, so neither controls both ranges.  PA16 README now states
+  the student-facing rule.  A new PA16 control checks only the relevant LowIR
+  relationships: inner-before-outer destructor calls precede a goto leaving
+  nested scopes, and a backward same-scope goto destroys the object before
+  jumping to its reconstruction block.  It does not compare a complete LowIR
+  program or production source text.  This coverage commit precedes the helper
+  change.
