@@ -847,6 +847,39 @@ This plan is complete only when:
   denominator.  Retain: this establishes explicit lifetime ownership and
   coarse phase structure without the allocation and hot facade rejected by
   D3-S2.
+- **D3-P2 (COARSE CLEANUP OWNERSHIP, RETAINED).** On the tree based on
+  `1447ff9d`, the whole DCE implementation and reusable scratch moved into
+  the existing `lowir_cleanup_o1` owner, while the whole dead-slot-store
+  dataflow moved into the existing `lowir_slot_promotion` owner.  The shared
+  cleanup header now owns the boundary/scratch declarations and one inline
+  pure-value-definition predicate; both prior local EH predicates use
+  `lowir_eh_context::is_eh_instruction`.  The split crosses one coarse call
+  per pass, adds no heap allocation, callback facade, new `.cpp`, or source-set
+  entry, and leaves the coupled simplifier/scalar-promotion mechanics local.
+  `lowir_opt.cpp` is 2,593 lines, public `optimize` is 87, cleanup is 1,219,
+  slot promotion is 319, and the declaration header is 73 lines, meeting all
+  D3 structural targets without an audit warning.  PA37 is 188/188, PA38 is
+  45/45, `git diff --check` is clean, and the default audit remains
+  zero-fatal/36-warning.  Fresh exact-candidate-source private logs cover all
+  215 translation units: every non-timing optimizer counter and all 215
+  objects match, and old/candidate self compilers link the same
+  `29460ef3...` output.  The benchmark compiler grows from
+  `6c48f22e...`/8,639,699 text and 334,744 data bytes to
+  `29460ef3...`/8,647,027 text and 334,888 data bytes.  Three clean paired
+  self lanes are candidate 31.25/31.88/31.25 seconds wall and
+  901.21/910.54/900.27 aggregate CPU, versus old 32.39/31.43/31.77 wall and
+  904.31/900.93/899.02 CPU.  Means are 31.460/904.007 versus
+  31.863/901.420: wall improves 1.266%, CPU regresses only 0.287%, and mean
+  peak RSS is 229,880 versus 229,180 KiB.  Clean exact-source GCC lanes are
+  29.49/30.01 wall and 572.24/576.51 CPU; Clang lanes are 30.43/30.02 wall
+  and 645.83/647.52 CPU.  Candidate ratios improve to 1.058x GCC and 1.041x
+  Clang from old 1.071x/1.054x.  GCC/Clang hashes and text are
+  `9504e171...`/5,790,004 and `b18c82d4...`/5,027,601.  Candidate lanes at
+  35.26/934.71 and 68.98/1,905.93 wall/CPU, GCC at 32.17/630.63, and Clang at
+  37.82/673.03 were excluded during documented host memory pressure and
+  replaced after available memory recovered.  Retain: this is the
+  responsibility-aligned, low-overhead boundary that the D3-S1/S2 evidence
+  called for.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

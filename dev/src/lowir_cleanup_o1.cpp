@@ -19,6 +19,7 @@ namespace {
 using lowir_model::Block;
 using lowir_model::BlockId;
 using lowir_model::Function;
+using lowir_model::FunctionBoundaryMetadata;
 using lowir_model::Instruction;
 using lowir_model::InstructionDebugLocation;
 using lowir_model::Operand;
@@ -1078,6 +1079,140 @@ bool sink_cold_blocks(Function * function,
     if(cold[block]) ordered.push_back(std::move(function->blocks[block]));
   function->blocks.swap(ordered);
   if(stats) ++stats->rewrites;
+  return true;
+}
+
+void DceScratch::reset(const Function & function)
+{
+  values.assign(function.value_names.size(), DceValueLiveness());
+  if(dead.size() < function.blocks.size()) dead.resize(function.blocks.size());
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    dead[block].assign(function.blocks[block].instructions.size(), 0);
+  work.clear();
+}
+
+namespace {
+bool call_is_removable(const Instruction & ins,
+                       const FunctionBoundaries & boundaries)
+{
+  if(ins.kind != Instruction::IK_CALL || !ins.dest.valid()) return false;
+  FunctionBoundaryMetadata boundary = ins.call_boundary;
+  if(ins.first.kind == Operand::OP_GLOBAL && boundaries.known[ins.first.symbol])
+    boundary = boundaries.values[ins.first.symbol];
+  return (boundary.effects == lowir_model::CFXM_READNONE ||
+          boundary.effects == lowir_model::CFXM_READONLY) &&
+    boundary.unwind == lowir_model::CUM_NO &&
+    boundary.returns != lowir_model::CRM_NORETURN;
+}
+}  // namespace
+
+bool eliminate_dead_code(Function * function,
+                         const FunctionBoundaries & boundaries,
+                         Stats * stats,
+                         DceScratch * reusable_scratch)
+{
+  bool has_candidate = false;
+  for(std::size_t i = 0; !has_candidate && i < function->blocks.size(); ++i)
+    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+      const Instruction & ins = function->blocks[i].instructions[j];
+      if(local_value_definition_is_pure(ins.kind) ||
+         (ins.kind == Instruction::IK_LOAD && !ins.volatile_access) ||
+         call_is_removable(ins, boundaries)) {
+        has_candidate = true;
+        break;
+      }
+    }
+  if(!has_candidate) {
+    if(stats) ++stats->dce_candidate_skips;
+    return false;
+  }
+  DceScratch owned_scratch;
+  DceScratch & scratch = reusable_scratch ? *reusable_scratch : owned_scratch;
+  scratch.reset(*function);
+  std::vector<DceValueLiveness> & values = scratch.values;
+  std::vector<std::vector<unsigned char> > & dead = scratch.dead;
+  const auto count_use = [&values](const Operand & operand) {
+    if(operand.kind == Operand::OP_TEMP) ++values[operand.value].uses;
+  };
+  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+      const Instruction & ins = function->blocks[i].instructions[j];
+      if(ins.dest.valid()) {
+        DceValueLiveness & value = values[ins.dest];
+        value.definition = DceLocation(i, j);
+        value.defined = true;
+      }
+      count_use(ins.first);
+      count_use(ins.second);
+      count_use(ins.third);
+      for(std::size_t k = 0; k < ins.args.size(); ++k)
+        count_use(ins.args[k]);
+      if(stats) ++stats->instruction_visits;
+    }
+  }
+
+  std::deque<DceLocation> & work = scratch.work;
+  for(std::size_t i = 0; i < values.size(); ++i) {
+    const DceValueLiveness & value = values[i];
+    if(!value.defined) continue;
+    const Instruction & ins =
+      function->blocks[value.definition.first].instructions[
+        value.definition.second];
+    if(value.uses == 0 &&
+       (local_value_definition_is_pure(ins.kind) ||
+         (ins.kind == Instruction::IK_LOAD && !ins.volatile_access) ||
+        call_is_removable(ins, boundaries))) {
+      work.push_back(value.definition);
+      if(stats) ++stats->worklist_pushes;
+    }
+  }
+
+  const auto release_operand = [&](const Operand & operand) {
+    if(operand.kind != Operand::OP_TEMP) return;
+    DceValueLiveness & value = values[operand.value];
+    if(value.uses == 0) return;
+    --value.uses;
+    if(value.uses != 0 || !value.defined) return;
+    const Instruction & producer =
+      function->blocks[value.definition.first].instructions[
+        value.definition.second];
+    if(local_value_definition_is_pure(producer.kind) ||
+       (producer.kind == Instruction::IK_LOAD && !producer.volatile_access) ||
+       call_is_removable(producer, boundaries)) {
+      work.push_back(value.definition);
+      if(stats) ++stats->worklist_pushes;
+    }
+  };
+
+  std::size_t removed = 0;
+  while(!work.empty()) {
+    const DceLocation location = work.front();
+    work.pop_front();
+    if(dead[location.first][location.second]) continue;
+    dead[location.first][location.second] = 1;
+    ++removed;
+    const Instruction & ins =
+      function->blocks[location.first].instructions[location.second];
+    release_operand(ins.first);
+    release_operand(ins.second);
+    release_operand(ins.third);
+    for(std::size_t i = 0; i < ins.args.size(); ++i)
+      release_operand(ins.args[i]);
+  }
+  if(!removed) return false;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+    std::vector<Instruction> & instructions =
+      function->blocks[i].instructions;
+    const std::size_t original_size = instructions.size();
+    std::size_t kept = 0;
+    for(std::size_t j = 0; j < original_size; ++j)
+      if(!dead[i][j]) {
+        if(kept != j) instructions[kept] = std::move(instructions[j]);
+        ++kept;
+      }
+    instructions.resize(kept);
+  }
+  if(stats) stats->rewrites += removed;
   return true;
 }
 

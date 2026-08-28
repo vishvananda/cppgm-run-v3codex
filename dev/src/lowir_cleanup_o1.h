@@ -1,14 +1,54 @@
 #pragma once
 
-#include <vector>
+#include "lowir_model.h"
 
-namespace lowir_model {
-struct Function;
-}
+#include <cstddef>
+#include <deque>
+#include <utility>
+#include <vector>
 
 namespace lowir_opt {
 
 struct Stats;
+
+struct FunctionBoundaries
+{
+  std::vector<lowir_model::FunctionBoundaryMetadata> values;
+  std::vector<unsigned char> known;
+};
+
+typedef std::pair<std::size_t, std::size_t> DceLocation;
+
+struct DceValueLiveness
+{
+  DceLocation definition = DceLocation(0, 0);
+  std::size_t uses = 0;
+  bool defined = false;
+};
+
+struct DceScratch
+{
+  std::vector<DceValueLiveness> values;
+  std::vector<std::vector<unsigned char> > dead;
+  std::deque<DceLocation> work;
+
+  void reset(const lowir_model::Function & function);
+};
+
+inline bool local_value_definition_is_pure(
+    lowir_model::Instruction::Kind kind)
+{
+  using lowir_model::Instruction;
+  return kind == Instruction::IK_CONST || kind == Instruction::IK_COPY ||
+    kind == Instruction::IK_PHI || kind == Instruction::IK_ADDR ||
+    kind == Instruction::IK_INDEX || kind == Instruction::IK_UNARY ||
+    kind == Instruction::IK_BINARY || kind == Instruction::IK_CMP ||
+    kind == Instruction::IK_CONVERT;
+}
+
+bool eliminate_dead_code(lowir_model::Function * function,
+    const FunctionBoundaries & boundaries, Stats * stats,
+    DceScratch * reusable_scratch);
 
 bool share_terminal_resume_blocks(lowir_model::Function * function,
                                   Stats * stats = 0);
