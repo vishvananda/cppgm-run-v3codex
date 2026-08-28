@@ -1318,3 +1318,23 @@ checkpoint where applicable, commit, and push state.
   explicit-O1 32/32/32 inception matched all 217 current objects (216 shared
   plus the compiler runner) and the final compiler exactly.  Push: with this
   ledger checkpoint.
+- `5c491c7e`, `394b206f`, and this commit — R8 lowering method-owner audit and
+  first repairs.  Moved complete conditional-expression lowering into the
+  existing conditional CRTP owner and complete call assembly into the new
+  `calls/FunctionCallLowering` owner, preserving inline composition and direct
+  calls.  Added `make audit-lowering-owners` and a checked-in manifest covering
+  all 96 lowering class/struct definitions and all 92 methods still owned by
+  the central `ProgramLowerer`; it queues 47 explicit storage, expression,
+  control, call, and constant routes for the rest of R8.
+
+  The conditional move rebuilt the compiler byte-for-byte.  The call move
+  changed its private method mangling and added 64 bytes of text/alignment;
+  PA15, PA17, PA18, and PA34 gates and all 18 frozen output surfaces remained
+  exact.  Six optimized-host samples per side measured old/candidate wall
+  medians of 4.635/4.655 seconds and tied user medians at 4.130 seconds; the
+  interleaved paired changes were 0.00% wall and -0.24% user, so the layout is
+  neutral.  The three-commit checkpoint passed 5471/5471, LowIR 124/99,
+  semantic ownership 850/0, lowering ownership 188/47, layout 6/6/4/18, and
+  zero-fatal/32-warning file audit.  Source IDs did not change; fresh inception
+  remains scheduled for the completed lowering tier.  Push: with this ledger
+  checkpoint.
