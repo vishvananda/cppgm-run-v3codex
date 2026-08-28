@@ -1081,16 +1081,6 @@ private:
 		if (stats_) ++stats_->instructions;
 	}
 
-	Instruction DirectCallInstruction(SymbolId symbol,
-		const LowType& result_type)
-	{
-		output_.symbols[symbol].referenced = true;
-		Instruction call(Instruction::CALL);
-		call.type = result_type;
-		call.first = Operand(Operand::FUNCTION, symbol, LowPtr());
-		return call;
-	}
-
 	Operand StorageFor(BindingId binding, const LowType& type,
 		NameId expression_name = 0)
 	{

@@ -19,6 +19,19 @@ template <class Derived>
 class FunctionCallLowering
 {
 protected:
+	lowering::ir::Instruction DirectCallInstruction(
+		lowering::ir::SymbolId symbol,
+		const lowering::ir::LowType& result_type)
+	{
+		using namespace lowering::ir;
+		Derived& derived = static_cast<Derived&>(*this);
+		derived.output_.symbols[symbol].referenced = true;
+		Instruction call(Instruction::CALL);
+		call.type = result_type;
+		call.first = Operand(Operand::FUNCTION, symbol, LowPtr());
+		return call;
+	}
+
 	lowering::ir::Operand LowerCall(std::uint32_t node,
 		const semantic::DumpNode& record,
 		const lowering::support::NodeChildren& children,
@@ -73,7 +86,7 @@ protected:
 			function_type.child, callee.binding);
 		const LowType call_type = indirect_result ?
 			LowVoid() : derived.LowerType(record.type);
-		Instruction call = direct ? derived.DirectCallInstruction(
+		Instruction call = direct ? DirectCallInstruction(
 			derived.function_symbols_[callee.binding], call_type) :
 			Instruction(Instruction::CALL);
 		if (!direct)

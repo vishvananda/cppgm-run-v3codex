@@ -64,7 +64,6 @@ method	dev/src/lowering/core/program_lowerer.cpp	Convert	1	R8:dev/src/lowering/e
 method	dev/src/lowering/core/program_lowerer.cpp	CreateGeneratedSlot	1	dev/src/lowering/core/program_lowerer.cpp	keep
 method	dev/src/lowering/core/program_lowerer.cpp	CurrentBlock	1	dev/src/lowering/core/program_lowerer.cpp	keep
 method	dev/src/lowering/core/program_lowerer.cpp	DecayAddress	1	R8:dev/src/lowering/objects/storage_access.h	review
-method	dev/src/lowering/core/program_lowerer.cpp	DirectCallInstruction	1	R8:dev/src/lowering/calls/function_calls.h	review
 method	dev/src/lowering/core/program_lowerer.cpp	Emit	1	dev/src/lowering/core/program_lowerer.cpp	keep
 method	dev/src/lowering/core/program_lowerer.cpp	EmitConditionBranch	1	R8:dev/src/lowering/control/statements.h	review
 method	dev/src/lowering/core/program_lowerer.cpp	EmitTop	1	dev/src/lowering/core/program_lowerer.cpp	keep
