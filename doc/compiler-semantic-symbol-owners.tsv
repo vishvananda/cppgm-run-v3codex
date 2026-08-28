@@ -561,11 +561,11 @@ dev/src/semantic/lifetime/special_members.cpp	EvaluateSynthesizedConstructor	1	d
 dev/src/semantic/lifetime/special_members.cpp	InheritConstructors	1	dev/src/semantic/lifetime/special_members.cpp	keep
 dev/src/semantic/lifetime/special_members.cpp	RegisterClassSpecialMember	1	dev/src/semantic/lifetime/special_members.cpp	keep
 dev/src/semantic/lifetime/special_members.cpp	TryInheritConstructors	1	dev/src/semantic/lifetime/special_members.cpp	keep
-dev/src/semantic/model/entity_ownership.cpp	AddInjectedStorageInitializationActions	1	R6:object_model-declarations-initialization	review
-dev/src/semantic/model/entity_ownership.cpp	ClearInjectedConstructorInitializers	1	R6:object_model-declarations-initialization	review
-dev/src/semantic/model/entity_ownership.cpp	RecordInjectedMemberInitializer	1	R6:object_model-declarations-initialization	review
-dev/src/semantic/model/entity_ownership.cpp	RegisterInjectedStorageMember	1	R6:object_model-declarations-initialization	review
-dev/src/semantic/model/entity_ownership.cpp	RegisterLocalTypeAbiIdentity	1	R6:object_model-declarations-initialization	review
+dev/src/semantic/declarations/entity_ownership.cpp	AddInjectedStorageInitializationActions	1	dev/src/semantic/declarations/entity_ownership.cpp	keep
+dev/src/semantic/declarations/entity_ownership.cpp	ClearInjectedConstructorInitializers	1	dev/src/semantic/declarations/entity_ownership.cpp	keep
+dev/src/semantic/declarations/entity_ownership.cpp	RecordInjectedMemberInitializer	1	dev/src/semantic/declarations/entity_ownership.cpp	keep
+dev/src/semantic/declarations/entity_ownership.cpp	RegisterInjectedStorageMember	1	dev/src/semantic/declarations/entity_ownership.cpp	keep
+dev/src/semantic/declarations/entity_ownership.cpp	RegisterLocalTypeAbiIdentity	1	dev/src/semantic/declarations/entity_ownership.cpp	keep
 dev/src/semantic/analysis/name_resolution.cpp	GeneratedLibraryPath	1	dev/src/semantic/analysis/name_resolution.cpp	keep
 dev/src/semantic/analysis/name_resolution.cpp	LookupSpelling	1	dev/src/semantic/analysis/name_resolution.cpp	keep
 dev/src/semantic/analysis/name_resolution.cpp	LookupSyntaxName	1	dev/src/semantic/analysis/name_resolution.cpp	keep
