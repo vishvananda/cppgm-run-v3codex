@@ -890,6 +890,31 @@ This plan is complete only when:
   the final compiler match.  Self and inception binaries both hash to
   `29460ef3...` with 8,647,027 text and 334,888 data bytes.  No stale
   compiler, profiler, Valgrind, or Cachegrind process preceded the checkpoint.
+- **D4-P1 (DEBUG-PRESERVING CFG JUMP REBUILD, RETAINED).** On the tree based
+  on `de7deaf7`, one allocation-free `rewrite_as_jump` helper now owns the
+  complete reset, selected target, and debug-location preservation used by
+  constant branch/switch folding and equal-target branch repair.  Target
+  selection, reachability, phi repair, and bypass policy remain at their call
+  sites.  PA37 is 188/188, PA38 is 45/45, `git diff --check` is clean, and the
+  default audit remains zero-fatal with 36 established warnings.  Fresh
+  exact-candidate-source private logs cover all 215 translation units: every
+  non-timing optimizer counter and all 215 objects match, and old/candidate
+  self compilers link the same `e43baa4d...` output.  The benchmark compiler
+  shrinks from `29460ef3...`/8,647,027 to `e43baa4d...`/8,646,687 text bytes,
+  with data unchanged at 334,888 bytes.  Two clean reverse/interleaved self
+  lanes are candidate 31.33/31.32 seconds wall and 901.55/901.53 aggregate
+  CPU, versus old 31.42/31.40 wall and 902.74/901.95 CPU.  Means are
+  31.325/901.540 versus 31.410/902.345: wall improves 0.271%, aggregate CPU
+  improves 0.089%, and mean peak RSS is 229,320 versus 229,382 KiB.  Clean
+  exact-source GCC lanes are 29.36/29.91 wall and 571.64/572.16 CPU; Clang
+  lanes are 30.57/30.98 wall and 646.65/647.73 CPU.  Candidate ratios are
+  1.057x GCC and 1.018x Clang.  GCC/Clang hashes and text are
+  `bd84fcb3...`/5,788,644 and `bc873fac...`/5,026,385.  Candidate 34.66/923.32
+  and old 39.03/922.22 wall/CPU lanes were excluded after independent host
+  contention raised both wall and aggregate CPU, then replaced by clean
+  samples.  Retain: the helper removes four exact terminal-rebuild bodies,
+  preserves the whole instruction-reset contract, and is performance-neutral
+  within the retention protocol.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

@@ -687,6 +687,16 @@ std::vector<BlockId> bypass_targets(const Function & function,
   return result;
 }
 
+void rewrite_as_jump(Instruction * terminal, Operand target)
+{
+  const lowir_model::InstructionDebugLocation debug =
+    terminal->debug_location;
+  *terminal = Instruction();
+  terminal->kind = Instruction::IK_JUMP;
+  terminal->first = std::move(target);
+  terminal->debug_location = debug;
+}
+
 bool fold_terminal_control(Function * function)
 {
   bool changed = false;
@@ -697,17 +707,10 @@ bool fold_terminal_control(Function * function)
     if(term.kind == Instruction::IK_BRANCH) {
       if(term.first.kind == Operand::OP_INTEGER && term.first.has_int_value) {
         const Operand selected = term.first.int_value ? term.second : term.third;
-        const lowir_model::InstructionDebugLocation debug = term.debug_location;
-        term = Instruction();
-        term.kind = Instruction::IK_JUMP;
-        term.first = selected;
-        term.debug_location = debug;
+        rewrite_as_jump(&term, selected);
         changed = true;
       } else if(term.second.block == term.third.block) {
-        term.kind = Instruction::IK_JUMP;
-        term.first = term.second;
-        term.second = Operand();
-        term.third = Operand();
+        rewrite_as_jump(&term, term.second);
         changed = true;
       }
     } else if(term.kind == Instruction::IK_SWITCH &&
@@ -721,11 +724,7 @@ bool fold_terminal_control(Function * function)
           selected = term.args[j + 1];
           break;
         }
-      const lowir_model::InstructionDebugLocation debug = term.debug_location;
-      term = Instruction();
-      term.kind = Instruction::IK_JUMP;
-      term.first = selected;
-      term.debug_location = debug;
+      rewrite_as_jump(&term, selected);
       changed = true;
     }
   }
@@ -806,11 +805,7 @@ bool cleanup_cfg(Function * function, Stats * stats, CleanupCfgScratch * scratch
       if(ins.kind == Instruction::IK_BRANCH &&
          ins.second.block == ins.third.block) {
         const Operand selected = ins.second;
-        const lowir_model::InstructionDebugLocation debug = ins.debug_location;
-        ins = Instruction();
-        ins.kind = Instruction::IK_JUMP;
-        ins.first = selected;
-        ins.debug_location = debug;
+        rewrite_as_jump(&ins, selected);
         changed = true;
       }
     }
