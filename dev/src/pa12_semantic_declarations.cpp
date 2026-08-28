@@ -151,9 +151,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			throw std::runtime_error("class redeclared as non-class");
 		entity = named.entity;
 		const NamedFlavor previous = program_->entities[entity].flavor;
-		if ((previous == NAMED_UNION) != (flavor == NAMED_UNION) ||
-			(previous != NAMED_STRUCT && previous != NAMED_CLASS &&
-			 previous != NAMED_UNION))
+			if ((previous == NAMED_UNION) != (flavor == NAMED_UNION) ||
+				!IsClassNamedFlavor(previous))
 			throw std::runtime_error("incompatible class redeclaration");
 	}
 	else if (entity == kNoEntity)
@@ -590,9 +589,7 @@ void SemanticAnalyzer::CompleteClassMemberDestructionFacts(EntityId entity,
 		if (member_record->kind != TYPE_NAMED) continue;
 		const EntityRecord& subobject =
 			program_->entities[member_record->entity];
-		if (subobject.flavor != NAMED_STRUCT &&
-			subobject.flavor != NAMED_CLASS &&
-			subobject.flavor != NAMED_UNION) continue;
+		if (!IsClassNamedFlavor(subobject.flavor)) continue;
 		if (is_union)
 		{
 			if (defaulted_destructor && !subobject.trivial_destructor)
@@ -908,8 +905,7 @@ EntityId SemanticAnalyzer::DestructedEntity(TypeId type) const
 	}
 	if (record->kind != TYPE_NAMED) return kNoEntity;
 	const NamedFlavor flavor = program_->entities[record->entity].flavor;
-	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-		flavor == NAMED_UNION ? record->entity : kNoEntity;
+	return IsClassNamedFlavor(flavor) ? record->entity : kNoEntity;
 }
 
 BindingId SemanticAnalyzer::DestructorForType(TypeId type) const
@@ -2641,9 +2637,7 @@ void SemanticAnalyzer::ValidateNonmemberOperator(BindingId binding) const
 		}
 		if (shape->kind != TYPE_NAMED) continue;
 		const NamedFlavor flavor = program_->entities[shape->entity].flavor;
-		if (flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-			flavor == NAMED_UNION || flavor == NAMED_ENUM ||
-			flavor == NAMED_ENUM_CLASS) return;
+		if (IsClassNamedFlavor(flavor) || IsEnumNamedFlavor(flavor)) return;
 	}
 	throw std::runtime_error(
 		"nonmember operator requires a class or enumeration parameter");

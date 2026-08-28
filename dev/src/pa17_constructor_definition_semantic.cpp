@@ -59,9 +59,7 @@ void SemanticAnalyzer::ValidateConstexprConstructorDefinition(
 		}
 		const NamedFlavor flavor = record.kind == TYPE_NAMED ?
 			program_->entities[record.entity].flavor : NAMED_NONE;
-		if (record.kind != TYPE_NAMED ||
-			(flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
-			 flavor != NAMED_UNION))
+		if (record.kind != TYPE_NAMED || !IsClassNamedFlavor(flavor))
 			throw std::runtime_error(
 				"constexpr constructor leaves a scalar member uninitialized");
 	}

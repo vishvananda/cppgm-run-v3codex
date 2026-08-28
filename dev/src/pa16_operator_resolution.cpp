@@ -136,7 +136,7 @@ TypeId SemanticAnalyzer::EnumOperatorOperandType(TypeId type) const
 	}
 	if (shape->kind != TYPE_NAMED) return kNoType;
 	const NamedFlavor flavor = program_->entities[shape->entity].flavor;
-	return flavor == NAMED_ENUM || flavor == NAMED_ENUM_CLASS ?
+	return IsEnumNamedFlavor(flavor) ?
 		type : kNoType;
 }
 
@@ -456,8 +456,7 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 	const TypeRecord object = program_->types.Get(target);
 	if (object.kind != TYPE_NAMED) return result;
 	const NamedFlavor flavor = program_->entities[object.entity].flavor;
-	if (flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
-		flavor != NAMED_UNION) return result;
+	if (!IsClassNamedFlavor(flavor)) return result;
 
 	std::vector<BindingId> candidates = ConstructorCandidates(object.entity);
 	const std::vector<ExpressionInfo> arguments(1, source);
@@ -1538,8 +1537,7 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 		if (object.kind == TYPE_NAMED)
 		{
 			const NamedFlavor flavor = program_->entities[object.entity].flavor;
-			if (flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-				flavor == NAMED_UNION)
+			if (IsClassNamedFlavor(flavor))
 				dump_.nodes[value.node].class_argument_staging = true;
 		}
 	}
@@ -1815,13 +1813,12 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 		const EntityId entity = EntityOf(operands[i].type);
 		if (entity == kNoEntity) continue;
 		const NamedFlavor flavor = program_->entities[entity].flavor;
-		if (flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-			flavor == NAMED_UNION)
+		if (IsClassNamedFlavor(flavor))
 		{
 			overloadable_operand = true;
 			class_operand = true;
 		}
-		else if (flavor == NAMED_ENUM || flavor == NAMED_ENUM_CLASS)
+		else if (IsEnumNamedFlavor(flavor))
 			overloadable_operand = true;
 	}
 	if (!overloadable_operand || operands.empty()) return false;

@@ -59,7 +59,7 @@ bool SemanticAnalyzer::IsMeasurableObjectType(
 		EnsureClassDefinition(type);
 		const EntityRecord& entity = program_->entities[record.entity];
 		if (!entity.complete) return false;
-		if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
+		if (IsEnumNamedFlavor(entity.flavor))
 		{
 			type = entity.underlying;
 			continue;

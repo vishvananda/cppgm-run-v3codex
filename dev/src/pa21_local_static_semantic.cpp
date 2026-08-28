@@ -159,7 +159,7 @@ bool SemanticAnalyzer::IsConstexprLiteralType(TypeId type) const
 	if (top.kind != TYPE_NAMED || top.entity >= program_->entities.size())
 		return false;
 	const EntityRecord& entity = program_->entities[top.entity];
-	if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
+	if (IsEnumNamedFlavor(entity.flavor))
 		return true;
 	if (entity.flavor == NAMED_TYPENAME_PARAMETER ||
 		!entity.complete || entity.deferred_template_completion)
@@ -228,9 +228,7 @@ bool SemanticAnalyzer::IsConstexprDefaultConstructibleType(TypeId type) const
 	if (top.kind != TYPE_NAMED || top.entity >= program_->entities.size())
 		return false;
 	const EntityRecord& entity = program_->entities[top.entity];
-	if (!entity.default_constructible ||
-		(entity.flavor != NAMED_STRUCT && entity.flavor != NAMED_CLASS &&
-		 entity.flavor != NAMED_UNION) ||
+	if (!entity.default_constructible || !IsClassNamedFlavor(entity.flavor) ||
 		top.entity >= entity_constructors_.size())
 		return false;
 	const std::vector<BindingId>& constructors =

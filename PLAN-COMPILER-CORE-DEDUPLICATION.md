@@ -1,6 +1,6 @@
 # Plan: Deduplicate the Compiler Core Outside `lowir_opt`
 
-Status: ready for execution
+Status: execution in progress
 
 Date: 2026-08-28
 
@@ -519,6 +519,17 @@ call-path change requires a performance decision.
 9. Cachegrind, software emulation, and sampling profiles are attribution
    tools, not acceptance oracles.  The corrected same-source generated-
    compiler ratio is the final performance decision.
+10. Also preserve the host-toolchain best case.  Build separate GCC and Clang
+    `cppgm++` binaries from both the immutable pre-change revision and the
+    exact candidate revision with the repository's fully optimized host
+    setting (`-O3`).  Use those four compiler binaries to compile the
+    unchanged frozen `semantic_overload.cpp` workload at its best-case
+    `-std=gnu++11 -O0 -Idev/src` setting.  Run the baseline and candidate in
+    interleaved order, require identical output for like compiler families,
+    and record wall, user, system, peak RSS, compiler hash/text, and object
+    hash.  A repeated GCC- or Clang-built candidate regression above 0.5%
+    requires explanation and rejection unless a separately justified
+    correctness or parity gain outweighs it.
 
 ## Commit, push, and ledger discipline
 
@@ -576,7 +587,9 @@ This plan is complete only when:
    `cppgm++` binaries, not raw host compilers;
 10. the final self/GCC ratio is at or below 1.50x, self/Clang has no material
     regression, and any absolute movement is explained; and
-11. all retained commits, ledger evidence, and final closure are pushed.
+11. fully optimized GCC- and Clang-built compilers show no unexplained frozen-
+    compile regression versus the immutable pre-plan revision; and
+12. all retained commits, ledger evidence, and final closure are pushed.
 
 ## Execution ledger
 
@@ -612,3 +625,40 @@ not reuse measurements from a different source tree.
   focused object/LowIR output are unchanged.  PA30 passes 100/100, PA37 passes
   188/188, `git diff --check` is clean, and the default audit falls from 35 to
   34 warnings with no new duplicate exposed.
+- **C2-A1 (NAMED-FLAVOR VOCABULARY).** The PA11 model vocabulary now owns the
+  exact struct/class/union and enum/scoped-enum classifications.  PA12
+  semantic analysis, later constexpr/RTTI/trait consumers, type layout,
+  source-type lowering, and call/operator lowering reuse two inline contiguous-
+  range facts;
+  entity bounds, type shape, completeness, dependency, access, and ABI policy
+  remain at each caller.  Direct truth-table search now finds only the two
+  vocabulary definitions.  PA12 passes 183/183, PA15 121/121, PA16 300/300,
+  PA21 149/149, PA26 114/114, and PA34 374/374.  The first inline spelling used
+  the old equality chains verbatim; on the full candidate corpus it raised the
+  corrected self/GCC ratio to 1.537x and was rejected.  An out-of-line trial
+  removed repeated header parsing but left full-corpus aggregate CPU flat and
+  wall parity near 1.51x.  The retained range spelling keeps the hot facts
+  inline with a smaller source and generated-code shape.  Two clean candidate
+  O1 corpus lanes average 31.520 s self and 21.180 s GCC-built, or 1.488x;
+  their mean aggregate CPU is 901.515 s and 584.745 s.  Against the immutable
+  old self compiler on the identical range-source corpus, aggregate CPU moves
+  only +0.37%.  Two clean Clang-built lanes average 21.785 s, for a 1.447x
+  self/Clang ratio.  Compiler SHA-256 values are `4634047a...` self,
+  `601b9c10...` GCC, and `a4261481...` Clang.
+- **C2-A1 BEST-CASE HOST GUARD.** The new requested guard builds `cppgm++`
+  itself with GCC 15.2 and Clang 21.1 at `-O3`, then compiles the unchanged
+  frozen source at `-O0`.  Three interleaved pairs show no repeated regression:
+  GCC candidate-minus-baseline wall differences are -0.10, +0.08, and +0.04
+  seconds (mean +0.007 s, about +0.15%); Clang differences are -0.02, +0.06,
+  and -0.14 seconds (mean -0.033 s, about -0.7%).  GCC objects are exact at
+  SHA-256 `b0d3d8d3...`; Clang objects are exact at `1fe5f0e4...`.  The GCC
+  baseline/candidate text is unchanged at 7,066,657 bytes; Clang text falls
+  64 bytes from 5,493,699 to 5,493,635.  This O3-compiler/O0-workload lane is
+  now mandatory at performance checkpoints; the earlier self-built/O1 frozen
+  screen is not evidence for this guard.
+- **C2-A1 CUMULATIVE GATE.** Root report-through-PA38 passes 5,465/5,465 and
+  the PA38 file audit remains zero-fatal with 34 warnings.  The first broad
+  run had one isolated PA30 `runtime-to-float80` execution failure; its
+  immediate focused rerun passed, and a second complete through-PA38 run was
+  clean.  No source or fixture was changed in response to the transient.
+  `git diff --check` is clean.

@@ -310,6 +310,16 @@ enum NamedFlavor : std::uint8_t
 	NAMED_TEMPLATE_PARAMETER
 };
 
+inline bool IsClassNamedFlavor(NamedFlavor flavor)
+{
+	return NAMED_STRUCT <= flavor && flavor <= NAMED_UNION;
+}
+
+inline bool IsEnumNamedFlavor(NamedFlavor flavor)
+{
+	return NAMED_ENUM <= flavor && flavor <= NAMED_ENUM_CLASS;
+}
+
 enum BindingKind : std::uint8_t
 {
 	BIND_TYPE,

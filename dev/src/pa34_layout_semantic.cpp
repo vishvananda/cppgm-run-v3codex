@@ -19,8 +19,7 @@ EntityId SemanticAnalyzer::ZeroOffsetClassEntity(TypeId type) const
 	}
 	if (record->kind != TYPE_NAMED) return kNoEntity;
 	const NamedFlavor flavor = program_->entities[record->entity].flavor;
-	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-		flavor == NAMED_UNION ? record->entity : kNoEntity;
+	return IsClassNamedFlavor(flavor) ? record->entity : kNoEntity;
 }
 
 bool SemanticAnalyzer::VisitZeroOffsetSubobjects(EntityId root,

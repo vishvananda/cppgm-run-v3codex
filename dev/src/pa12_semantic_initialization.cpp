@@ -13,9 +13,7 @@ const std::size_t kDestructorArrayInlineLimit = 8;
 bool IsClassEntity(const Program& program, EntityId entity)
 {
 	if (entity == kNoEntity) return false;
-	const NamedFlavor flavor = program.entities[entity].flavor;
-	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-		flavor == NAMED_UNION;
+	return IsClassNamedFlavor(program.entities[entity].flavor);
 }
 std::vector<unsigned char> DecodeStringInitializer(
 	const std::string& spelling)
@@ -370,8 +368,7 @@ bool SemanticAnalyzer::IsDirectTrivialClassValueType(TypeId type) const
 	const TypeRecord& record = program_->types.Get(type);
 	if (record.kind != TYPE_NAMED) return false;
 	const EntityRecord& entity = program_->entities[record.entity];
-	return (entity.flavor == NAMED_STRUCT || entity.flavor == NAMED_CLASS ||
-		entity.flavor == NAMED_UNION) && entity.is_aggregate &&
+	return IsClassNamedFlavor(entity.flavor) && entity.is_aggregate &&
 		entity.trivial_destructor && !entity.empty_class;
 }
 
@@ -2520,8 +2517,7 @@ void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 		DestructedEntity(type) : kNoEntity;
 	if (entity == kNoEntity) return;
 	const NamedFlavor flavor = program_->entities[entity].flavor;
-	if (flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
-		flavor != NAMED_UNION) return;
+	if (!IsClassNamedFlavor(flavor)) return;
 	const EntityRecord& class_record = program_->entities[entity];
 	if (!class_record.default_constructible)
 		throw std::runtime_error("class has no usable default constructor");

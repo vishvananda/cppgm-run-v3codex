@@ -53,7 +53,7 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 	if (record->kind == TYPE_NAMED)
 	{
 		const EntityRecord& entity = program_.entities[record->entity];
-		if ((entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS) &&
+		if (IsEnumNamedFlavor(entity.flavor) &&
 			entity.underlying != kNoType) return Lower(entity.underlying);
 		return LowObject(program_.SizeOf(type), program_.AlignOf(type));
 	}
@@ -129,9 +129,7 @@ bool SourceTypeLowering::IsClassObject(TypeId type) const
 	type = ExpressionObject(type);
 	const TypeRecord& record = program_.types.Get(type);
 	if (record.kind != TYPE_NAMED) return false;
-	const NamedFlavor flavor = program_.entities[record.entity].flavor;
-	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-		flavor == NAMED_UNION;
+	return IsClassNamedFlavor(program_.entities[record.entity].flavor);
 }
 
 bool SourceTypeLowering::IsComplexObject(TypeId type) const

@@ -120,8 +120,7 @@ EntityId SubobjectClass(const Program& program, TypeId type,
 	}
 	if (record->kind != TYPE_NAMED) return kNoEntity;
 	const NamedFlavor flavor = program.entities[record->entity].flavor;
-	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-		flavor == NAMED_UNION ? record->entity : kNoEntity;
+	return IsClassNamedFlavor(flavor) ? record->entity : kNoEntity;
 }
 
 }

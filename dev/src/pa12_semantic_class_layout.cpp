@@ -16,7 +16,7 @@ bool SemanticAnalyzer::IsVolatileSubobjectType(TypeId type) const
 	if (record.kind != TYPE_NAMED || record.entity >= program_->entities.size())
 		return false;
 	const EntityRecord& entity = program_->entities[record.entity];
-	return entity.flavor != NAMED_ENUM && entity.flavor != NAMED_ENUM_CLASS &&
+	return !IsEnumNamedFlavor(entity.flavor) &&
 		entity.has_volatile_subobject;
 }
 

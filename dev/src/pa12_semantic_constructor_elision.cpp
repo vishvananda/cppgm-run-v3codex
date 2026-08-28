@@ -105,9 +105,7 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 			if (member_record->kind != TYPE_NAMED) continue;
 			const EntityRecord& subobject =
 				program_->entities[member_record->entity];
-			if (subobject.flavor != NAMED_STRUCT &&
-				subobject.flavor != NAMED_CLASS &&
-				subobject.flavor != NAMED_UNION) continue;
+			if (!IsClassNamedFlavor(subobject.flavor)) continue;
 			if (subobject.trivial_default_constructor) continue;
 			if (member_record->entity >= entity_constructors_.size()) return fail();
 			BindingId selected = kNoBinding;

@@ -1039,10 +1039,8 @@ protected:
 		type = derived.program_.types.RemoveTopCv(type);
 		const TypeRecord& record = derived.program_.types.Get(type);
 		if (record.kind != TYPE_NAMED) return false;
-		const NamedFlavor flavor =
-			derived.program_.entities[record.entity].flavor;
-		return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-			flavor == NAMED_UNION;
+			return IsClassNamedFlavor(
+				derived.program_.entities[record.entity].flavor);
 	}
 
 	bool CanonicalizeOperatorLiteral(

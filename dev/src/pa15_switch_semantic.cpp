@@ -26,10 +26,9 @@ bool TypeAllowsUninitializedTransfer(const Program& program, TypeId type)
 	if (record.kind != TYPE_NAMED || record.entity == kNoEntity)
 		return false;
 	const EntityRecord& entity = program.entities[record.entity];
-	if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
+	if (IsEnumNamedFlavor(entity.flavor))
 		return true;
-	return (entity.flavor == NAMED_STRUCT || entity.flavor == NAMED_CLASS ||
-		entity.flavor == NAMED_UNION) &&
+	return IsClassNamedFlavor(entity.flavor) &&
 		entity.trivial_default_constructor && entity.trivial_destructor;
 }
 

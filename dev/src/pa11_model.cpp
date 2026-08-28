@@ -1841,8 +1841,7 @@ LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 	if (scope_entity != kNoEntity)
 	{
 		const NamedFlavor flavor = entities[scope_entity].flavor;
-		if (flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-			flavor == NAMED_UNION)
+		if (IsClassNamedFlavor(flavor))
 			result.naming_class = scope_entity;
 	}
 	if (kind == LOOKUP_NAMESPACE || kind == LOOKUP_SCOPE_CARRIER)

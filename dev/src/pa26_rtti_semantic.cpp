@@ -16,12 +16,6 @@ using namespace pa11;
 namespace
 {
 
-bool IsClassFlavor(NamedFlavor flavor)
-{
-	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-		flavor == NAMED_UNION;
-}
-
 std::uint8_t TopCv(const Program& program, TypeId type)
 {
 	const TypeRecord& record = program.types.Get(type);
@@ -106,7 +100,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 	{
 		const NamedFlavor flavor =
 			program_->entities[queried_record.entity].flavor;
-		if (IsClassFlavor(flavor) && !program_->entities[
+		if (IsClassNamedFlavor(flavor) && !program_->entities[
 			queried_record.entity].lambda_closure)
 			EnsureClassDefinition(queried);
 	}
@@ -221,8 +215,9 @@ bool SemanticAnalyzer::TryAnalyzeDynamicCast(TypeId target,
 	const EntityId source_entity = EntityOf(source_object);
 	const EntityId target_entity = EntityOf(target_object);
 	if (source_entity == kNoEntity || (!target_void && target_entity == kNoEntity) ||
-		!IsClassFlavor(program_->entities[source_entity].flavor) ||
-		(!target_void && !IsClassFlavor(program_->entities[target_entity].flavor)))
+		!IsClassNamedFlavor(program_->entities[source_entity].flavor) ||
+		(!target_void &&
+		 !IsClassNamedFlavor(program_->entities[target_entity].flavor)))
 		throw std::runtime_error("dynamic_cast requires class operands");
 	if ((TopCv(*program_, source_object_with_cv) &
 		~TopCv(*program_, target_object_with_cv)) != 0)

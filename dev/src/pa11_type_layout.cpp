@@ -93,7 +93,7 @@ std::size_t Program::SizeOf(TypeId type) const
 				}
 				throw std::runtime_error(message);
 			}
-			if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
+			if (IsEnumNamedFlavor(entity.flavor))
 				size = SizeOf(entity.underlying);
 			else
 			{
@@ -154,7 +154,7 @@ std::size_t Program::AlignOf(TypeId type) const
 			throw std::runtime_error(std::string("incomplete named type: ") +
 				RenderEntityEmissionName(record->entity) + " (" +
 				names.Get(entity.identity_name) + ")");
-		if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
+		if (IsEnumNamedFlavor(entity.flavor))
 			alignment = AlignOf(entity.underlying);
 		else
 		{

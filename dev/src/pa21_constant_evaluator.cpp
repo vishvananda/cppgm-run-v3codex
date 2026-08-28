@@ -32,9 +32,7 @@ std::size_t MixConstexprHash(std::size_t seed, std::size_t value)
 bool IsConstexprClassEntity(const Program& program, EntityId entity)
 {
 	if (entity == kNoEntity) return false;
-	const NamedFlavor flavor = program.entities[entity].flavor;
-	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-		flavor == NAMED_UNION;
+	return IsClassNamedFlavor(program.entities[entity].flavor);
 }
 
 }

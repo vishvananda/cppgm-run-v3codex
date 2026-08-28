@@ -122,13 +122,12 @@ FundamentalKind SignednessKind(FundamentalKind kind, bool make_unsigned)
 
 bool IsEnumEntity(const EntityRecord& entity)
 {
-	return entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS;
+	return IsEnumNamedFlavor(entity.flavor);
 }
 
 bool IsClassEntity(const EntityRecord& entity)
 {
-	return entity.flavor == NAMED_STRUCT || entity.flavor == NAMED_CLASS ||
-		entity.flavor == NAMED_UNION;
+	return IsClassNamedFlavor(entity.flavor);
 }
 
 }

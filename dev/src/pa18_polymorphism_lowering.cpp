@@ -781,8 +781,7 @@ private:
 		const TypeRecord& record = program_.types.Get(type);
 		if (record.kind != TYPE_NAMED) return false;
 		const NamedFlavor flavor = program_.entities[record.entity].flavor;
-		if (flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
-			flavor != NAMED_UNION) return false;
+			if (!IsClassNamedFlavor(flavor)) return false;
 		if (entity) *entity = record.entity;
 		return true;
 	}

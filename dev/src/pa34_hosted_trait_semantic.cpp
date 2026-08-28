@@ -12,8 +12,7 @@ namespace
 
 bool IsClassEntity(const EntityRecord& entity)
 {
-	return entity.flavor == NAMED_STRUCT || entity.flavor == NAMED_CLASS ||
-		entity.flavor == NAMED_UNION;
+	return IsClassNamedFlavor(entity.flavor);
 }
 
 BindingId SelectedConversionFunction(const CallConversionFact& conversion)

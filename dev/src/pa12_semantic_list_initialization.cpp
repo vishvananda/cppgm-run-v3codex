@@ -61,9 +61,7 @@ namespace
 bool IsClassEntity(const Program& program, EntityId entity)
 {
 	if (entity == kNoEntity) return false;
-	const NamedFlavor flavor = program.entities[entity].flavor;
-	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-		flavor == NAMED_UNION;
+	return IsClassNamedFlavor(program.entities[entity].flavor);
 }
 
 bool ChainsUserConversion(const FunctionInfo& constructor,
