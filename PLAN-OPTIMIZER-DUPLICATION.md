@@ -1014,6 +1014,36 @@ This plan is complete only when:
   `372bc85a...`/5,788,048 and `5719374b...`/5,025,909.  Retain: semantic names
   prevent false equality reuse, the only exact opcode fact has one owner, and
   output/performance remain stable.
+- **D5-P2 (EXACT FOLDED-STORE NORMALIZATION, RETAINED).** On the tree based on
+  `35c36923`, `emit_folded_store` now owns the final frame adjustment,
+  dereference base/offset, existing always-materialized global/R11 rule, width,
+  and scalar store emission shared by adjacent dead-copy/address reducers.
+  The generic address emitter was deliberately not reused because it chooses
+  RIP-relative encoding for local globals.  Sequence shape, scratch liveness,
+  indexed-address rejection, offset-overflow/sign-crossing checks, copied-value
+  selection, and every accepted instruction count remain local and unchanged.
+  Five focused PA29 address-folding behavior reducers pass under their owning
+  `mir_behavior_t` oracle; PA37 is 188/188, PA38 is 45/45,
+  `git diff --check` is clean, and the default audit remains
+  zero-fatal/35-warning.  The tight audit remains at 13 because its normalized
+  matcher still reports the deliberately separate reducer eligibility
+  preambles; the duplicated final emission is gone.  Fresh
+  exact-candidate-source private logs cover all 215 translation units: every
+  non-timing optimizer counter and all 215 objects match, and old/candidate
+  compilers link the same `9f5a9cb5...` output.  Compiler text changes from
+  8,646,575 to 8,646,735 bytes and data from 334,888 to 334,936 bytes.  Three
+  clean paired self lanes are candidate 31.22/32.26/31.21 seconds wall and
+  899.14/901.67/899.53 aggregate CPU, versus old 31.35/31.66/32.28 wall and
+  899.71/903.52/901.51 CPU.  Means are 31.563/900.113 versus
+  31.763/901.580: wall improves 0.630%, aggregate CPU improves 0.163%, and
+  mean peak RSS is 229,096 versus 228,969 KiB.  An old 36.00/914.13 wall/CPU
+  lane was excluded for elevated aggregate CPU and replaced.  Exact-source
+  GCC lanes are 29.42/30.15 wall and 569.67/568.99 CPU; Clang lanes are
+  30.17/30.22 wall and 640.47/642.55 CPU.  Candidate ratios are 1.060x GCC and
+  1.045x Clang.  GCC/Clang hashes and text are `143f1efb...`/5,788,384 and
+  `df1e0fda...`/5,026,201.  Retain: exact encoding policy now has one owner,
+  while superficially similar but semantically different eligibility stays
+  explicit and measured performance is preserved.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

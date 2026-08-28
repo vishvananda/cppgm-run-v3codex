@@ -65,6 +65,32 @@ bool overwritten_without_read(
   return false;
 }
 
+// Emit the scalar store shared by the dead-copy/address reducers after each
+// reducer has proved its own sequence and liveness rules.  Unlike the generic
+// address emitter, this path deliberately materializes even a local global in
+// R11; a value already held in R11 therefore remains ineligible.
+bool emit_folded_store(
+    elf_detail::CodeBuffer & out, const MirOperand & address,
+    X64Register source, const lowir_model::LowType & type,
+    const mir_model::MirFunction & function)
+{
+  long long offset = address.offset;
+  X64Register base = address.reg;
+  if(address.kind == MirOperand::OP_FRAME) {
+    base = XR_RBP;
+    offset = actual_frame_offset(function, offset);
+  } else if(address.kind == MirOperand::OP_GLOBAL) {
+    if(source == XR_R11) return false;
+    emit_symbol_move(out, XR_R11, address.symbol, address.address_binding);
+    base = XR_R11;
+    offset = 0;
+  } else if(address.kind != MirOperand::OP_DEREF) {
+    throw std::logic_error("folded native store address is not memory-shaped");
+  }
+  emit_store(out, base, offset, source, data_layout::type_width(type));
+  return true;
+}
+
 std::size_t plan_dead_setup_load(
     const std::vector<MirInstruction> & instructions, std::size_t start,
     MirOperand * folded_address,
@@ -232,20 +258,7 @@ std::size_t emit_dead_copy_store(
   MirOperand address = store.operands[0];
   if(address.kind == MirOperand::OP_DEREF && address.reg == copied)
     address.reg = source;
-  long long offset = address.offset;
-  X64Register base = address.reg;
-  if(address.kind == MirOperand::OP_FRAME) {
-    base = XR_RBP;
-    if(offset < 0) offset -= static_cast<long long>(
-      function.callee_saved_regs.size() * 8);
-  } else if(address.kind == MirOperand::OP_GLOBAL) {
-    if(source == XR_R11) return 0;
-    emit_symbol_move(out, XR_R11, address.symbol,
-                     address.address_binding);
-    base = XR_R11;
-    offset = 0;
-  }
-  emit_store(out, base, offset, source, data_layout::type_width(store.type));
+  if(!emit_folded_store(out, address, source, store.type, function)) return 0;
   return 2;
 }
 
@@ -277,14 +290,10 @@ std::size_t emit_dead_address_store(
                   &offset)) return 0;
   if(setup.operands[1].kind == MirOperand::OP_FRAME &&
      (setup.operands[1].offset < 0) != (offset < 0)) return 0;
-  X64Register base = setup.operands[1].reg;
-  if(setup.operands[1].kind == MirOperand::OP_FRAME) {
-    base = XR_RBP;
-    if(offset < 0) offset -= static_cast<long long>(
-      function.callee_saved_regs.size() * 8);
-  }
-  emit_store(out, base, offset, store.operands[1].reg,
-             data_layout::type_width(store.type));
+  MirOperand address = setup.operands[1];
+  address.offset = offset;
+  if(!emit_folded_store(
+       out, address, store.operands[1].reg, store.type, function)) return 0;
   return 2;
 }
 
