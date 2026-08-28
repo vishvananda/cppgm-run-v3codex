@@ -38,7 +38,7 @@ cppgm::PreprocessingOptions BuildOptions()
 	return options;
 }
 
-void ReportStats(const std::string& path, const cppgm::RecognitionStats& stats,
+void ReportStats(const std::string& path, const cppgm::recognition::Stats& stats,
 	bool accepted)
 {
 	std::cerr << "recog_stats"
@@ -88,8 +88,8 @@ int main(int argc, char** argv)
 			try
 			{
 				const std::string source = ReadSource(path);
-				cppgm::RecognitionStats stats;
-				accepted = cppgm::RecognizeTranslationUnit(path, source,
+				cppgm::recognition::Stats stats;
+				accepted = cppgm::recognition::RecognizeTranslationUnit(path, source,
 					options, report_stats ? &stats : 0);
 				if (report_stats) ReportStats(path, stats, accepted);
 			}

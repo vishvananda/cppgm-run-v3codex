@@ -8,8 +8,10 @@
 
 namespace cppgm
 {
+namespace recognition
+{
 
-struct RecognitionStats
+struct Stats
 {
 	PreprocessingStats preprocessing;
 	std::size_t tokens;
@@ -31,7 +33,7 @@ struct RecognitionStats
 	std::size_t peak_stage_storage_bytes;
 	std::uint64_t elapsed_nanoseconds;
 
-	RecognitionStats();
+	Stats();
 };
 
 // Run the existing PA5 source-to-phase-7 path and recognize the resulting
@@ -39,6 +41,7 @@ struct RecognitionStats
 // failures throw; a syntactically invalid token sequence returns false.
 bool RecognizeTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	RecognitionStats* stats = 0);
+	Stats* stats = 0);
 
+}
 }

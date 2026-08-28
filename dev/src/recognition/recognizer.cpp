@@ -15,6 +15,8 @@
 
 namespace cppgm
 {
+namespace recognition
+{
 namespace
 {
 
@@ -824,11 +826,11 @@ const Grammar& CppGrammar()
 	return grammar;
 }
 
-class Parser
+class Recognizer
 {
 public:
-	Parser(const std::vector<RecognitionToken>& tokens,
-		const IdentifierTable& identifiers, RecognitionStats* stats)
+	Recognizer(const std::vector<RecognitionToken>& tokens,
+		const IdentifierTable& identifiers, Stats* stats)
 		: grammar_(CppGrammar()), tokens_(tokens), identifiers_(identifiers),
 		  stats_(stats), stride_(tokens.size() + 1),
 		  memo_(grammar_.RuleCount() * stride_, kMemoUnvisited)
@@ -866,12 +868,12 @@ private:
 	const Grammar& grammar_;
 	const std::vector<RecognitionToken>& tokens_;
 	const IdentifierTable& identifiers_;
-	RecognitionStats* stats_;
+	Stats* stats_;
 	std::size_t stride_;
 	std::vector<std::uint32_t> memo_;
 };
 
-bool Parser::MeetsNameCategory(const GrammarRule& rule,
+bool Recognizer::MeetsNameCategory(const GrammarRule& rule,
 	std::uint32_t position) const
 {
 	if (rule.required_name_flag == 0) return true;
@@ -881,7 +883,7 @@ bool Parser::MeetsNameCategory(const GrammarRule& rule,
 		rule.required_name_flag) != 0;
 }
 
-bool Parser::MatchesTerminal(const GrammarNode& node,
+bool Recognizer::MatchesTerminal(const GrammarNode& node,
 	const RecognitionToken& token) const
 {
 	if (node.required_role == RR_NORMAL && token.role != AR_NORMAL) return false;
@@ -910,7 +912,7 @@ bool Parser::MatchesTerminal(const GrammarNode& node,
 	}
 }
 
-std::uint32_t Parser::ParseNode(std::uint32_t node_id,
+std::uint32_t Recognizer::ParseNode(std::uint32_t node_id,
 	std::uint32_t position)
 {
 	if (stats_) ++stats_->expression_evaluations;
@@ -946,7 +948,7 @@ std::uint32_t Parser::ParseNode(std::uint32_t node_id,
 	}
 }
 
-bool Parser::StartsTypeName(std::uint32_t position) const
+bool Recognizer::StartsTypeName(std::uint32_t position) const
 {
 	if (position >= tokens_.size() || tokens_[position].kind != kIdentifierToken)
 		return false;
@@ -958,7 +960,7 @@ bool Parser::StartsTypeName(std::uint32_t position) const
 		tokens_[position + 1].role == AR_OPEN;
 }
 
-bool Parser::StartsNonCvTypeSpecifier(std::uint32_t position) const
+bool Recognizer::StartsNonCvTypeSpecifier(std::uint32_t position) const
 {
 	if (position >= tokens_.size()) return false;
 	const RecognitionToken& token = tokens_[position];
@@ -975,7 +977,7 @@ bool Parser::StartsNonCvTypeSpecifier(std::uint32_t position) const
 	}
 }
 
-std::uint32_t Parser::ParseDeclSpecifierSeq(std::uint32_t position)
+std::uint32_t Recognizer::ParseDeclSpecifierSeq(std::uint32_t position)
 {
 	std::uint32_t end = position;
 	std::size_t count = 0;
@@ -999,7 +1001,7 @@ std::uint32_t Parser::ParseDeclSpecifierSeq(std::uint32_t position)
 	}
 }
 
-std::uint32_t Parser::ParseNonterminal(std::uint32_t rule_id,
+std::uint32_t Recognizer::ParseNonterminal(std::uint32_t rule_id,
 	std::uint32_t position)
 {
 	if (stats_) ++stats_->memo_queries;
@@ -1038,7 +1040,7 @@ std::uint32_t Parser::ParseNonterminal(std::uint32_t rule_id,
 
 }
 
-RecognitionStats::RecognitionStats()
+Stats::Stats()
 	: tokens(0), interned_identifiers(0), interned_identifier_bytes(0),
 	  token_storage_bytes(0), identifier_storage_bytes(0),
 	  angle_scratch_bytes(0), angle_openings(0), angle_closings(0),
@@ -1050,12 +1052,12 @@ RecognitionStats::RecognitionStats()
 
 bool RecognizeTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	RecognitionStats* stats)
+	Stats* stats)
 {
 	std::chrono::steady_clock::time_point started;
 	if (stats)
 	{
-		*stats = RecognitionStats();
+		*stats = Stats();
 		started = std::chrono::steady_clock::now();
 	}
 	RecognitionTokenSink sink;
@@ -1074,7 +1076,7 @@ bool RecognizeTranslationUnit(const std::string& path,
 		stats->peak_stage_storage_bytes = stats->token_storage_bytes +
 			stats->identifier_storage_bytes + stats->angle_scratch_bytes;
 	}
-	Parser parser(sink.Tokens(), sink.Identifiers(), stats);
+	Recognizer parser(sink.Tokens(), sink.Identifiers(), stats);
 	const bool accepted = parser.Recognize();
 	if (stats)
 	{
@@ -1085,4 +1087,5 @@ bool RecognizeTranslationUnit(const std::string& path,
 	return accepted;
 }
 
+}
 }

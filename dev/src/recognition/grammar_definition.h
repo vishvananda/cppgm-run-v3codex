@@ -4,6 +4,8 @@
 // read-only table once; it is not a production phase transport format.
 namespace cppgm
 {
+namespace recognition
+{
 
 static const char kCppGrammarDefinition[] = R"CPPGM_GRAMMAR(
 translation-unit:
@@ -875,4 +877,5 @@ noexcept-specification:
 	KW_NOEXCEPT (OP_LPAREN constant-expression OP_RPAREN)?
 )CPPGM_GRAMMAR";
 
+}
 }
