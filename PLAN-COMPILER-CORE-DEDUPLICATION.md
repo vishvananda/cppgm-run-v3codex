@@ -1048,7 +1048,7 @@ not reuse measurements from a different source tree.
   respectively, typed key hashes or the shared two-half 64-bit hash; none have
   probe counters, and storage accounting includes only each table's owned
   entry, slot, secondary-head, and sequence capacities.  These eight families
-  remain local in the first increment.  Template-argument partitions and
+  remain local.  Template-argument partitions and
   function-template result identities alone have byte-equivalent rebuilds:
   both store a cached hash in insertion-order entries and reconstruct a
   zero-filled entry-index-plus-one slot vector without changing counters.
@@ -1114,3 +1114,15 @@ not reuse measurements from a different source tree.
   grew the self table object by 156 bytes.  All three experiments were removed;
   the retained vector-reference/destination-pointer form keeps final self text
   exact and has the best cross-compiler balance.
+- **C10 CLOSURE AND INCEPTION.** The other entry-index tables do not share the
+  cached-hash contract: three recompute a two-half 64-bit key hash, four use
+  distinct typed-key hash expressions, and the request-local binding set
+  rebuilds direct binding-plus-one slots from the old slot array.  Their
+  overwrite, reject, sequence, and request-state policies also differ.  A
+  common functor-templated rehasher would therefore instantiate the loop once
+  per entry/hash pair rather than provide one executable implementation, while
+  making policy ownership less local.  No additional table is migrated.  A
+  fresh explicit-O1 checkpoint at `78fdc731`, with outer, inner, and object
+  parallelism all set to 32, compared 215/215 objects exactly and produced
+  identical self/inception compilers with SHA-256 `ca24f63a...` and 8,631,459
+  text bytes.
