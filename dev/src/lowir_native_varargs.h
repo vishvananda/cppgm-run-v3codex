@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "lowir/model/lowir_model.h"
+#include "lowir/model/program.h"
 #include "lowir_native_abi.h"
 #include "mir_model.h"
 

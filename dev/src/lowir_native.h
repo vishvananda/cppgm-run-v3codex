@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "lowir/model/lowir_model.h"
+#include "lowir/model/program.h"
 #include "mir_model.h"
 
 namespace lowir_native {

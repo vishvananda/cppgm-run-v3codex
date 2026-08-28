@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <vector>
 
-#include "lowir/model/lowir_model.h"
+#include "lowir/model/program.h"
 
 namespace lowir_native {
 

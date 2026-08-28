@@ -42,7 +42,7 @@ The starter kit contains:
 - the `pa29/lowir2native.cpp` symlink back to `../dev/lowir2native.cpp`
 - shared support sources and headers under `dev/src/`
 - optional typed LowIR and machine-IR model scaffolding in
-  `dev/src/lowir/model/lowir_model.h` and `dev/src/mir_model.h`, with shared
+  `dev/src/lowir/model/program.h` and `dev/src/mir_model.h`, with shared
   exported-symbol and register support in `dev/src/ir_symbol_model.h` and
   `dev/src/x86_register_model.h`
 - a local test suite under `pa29/tests/`

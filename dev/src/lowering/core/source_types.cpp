@@ -1,5 +1,5 @@
 #include "lowering/core/source_types.h"
-#include "lowir/model/lowir_model.h"
+#include "lowir/model/program.h"
 
 #include <stdexcept>
 

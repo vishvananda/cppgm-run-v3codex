@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "lowir/model/lowir_model.h"
+#include "lowir/model/program.h"
 #include "x86_register_model.h"
 
 namespace lowir_native {

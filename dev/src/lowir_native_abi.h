@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <vector>
 
-#include "lowir/model/lowir_model.h"
+#include "lowir/model/program.h"
 #include "mir_model.h"
 #include "x86_register_model.h"
 

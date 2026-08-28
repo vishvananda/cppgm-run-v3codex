@@ -1,7 +1,7 @@
 #ifndef CPPGM_LOWIR_NATIVE_ADDRESS_LOWERING_H
 #define CPPGM_LOWIR_NATIVE_ADDRESS_LOWERING_H
 
-#include "lowir/model/lowir_model.h"
+#include "lowir/model/program.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_registers.h"
 #include "lowir_native_selection.h"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lowir/model/lowir_model.h"
+#include "lowir/model/program.h"
 #include "lowir_native.h"
 #include "mir_model.h"
 

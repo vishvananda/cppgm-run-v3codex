@@ -1,7 +1,7 @@
 #pragma once
 
-#include "lowir/model/lowir_model.h"
-#include "lowir/io/lowir_prepare.h"
+#include "lowir/model/program.h"
+#include "lowir/io/prepare.h"
 #include "lowering/ir/model.h"
 
 namespace cppgm

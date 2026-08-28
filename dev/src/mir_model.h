@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "lowir/model/lowir_model.h"
+#include "lowir/model/program.h"
 #include "x86_register_model.h"
 
 namespace mir_model {

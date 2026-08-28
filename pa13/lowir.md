@@ -25,7 +25,7 @@ LowIR is:
 
 LowIR text is the serialized form of the compiler-owned backend program model.
 Implementations may use a typed in-memory representation, and the starter
-support includes an optional `dev/src/lowir/model/lowir_model.h` scaffold for that shape,
+support includes an optional `dev/src/lowir/model/program.h` scaffold for that shape,
 but the text remains the durable boundary. A backend-visible fact that cannot
 be serialized to LowIR and parsed back is not part of the LowIR contract.
 

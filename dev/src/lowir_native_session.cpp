@@ -1,10 +1,10 @@
 #include "lowir_native.h"
 
-#include "lowir/optimize/lowir_force_inline.h"
+#include "lowir/optimize/force_inline.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_mir_control_flow.h"
 #include "lowir_native_opt.h"
-#include "lowir/analysis/lowir_phi_edges.h"
+#include "lowir/analysis/phi_edges.h"
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
 #include "lowir_native_session.h"

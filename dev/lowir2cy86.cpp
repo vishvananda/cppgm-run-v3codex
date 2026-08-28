@@ -1,5 +1,5 @@
-#include "lowir/cy86/lowir_cy86.h"
-#include "lowir/model/lowir_model.h"
+#include "lowir/cy86/converter.h"
+#include "lowir/model/program.h"
 #include "support/tool_help_text.h"
 
 #include <chrono>
