@@ -1,6 +1,6 @@
 # Plan: Deduplicate the Compiler Core Outside `lowir_opt`
 
-Status: execution in progress
+Status: complete
 
 Date: 2026-08-28
 
@@ -1395,3 +1395,128 @@ not reuse measurements from a different source tree.
   predicate's other users.  Replacing the local copy with that existing
   predicate changes no student-visible MIR or diagnostic structure, so the
   existing structural and behavioral controls are sufficient.
+- **C12-F1 (NATIVE RESULT-STATS OWNER).** Commit `9edd7df5` moved the exact
+  common suffix into `lowir_native_stats_report`: the four narrow-result
+  counters, code-shape and edge-staging reporters, shared-storage lifetime,
+  and reclaim counters now have one source definition.  Compile and link keep
+  their planned-register prefixes and their distinct EH, output, link,
+  serialization, timing, newline, and function-census suffixes.  The focused
+  before/after object and executable remain exact at `f479c1d3...` and
+  `1510238d...`, respectively, and both ordered diagnostic key schemas are
+  unchanged.  PA30 passes 100/100, PA31 passes 31/31, and the default audit is
+  zero-fatal/33.
+- **C12-F2 (UNCONDITIONAL CONTROL-FLOW OWNER).** Commit `a4515939` removes the
+  loop census's private terminator truth table and calls C8's existing
+  `mir_control_flow::ends_unconditional_control_flow` owner.  Function/loop
+  census controls pass 2/2, PA29 passes 291/291, PA31 passes 31/31, and PA38
+  passes 45/45.  The tight duplicate count falls by one, while GCC- and
+  Clang-O3 code show that the shared predicate retains the established inline
+  comparison sequence.
+- **C12-F1 LAYOUT RETENTION AND REJECTED SHAPES.** The initial out-of-line
+  result-stats definition was semantically cold but moved later linked code;
+  six pinned Clang-O3 frozen samples measured 4.875/4.925-second
+  pre/current medians, a repeated 1.03% regression.  Commit `44df85f3` keeps
+  the one source definition in the stats-report owner but makes it naturally
+  inline, which emits one weak executable copy near the driver callers under
+  the measured compilers.  Six final pinned samples are exact at
+  `8b735b26...` and improve 4.845 -> 4.830 seconds (-0.52%), with user time
+  4.345 -> 4.335 seconds.  Forcing the helper inline was also tested and
+  removed: it grew the self compiler by 408 text bytes and produced a 1.508x
+  two-lane self/GCC ratio.  The retained natural-inline form therefore
+  preserves source ownership without the late-layout or forced-duplication
+  penalties.
+- **C12 FINAL TIGHT-SCAN CLASSIFICATION.** The report-only six-line,
+  100-character scan now contains 134 duplicate windows plus the established
+  31 file-division advisories, for 165 tight warnings.  Every duplicate window
+  is classified exactly once below; scan numbers refer to the final scan order
+  at `44df85f3`.
+
+  - Scanner scaffolding rather than semantic matches: `2-11`, `24`, `27-28`,
+    `32`, `57-60`, `66`, `70-75`, `77-81`, `83-84`, `86`, `89-90`, `92-94`,
+    `97`, `104`, `106-107`, `110`, `112-116`, `118`, `120-121`, `123-124`,
+    `126`, `129`, and `134`.  These are include/namespace preambles, matching
+    declarations and definitions, or repeated file-opening syntax.
+  - Staged representation or lifecycle owners that must remain local: `1`,
+    `13`, `15-16`, `62`, `64`, `88`, `128`, `130-131`, and `133`.  They cover
+    PA10/PA11 mode shells, ABI fact/graph records, differently prefixed
+    diagnostics, frontend versus LowIR string identity, distinct compact-table
+    entries, PA15 versus LowIR force-inline stages, synthetic-symbol
+    lifecycles, staged PA6/PA8/frontend hashes, and distinct PA8 fields/stats.
+  - Optimizer-policy matches that remain pass-local: `17-20`, `38`, `40`, and
+    `42-47`.  Their truth sets and rewrite policies differ; reopening them as a
+    generic pass or visitor would undo the completed optimizer audit.
+  - Existing shared exact core: `41`.  Preparation keeps policy-specific outer
+    walks, while its exact `first`/`second`/`third`/`args` traversal already
+    uses `lowir_operand_view.h`.
+  - Native policy/mechanics that remain local: `21-23`, `25-26`, `29-31`, and
+    `33-37`.  These are integer/XMM binding, LEA/MOV folding, atomic
+    load/exchange, EH/malloc allocation, typed/named addresses, branch-local
+    LEA construction, local/crossing allocation pools, span/reclaim lifetime,
+    local/EH relocation identities, debug ranges, declaration/definition TLS,
+    strlen/memcpy builtins, and composite/standalone condition emission.  The
+    shared spelling is smaller than the distinct surrounding policy.
+  - ABI, container, semantic, parser, and lowering policy that remains local:
+    `12`, `14`, `39`, `48-56`, `61`, `63`, `65`, `67-69`, `76`, `82`, `85`,
+    `87`, `91`, `95-96`, `98-103`, `105`, `108-109`, `111`, `117`, `119`,
+    `122`, `125`, `127`, and `132`.  These cover mangle scheduling/emission,
+    union wrappers, block transition/validation, macro and grammar state,
+    array/conversion/entity policy, deliberately distinct compact tables,
+    canonicalization and template identity, cleanup tables, conversion caches,
+    construction/assignment and result/parameter ABI boundaries, aggregate
+    casts and packs, evaluator maps, synthetic roles, constexpr access,
+    initializer-list and RTTI sources, base-path updates, statement-expression
+    kinds, attributes/defaults, generated identities, traits, array forms, and
+    namespace grammar.  A common helper would be policy-parametric or merely
+    instantiate the same loop once per type, not create one clearer owner.
+- **C12 P0/P1 OWNER AUDIT.** Every frozen-census P0/P1 disposition was checked
+  against its final definitions and callers.  Driver stats use
+  `report_codegen_pipeline_stats` and `report_codegen_result_stats`; native
+  final emission uses `CommonPeepholeEmitter`; semantic facts and worklists use
+  `IsClassFlavor`/`IsEnumFlavor` and `QueueDeferredFunctionDefinition`;
+  lifetime and call construction use `PrepareLifetimeScope`, the reverse
+  cleanup helper, and `BuildBoundIntrinsicCallShell`; lowering uses
+  `ResetCommonFunctionLoweringState`, `DirectCallInstruction`, and
+  `IsTrivialLifecycleBinding`; LowIR uses `parse_function_header` and
+  `lowir_operand_view.h`; compact cached-hash tables use
+  `RebuildCachedHashSlots`.  The execution ledger records each migration's
+  earliest student-facing structural or behavioral coverage.  The deliberate
+  policy boundaries listed in this plan account for every non-migration; no
+  P0/P1 family is unowned.
+- **C12 FINAL CORRECTED PERFORMANCE.** Final source-matched producer hashes are
+  `ef5c434d...` self, `0e850abb...` GCC-O1, and `b014364c...` Clang-O1; the
+  self compiler has 8,626,303 text bytes.  Six interleaved self/GCC lanes have
+  wall medians of 31.585 and 21.075 seconds; three Clang lanes have a
+  22.14-second median.  The binding ratios are therefore **1.499x self/GCC**
+  and **1.427x self/Clang**.  Median aggregate CPU is 902.505/588.375/603.25
+  seconds and median maximum RSS is 229,026/228,130/226,352 KiB.  Self and GCC
+  reproduce compiler `ef5c434d...` and 215-object census `ca7eac28...` in
+  every lane; Clang is internally exact at compiler `482a98a4...` and census
+  `e87c8d16...`.
+
+  A final pre-audit/current self B/A/A/B guard on identical final source is
+  exact at compiler `ef5c434d...` and census `19545ef3...`.  Pre/current wall
+  medians are 31.785/31.95 seconds, with one pair moving each direction;
+  aggregate-CPU medians are 903.21/904.99 seconds, a bounded +0.20%.  The
+  cleanup therefore adds no repeated absolute-work regression.
+- **C12 FINAL FULLY OPTIMIZED GUARD.** Final GCC-O3 producer `322ef6fc...`
+  (7,061,845 text bytes) versus pre-audit `a965e677...` has exact frozen object
+  `59c178ba...`, 4.565/4.550-second wall medians (-0.27%), and
+  4.070/4.075-second user medians.  Final Clang-O3 producer `28a0e990...`
+  (5,489,755 text bytes) versus `5f2e4665...` has exact frozen object
+  `8b735b26...`, 4.845/4.830-second wall medians (-0.52%), and
+  4.345/4.335-second user medians.  Neither best-case host path regresses.
+- **C12 FINAL GATES, INCEPTION, AND CLOSURE.** At final source, root 32-way
+  report-through-PA38 passes 5,471/5,471; the LowIR contract audit passes with
+  124 ledger rows and 99 retained rows; the default PA38 audit is
+  zero-fatal/33; and `git diff --check` is clean.  Final line counts are 2,632
+  for `cppgm++.cpp`, 2,982 for `lowir_native_elf.cpp`, 2,994 for
+  `pa10_syntax.cpp`, and 2,993 for `macro_processor.cpp`.
+
+  Fresh explicit-O1 inception under
+  `/dev/shm/v3codex-c12-final-inception.jdFrEx`, with outer, inner, and object
+  job counts all 32, matches 215/215 objects and the final compiler.  Both
+  object trees have census `f1f72cfe...`; both compilers are `ef5c434d...`
+  with 8,626,303 text bytes.  The inception comparison takes
+  32.84/856.88/50.87 seconds wall/user/system with 228,992 KiB maximum RSS.
+  All retained code commits and this closure ledger are pushed to
+  `origin/v3opt`; the reopened audit is satisfied requirement by requirement.
