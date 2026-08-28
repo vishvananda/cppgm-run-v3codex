@@ -1,6 +1,6 @@
 # Plan: Audit and Reduce Optimizer Duplication
 
-Status: executing; D0-D4 complete, D5 native consolidation in progress
+Status: executing; D0-D5 complete, D6 re-audit next
 
 Date: 2026-08-27
 
@@ -1086,6 +1086,16 @@ This plan is complete only when:
   are `97923fc6...`/5,788,440 and `455c4d42...`/5,026,233.  Retain: the exact
   shared ordering fact has one owner, caller-specific tie semantics remain
   explicit, output is exact, and measured performance is preserved.
+- **D-C5 (NATIVE CONSOLIDATION CUMULATIVE CHECKPOINT).** The three retained D5
+  increments pass root `make -j32 test-report-through-pa38` at 5,465/5,465,
+  `git diff --check`, the 124-row LowIR contract audit, and the default file
+  audit at zero fatal findings with 35 established warnings.  A fresh isolated
+  explicit-O1 inception used outer, inner, and object parallelism all at 32
+  under `/dev/shm/v3codex-optdup-d5-cumulative-inception.WvjWvV`; all 215
+  objects and the final compiler match.  Self and inception binaries both hash
+  to `613e97a9...` with 8,647,175 text and 334,936 data bytes.  No stale
+  compiler, profiler, Valgrind, Cachegrind, or perf-recording process preceded
+  the checkpoint.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
