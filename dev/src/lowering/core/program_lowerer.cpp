@@ -2024,66 +2024,6 @@ private:
 		}
 		return RetainFullExpressionCallResult(node, record, result);
 	}
-	Operand LowerConditional(std::uint32_t node, const DumpNode& record,
-		const NodeChildren& children)
-	{
-		if (children.size() != 3) throw std::runtime_error("invalid semantic conditional");
-		const LowType type = LowerExpressionType(record.type);
-		if (type.kind == LOW_VOID)
-			return LowerDiscardedConditional(node, children);
-		const Operand slot(EnsureGeneratedSlot(node, "cond", type), type);
-		const BlockId then_block = AddBlock(NewLabel("cond_then"));
-		const BlockId else_block = AddBlock(NewLabel("cond_else"));
-		const BlockId end_block = AddBlock(NewLabel("cond_end"));
-		const Operand condition = LowerCondition(children[0]);
-		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
-		EmitBranch(condition, then_block, else_block);
-		SelectBlock(then_block);
-		if (arena_.nodes[children[1]].kind == DUMP_THROW_EXPRESSION)
-			(void)LowerValue(children[1]);
-		else
-		{
-			Instruction yes_store(Instruction::STORE);
-			yes_store.type = type;
-			yes_store.first = LowerConvertedValue(children[1], type, false);
-			yes_store.second = slot;
-			Emit(yes_store);
-		}
-		if (!CurrentBlock().terminated)
-		{
-			LowerBranchCleanupActions(node, children[1]);
-			if (full_expression_cleanup_active_)
-				PauseFullExpressionCleanupSegment();
-			EmitJump(end_block);
-		}
-		SelectBlock(else_block);
-		if (arena_.nodes[children[2]].kind == DUMP_THROW_EXPRESSION)
-			(void)LowerValue(children[2]);
-		else
-		{
-			Instruction no_store(Instruction::STORE);
-			no_store.type = type;
-			no_store.first = LowerConvertedValue(children[2], type, false);
-			no_store.second = slot;
-			Emit(no_store);
-		}
-		if (!CurrentBlock().terminated)
-		{
-			LowerBranchCleanupActions(node, children[2]);
-			if (full_expression_cleanup_active_)
-				PauseFullExpressionCleanupSegment();
-			EmitJump(end_block);
-		}
-		SelectBlock(end_block);
-		const Operand result = Temp(type);
-		Instruction load(Instruction::LOAD);
-		load.dest = result.id;
-		load.type = type;
-		load.first = slot;
-		Emit(load);
-		return result;
-	}
-
 	void PushStatementNode(std::uint32_t node)
 	{
 		StatementTask task(STATEMENT_NODE);
