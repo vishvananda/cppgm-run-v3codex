@@ -155,16 +155,12 @@ protected:
 					{
 						if (!helper.trivial_member_constructors[m])
 						{
-							Instruction call(Instruction::CALL);
-							call.type = LowVoid();
-							call.first = Operand(Operand::FUNCTION,
-								derived.function_symbols_[constructor], LowPtr());
 							CallArguments arguments;
 							CallArgumentFlags references;
 							arguments.Push(destination);
 							references.Push(0);
-							derived.output_.symbols[
-								derived.function_symbols_[constructor]].referenced = true;
+							Instruction call = derived.DirectCallInstruction(
+								derived.function_symbols_[constructor], LowVoid());
 							derived.AttachCallArguments(&call, arguments, references);
 							derived.Emit(call);
 						}
@@ -198,18 +194,14 @@ protected:
 							source, destination);
 					else
 					{
-						Instruction call(Instruction::CALL);
-						call.type = LowVoid();
-						call.first = Operand(Operand::FUNCTION,
-							derived.function_symbols_[constructor], LowPtr());
 						CallArguments arguments;
 						CallArgumentFlags references;
 						arguments.Push(destination);
 						references.Push(0);
 						arguments.Push(source);
 						references.Push(1);
-						derived.output_.symbols[
-							derived.function_symbols_[constructor]].referenced = true;
+						Instruction call = derived.DirectCallInstruction(
+							derived.function_symbols_[constructor], LowVoid());
 						derived.AttachCallArguments(&call, arguments, references);
 						derived.Emit(call);
 					}
@@ -290,10 +282,6 @@ protected:
 			children.size() != helper.parameter_member_count ||
 			helper.parameter_member_count > helper.members.size())
 			throw std::logic_error("aggregate helper boundary mismatch");
-		Instruction call(Instruction::CALL);
-		call.type = LowVoid();
-		call.first = Operand(Operand::FUNCTION,
-			derived.aggregate_helper_symbols_[action.aggregate_helper], LowPtr());
 		CallArguments arguments;
 		CallArgumentFlags references;
 		arguments.Push(destination);
@@ -331,8 +319,8 @@ protected:
 				derived.LowerInitializerConvertedValue(children[i], expected));
 			references.Push(reference ? 1 : 0);
 		}
-		derived.output_.symbols[
-			derived.aggregate_helper_symbols_[action.aggregate_helper]].referenced = true;
+		Instruction call = derived.DirectCallInstruction(
+			derived.aggregate_helper_symbols_[action.aggregate_helper], LowVoid());
 		derived.AttachCallArguments(&call, arguments, references);
 		derived.Emit(call);
 	}

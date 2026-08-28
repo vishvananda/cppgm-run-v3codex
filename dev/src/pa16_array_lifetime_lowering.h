@@ -362,13 +362,9 @@ protected:
 			derived.Emit(store);
 		}
 		const Operand result = derived.Temp(LowPtr());
-		Instruction call(Instruction::CALL);
-		call.dest = result.id;
-		call.type = LowPtr();
-		call.first = Operand(Operand::FUNCTION,
+		Instruction call = derived.DirectCallInstruction(
 			derived.function_symbols_[binding], LowPtr());
-		derived.output_.symbols[
-			derived.function_symbols_[binding]].referenced = true;
+		call.dest = result.id;
 		derived.AttachCallArguments(&call, arguments, references);
 		derived.Emit(call);
 		*retained_size = retain_size ?
@@ -457,12 +453,8 @@ protected:
 				derived.LowerType(parameters[1])));
 			references.Push(0);
 		}
-		Instruction call(Instruction::CALL);
-		call.type = LowVoid();
-		call.first = Operand(Operand::FUNCTION,
-			derived.function_symbols_[binding], LowPtr());
-		derived.output_.symbols[
-			derived.function_symbols_[binding]].referenced = true;
+		Instruction call = derived.DirectCallInstruction(
+			derived.function_symbols_[binding], LowVoid());
 		derived.AttachCallArguments(&call, arguments, references);
 		derived.Emit(call);
 	}

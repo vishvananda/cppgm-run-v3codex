@@ -192,10 +192,6 @@ protected:
 			function_type.parameter_count == 0)
 			throw std::logic_error("constructor action has invalid function type");
 		const TypeId* parameters = derived.program_.types.Parameters(action.type);
-		Instruction call(Instruction::CALL);
-		call.type = LowVoid();
-		call.first = Operand(Operand::FUNCTION,
-			derived.function_symbols_[action.binding], LowPtr());
 		CallArguments arguments;
 		CallArgumentFlags references;
 		arguments.Push(destination);
@@ -326,8 +322,8 @@ protected:
 				--hidden_remaining;
 			}
 		}
-		derived.output_.symbols[
-			derived.function_symbols_[action.binding]].referenced = true;
+		Instruction call = derived.DirectCallInstruction(
+			derived.function_symbols_[action.binding], LowVoid());
 		derived.AttachCallArguments(&call, arguments, references);
 		if (derived.full_expression_cleanup_active_ &&
 			!derived.program_.bindings[action.binding].nonthrowing)

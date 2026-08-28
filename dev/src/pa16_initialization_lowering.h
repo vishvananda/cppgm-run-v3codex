@@ -441,10 +441,6 @@ protected:
 		const TypeId function_type = derived.program_.bindings[binding].type;
 		const TypeRecord& function = derived.program_.types.Get(function_type);
 		const TypeId* parameters = derived.program_.types.Parameters(function_type);
-		Instruction call(Instruction::CALL);
-		call.type = LowVoid();
-		call.first = Operand(Operand::FUNCTION,
-			derived.function_symbols_[binding], LowPtr());
 		CallArguments arguments;
 		CallArgumentFlags references;
 		arguments.Push(pointer);
@@ -456,8 +452,8 @@ protected:
 				derived.LowerType(parameters[1])));
 			references.Push(0);
 		}
-		derived.output_.symbols[
-			derived.function_symbols_[binding]].referenced = true;
+		Instruction call = derived.DirectCallInstruction(
+			derived.function_symbols_[binding], LowVoid());
 		derived.AttachCallArguments(&call, arguments, references);
 		derived.Emit(call);
 	}

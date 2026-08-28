@@ -67,10 +67,6 @@ protected:
 				"selected special-member helper has no lowering identity");
 		const TypeRecord& function = derived.program_.types.Get(
 			derived.program_.bindings[selected].type);
-		Instruction call(Instruction::CALL);
-		call.type = derived.LowerBoundaryResult(function.child);
-		call.first = Operand(Operand::FUNCTION,
-			derived.function_symbols_[selected], LowPtr());
 		CallArguments arguments;
 		CallArgumentFlags references;
 		arguments.Push(destination);
@@ -136,8 +132,9 @@ protected:
 				throw std::logic_error(
 					"synthesized constructor virtual-base ABI is incomplete");
 		}
-		derived.output_.symbols[
-			derived.function_symbols_[selected]].referenced = true;
+		Instruction call = derived.DirectCallInstruction(
+			derived.function_symbols_[selected],
+			derived.LowerBoundaryResult(function.child));
 		derived.AttachCallArguments(&call, arguments, references);
 		if (call.type.kind == LOW_VOID)
 			derived.Emit(call);

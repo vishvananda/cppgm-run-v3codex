@@ -825,3 +825,29 @@ not reuse measurements from a different source tree.
   approximately 1% resolution); one isolated 6.74-second candidate sample did
   not recur in six immediate repetitions.  The extraction is retained as
   size-positive and performance-neutral within the measurement floor.
+- **C6 COVERAGE AND CALL-SHAPE AUDIT.** A direct-call primitive may own only
+  CALL construction, result type, the direct function operand, and marking the
+  symbol referenced.  General expression lowering must retain direct/indirect
+  selection, arguments and passing roles, indirect-result storage,
+  virtual-base forwarding, virtual dispatch, cleanup/EH, no-return behavior,
+  and result use.  Synthetic callers retain their own entry/result/return
+  policy.  The PA15 simple direct-call fixture checks the exact typed callee,
+  the mixed direct/function-pointer fixture protects indirect selection, and
+  the PA33 host TLS wrapper test behaviorally reaches a synthetic wrapper's
+  initializer call.  These controls pass 3/3, so no new fixture is needed for
+  the initial one-ordinary/one-synthetic migration.
+- **C6 (DIRECT-CALL INSTRUCTION PRIMITIVE).**
+  `DirectCallInstruction` now exclusively owns GraphLowerer's typed direct
+  CALL operand and reference mark.  General expression calls, TLS wrappers,
+  constructors/destructors, aggregate helpers, array allocation/deallocation,
+  special members, RTTI/EH runtime calls, catch objects, and lifecycle
+  registration use it; the remaining manual call on this surface is virtual
+  and indirect.  Arguments, passing roles, results, virtual bases, cleanup/EH,
+  and emission stay in each caller.  The implementation removes 44 net source
+  lines.  PA15, PA16, PA17, PA26, and PA33 pass 879/879, and the 32-way
+  through-PA33 report passes 4,626/4,626; the periodic through-PA38 gate passes
+  5,467/5,467 and the audit remains zero-fatal/34.  GCC-O3 text changes by +20
+  bytes and Clang-O3 by +100 bytes; all frozen O0 objects are exact.  Six pinned,
+  ASLR-disabled GCC pairs have a +0.01-second median paired wall delta, and six
+  Clang pairs average +0.015 seconds (+0.3%).  Both are performance-neutral at
+  the timing floor, so the coherent ownership and source reduction are kept.

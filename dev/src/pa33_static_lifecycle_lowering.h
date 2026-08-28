@@ -142,9 +142,7 @@ protected:
 				Operand(Operand::GLOBAL, dso, LowI8())));
 			passing.Push(Instruction::CALL_PASS_VALUE);
 		}
-		Instruction call(Instruction::CALL);
-		call.type = LowI32();
-		call.first = Operand(Operand::FUNCTION, runtime, LowPtr());
+		Instruction call = derived.DirectCallInstruction(runtime, LowI32());
 		const Operand ignored = derived.Temp(LowI32());
 		call.dest = ignored.id;
 		derived.AttachCallArguments(&call, arguments, passing);
@@ -395,11 +393,8 @@ protected:
 			wrapper.symbol = wrapper_symbol;
 			wrapper.result = LowPtr();
 			derived.BeginSyntheticFunction(&wrapper);
-			Instruction initialize(Instruction::CALL);
-			initialize.type = LowVoid();
-			initialize.first = Operand(
-				Operand::FUNCTION, initializer_symbol, LowPtr());
-			derived.output_.symbols[initializer_symbol].referenced = true;
+			Instruction initialize = derived.DirectCallInstruction(
+				initializer_symbol, LowVoid());
 			derived.Emit(initialize);
 			const Operand address = derived.AddressOfStorage(Operand(
 				Operand::GLOBAL, object_symbol,

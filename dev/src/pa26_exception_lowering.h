@@ -663,10 +663,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (symbol == kNoLowId)
 			throw std::logic_error("exception runtime support was not emitted");
-		derived.output_.symbols[symbol].referenced = true;
-		Instruction call(Instruction::CALL);
-		call.type = result;
-		call.first = Operand(Operand::FUNCTION, symbol, LowPtr());
+		Instruction call = derived.DirectCallInstruction(symbol, result);
 		CallArgumentFlags passing;
 		for (std::size_t i = 0; i < arguments.size(); ++i)
 			passing.Push(Instruction::CALL_PASS_VALUE);
@@ -1047,18 +1044,15 @@ protected:
 				derived.function_symbols_[handler.selected_binding] == kNoLowId)
 				throw std::logic_error(
 					"catch copy constructor has no emitted binding");
-			Instruction call(Instruction::CALL);
-			call.type = LowVoid();
-			call.first = Operand(Operand::FUNCTION,
-				derived.function_symbols_[handler.selected_binding], LowPtr());
 			CallArguments arguments;
 			arguments.Push(derived.AddressOfStorage(destination));
 			arguments.Push(caught);
 			CallArgumentFlags passing;
 			passing.Push(Instruction::CALL_PASS_VALUE);
 			passing.Push(Instruction::CALL_PASS_REFERENCE);
+			Instruction call = derived.DirectCallInstruction(
+				derived.function_symbols_[handler.selected_binding], LowVoid());
 			derived.AttachCallArguments(&call, arguments, passing);
-			derived.output_.symbols[call.first.id].referenced = true;
 			derived.Emit(call);
 			return;
 		}
@@ -1083,16 +1077,13 @@ protected:
 		const LowType type = derived.LowerStorageType(handler.type);
 		const Operand storage(derived.EnsureGeneratedSlot(
 			handler_node, "catch_value", type), type);
-		Instruction call(Instruction::CALL);
-		call.type = LowVoid();
-		call.first = Operand(Operand::FUNCTION,
-			derived.function_symbols_[handler.object_binding], LowPtr());
 		CallArguments arguments;
 		arguments.Push(derived.AddressOfStorage(storage));
 		CallArgumentFlags passing;
 		passing.Push(Instruction::CALL_PASS_VALUE);
+		Instruction call = derived.DirectCallInstruction(
+			derived.function_symbols_[handler.object_binding], LowVoid());
 		derived.AttachCallArguments(&call, arguments, passing);
-		derived.output_.symbols[call.first.id].referenced = true;
 		derived.Emit(call);
 	}
 

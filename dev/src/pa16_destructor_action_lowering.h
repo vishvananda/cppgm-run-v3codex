@@ -81,10 +81,6 @@ protected:
 				 derived.output_.strings.get(derived.output_.symbols[
 					derived.function_->symbol].name) :
 				 std::string("<synthetic>")));
-		Instruction call(Instruction::CALL);
-		call.type = LowVoid();
-		call.first = Operand(Operand::FUNCTION,
-			derived.function_symbols_[destructor], LowPtr());
 		CallArguments arguments;
 		CallArgumentFlags references;
 		arguments.Push(destination);
@@ -142,8 +138,8 @@ protected:
 		if (hidden != 0)
 			throw std::logic_error(
 				"destructor call has an incomplete virtual-base contract");
-		derived.output_.symbols[
-			derived.function_symbols_[destructor]].referenced = true;
+		Instruction call = derived.DirectCallInstruction(
+			derived.function_symbols_[destructor], LowVoid());
 		derived.AttachCallArguments(&call, arguments, references);
 		derived.Emit(call);
 	}

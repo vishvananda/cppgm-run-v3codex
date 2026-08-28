@@ -1076,6 +1076,16 @@ private:
 		if (stats_) ++stats_->instructions;
 	}
 
+	Instruction DirectCallInstruction(SymbolId symbol,
+		const LowType& result_type)
+	{
+		output_.symbols[symbol].referenced = true;
+		Instruction call(Instruction::CALL);
+		call.type = result_type;
+		call.first = Operand(Operand::FUNCTION, symbol, LowPtr());
+		return call;
+	}
+
 	Operand StorageFor(BindingId binding, const LowType& type,
 		NameId expression_name = 0)
 	{
@@ -1103,12 +1113,9 @@ private:
 					throw std::logic_error(
 						"thread-local storage has no access wrapper");
 				const SymbolId wrapper = tls_access_wrapper_symbols_[global];
-				output_.symbols[wrapper].referenced = true;
+				Instruction call = DirectCallInstruction(wrapper, LowPtr());
 				const Operand address = Temp(LowPtr());
-				Instruction call(Instruction::CALL);
 				call.dest = address.id;
-				call.type = LowPtr();
-				call.first = Operand(Operand::FUNCTION, wrapper, LowPtr());
 				Emit(call);
 				return address;
 			}
@@ -1879,17 +1886,18 @@ private:
 		if (function_type.kind != TYPE_FUNCTION)
 			throw std::runtime_error("invalid PA15 indirect callee type");
 		const TypeId* parameters = program_.types.Parameters(function_type_id);
-		Instruction call(Instruction::CALL);
 		CallArguments arguments;
 		CallArgumentFlags argument_references;
 		const bool indirect_result = UsesIndirectClassResult(function_type.child, callee.binding);
-		call.type = indirect_result ? LowVoid() : LowerType(record.type);
-		call.indirect = !direct;
-		if (direct)
+		const LowType call_type = indirect_result ?
+			LowVoid() : LowerType(record.type);
+		Instruction call = direct ? DirectCallInstruction(
+			function_symbols_[callee.binding], call_type) :
+			Instruction(Instruction::CALL);
+		if (!direct)
 		{
-			output_.symbols[function_symbols_[callee.binding]].referenced = true;
-			call.first = Operand(Operand::FUNCTION,
-				function_symbols_[callee.binding], LowPtr());
+			call.type = call_type;
+			call.indirect = true;
 		}
 		Operand result_storage;
 		Operand virtual_object;

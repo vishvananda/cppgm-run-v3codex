@@ -65,10 +65,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (symbol == kNoLowId)
 			throw std::logic_error("RTTI runtime call has no symbol");
-		derived.output_.symbols[symbol].referenced = true;
-		Instruction call(Instruction::CALL);
-		call.type = result_type;
-		call.first = Operand(Operand::FUNCTION, symbol, LowPtr());
+		Instruction call = derived.DirectCallInstruction(symbol, result_type);
 		CallArgumentFlags references;
 		for (std::size_t i = 0; i < arguments.size(); ++i)
 			references.Push(Instruction::CALL_PASS_VALUE);
