@@ -64,6 +64,23 @@ RegisterMask operand_registers(const MirOperand & operand)
   return 0;
 }
 
+bool has_all_gpr_use_and_definition(MirInstruction::Opcode opcode)
+{
+  switch(opcode) {
+  case MirInstruction::MI_LOCK_CMPXCHG16B:
+  case MirInstruction::MI_I128_SHL:
+  case MirInstruction::MI_I128_SHR:
+  case MirInstruction::MI_I128_SAR:
+  case MirInstruction::MI_I128_UDIV:
+  case MirInstruction::MI_I128_UMOD:
+  case MirInstruction::MI_I128_SDIV:
+  case MirInstruction::MI_I128_SMOD:
+    return true;
+  default:
+    return false;
+  }
+}
+
 bool is_write_only_destination(MirInstruction::Opcode opcode)
 {
   switch(opcode) {
@@ -130,7 +147,8 @@ bool is_read_write_destination(MirInstruction::Opcode opcode)
 
 RegisterMask instruction_defs(const MirInstruction & instruction)
 {
-  RegisterMask defs = 0;
+  RegisterMask defs = has_all_gpr_use_and_definition(instruction.opcode) ?
+    kAllGprs : 0;
   if(!instruction.operands.empty() &&
      (is_write_only_destination(instruction.opcode) ||
       is_read_write_destination(instruction.opcode))) {
@@ -187,16 +205,6 @@ RegisterMask instruction_defs(const MirInstruction & instruction)
   case MirInstruction::MI_ZERO_BYTES:
     defs |= gpr_bit(XR_RAX) | gpr_bit(XR_RDI) | gpr_bit(XR_RCX);
     break;
-  case MirInstruction::MI_LOCK_CMPXCHG16B:
-  case MirInstruction::MI_I128_SHL:
-  case MirInstruction::MI_I128_SHR:
-  case MirInstruction::MI_I128_SAR:
-  case MirInstruction::MI_I128_UDIV:
-  case MirInstruction::MI_I128_UMOD:
-  case MirInstruction::MI_I128_SDIV:
-  case MirInstruction::MI_I128_SMOD:
-    defs |= kAllGprs;
-    break;
   default:
     break;
   }
@@ -206,7 +214,8 @@ RegisterMask instruction_defs(const MirInstruction & instruction)
 RegisterMask instruction_uses(
     const MirInstruction & instruction, bool exact_call_arguments = false)
 {
-  RegisterMask uses = 0;
+  RegisterMask uses = has_all_gpr_use_and_definition(instruction.opcode) ?
+    kAllGprs : 0;
   for(std::size_t i = 0; i < instruction.operands.size(); ++i) {
     if(i == 0 && is_write_only_destination(instruction.opcode)) {
       if(instruction.operands[i].kind == MirOperand::OP_DEREF)
@@ -254,16 +263,6 @@ RegisterMask instruction_uses(
     break;
   case MirInstruction::MI_EXIT:
     uses |= gpr_bit(XR_RDI);
-    break;
-  case MirInstruction::MI_LOCK_CMPXCHG16B:
-  case MirInstruction::MI_I128_SHL:
-  case MirInstruction::MI_I128_SHR:
-  case MirInstruction::MI_I128_SAR:
-  case MirInstruction::MI_I128_UDIV:
-  case MirInstruction::MI_I128_UMOD:
-  case MirInstruction::MI_I128_SDIV:
-  case MirInstruction::MI_I128_SMOD:
-    uses |= kAllGprs;
     break;
   default:
     break;
@@ -438,7 +437,7 @@ bool has_call_before_redefinition(const MirBlock & block, std::size_t start,
   return false;
 }
 
-bool same_operand(const MirOperand & left, const MirOperand & right)
+bool same_complete_operand(const MirOperand & left, const MirOperand & right)
 {
   if(left.kind != right.kind) return false;
   if(left.kind == MirOperand::OP_REG) return left.reg == right.reg;
@@ -520,7 +519,7 @@ void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
             operand_index == 1;
         if(allowed) operand = replacement;
       }
-      if(!same_operand(original, operand)) {
+      if(!same_complete_operand(original, operand)) {
         if(stats) ++stats->rewrites;
         if(instruction.opcode == MirInstruction::MI_MOV &&
            operand_index == 1 && operand.kind == MirOperand::OP_IMM &&

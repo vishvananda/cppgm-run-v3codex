@@ -988,6 +988,32 @@ This plan is complete only when:
   the final compiler match.  Self and inception binaries both hash to
   `1f704cc9...` with 8,646,551 text and 334,888 data bytes.  No stale compiler,
   profiler, Valgrind, Cachegrind, or perf process preceded the checkpoint.
+- **D5-P1 (NAMED MIR IDENTITY AND SHARED ALL-GPR EFFECT, RETAINED).** On the
+  tree based on `dd947151`, local predicates are now explicitly named
+  `same_complete_operand` and `same_physical_location`; they remain separate
+  because complete MIR identity includes immediates, symbols, labels,
+  floating literals, and full dereference shape while assignable location
+  identity accepts only frame/GPR/XMM homes.  One
+  `has_all_gpr_use_and_definition` predicate owns the exact CMPXCHG16B/i128
+  opcode membership shared by the otherwise separate use and definition
+  masks.  PA37 is 188/188, PA38 is 45/45, `git diff --check` is clean, and the
+  default audit remains zero-fatal/35-warning.  The tight audit remains at 13
+  warnings, but no longer reports the i128 use/definition group; its native-opt
+  warning is now a separate liveness-loop family.  Fresh exact-candidate-source
+  private logs cover all 215 translation units: every non-timing optimizer
+  counter and all 215 objects match, and old/candidate compilers link the same
+  `436ea1d1...` output.  Compiler text changes only from 8,646,551 to 8,646,575
+  bytes, with data unchanged at 334,888 bytes.  Two clean paired self lanes
+  are candidate 31.11/31.91 seconds wall and 900.58/900.51 aggregate CPU,
+  versus old 31.93/31.23 wall and 902.64/899.55 CPU.  Means are
+  31.510/900.545 versus 31.580/901.095: wall improves 0.222%, aggregate CPU
+  improves 0.061%, and mean peak RSS is 230,926 versus 229,452 KiB.
+  Exact-source GCC lanes are 30.44/29.30 wall and 574.30/569.05 CPU; Clang
+  lanes are 30.67/30.43 wall and 645.64/645.73 CPU.  Candidate ratios are
+  1.055x GCC and 1.031x Clang.  GCC/Clang hashes and text are
+  `372bc85a...`/5,788,048 and `5719374b...`/5,025,909.  Retain: semantic names
+  prevent false equality reuse, the only exact opcode fact has one owner, and
+  output/performance remain stable.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.

@@ -8,8 +8,8 @@ namespace lowir_native {
 namespace phi_detail {
 namespace {
 
-bool same_location(const mir_model::MirOperand & left,
-                   const mir_model::MirOperand & right)
+bool same_physical_location(const mir_model::MirOperand & left,
+                            const mir_model::MirOperand & right)
 {
   using mir_model::MirOperand;
   if(left.kind != right.kind) return false;
@@ -36,7 +36,7 @@ bool move_reads_location(const Move & move,
                          const mir_model::MirOperand & location)
 {
   if(move.source_is_address) return false;
-  if(same_location(location, move.source)) return true;
+  if(same_physical_location(location, move.source)) return true;
   return location.kind == mir_model::MirOperand::OP_REG &&
     move.source.kind == mir_model::MirOperand::OP_DEREF &&
     (move.source.reg == location.reg ||
@@ -112,7 +112,7 @@ void emit_parallel_transfers(const std::vector<Transfer> & transfers,
     const mir_model::MirOperand source = emitter->PhiSource(transfers[i].source);
     const bool source_is_address =
       emitter->PhiSourceIsAddress(transfers[i].source);
-    if(!source_is_address && same_location(destination, source)) {
+    if(!source_is_address && same_physical_location(destination, source)) {
       emitter->ConsumePhiSource(transfers[i].source);
       continue;
     }
@@ -164,7 +164,7 @@ void emit_parallel_transfers(const std::vector<Transfer> & transfers,
       moves[cycle].source_is_address, out);
     for(std::size_t i = 0; i < moves.size(); ++i)
       if(moves[i].pending && !moves[i].source_is_address &&
-         same_location(moves[i].source, saved_source))
+         same_physical_location(moves[i].source, saved_source))
         moves[i].source = scratch;
     // A dereference source is not location-identical to anything, so the
     // chosen move redirects itself explicitly.
