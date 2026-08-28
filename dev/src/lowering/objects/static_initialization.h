@@ -2,7 +2,7 @@
 
 #include "semantic/model/graph.h"
 #include "lowering/api.h"
-#include "lowering/support/utilities.h"
+#include "lowering/support/sequences.h"
 #include "lowering/core/source_types.h"
 
 #include <cstdint>

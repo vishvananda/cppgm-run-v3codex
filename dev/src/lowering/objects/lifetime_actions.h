@@ -1,7 +1,8 @@
 #ifndef CPPGM_LOWERING_LIFETIME_ACTIONS_H
 #define CPPGM_LOWERING_LIFETIME_ACTIONS_H
 
-#include "lowering/support/utilities.h"
+#include "lowering/support/identity_maps.h"
+#include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 #include "lowering/objects/cleanup_continuations.h"

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "semantic/model/graph.h"
-#include "lowering/support/utilities.h"
+#include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 
 #include <cstdint>

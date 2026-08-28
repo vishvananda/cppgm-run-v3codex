@@ -2,7 +2,7 @@
 #define CPPGM_LOWERING_STORAGE_SLOTS_H
 
 #include "semantic/model/graph.h"
-#include "lowering/support/utilities.h"
+#include "lowering/support/sequences.h"
 
 #include <cstdint>
 #include <limits>

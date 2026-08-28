@@ -4,7 +4,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <stdexcept>
 #include <streambuf>
 #include <string>
 #include <vector>
@@ -62,90 +61,6 @@ private:
 	mutable std::vector<std::string> rendered_presentations_;
 	mutable std::vector<semantic::NameId> path_;
 };
-
-class FlatIdMap
-{
-public:
-	FlatIdMap();
-	bool Find(std::uint32_t key, std::uint32_t* value) const;
-	void Insert(std::uint32_t key, std::uint32_t value);
-	void Clear();
-	std::size_t StorageBytes() const;
-
-private:
-	void Rehash(std::size_t capacity);
-	static std::size_t Hash(std::uint32_t key);
-
-	std::vector<std::uint32_t> keys_;
-	std::vector<std::uint32_t> values_;
-	std::vector<std::uint32_t> slots_;
-	std::vector<std::size_t> occupied_slots_;
-};
-
-class FlatIdPairMap
-{
-public:
-	FlatIdPairMap();
-	bool Find(std::uint32_t first, std::uint32_t second,
-		std::uint32_t* value) const;
-	void Insert(std::uint32_t first, std::uint32_t second,
-		std::uint32_t value);
-	void Clear();
-	std::size_t StorageBytes() const;
-
-private:
-	void Rehash(std::size_t capacity);
-	static std::size_t Hash(std::uint32_t first, std::uint32_t second);
-
-	std::vector<std::uint32_t> first_keys_;
-	std::vector<std::uint32_t> second_keys_;
-	std::vector<std::uint32_t> values_;
-	std::vector<std::uint32_t> slots_;
-	std::vector<std::size_t> occupied_slots_;
-};
-
-template <typename Value, std::size_t InlineCount>
-class SmallSequence
-{
-public:
-	SmallSequence() : count_(0) {}
-
-	void Push(const Value& value)
-	{
-		if (count_ < InlineCount) inline_[count_] = value;
-		else overflow_.push_back(value);
-		++count_;
-	}
-	void Pop()
-	{
-		if (count_ == 0)
-			throw std::logic_error("cannot pop an empty small sequence");
-		if (count_ > InlineCount) overflow_.pop_back();
-		--count_;
-	}
-
-	std::size_t size() const { return count_; }
-	bool empty() const { return count_ == 0; }
-	const Value& operator[](std::size_t index) const
-	{
-		return index < InlineCount ? inline_[index] : overflow_[index - InlineCount];
-	}
-	Value& operator[](std::size_t index)
-	{
-		return index < InlineCount ? inline_[index] :
-			overflow_[index - InlineCount];
-	}
-
-private:
-	Value inline_[InlineCount];
-	std::vector<Value> overflow_;
-	std::size_t count_;
-};
-
-typedef SmallSequence<std::uint32_t, 8> NodeChildren;
-typedef SmallSequence<lowering::ir::Operand, 8> CallArguments;
-typedef SmallSequence<std::uint8_t, 8> CallArgumentFlags;
-typedef SmallSequence<std::uint32_t, 8> SwitchCases;
 
 class CountingStreamBuffer : public std::streambuf
 {

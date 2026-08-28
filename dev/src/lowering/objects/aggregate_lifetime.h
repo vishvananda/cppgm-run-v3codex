@@ -2,6 +2,7 @@
 #define CPPGM_LOWERING_LIFETIME_AGGREGATE_HELPERS_H
 
 #include "lowering/support/utilities.h"
+#include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 

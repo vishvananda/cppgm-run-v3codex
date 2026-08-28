@@ -1,7 +1,7 @@
 #ifndef CPPGM_LOWERING_EXPRESSIONS_MEMBER_ADDRESS_H
 #define CPPGM_LOWERING_EXPRESSIONS_MEMBER_ADDRESS_H
 
-#include "lowering/support/utilities.h"
+#include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 

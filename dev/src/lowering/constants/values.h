@@ -1,7 +1,6 @@
 #ifndef CPPGM_LOWERING_CONSTANTS_VALUES_H
 #define CPPGM_LOWERING_CONSTANTS_VALUES_H
 
-#include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 
@@ -15,7 +14,6 @@ namespace lowering
 
 using namespace semantic;
 using namespace lowering::ir;
-using namespace lowering::support;
 
 template <class Derived>
 class ConstantLowering

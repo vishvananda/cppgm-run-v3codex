@@ -2,6 +2,7 @@
 #define CPPGM_LOWERING_INITIALIZATION_ACTIONS_H
 
 #include "lowering/support/utilities.h"
+#include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 #include "lowering/objects/zero_initialization.h"

@@ -6,6 +6,8 @@
 #include "lowering/abi/itanium.h"
 #include "lowering/presentation/local_names.h"
 #include "lowering/support/utilities.h"
+#include "lowering/support/identity_maps.h"
+#include "lowering/support/sequences.h"
 #include "lowering/expressions/scalar_unary.h"
 #include "lowering/core/source_types.h"
 #include "lowering/objects/static_members.h"

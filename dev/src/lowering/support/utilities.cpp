@@ -1,4 +1,6 @@
 #include "lowering/support/utilities.h"
+#include "lowering/support/identity_maps.h"
+#include "lowering/support/sequences.h"
 #include "lowir_model.h"
 #include "semantic/semantic.h"
 #include "semantic/model/graph.h"
