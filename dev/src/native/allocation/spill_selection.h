@@ -1,7 +1,7 @@
 #pragma once
 
 #include "lowir/model/program.h"
-#include "native/lowering/lowir_native.h"
+#include "native/driver/stats.h"
 #include "native/analysis/function.h"
 #include "native/lowering/control_flow.h"
 #include "native/allocation/location_planning.h"

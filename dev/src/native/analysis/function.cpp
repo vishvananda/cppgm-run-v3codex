@@ -1,6 +1,6 @@
 #include "native/analysis/function.h"
 
-#include "native/lowering/lowir_native.h"
+#include "native/driver/stats.h"
 #include "native/analysis/forward_edges.h"
 #include "native/lowering/memcpy.h"
 

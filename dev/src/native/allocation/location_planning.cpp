@@ -1,6 +1,6 @@
 #include "native/allocation/location_planning.h"
 
-#include "native/lowering/lowir_native.h"
+#include "native/driver/stats.h"
 #include "native/lowering/control_flow.h"
 
 #include <algorithm>

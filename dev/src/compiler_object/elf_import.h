@@ -1,6 +1,6 @@
 #pragma once
 
-#include "native/lowering/lowir_native.h"
+#include "native/object/relocatable.h"
 
 #include <cstddef>
 #include <string>

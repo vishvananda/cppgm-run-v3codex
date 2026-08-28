@@ -1,4 +1,6 @@
-#include "native/lowering/lowir_native.h"
+#include "native/object/elf_writer.h"
+#include "native/driver/session.h"
+#include "native/driver/stats.h"
 #include "native/encoding/address_folding.h"
 #include "native/mir/block_labels.h"
 #include "native/object/code_buffer.h"

@@ -1,6 +1,6 @@
 #include "native/allocation/frame_forwarding.h"
 
-#include "native/lowering/lowir_native.h"
+#include "native/driver/stats.h"
 #include "native/analysis/data_layout.h"
 #include "native/mir/optimize.h"
 #include "native/encoding/scalar_memory.h"

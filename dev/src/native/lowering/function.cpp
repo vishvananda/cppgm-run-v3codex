@@ -1,4 +1,4 @@
-#include "native/lowering/lowir_native.h"
+#include "native/driver/stats.h"
 #include "native/lowering/abi.h"
 #include "native/lowering/addresses.h"
 #include "native/lowering/address_replay.h"

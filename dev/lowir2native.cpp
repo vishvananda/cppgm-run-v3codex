@@ -2,9 +2,11 @@
 
 #include "support/exceptions.h"
 #include "lowir/model/program.h"
-#include "native/lowering/lowir_native.h"
+#include "native/driver/session.h"
+#include "native/driver/stats.h"
 #include "native/driver/stats_report.h"
 #include "native/mir/model.h"
+#include "native/object/elf_writer.h"
 #include "support/tool_help_text.h"
 
 #include <chrono>

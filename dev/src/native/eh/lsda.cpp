@@ -1,6 +1,6 @@
 #include "native/eh/lsda.h"
 
-#include "native/lowering/lowir_native.h"
+#include "native/driver/stats.h"
 #include "native/object/elf_format.h"
 
 #include <algorithm>

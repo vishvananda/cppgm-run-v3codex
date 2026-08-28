@@ -1,6 +1,6 @@
 #include "native/encoding/globals.h"
 
-#include "native/lowering/lowir_native.h"
+#include "native/driver/stats.h"
 #include "native/analysis/data_layout.h"
 
 #include <cstdint>

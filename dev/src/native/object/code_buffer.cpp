@@ -1,6 +1,6 @@
 #include "native/object/code_buffer.h"
 
-#include "native/lowering/lowir_native.h"
+#include "native/driver/stats.h"
 
 #include <algorithm>
 #include <climits>

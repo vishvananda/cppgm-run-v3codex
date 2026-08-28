@@ -1,6 +1,6 @@
 #pragma once
 
-#include "native/lowering/lowir_native.h"
+#include "native/driver/stats.h"
 
 #include <ostream>
 

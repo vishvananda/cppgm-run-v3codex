@@ -1,4 +1,4 @@
-#include "native/lowering/lowir_native.h"
+#include "native/driver/stats.h"
 
 #include "lowir/optimize/force_inline.h"
 #include "native/eh/lowering.h"

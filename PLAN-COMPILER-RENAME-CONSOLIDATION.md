@@ -1507,3 +1507,50 @@ checkpoint where applicable, commit, and push state.
   remained 100/13/45/0, layout remained 0/0/0/18, and the file audit remained
   zero-fatal/32-warning.  The lowering leaves and native mixed-owner manifest
   remain for the R10 closure.  Push: with this amended checkpoint.
+- `4e242f24`, `375ebcb0`, and `323ecb40` — R10 native ownership and tier
+  closure.  Removed the redundant prefix and lowering suffix from every
+  operation-family leaf under `native/lowering`.  Added a native symbol-owner
+  audit covering the mixed public interface and private hot lowerer; its 14
+  initial routes all queued explicit R10 disposition.  The ownership increment
+  then moved telemetry to `native/driver/stats.h`, relocatable-object data to
+  `native/object/relocatable.h`, the public lowering session and
+  `lower_program` to `native/driver/session.h`, ELF writer entrypoints to
+  `native/object/elf_writer.h`, and the coherent private `FunctionLowerer` to
+  `native/lowering/function.cpp`.  The existing implementations were already
+  in the correct session and ELF writer translation units, so no function body
+  crossed a translation-unit boundary.  The final owner audit passes with 14
+  routed symbols and zero pending repair.  A provisional
+  `native/object/model.h` name raised the file audit from 32 to 33 warnings;
+  it was corrected within the increment to the specific `relocatable.h`
+  owner, restoring the established warning count.
+
+  Against the pre-native-vocabulary baseline, `cppgm++`, `lowir2cy86`,
+  `lowiropt`, and `lowir2native` are all byte-exact after removing symbols and
+  the GNU build-id.  Allocated text/data/bss sizes remain
+  7,085,510/21,712/6,792, 412,387/3,736/1,728,
+  1,127,673/3,904/1,736, and 1,400,829/4,864/2,496 respectively.  Source count
+  and canonical link order are unchanged, and all 18 frozen output surfaces
+  are exact.
+
+  The corrected current-revision O1 matrix used 32-way object builds and
+  balanced producer positions.  Six self/GCC lanes measured wall medians of
+  32.780/21.855 seconds (1.499886x), aggregate CPU medians of
+  916.955/598.470 seconds (1.532165x), and RSS medians of 231,714/230,704 KiB.
+  Three Clang lanes measured 22.240 seconds wall and 615.110 seconds aggregate
+  CPU, giving self/Clang ratios of 1.473921x/1.490717x.  Fully optimized
+  current GCC-O3 and Clang-O3 compilers on the immutable frozen `-O0` workload
+  produced deterministic objects at 4.580/4.810-second wall and
+  4.070/4.315-second user medians, retaining the established optimized-host
+  guard.
+
+  The final report passed 5471/5471; LowIR remained 124/99, semantic ownership
+  remained 850/0, lowering ownership remained 100/13/45/0, layout remained
+  0/0/0/18, and the file audit remained zero-fatal/32-warning.  Fresh
+  explicit-O1 inception with 32/32/32 settings matched all 218 shared source
+  objects, the runner, the entry object, and the final compiler (220 total) in
+  57.03 seconds wall and 1,450.50 seconds aggregate CPU.  The final self and
+  inception compiler SHA-256 is
+  `ce46c09b71a262fbfb6a8eeb20552a0fa35707fa02d90b76f3bbd3f0098a1ac6`.
+  R10 exits with LowIR/native contracts, output, layout, and performance
+  intact and the self/GCC wall ratio below 1.50x.  Push: with this amended
+  tier-closure checkpoint.
