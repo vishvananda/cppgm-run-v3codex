@@ -1572,25 +1572,9 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " planned_grant_busy_value_holder="
          << native_stats.planned_grant_busy_value_holder
          << " planned_grant_busy_no_holder="
-         << native_stats.planned_grant_busy_no_holder
-         << " narrow_call_result_normalizations_omitted="
-         << native_stats.narrow_call_result_normalizations_omitted
-         << " redundant_integer_normalizations_omitted="
-         << native_stats.redundant_integer_normalizations_omitted
-         << " fused_integer_normalization_moves="
-         << native_stats.fused_integer_normalization_moves
-         << " scratch_carried_reloads="
-         << native_stats.scratch_carried_reloads;
-    lowir_native::report_code_shape_stats(cerr, native_stats);
-    lowir_native::report_edge_staging_stats(cerr, native_stats);
-    cerr
-         << " shared_storage_lifetime_extensions="
-         << native_stats.shared_storage_lifetime_extensions
-         << " reclaim_attempts=" << native_stats.reclaim_attempts
-         << " reclaim_parameter_visits="
-         << native_stats.reclaim_parameter_visits
-         << " reclaims=" << native_stats.reclaims
-         << " eh_region_states=" << native_stats.eh_region_states
+         << native_stats.planned_grant_busy_no_holder;
+    lowir_native::report_codegen_result_stats(cerr, native_stats);
+    cerr << " eh_region_states=" << native_stats.eh_region_states
          << " eh_region_edges=" << native_stats.eh_region_edges
          << " eh_call_sites=" << native_stats.eh_call_sites
          << " eh_lsda_call_sites=" << native_stats.eh_lsda_call_sites
@@ -1702,25 +1686,9 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << " phi_register_homes="
 			 << native_stats.phi_register_homes
 			 << " planned_invariant_registers="
-			 << native_stats.planned_invariant_registers
-			 << " narrow_call_result_normalizations_omitted="
-			 << native_stats.narrow_call_result_normalizations_omitted
-			 << " redundant_integer_normalizations_omitted="
-			 << native_stats.redundant_integer_normalizations_omitted
-			 << " fused_integer_normalization_moves="
-			 << native_stats.fused_integer_normalization_moves
-			 << " scratch_carried_reloads="
-			 << native_stats.scratch_carried_reloads;
-		lowir_native::report_code_shape_stats(cerr, native_stats);
-		lowir_native::report_edge_staging_stats(cerr, native_stats);
-		cerr
-			 << " shared_storage_lifetime_extensions="
-			 << native_stats.shared_storage_lifetime_extensions
-			 << " reclaim_attempts=" << native_stats.reclaim_attempts
-			 << " reclaim_parameter_visits="
-			 << native_stats.reclaim_parameter_visits
-			 << " reclaims=" << native_stats.reclaims
-			 << " output_bytes=" << native_stats.output_bytes
+			 << native_stats.planned_invariant_registers;
+		lowir_native::report_codegen_result_stats(cerr, native_stats);
+		cerr << " output_bytes=" << native_stats.output_bytes
 		 << " input_ns=" << input_nanoseconds
 		 << " link_ns=" << link_stats.link_nanoseconds
 		 << " lower_ns=" << native_stats.lower_nanoseconds
