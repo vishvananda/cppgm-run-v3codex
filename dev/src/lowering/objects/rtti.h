@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA26_RTTI_LOWERING_H
-#define CPPGM_PA26_RTTI_LOWERING_H
+#ifndef CPPGM_LOWERING_OBJECTS_RTTI_H
+#define CPPGM_LOWERING_OBJECTS_RTTI_H
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"

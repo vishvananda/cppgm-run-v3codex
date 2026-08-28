@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA21_LOCAL_STATIC_LOWERING_H
-#define CPPGM_PA21_LOCAL_STATIC_LOWERING_H
+#ifndef CPPGM_LOWERING_LIFETIME_LOCAL_STATICS_H
+#define CPPGM_LOWERING_LIFETIME_LOCAL_STATICS_H
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"

@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA16_AGGREGATE_HELPER_LOWERING_H
-#define CPPGM_PA16_AGGREGATE_HELPER_LOWERING_H
+#ifndef CPPGM_LOWERING_LIFETIME_AGGREGATE_HELPERS_H
+#define CPPGM_LOWERING_LIFETIME_AGGREGATE_HELPERS_H
 
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"

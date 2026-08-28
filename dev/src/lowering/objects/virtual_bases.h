@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA28_VIRTUAL_BASE_LOWERING_H
-#define CPPGM_PA28_VIRTUAL_BASE_LOWERING_H
+#ifndef CPPGM_LOWERING_OBJECTS_VIRTUAL_BASES_H
+#define CPPGM_LOWERING_OBJECTS_VIRTUAL_BASES_H
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"

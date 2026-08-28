@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA16_DESTRUCTOR_ACTION_LOWERING_H
-#define CPPGM_PA16_DESTRUCTOR_ACTION_LOWERING_H
+#ifndef CPPGM_LOWERING_LIFETIME_DESTRUCTORS_H
+#define CPPGM_LOWERING_LIFETIME_DESTRUCTORS_H
 
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"

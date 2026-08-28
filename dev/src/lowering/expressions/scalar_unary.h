@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA15_SCALAR_UNARY_LOWERING_H
-#define CPPGM_PA15_SCALAR_UNARY_LOWERING_H
+#ifndef CPPGM_LOWERING_EXPRESSIONS_SCALAR_UNARY_H
+#define CPPGM_LOWERING_EXPRESSIONS_SCALAR_UNARY_H
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"

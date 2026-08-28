@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA26_EXCEPTION_LOWERING_H
-#define CPPGM_PA26_EXCEPTION_LOWERING_H
+#ifndef CPPGM_LOWERING_EXTENSIONS_EXCEPTIONS_H
+#define CPPGM_LOWERING_EXTENSIONS_EXCEPTIONS_H
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"

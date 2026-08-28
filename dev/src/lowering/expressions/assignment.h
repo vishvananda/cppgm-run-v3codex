@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA16_ASSIGNMENT_LOWERING_H
-#define CPPGM_PA16_ASSIGNMENT_LOWERING_H
+#ifndef CPPGM_LOWERING_EXPRESSIONS_ASSIGNMENT_H
+#define CPPGM_LOWERING_EXPRESSIONS_ASSIGNMENT_H
 
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"

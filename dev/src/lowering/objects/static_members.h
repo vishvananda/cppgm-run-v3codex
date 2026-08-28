@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA15_STATIC_MEMBER_SYMBOL_LOWERING_H
-#define CPPGM_PA15_STATIC_MEMBER_SYMBOL_LOWERING_H
+#ifndef CPPGM_LOWERING_OBJECTS_STATIC_MEMBERS_H
+#define CPPGM_LOWERING_OBJECTS_STATIC_MEMBERS_H
 
 #include "lowering/abi/itanium.h"
 #include "lowering/support/utilities.h"

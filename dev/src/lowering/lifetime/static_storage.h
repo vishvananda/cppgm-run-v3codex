@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA33_STATIC_LIFECYCLE_LOWERING_H
-#define CPPGM_PA33_STATIC_LIFECYCLE_LOWERING_H
+#ifndef CPPGM_LOWERING_LIFETIME_STATIC_STORAGE_H
+#define CPPGM_LOWERING_LIFETIME_STATIC_STORAGE_H
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"

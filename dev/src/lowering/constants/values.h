@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA21_CONSTANT_LOWERING_H
-#define CPPGM_PA21_CONSTANT_LOWERING_H
+#ifndef CPPGM_LOWERING_CONSTANTS_VALUES_H
+#define CPPGM_LOWERING_CONSTANTS_VALUES_H
 
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"

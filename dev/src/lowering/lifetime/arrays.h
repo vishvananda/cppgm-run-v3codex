@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA16_ARRAY_LIFETIME_LOWERING_H
-#define CPPGM_PA16_ARRAY_LIFETIME_LOWERING_H
+#ifndef CPPGM_LOWERING_LIFETIME_ARRAYS_H
+#define CPPGM_LOWERING_LIFETIME_ARRAYS_H
 
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"

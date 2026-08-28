@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA25_RANGE_FOR_LOWERING_H
-#define CPPGM_PA25_RANGE_FOR_LOWERING_H
+#ifndef CPPGM_LOWERING_EXTENSIONS_RANGE_FOR_H
+#define CPPGM_LOWERING_EXTENSIONS_RANGE_FOR_H
 
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"

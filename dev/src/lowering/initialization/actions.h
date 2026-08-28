@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA16_INITIALIZATION_LOWERING_H
-#define CPPGM_PA16_INITIALIZATION_LOWERING_H
+#ifndef CPPGM_LOWERING_INITIALIZATION_ACTIONS_H
+#define CPPGM_LOWERING_INITIALIZATION_ACTIONS_H
 
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"

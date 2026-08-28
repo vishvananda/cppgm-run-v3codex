@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA16_CALL_ARGUMENT_LOWERING_H
-#define CPPGM_PA16_CALL_ARGUMENT_LOWERING_H
+#ifndef CPPGM_LOWERING_CALLS_ARGUMENTS_H
+#define CPPGM_LOWERING_CALLS_ARGUMENTS_H
 
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"

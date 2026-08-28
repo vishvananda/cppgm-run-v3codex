@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA16_SLOT_PLANNING_H
-#define CPPGM_PA16_SLOT_PLANNING_H
+#ifndef CPPGM_LOWERING_STORAGE_SLOTS_H
+#define CPPGM_LOWERING_STORAGE_SLOTS_H
 
 #include "semantic/model/graph.h"
 #include "lowering/support/utilities.h"

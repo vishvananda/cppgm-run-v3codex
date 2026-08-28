@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA16_MEMBER_ADDRESS_LOWERING_H
-#define CPPGM_PA16_MEMBER_ADDRESS_LOWERING_H
+#ifndef CPPGM_LOWERING_EXPRESSIONS_MEMBER_ADDRESS_H
+#define CPPGM_LOWERING_EXPRESSIONS_MEMBER_ADDRESS_H
 
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"

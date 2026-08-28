@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA17_CONTROL_EXPRESSION_LOWERING_H
-#define CPPGM_PA17_CONTROL_EXPRESSION_LOWERING_H
+#ifndef CPPGM_LOWERING_CONTROL_EXPRESSIONS_H
+#define CPPGM_LOWERING_CONTROL_EXPRESSIONS_H
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"
