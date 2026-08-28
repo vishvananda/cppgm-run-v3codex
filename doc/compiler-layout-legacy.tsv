@@ -38,7 +38,6 @@ include	^pa30_	compiler_object/, syntax/, semantic/, lowering/
 include	^pa32_	syntax/, semantic/
 include	^pa33_	semantic/, lowering/
 include	^pa34_	syntax/, semantic/, lowering/
-namespace	^pa8$	cppgm::namespace_initialization
 namespace	^pa10_syntax_detail$	cppgm::syntax
 namespace	^pa11$	cppgm::semantic
 namespace	^pa12_semantic_detail$	cppgm::semantic

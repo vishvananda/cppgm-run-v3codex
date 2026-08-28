@@ -4,13 +4,13 @@
 
 namespace cppgm
 {
-namespace pa8
+namespace namespace_initialization
 {
 
-class ProgramModel
+class Model
 {
 public:
-	explicit ProgramModel(InitializationStats* stats);
+	explicit Model(Stats* stats);
 	ScopeId NewTranslationUnit();
 	ScopeId OpenNamespace(ScopeId parent, NameId name, bool is_inline);
 	void AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target);
@@ -52,7 +52,7 @@ public:
 
 	IdentifierTable identifiers;
 	TypeTable types;
-	InitializationStats* stats;
+	Stats* stats;
 	std::vector<unsigned char> retained_bytes;
 
 private:
@@ -139,7 +139,7 @@ struct TokenBuffer
 	std::vector<unsigned char> bytes;
 };
 
-void ParseTranslationUnit(const TokenBuffer& input, ProgramModel& model,
+void ParseTranslationUnit(const TokenBuffer& input, Model& model,
 	ScopeId root, std::uint32_t unit);
 
 }

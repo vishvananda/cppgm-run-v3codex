@@ -10,6 +10,8 @@
 
 namespace cppgm
 {
+namespace namespace_initialization
+{
 namespace
 {
 
@@ -21,8 +23,8 @@ const std::uint16_t kEofToken = kIdentifierToken + 2;
 class InitializationTokenSink : public IPostTokenStream
 {
 public:
-	InitializationTokenSink(pa8::IdentifierTable& identifiers,
-		pa8::TokenBuffer& output)
+	InitializationTokenSink(IdentifierTable& identifiers,
+		TokenBuffer& output)
 		: identifiers_(identifiers), output_(output) {}
 
 	void EmitInvalid(const std::string& source)
@@ -32,12 +34,12 @@ public:
 
 	void EmitSimple(const std::string&, SimpleTokenKind kind)
 	{
-		output_.tokens.push_back(pa8::Token(static_cast<std::uint16_t>(kind)));
+		output_.tokens.push_back(Token(static_cast<std::uint16_t>(kind)));
 	}
 
 	void EmitIdentifier(const std::string& source)
 	{
-		pa8::Token token(kIdentifierToken);
+		Token token(kIdentifierToken);
 		token.name = identifiers_.Intern(source);
 		output_.tokens.push_back(token);
 	}
@@ -48,11 +50,11 @@ public:
 		if (size > 16) throw std::runtime_error("oversized scalar literal");
 		if (output_.bytes.size() > std::numeric_limits<std::uint32_t>::max() -
 			size) throw std::runtime_error("literal storage is too large");
-		pa8::Token token(kLiteralToken);
+		Token token(kLiteralToken);
 		token.literal_type = type;
 		token.byte_offset = static_cast<std::uint32_t>(output_.bytes.size());
 		token.byte_size = static_cast<std::uint32_t>(size);
-		token.integer_literal = pa8::IsIntegralFundamental(type) &&
+		token.integer_literal = IsIntegralFundamental(type) &&
 			source.find('\'') == std::string::npos;
 		const unsigned char* bytes = static_cast<const unsigned char*>(data);
 		output_.bytes.insert(output_.bytes.end(), bytes, bytes + size);
@@ -66,7 +68,7 @@ public:
 			output_.bytes.size() > std::numeric_limits<std::uint32_t>::max() -
 				size)
 			throw std::runtime_error("string literal storage is too large");
-		pa8::Token token(kLiteralToken);
+		Token token(kLiteralToken);
 		token.literal_type = type;
 		token.byte_offset = static_cast<std::uint32_t>(output_.bytes.size());
 		token.byte_size = static_cast<std::uint32_t>(size);
@@ -103,28 +105,28 @@ public:
 
 	void EmitEof()
 	{
-		output_.tokens.push_back(pa8::Token(kEofToken));
+		output_.tokens.push_back(Token(kEofToken));
 	}
 
 private:
-	pa8::IdentifierTable& identifiers_;
-	pa8::TokenBuffer& output_;
+	IdentifierTable& identifiers_;
+	TokenBuffer& output_;
 };
 
 }
 
-struct InitializationProgram::Impl
+struct Program::Impl
 {
-	explicit Impl(InitializationStats* stats_value)
+	explicit Impl(Stats* stats_value)
 		: stats(stats_value), model(stats_value),
 		  started(std::chrono::steady_clock::now()) {}
 
-	InitializationStats* stats;
-	pa8::ProgramModel model;
+	Stats* stats;
+	Model model;
 	std::chrono::steady_clock::time_point started;
 };
 
-InitializationStats::InitializationStats()
+Stats::Stats()
 	: source_bytes(0), tokens(0), token_storage_bytes(0), literal_bytes(0),
 	  identifiers(0), identifier_bytes(0), canonical_types(0),
 	  canonical_type_bytes(0), scopes(0), declarations(0), using_edges(0),
@@ -139,30 +141,30 @@ InitializationStats::InitializationStats()
 {
 }
 
-InitializationProgram::InitializationProgram(InitializationStats* stats)
+Program::Program(Stats* stats)
 	: impl_(new Impl(stats))
 {
-	if (stats) *stats = InitializationStats();
+	if (stats) *stats = Stats();
 }
 
-InitializationProgram::~InitializationProgram() {}
+Program::~Program() {}
 
-void InitializationProgram::AddTranslationUnit(const std::string& path,
+void Program::AddTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options)
 {
-	pa8::TokenBuffer tokens;
+	TokenBuffer tokens;
 	InitializationTokenSink sink(impl_->model.identifiers, tokens);
 	PreprocessFile(path, source, sink, options, 0);
-	const pa8::ScopeId root = impl_->model.NewTranslationUnit();
+	const ScopeId root = impl_->model.NewTranslationUnit();
 	const std::uint32_t unit = impl_->model.CurrentUnit() - 1;
-	pa8::ParseTranslationUnit(tokens, impl_->model, root, unit);
+	ParseTranslationUnit(tokens, impl_->model, root, unit);
 	if (impl_->stats)
 	{
 		impl_->stats->source_bytes += source.size();
 		impl_->stats->tokens += tokens.tokens.size();
 		impl_->stats->literal_bytes += tokens.bytes.size();
 		const std::size_t token_storage = tokens.tokens.capacity() *
-			sizeof(pa8::Token) + tokens.bytes.capacity();
+			sizeof(Token) + tokens.bytes.capacity();
 		impl_->stats->token_storage_bytes = std::max(
 			impl_->stats->token_storage_bytes, token_storage);
 		impl_->stats->peak_stage_storage_bytes = std::max(
@@ -173,7 +175,7 @@ void InitializationProgram::AddTranslationUnit(const std::string& path,
 	}
 }
 
-void InitializationProgram::WriteImage(std::ostream& output)
+void Program::WriteImage(std::ostream& output)
 {
 	impl_->model.WriteImage(output);
 	impl_->model.FinishStats();
@@ -185,4 +187,5 @@ void InitializationProgram::WriteImage(std::ostream& output)
 	}
 }
 
+}
 }

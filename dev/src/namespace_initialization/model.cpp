@@ -8,7 +8,7 @@
 
 namespace cppgm
 {
-namespace pa8
+namespace namespace_initialization
 {
 
 namespace
@@ -801,7 +801,7 @@ Declarator::Declarator()
 {
 }
 
-ProgramModel::ProgramModel(InitializationStats* stats_value)
+Model::Model(Stats* stats_value)
 	: stats(stats_value), binding_slots_(32, 0), using_edge_slots_(16, 0),
 	  lookup_cache_slots_(32, 0), external_slots_(32, 0),
 	  path_slots_(16, 0), lookup_generation_(0), candidate_generation_(0),
@@ -811,7 +811,7 @@ ProgramModel::ProgramModel(InitializationStats* stats_value)
 	path_names_.push_back(0);
 }
 
-ScopeId ProgramModel::NewTranslationUnit()
+ScopeId Model::NewTranslationUnit()
 {
 	if (scopes_.size() >= kNoScope)
 		throw std::runtime_error("too many scopes");
@@ -823,13 +823,13 @@ ScopeId ProgramModel::NewTranslationUnit()
 	return id;
 }
 
-Binding* ProgramModel::FindDirect(ScopeId owner, NameId name)
+Binding* Model::FindDirect(ScopeId owner, NameId name)
 {
-	const ProgramModel* self = this;
+	const Model* self = this;
 	return const_cast<Binding*>(self->FindDirect(owner, name));
 }
 
-const Binding* ProgramModel::FindDirect(ScopeId owner, NameId name) const
+const Binding* Model::FindDirect(ScopeId owner, NameId name) const
 {
 	const std::size_t mask = binding_slots_.size() - 1;
 	std::size_t slot = MixHash(MixHash(0, owner), name) & mask;
@@ -842,7 +842,7 @@ const Binding* ProgramModel::FindDirect(ScopeId owner, NameId name) const
 	return 0;
 }
 
-Binding& ProgramModel::EnsureBinding(ScopeId owner, NameId name)
+Binding& Model::EnsureBinding(ScopeId owner, NameId name)
 {
 	if ((bindings_.size() + 1) * 10 > binding_slots_.size() * 7)
 	{
@@ -874,7 +874,7 @@ Binding& ProgramModel::EnsureBinding(ScopeId owner, NameId name)
 	return bindings_.back();
 }
 
-PathId ProgramModel::InternPath(PathId parent, NameId name)
+PathId Model::InternPath(PathId parent, NameId name)
 {
 	if ((path_names_.size() + 1) * 10 > path_slots_.size() * 7)
 	{
@@ -906,7 +906,7 @@ PathId ProgramModel::InternPath(PathId parent, NameId name)
 	return id;
 }
 
-ScopeId ProgramModel::OpenNamespace(ScopeId parent, NameId name,
+ScopeId Model::OpenNamespace(ScopeId parent, NameId name,
 	bool is_inline)
 {
 	if (name == 0)
@@ -948,7 +948,7 @@ ScopeId ProgramModel::OpenNamespace(ScopeId parent, NameId name,
 	return id;
 }
 
-void ProgramModel::AddNamespaceAlias(ScopeId owner, NameId name,
+void Model::AddNamespaceAlias(ScopeId owner, NameId name,
 	ScopeId target)
 {
 	Binding* existing = FindDirect(owner, name);
@@ -960,12 +960,12 @@ void ProgramModel::AddNamespaceAlias(ScopeId owner, NameId name,
 	binding.namespace_alias = true;
 }
 
-void ProgramModel::AddUsingDirective(ScopeId owner, ScopeId target)
+void Model::AddUsingDirective(ScopeId owner, ScopeId target)
 {
 	AddUsingEdge(owner, target);
 }
 
-void ProgramModel::AddFunctionCandidate(Binding& binding, EntityId entity)
+void Model::AddFunctionCandidate(Binding& binding, EntityId entity)
 {
 	for (CandidateId id = binding.first_function; id != kNoCandidate;
 		id = candidates_[id].next)
@@ -981,7 +981,7 @@ void ProgramModel::AddFunctionCandidate(Binding& binding, EntityId entity)
 	binding.last_function = id;
 }
 
-void ProgramModel::AddUsingDeclaration(ScopeId owner, NameId name,
+void Model::AddUsingDeclaration(ScopeId owner, NameId name,
 	const LookupResult& target)
 {
 	if (target.ambiguous || !target.Found(LOOKUP_USING_TARGET))
@@ -1007,7 +1007,7 @@ void ProgramModel::AddUsingDeclaration(ScopeId owner, NameId name,
 		AddFunctionCandidate(binding, candidates_[id].entity);
 }
 
-void ProgramModel::AddTypeAlias(ScopeId owner, NameId name, TypeId type)
+void Model::AddTypeAlias(ScopeId owner, NameId name, TypeId type)
 {
 	InvalidateLookupName(owner, name);
 	Binding& binding = EnsureBinding(owner, name);
@@ -1020,7 +1020,7 @@ void ProgramModel::AddTypeAlias(ScopeId owner, NameId name, TypeId type)
 		binding.type_origin = binding.identity;
 }
 
-void ProgramModel::RehashUsingEdges(std::size_t capacity)
+void Model::RehashUsingEdges(std::size_t capacity)
 {
 	std::vector<std::uint32_t> replacement(capacity, 0);
 	const std::size_t mask = capacity - 1;
@@ -1034,7 +1034,7 @@ void ProgramModel::RehashUsingEdges(std::size_t capacity)
 	using_edge_slots_.swap(replacement);
 }
 
-void ProgramModel::AddUsingEdge(ScopeId owner, ScopeId target)
+void Model::AddUsingEdge(ScopeId owner, ScopeId target)
 {
 	if ((using_edges_.size() + 1) * 10 > using_edge_slots_.size() * 7)
 		RehashUsingEdges(using_edge_slots_.size() * 2);
@@ -1066,7 +1066,7 @@ void ProgramModel::AddUsingEdge(ScopeId owner, ScopeId target)
 	if (stats) ++stats->using_edges;
 }
 
-void ProgramModel::BeginScopeWalk(ScopeId start)
+void Model::BeginScopeWalk(ScopeId start)
 {
 	if (lookup_marks_.size() < scopes_.size())
 		lookup_marks_.resize(scopes_.size(), 0);
@@ -1081,14 +1081,14 @@ void ProgramModel::BeginScopeWalk(ScopeId start)
 	lookup_marks_[start] = lookup_generation_;
 }
 
-void ProgramModel::AddWalkTarget(ScopeId target)
+void Model::AddWalkTarget(ScopeId target)
 {
 	if (lookup_marks_[target] == lookup_generation_) return;
 	lookup_marks_[target] = lookup_generation_;
 	lookup_worklist_.push_back(target);
 }
 
-void ProgramModel::AdvanceLookupGeneration(ScopeId scope)
+void Model::AdvanceLookupGeneration(ScopeId scope)
 {
 	++scope_lookup_generations_[scope];
 	if (scope_lookup_generations_[scope] != 0) return;
@@ -1098,7 +1098,7 @@ void ProgramModel::AdvanceLookupGeneration(ScopeId scope)
 		scope_lookup_generations_.end(), 1);
 }
 
-void ProgramModel::InvalidateLookupGraph(ScopeId changed)
+void Model::InvalidateLookupGraph(ScopeId changed)
 {
 	if (lookup_cache_entries_.empty()) return;
 	BeginScopeWalk(changed);
@@ -1113,7 +1113,7 @@ void ProgramModel::InvalidateLookupGraph(ScopeId changed)
 	}
 }
 
-std::uint32_t ProgramModel::FindLookupCache(ScopeId start, NameId name,
+std::uint32_t Model::FindLookupCache(ScopeId start, NameId name,
 	LookupKind kind) const
 {
 	const std::size_t mask = lookup_cache_slots_.size() - 1;
@@ -1129,7 +1129,7 @@ std::uint32_t ProgramModel::FindLookupCache(ScopeId start, NameId name,
 	return std::numeric_limits<std::uint32_t>::max();
 }
 
-void ProgramModel::InvalidateLookupName(ScopeId changed, NameId name)
+void Model::InvalidateLookupName(ScopeId changed, NameId name)
 {
 	if (lookup_cache_entries_.empty()) return;
 	BeginScopeWalk(changed);
@@ -1154,7 +1154,7 @@ void ProgramModel::InvalidateLookupName(ScopeId changed, NameId name)
 	}
 }
 
-void ProgramModel::RehashLookupCache(std::size_t capacity)
+void Model::RehashLookupCache(std::size_t capacity)
 {
 	std::vector<std::uint32_t> replacement(capacity, 0);
 	const std::size_t mask = capacity - 1;
@@ -1169,7 +1169,7 @@ void ProgramModel::RehashLookupCache(std::size_t capacity)
 	lookup_cache_slots_.swap(replacement);
 }
 
-void ProgramModel::StoreLookupCache(ScopeId start, NameId name,
+void Model::StoreLookupCache(ScopeId start, NameId name,
 	LookupKind kind, const LookupResult& result)
 {
 	std::uint32_t index = FindLookupCache(start, name, kind);
@@ -1192,7 +1192,7 @@ void ProgramModel::StoreLookupCache(ScopeId start, NameId name,
 		static_cast<std::uint32_t>(lookup_cache_entries_.size());
 }
 
-LookupResult ProgramModel::DirectLookup(ScopeId owner, NameId name,
+LookupResult Model::DirectLookup(ScopeId owner, NameId name,
 	LookupKind) const
 {
 	LookupResult result;
@@ -1209,7 +1209,7 @@ LookupResult ProgramModel::DirectLookup(ScopeId owner, NameId name,
 	return result;
 }
 
-LookupResult ProgramModel::MergeLookupResults(LookupKind,
+LookupResult Model::MergeLookupResults(LookupKind,
 	const std::vector<LookupResult>& found)
 {
 	LookupResult result;
@@ -1285,7 +1285,7 @@ LookupResult ProgramModel::MergeLookupResults(LookupKind,
 	return result;
 }
 
-LookupResult ProgramModel::SearchScopeGraph(ScopeId start, NameId name,
+LookupResult Model::SearchScopeGraph(ScopeId start, NameId name,
 	LookupKind kind)
 {
 	if (stats) ++stats->lookup_queries;
@@ -1342,7 +1342,7 @@ LookupResult ProgramModel::SearchScopeGraph(ScopeId start, NameId name,
 	return result;
 }
 
-LookupResult ProgramModel::LookupUnqualified(ScopeId current, NameId name,
+LookupResult Model::LookupUnqualified(ScopeId current, NameId name,
 	LookupKind kind)
 {
 	for (ScopeId scope = current; scope != kNoScope;
@@ -1354,7 +1354,7 @@ LookupResult ProgramModel::LookupUnqualified(ScopeId current, NameId name,
 	return LookupResult();
 }
 
-ScopeId ProgramModel::ResolvePrefix(ScopeId current,
+ScopeId Model::ResolvePrefix(ScopeId current,
 	const QualifiedName& name)
 {
 	if (name.segments.size() < 2)
@@ -1391,7 +1391,7 @@ ScopeId ProgramModel::ResolvePrefix(ScopeId current,
 	return owner;
 }
 
-bool ProgramModel::ResolveNamespaceName(ScopeId current,
+bool Model::ResolveNamespaceName(ScopeId current,
 	const QualifiedName& name, ScopeId* result)
 {
 	if (name.segments.empty()) return false;
@@ -1412,7 +1412,7 @@ bool ProgramModel::ResolveNamespaceName(ScopeId current,
 	return true;
 }
 
-bool ProgramModel::ResolveTypeName(ScopeId current,
+bool Model::ResolveTypeName(ScopeId current,
 	const QualifiedName& name, TypeId* result)
 {
 	if (name.segments.empty()) return false;
@@ -1430,7 +1430,7 @@ bool ProgramModel::ResolveTypeName(ScopeId current,
 	return true;
 }
 
-bool ProgramModel::ResolveUsingTarget(ScopeId current,
+bool Model::ResolveUsingTarget(ScopeId current,
 	const QualifiedName& name, LookupResult* result)
 {
 	if (name.segments.size() < 2 && !name.absolute) return false;
@@ -1442,7 +1442,7 @@ bool ProgramModel::ResolveUsingTarget(ScopeId current,
 		result->Found(LOOKUP_USING_TARGET);
 }
 
-EntityId ProgramModel::ResolveExpressionEntity(ScopeId current,
+EntityId Model::ResolveExpressionEntity(ScopeId current,
 	const QualifiedName& name, LookupResult* result)
 {
 	if (name.segments.empty()) return kNoEntity;
@@ -1464,7 +1464,7 @@ EntityId ProgramModel::ResolveExpressionEntity(ScopeId current,
 	return kNoEntity;
 }
 
-bool ProgramModel::ScopeEncloses(ScopeId enclosing, ScopeId nested) const
+bool Model::ScopeEncloses(ScopeId enclosing, ScopeId nested) const
 {
 	for (ScopeId scope = nested; scope != kNoScope;
 		scope = scopes_[scope].parent)
@@ -1472,7 +1472,7 @@ bool ProgramModel::ScopeEncloses(ScopeId enclosing, ScopeId nested) const
 	return false;
 }
 
-ScopeId ProgramModel::ResolveDeclaratorOwner(ScopeId current,
+ScopeId Model::ResolveDeclaratorOwner(ScopeId current,
 	const QualifiedName& name)
 {
 	if (!name.absolute && name.segments.size() == 1) return current;
@@ -1482,7 +1482,7 @@ ScopeId ProgramModel::ResolveDeclaratorOwner(ScopeId current,
 	return owner;
 }
 
-EntityId ProgramModel::FindFunction(const Binding& binding,
+EntityId Model::FindFunction(const Binding& binding,
 	TypeId type) const
 {
 	for (CandidateId id = binding.first_function; id != kNoCandidate;
@@ -1495,7 +1495,7 @@ EntityId ProgramModel::FindFunction(const Binding& binding,
 	return kNoEntity;
 }
 
-EntityId ProgramModel::FindExternal(PathId path, NameId name, TypeId type,
+EntityId Model::FindExternal(PathId path, NameId name, TypeId type,
 	bool function) const
 {
 	const std::size_t mask = external_slots_.size() - 1;
@@ -1516,7 +1516,7 @@ EntityId ProgramModel::FindExternal(PathId path, NameId name, TypeId type,
 	return kNoEntity;
 }
 
-void ProgramModel::AddExternal(PathId path, NameId name, EntityId entity)
+void Model::AddExternal(PathId path, NameId name, EntityId entity)
 {
 	if ((external_entities_.size() + 1) * 10 > external_slots_.size() * 7)
 	{
@@ -1539,7 +1539,7 @@ void ProgramModel::AddExternal(PathId path, NameId name, EntityId entity)
 	external_slots_[slot] = static_cast<std::uint32_t>(external_entities_.size());
 }
 
-EntityId ProgramModel::Declare(ScopeId current,
+EntityId Model::Declare(ScopeId current,
 	const Declarator& declarator, TypeId type,
 	const DeclarationSpecifiers& specifiers, bool definition,
 	bool function_definition, std::uint32_t unit)
@@ -1636,7 +1636,7 @@ EntityId ProgramModel::Declare(ScopeId current,
 	return entity;
 }
 
-void ProgramModel::Define(EntityId entity, TypeId completed_type,
+void Model::Define(EntityId entity, TypeId completed_type,
 	const InitialValue& initial, bool constant_initialized,
 	bool constant_usable, std::uint32_t)
 {
@@ -1647,7 +1647,7 @@ void ProgramModel::Define(EntityId entity, TypeId completed_type,
 	record.constant_usable = constant_usable;
 }
 
-Expression ProgramModel::ExpressionForEntity(EntityId entity,
+Expression Model::ExpressionForEntity(EntityId entity,
 	std::uint32_t translation_unit) const
 {
 	const EntityRecord& record = entities_[entity];
@@ -1663,7 +1663,7 @@ Expression ProgramModel::ExpressionForEntity(EntityId entity,
 	return expression;
 }
 
-InitialValue ProgramModel::ResolveReferenceAddress(EntityId entity) const
+InitialValue Model::ResolveReferenceAddress(EntityId entity) const
 {
 	const EntityRecord& record = entities_[entity];
 	if (!types.IsReference(record.type))
@@ -1671,7 +1671,7 @@ InitialValue ProgramModel::ResolveReferenceAddress(EntityId entity) const
 	return record.initial;
 }
 
-InitialValue ProgramModel::LvalueAddress(const Expression& expression) const
+InitialValue Model::LvalueAddress(const Expression& expression) const
 {
 	if (expression.category != VALUE_LVALUE)
 		throw std::runtime_error("expression has no object address");
@@ -1690,7 +1690,7 @@ InitialValue ProgramModel::LvalueAddress(const Expression& expression) const
 	return result;
 }
 
-InitialValue ProgramModel::ResolveObjectValue(EntityId entity,
+InitialValue Model::ResolveObjectValue(EntityId entity,
 	std::uint32_t translation_unit, bool* constant) const
 {
 	const EntityRecord& record = entities_[entity];
@@ -1715,7 +1715,7 @@ InitialValue ProgramModel::ResolveObjectValue(EntityId entity,
 	return record.initial;
 }
 
-InitialValue ProgramModel::LvalueToRvalue(const Expression& expression,
+InitialValue Model::LvalueToRvalue(const Expression& expression,
 	bool* constant) const
 {
 	if (expression.category != VALUE_LVALUE) return expression.value;
@@ -1735,7 +1735,7 @@ InitialValue ProgramModel::LvalueToRvalue(const Expression& expression,
 		constant);
 }
 
-StringId ProgramModel::AddString(FundamentalType type,
+StringId Model::AddString(FundamentalType type,
 	const unsigned char* bytes, std::size_t size)
 {
 	if (size > std::numeric_limits<std::uint32_t>::max() ||
@@ -1755,7 +1755,7 @@ StringId ProgramModel::AddString(FundamentalType type,
 	return id;
 }
 
-TemporaryId ProgramModel::AddTemporary(TypeId type,
+TemporaryId Model::AddTemporary(TypeId type,
 	const InitialValue& initial)
 {
 	if (temporaries_.size() >= kNoTemporary)
@@ -1850,7 +1850,7 @@ InitialValue ConvertArithmetic(const InitialValue& source,
 	return result;
 }
 
-InitialValue ProgramModel::ConvertInitializer(TypeId* destination,
+InitialValue Model::ConvertInitializer(TypeId* destination,
 	const Expression& source, bool* constant)
 {
 	if (source.first_function != kNoCandidate)
@@ -2059,7 +2059,7 @@ InitialValue ProgramModel::ConvertInitializer(TypeId* destination,
 	return ConvertArithmetic(value, plain_destination.fundamental);
 }
 
-bool ProgramModel::ContextualBool(const Expression& expression,
+bool Model::ContextualBool(const Expression& expression,
 	bool* constant) const
 {
 	bool value_constant = expression.constant_expression;
@@ -2081,7 +2081,7 @@ bool ProgramModel::ContextualBool(const Expression& expression,
 	return ReadArithmetic(value) != 0;
 }
 
-std::uint64_t ProgramModel::ResolveAddress(const InitialValue& value) const
+std::uint64_t Model::ResolveAddress(const InitialValue& value) const
 {
 	std::uint64_t address = 0;
 	if (value.kind == INITIAL_ADDRESS_ENTITY)
@@ -2101,7 +2101,7 @@ std::uint64_t ProgramModel::ResolveAddress(const InitialValue& value) const
 		static_cast<std::int64_t>(address) + value.addend);
 }
 
-void ProgramModel::WriteImage(std::ostream& output)
+void Model::WriteImage(std::ostream& output)
 {
 	if (image_written_) throw std::logic_error("program image already written");
 	image_written_ = true;
@@ -2205,7 +2205,7 @@ void ProgramModel::WriteImage(std::ostream& output)
 	if (stats) stats->image_bytes = static_cast<std::size_t>(offset);
 }
 
-void ProgramModel::FinishStats()
+void Model::FinishStats()
 {
 	if (!stats) return;
 	stats->identifiers = identifiers.Size();
@@ -2219,12 +2219,12 @@ void ProgramModel::FinishStats()
 		stats->peak_stage_storage_bytes, stats->semantic_storage_bytes);
 }
 
-std::uint32_t ProgramModel::CurrentUnit() const
+std::uint32_t Model::CurrentUnit() const
 {
 	return current_unit_;
 }
 
-std::size_t ProgramModel::StorageBytes() const
+std::size_t Model::StorageBytes() const
 {
 	return identifiers.StorageBytes() + types.StorageBytes() +
 		retained_bytes.capacity() +

@@ -9,7 +9,7 @@
 
 namespace cppgm
 {
-namespace pa8
+namespace namespace_initialization
 {
 
 class NameSequence

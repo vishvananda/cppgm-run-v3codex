@@ -10,8 +10,10 @@
 
 namespace cppgm
 {
+namespace namespace_initialization
+{
 
-struct InitializationStats
+struct Stats
 {
 	std::size_t source_bytes;
 	std::size_t tokens;
@@ -45,17 +47,17 @@ struct InitializationStats
 	std::size_t image_bytes;
 	std::uint64_t elapsed_nanoseconds;
 
-	InitializationStats();
+	Stats();
 };
 
 // Owns one PA8 program graph. Translation-unit scopes are isolated while
 // identifiers, types, linkage identities, initializers, and emission order are
 // canonical for the whole command-line program.
-class InitializationProgram
+class Program
 {
 public:
-	explicit InitializationProgram(InitializationStats* stats = 0);
-	~InitializationProgram();
+	explicit Program(Stats* stats = 0);
+	~Program();
 
 	void AddTranslationUnit(const std::string& path,
 		const std::string& source, const PreprocessingOptions& options);
@@ -65,8 +67,9 @@ private:
 	struct Impl;
 	std::unique_ptr<Impl> impl_;
 
-	InitializationProgram(const InitializationProgram&);
-	InitializationProgram& operator=(const InitializationProgram&);
+	Program(const Program&);
+	Program& operator=(const Program&);
 };
 
+}
 }

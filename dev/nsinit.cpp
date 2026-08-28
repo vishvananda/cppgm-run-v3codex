@@ -38,7 +38,7 @@ cppgm::PreprocessingOptions BuildOptions()
 	return options;
 }
 
-void ReportStats(const cppgm::InitializationStats& stats)
+void ReportStats(const cppgm::namespace_initialization::Stats& stats)
 {
 	std::cerr << "nsinit_stats"
 		<< " source_bytes=" << stats.source_bytes
@@ -87,8 +87,8 @@ int main(int argc, char** argv)
 		const int input_end = report_stats ? argc - 1 : argc;
 		if (input_end < 4 || std::string(argv[1]) != "-o")
 			throw std::logic_error("invalid usage");
-		cppgm::InitializationStats stats;
-		cppgm::InitializationProgram program(report_stats ? &stats : 0);
+		cppgm::namespace_initialization::Stats stats;
+		cppgm::namespace_initialization::Program program(report_stats ? &stats : 0);
 		const cppgm::PreprocessingOptions options = BuildOptions();
 		for (int i = 3; i < input_end; ++i)
 		{

@@ -7,7 +7,7 @@
 
 namespace cppgm
 {
-namespace pa8
+namespace namespace_initialization
 {
 
 namespace
@@ -86,10 +86,10 @@ struct FundamentalSpecifiers
 	}
 };
 
-class Parser
+class TranslationUnitParser
 {
 public:
-	Parser(const TokenBuffer& input, ProgramModel& model, ScopeId root,
+	TranslationUnitParser(const TokenBuffer& input, Model& model, ScopeId root,
 		std::uint32_t unit)
 		: input_(input), model_(model), position_(0), current_scope_(root),
 		  unit_(unit), declarator_memo_generation_(0),
@@ -1106,7 +1106,7 @@ private:
 	}
 
 	const TokenBuffer& input_;
-	ProgramModel& model_;
+	Model& model_;
 	std::size_t position_;
 	ScopeId current_scope_;
 	std::uint32_t unit_;
@@ -1127,10 +1127,10 @@ Token::Token(std::uint16_t kind_value)
 {
 }
 
-void ParseTranslationUnit(const TokenBuffer& input, ProgramModel& model,
+void ParseTranslationUnit(const TokenBuffer& input, Model& model,
 	ScopeId root, std::uint32_t unit)
 {
-	Parser parser(input, model, root, unit);
+	TranslationUnitParser parser(input, model, root, unit);
 	parser.Parse();
 }
 
