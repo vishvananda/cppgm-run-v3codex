@@ -1,0 +1,20 @@
+name	tool	input	stdin	args	output
+pptoken	pptoken	cppgm.tests/course/pa1/100-raw-string-literal.t	yes		none
+posttoken	posttoken	cppgm.tests/course/pa2/200-unicode-character-literals.t	yes		none
+ctrlexpr	ctrlexpr	cppgm.tests/course/pa3/200-operator-precedence.t	yes		none
+macro	macro	cppgm.tests/course/pa4/400-fun-macro-define.t	yes		none
+preproc	preproc	cppgm.tests/course/pa5/200-conditional-exclusion.t	no	-o {output} {input}	file
+recognition	recog	cppgm.tests/course/pa6/500-nested-template-delimiter-context.t	no	-o {output} {input}	file
+namespace-semantics	nsdecl	cppgm.tests/course/pa7/200-using-directive-anchor-nested.t	no	-o {output} {input}	file
+namespace-initialization	nsinit	cppgm.tests/course/pa8/120-constant-conversion-linkage.t.1	no	-o {output} {input} {root}/cppgm.tests/course/pa8/120-constant-conversion-linkage.t.2	file
+cy86	cy86	cppgm.tests/course/pa9/100-empty-program.t.1	no	-o {output} {input}	file
+syntax	cppgm++	cppgm.tests/course/pa10/value-and-call-condition.t	no	--emit-ast -o {output} {input}	file
+types	cppgm++	cppgm.tests/course/pa11/200-qualified-scoped-enum-definition-lookup.t	no	--emit-types -o {output} {input}	file
+semantics	cppgm++	cppgm.tests/course/pa12/conditional-const-enum-preserves-type.t	no	--emit-semantics -o {output} {input}	file
+abi-mangle	abimangle	pa14/tests/abi/100-global-function.t	no	-o {output} {input}	file
+source-lowir	cppgm++	cppgm.tests/course/pa15/canonical-comparison-result.t	no	--emit-lowir -O0 -o {output} {input}	file
+optimized-lowir	lowiropt	pa13/tests/spec/100-ret0.t	no	-O1 -o {output} {input}	file
+lowir-cy86	lowir2cy86	pa13/tests/spec/100-ret0.t	no	-o {output} {input}	file
+lowir-native	lowir2native	pa13/tests/spec/100-ret0.t	no	-O0 -o {output} {input}	file
+source-object	cppgm++	cppgm.tests/course/pa15/canonical-comparison-result.t	no	-O0 -c -o {output} {input}	file
+

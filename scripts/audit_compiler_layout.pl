@@ -1,0 +1,191 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use Cwd qw(abs_path);
+use File::Find qw(find);
+use File::Spec;
+use FindBin;
+
+my $root = abs_path("$FindBin::Bin/..");
+my $legacy_path = "$root/doc/compiler-layout-legacy.tsv";
+
+sub read_text
+{
+	my ($path) = @_;
+	open(my $fh, '<', $path) or die "unable to read $path: $!\n";
+	local $/;
+	my $text = <$fh>;
+	close($fh) or die "unable to close $path: $!\n";
+	return defined($text) ? $text : '';
+}
+
+sub mask_segment
+{
+	my ($segment) = @_;
+	$segment =~ s/[^\n]/ /g;
+	return $segment;
+}
+
+sub mask_comments_and_literals
+{
+	my ($text) = @_;
+
+	# Mask raw strings first.  Their bodies can contain arbitrary quote and
+	# comment spellings which the ordinary literal matcher must never see.
+	$text =~ s{
+		(?:u8|u|U|L)?R"([^\s()\\]{0,16})\(
+		(.*?)
+		\)\1"
+	}{mask_segment($&)}gsex;
+
+	$text =~ s{
+		//[^\n]*
+		|/\*.*?\*/
+		|"(?:\\.|[^"\\])*"
+		|'(?:\\.|[^'\\])*'
+	}{mask_segment($&)}gsex;
+	return $text;
+}
+
+sub relative_path
+{
+	my ($path) = @_;
+	return File::Spec->abs2rel($path, $root);
+}
+
+sub line_number
+{
+	my ($text, $offset) = @_;
+	return 1 + (substr($text, 0, $offset) =~ tr/\n/\n/);
+}
+
+my @legacy;
+my @legacy_lines = split /\n/, read_text($legacy_path);
+my $header = shift @legacy_lines;
+die "$legacy_path has an invalid header\n"
+	if !defined($header) || $header ne "kind\tpattern\tdestination";
+for (my $i = 0; $i < scalar(@legacy_lines); ++$i)
+{
+	next if $legacy_lines[$i] eq '';
+	my @fields = split /\t/, $legacy_lines[$i], -1;
+	die "$legacy_path:" . ($i + 2) . " must contain three fields\n"
+		if scalar(@fields) != 3;
+	die "$legacy_path:" . ($i + 2) . " has an invalid kind\n"
+		if $fields[0] !~ /\A(?:path|include|namespace|identifier)\z/;
+	my $compiled = eval { qr/$fields[1]/ };
+	die "$legacy_path:" . ($i + 2) . " has invalid regex: $@"
+		if !defined($compiled);
+	push @legacy, {
+		kind => $fields[0], pattern => $compiled, text => $fields[1],
+		destination => $fields[2], line => $i + 2, matches => 0,
+	};
+}
+
+my @files;
+find({
+	wanted => sub {
+		return if !-f $_;
+		return if $_ !~ /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)\z/;
+		push @files, $File::Find::name;
+	},
+	no_chdir => 1,
+}, "$root/dev/src");
+for my $path (glob "$root/dev/*")
+{
+	push @files, $path if -f $path &&
+		$path =~ /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)\z/;
+}
+@files = sort @files;
+
+my @finding;
+my %namespace_name;
+my @code_by_file;
+
+sub add_finding
+{
+	my ($kind, $value, $path, $line) = @_;
+	push @finding, {
+		kind => $kind, value => $value, path => $path, line => $line,
+		allowed => 0,
+	};
+}
+
+for my $path (@files)
+{
+	my $rel = relative_path($path);
+	if ($rel =~ m{\Adev/src/(?:.*/)?pa\d[^/]*\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)\z}i)
+	{
+		add_finding('path', $rel, $rel, 1);
+	}
+
+	my $text = read_text($path);
+	while ($text =~ /^\s*#\s*include\s+"(pa\d[^\"]*)"/gim)
+	{
+		add_finding('include', $1, $rel, line_number($text, $-[0]));
+	}
+
+	my $code = mask_comments_and_literals($text);
+	push @code_by_file, [$rel, $code];
+	while ($code =~ /\bnamespace\s+(pa\d[A-Za-z0-9_]*)\b/gi)
+	{
+		$namespace_name{$1} = 1;
+		add_finding('namespace', $1, $rel, line_number($code, $-[1]));
+	}
+}
+
+for my $entry (@code_by_file)
+{
+	my ($rel, $code) = @$entry;
+	while ($code =~ /\b([A-Za-z_][A-Za-z0-9_]*)\b/g)
+	{
+		my $name = $1;
+		my $offset = $-[1];
+		next if $namespace_name{$name};
+		next if $name !~ /pa\d/i;
+		add_finding('identifier', $name, $rel,
+			line_number($code, $offset));
+	}
+}
+
+for my $finding (@finding)
+{
+	for my $legacy (@legacy)
+	{
+		next if $legacy->{kind} ne $finding->{kind};
+		next if $finding->{value} !~ $legacy->{pattern};
+		$finding->{allowed} = 1;
+		++$legacy->{matches};
+		last;
+	}
+}
+
+my @error;
+for my $finding (@finding)
+{
+	next if $finding->{allowed};
+	push @error, "$finding->{path}:$finding->{line}: unclassified " .
+		"$finding->{kind} '$finding->{value}'";
+}
+for my $legacy (@legacy)
+{
+	push @error, "$legacy_path:$legacy->{line}: stale $legacy->{kind} " .
+		"pattern '$legacy->{text}' for $legacy->{destination}"
+		if !$legacy->{matches};
+}
+
+if (@error)
+{
+	print "Compiler layout audit failed with " . scalar(@error) .
+		" error(s):\n";
+	print "  $_\n" for @error;
+	exit 1;
+}
+
+my %count;
+++ $count{$_->{kind}} for @finding;
+print "Compiler layout audit passed: " . scalar(@files) . " files; " .
+	"$count{path} legacy paths, $count{include} legacy includes, " .
+	"$count{namespace} legacy namespace declarations, and " .
+	"$count{identifier} legacy identifier uses remain.\n";

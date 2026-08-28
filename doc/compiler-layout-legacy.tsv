@@ -1,0 +1,85 @@
+kind	pattern	destination
+path	^dev/src/pa6_	recognition/
+path	^dev/src/pa7_	namespace_semantics/
+path	^dev/src/pa8_	namespace_initialization/
+path	^dev/src/pa10_	syntax/
+path	^dev/src/pa11_	semantic/
+path	^dev/src/pa12_	semantic/
+path	^dev/src/pa15_	semantic/, lowering/
+path	^dev/src/pa16_	semantic/, lowering/
+path	^dev/src/pa17_	semantic/, lowering/
+path	^dev/src/pa18_	semantic/, lowering/
+path	^dev/src/pa19_	semantic/templates/
+path	^dev/src/pa20_	semantic/
+path	^dev/src/pa21_	semantic/, lowering/
+path	^dev/src/pa22_	semantic/templates/
+path	^dev/src/pa23_	semantic/templates/
+path	^dev/src/pa24_	semantic/templates/
+path	^dev/src/pa25_	syntax/extensions/, semantic/extensions/, lowering/extensions/
+path	^dev/src/pa26_	semantic/, lowering/
+path	^dev/src/pa27_	semantic/object_model/, lowering/objects/
+path	^dev/src/pa28_	semantic/object_model/, lowering/objects/
+path	^dev/src/pa30_	compiler_object/, syntax/, semantic/, lowering/
+path	^dev/src/pa32_	syntax/, semantic/
+path	^dev/src/pa33_	semantic/, lowering/
+path	^dev/src/pa34_	syntax/, semantic/, lowering/
+include	^pa6_	recognition/
+include	^pa7_	namespace_semantics/
+include	^pa8_	namespace_initialization/
+include	^pa10_	syntax/
+include	^pa11_	semantic/
+include	^pa12_	semantic/
+include	^pa15_	semantic/, lowering/
+include	^pa16_	semantic/, lowering/
+include	^pa17_	semantic/, lowering/
+include	^pa18_	semantic/, lowering/
+include	^pa19_	semantic/templates/
+include	^pa21_	semantic/, lowering/
+include	^pa22_	semantic/templates/
+include	^pa25_	syntax/extensions/, semantic/extensions/, lowering/extensions/
+include	^pa26_	semantic/, lowering/
+include	^pa27_	semantic/object_model/, lowering/objects/
+include	^pa28_	semantic/object_model/, lowering/objects/
+include	^pa30_	compiler_object/, syntax/, semantic/, lowering/
+include	^pa32_	syntax/, semantic/
+include	^pa33_	semantic/, lowering/
+include	^pa34_	syntax/, semantic/, lowering/
+namespace	^pa8$	cppgm::namespace_initialization
+namespace	^pa10_syntax_detail$	cppgm::syntax
+namespace	^pa11$	cppgm::semantic
+namespace	^pa12_semantic_detail$	cppgm::semantic
+namespace	^pa15_force_inline$	cppgm::lowering::inline_policy
+namespace	^pa15_function_reachability$	cppgm::lowering::reachability
+namespace	^pa15_local_presentation$	cppgm::lowering::presentation
+namespace	^pa15_lowering_abi$	cppgm::lowering::abi
+namespace	^pa15_lowering_detail$	cppgm::lowering
+namespace	^pa15_lowering_support$	cppgm::lowering::support
+namespace	^pa15_lowir_detail$	cppgm::lowering::ir
+namespace	^pa16_cleanup_continuation$	cppgm::lowering::cleanup
+namespace	^pa16_lowering_detail$	cppgm::lowering
+namespace	^pa16_zero_initialization$	cppgm::lowering::zero_initialization
+namespace	^pa17_lowering_detail$	cppgm::lowering
+namespace	^pa18_lowering_detail$	cppgm::lowering
+namespace	^pa19_template_presentation$	cppgm::semantic::presentation
+namespace	^pa21_constant_template_lowering$	cppgm::lowering::constant_pool
+namespace	^pa21_lowering_detail$	cppgm::lowering
+namespace	^pa22_lambda_presentation$	cppgm::semantic::presentation
+namespace	^pa25_lowering_detail$	cppgm::lowering
+namespace	^pa25_semantic_detail$	cppgm::semantic
+namespace	^pa25_syntax_detail$	cppgm::syntax
+namespace	^pa26_lowering_detail$	cppgm::lowering
+namespace	^pa27_lowering_detail$	cppgm::lowering
+namespace	^pa28_lowering_detail$	cppgm::lowering
+namespace	^pa30$	cppgm::compiler_object
+namespace	^pa30_lowering_detail$	cppgm::lowering
+namespace	^pa30_syntax_detail$	cppgm::syntax
+namespace	^pa32_syntax_detail$	cppgm::syntax
+namespace	^pa33_lowering_detail$	cppgm::lowering
+namespace	^pa34_lowering_detail$	cppgm::lowering
+namespace	^pa34_source_identity$	cppgm::semantic::presentation
+namespace	^pa34_syntax_detail$	cppgm::syntax
+identifier	^CPPGM_PA[0-9][A-Za-z0-9_]*$	guard derived from destination path
+identifier	^PA3Mock_IsDefinedIdentifier$	MockIsDefinedIdentifier
+identifier	^kPA6Grammar$	recognition::kCppGrammarDefinition
+identifier	^PA6Grammar$	recognition::CppGrammar
+identifier	^append_pa12_template_stats$	append_template_analysis_stats

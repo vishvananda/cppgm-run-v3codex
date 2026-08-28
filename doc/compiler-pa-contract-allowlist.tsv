@@ -1,0 +1,16 @@
+kind	pattern	reason
+diagnostic	^pa10_stats$	PA10 documented statistics record
+diagnostic	^pa11_stats$	PA11 documented statistics record
+diagnostic	^pa12_stats$	PA12 documented statistics record
+diagnostic	^pa15_stats$	PA15 documented statistics record
+diagnostic	^pa15_retained_fallback$	existing lowering diagnostic record
+diagnostic	^pa15_unreachable_internal$	existing lowering diagnostic record
+diagnostic	^pa30_compile_stats$	PA30 compile statistics record
+diagnostic	^pa30_driver_stats$	PA30 driver statistics record
+diagnostic	^pa31_object_stats$	PA31 object statistics record
+diagnostic	^pa34_preproc_stats$	PA34 preprocessing statistics record
+diagnostic	^pa37_opt_stats$	PA37 documented optimization record
+diagnostic	^pa37_prepare_stats$	PA37 documented preparation record
+error-prose	\bPA[0-9]+\b	existing diagnostic prose remains output-inert
+comment	\bPA[0-9]+\b	assignment ownership or compatibility explanation
+
