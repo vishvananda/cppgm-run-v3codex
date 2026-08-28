@@ -1107,3 +1107,29 @@ checkpoint where applicable, commit, and push state.
   must reconfirm the final tree.  The cumulative report passed 5471/5471,
   LowIR remained 124/99, semantic ownership remained 850/0, and layout/file
   audits retained their baselines.  Pushed with this ledger checkpoint.
+- `16552a00` — R7 lowering foundation paths.  Moved the public API, central
+  program lowerer, driver, graph entry, source-type conversion, and shared
+  utilities into `lowering/`, `lowering/types/`, and `lowering/support/` while
+  preserving source count and link order.  PA15 passed 121/121, all 18 outputs
+  were exact, GCC-O3 text/data were unchanged, and all four moved
+  implementation objects were allocated-byte exact.
+- `8bd0087e` — R7 source-lowering ABI path.  Moved the intact Itanium lowering
+  ABI owner to `lowering/abi/itanium.{h,cpp}` at its original link position.
+  PA15 passed 121/121, all 18 outputs were exact, and the moved implementation
+  object was allocated-byte exact.  One discarded verification attempt
+  accidentally ran two writers against the shared `obj/dev` tree and produced
+  only `.Td`/generated-config temp-file races; the required serialized rebuild
+  and every subsequent check were clean.
+- `dc183daf` — R7 typed analysis/transform/presentation paths.  Moved force
+  inlining, function reachability, and local-name presentation into
+  `lowering/transforms/`, `lowering/analysis/`, and
+  `lowering/presentation/`, preserving their separated late link positions.
+  PA15 passed 121/121, all 18 outputs were exact, and all three implementation
+  objects were allocated-byte exact.
+
+  Across the three path-only commits, legacy PA paths/includes fell from
+  65/123 to 49/51 with namespace/identifier counts unchanged.  The cumulative
+  report passed 5471/5471, LowIR remained 124/99, semantic ownership remained
+  850/0, and file audit stayed zero-fatal/33-warning.  Performance: not
+  applicable because all moved implementation code and aggregate compiler
+  text/data are exact.  Push: with this ledger checkpoint.
