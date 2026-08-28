@@ -1,7 +1,6 @@
 # Plan: Audit and Reduce Optimizer Duplication
 
-Status: executing; D0 baseline and consolidation ledger frozen, no cleanup
-implementation landed
+Status: executing; D0-D4 complete, D5 native consolidation next
 
 Date: 2026-08-27
 
@@ -980,6 +979,15 @@ This plan is complete only when:
   `4bf349c4...`/5,025,861.  Retain: the audit-visible exact duplicate is gone,
   output is exact, and performance improves slightly without merging the
   inliners' deliberate mutation mechanics.
+- **D-C4 (CFG/INLINER CUMULATIVE CHECKPOINT).** The three retained D4
+  increments pass root `make -j32 test-report-through-pa38` at 5,465/5,465,
+  `git diff --check`, and the default audit at zero fatal findings with the
+  warning count improved from 36 to 35.  A fresh isolated explicit-O1
+  inception used outer, inner, and object parallelism all at 32 under
+  `/dev/shm/v3codex-optdup-d4-cumulative-inception.reuymX`; every object and
+  the final compiler match.  Self and inception binaries both hash to
+  `1f704cc9...` with 8,646,551 text and 334,888 data bytes.  No stale compiler,
+  profiler, Valgrind, Cachegrind, or perf process preceded the checkpoint.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
