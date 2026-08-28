@@ -1,14 +1,6 @@
 kind	pattern	destination
-path	^dev/src/pa21_	semantic/, lowering/
-path	^dev/src/pa25_	syntax/extensions/, semantic/extensions/, lowering/extensions/
-path	^dev/src/pa26_	semantic/, lowering/
 path	^dev/src/pa30_	compiler_object/, syntax/, semantic/, lowering/
-path	^dev/src/pa34_	syntax/, semantic/, lowering/
-include	^pa21_	semantic/, lowering/
-include	^pa25_	syntax/extensions/, semantic/extensions/, lowering/extensions/
-include	^pa26_	semantic/, lowering/
 include	^pa30_	compiler_object/, syntax/, semantic/, lowering/
-include	^pa34_	syntax/, semantic/, lowering/
 namespace	^pa15_force_inline$	cppgm::lowering::inline_policy
 namespace	^pa15_function_reachability$	cppgm::lowering::reachability
 namespace	^pa15_local_presentation$	cppgm::lowering::presentation
