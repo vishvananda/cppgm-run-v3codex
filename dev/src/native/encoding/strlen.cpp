@@ -1,7 +1,7 @@
-#include "native/encoding/lowir_native_strlen.h"
+#include "native/encoding/strlen.h"
 
-#include "native/object/lowir_native_code_buffer.h"
-#include "native/encoding/lowir_native_encoding.h"
+#include "native/object/code_buffer.h"
+#include "native/encoding/instructions.h"
 
 namespace lowir_native
 {

@@ -1,8 +1,8 @@
-#include "native/encoding/lowir_native_integer_encoding.h"
+#include "native/encoding/integers.h"
 
 #include "native/analysis/data_layout.h"
-#include "native/encoding/lowir_native_encoding.h"
-#include "native/encoding/lowir_native_scalar_memory.h"
+#include "native/encoding/instructions.h"
+#include "native/encoding/scalar_memory.h"
 
 #include <climits>
 #include <cstdint>

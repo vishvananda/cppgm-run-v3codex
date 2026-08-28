@@ -1,7 +1,7 @@
-#include "native/encoding/lowir_native_address_folding.h"
+#include "native/encoding/address_folding.h"
 #include "native/analysis/data_layout.h"
-#include "native/encoding/lowir_native_encoding.h"
-#include "native/encoding/lowir_native_scalar_memory.h"
+#include "native/encoding/instructions.h"
+#include "native/encoding/scalar_memory.h"
 
 #include <limits>
 #include <stdexcept>

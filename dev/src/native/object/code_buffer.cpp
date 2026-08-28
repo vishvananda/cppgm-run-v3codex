@@ -1,4 +1,4 @@
-#include "native/object/lowir_native_code_buffer.h"
+#include "native/object/code_buffer.h"
 
 #include "native/lowering/lowir_native.h"
 

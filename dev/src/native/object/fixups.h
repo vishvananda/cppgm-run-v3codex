@@ -1,6 +1,6 @@
 #pragma once
 
-#include "native/object/lowir_native_object_elf.h"
+#include "native/object/elf_format.h"
 
 #include <string>
 #include <unordered_map>

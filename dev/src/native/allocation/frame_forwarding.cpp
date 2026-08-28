@@ -3,7 +3,7 @@
 #include "native/lowering/lowir_native.h"
 #include "native/analysis/data_layout.h"
 #include "native/mir/optimize.h"
-#include "native/encoding/lowir_native_scalar_memory.h"
+#include "native/encoding/scalar_memory.h"
 
 #include <algorithm>
 #include <unordered_map>

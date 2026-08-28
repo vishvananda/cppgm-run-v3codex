@@ -1,6 +1,6 @@
 #pragma once
 
-#include "native/object/lowir_native_code_buffer.h"
+#include "native/object/code_buffer.h"
 #include "native/mir/model.h"
 
 namespace lowir_native {

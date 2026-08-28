@@ -1,4 +1,4 @@
-#include "native/eh/lowir_native_eh_references.h"
+#include "native/eh/references.h"
 
 #include <algorithm>
 #include <stdexcept>

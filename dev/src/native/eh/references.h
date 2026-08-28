@@ -1,7 +1,7 @@
 #pragma once
 
-#include "native/object/lowir_native_code_buffer.h"
-#include "native/object/lowir_native_object_elf.h"
+#include "native/object/code_buffer.h"
+#include "native/object/elf_format.h"
 
 #include <cstddef>
 #include <vector>

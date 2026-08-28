@@ -1,4 +1,4 @@
-#include "native/encoding/lowir_native_encoding.h"
+#include "native/encoding/instructions.h"
 #include "native/analysis/data_layout.h"
 
 #include <climits>

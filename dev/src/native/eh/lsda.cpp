@@ -1,7 +1,7 @@
-#include "native/eh/lowir_native_lsda.h"
+#include "native/eh/lsda.h"
 
 #include "native/lowering/lowir_native.h"
-#include "native/object/lowir_native_object_elf.h"
+#include "native/object/elf_format.h"
 
 #include <algorithm>
 #include <stdexcept>

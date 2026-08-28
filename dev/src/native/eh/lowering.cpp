@@ -1,4 +1,4 @@
-#include "native/eh/lowir_native_eh.h"
+#include "native/eh/lowering.h"
 #include "native/mir/block_labels.h"
 #include "native/mir/construction.h"
 

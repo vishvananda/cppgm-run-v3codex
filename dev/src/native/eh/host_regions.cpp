@@ -1,4 +1,4 @@
-#include "native/eh/lowir_native_host_eh.h"
+#include "native/eh/host_regions.h"
 #include "native/mir/control_flow.h"
 
 #include <stdexcept>

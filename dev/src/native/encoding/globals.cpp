@@ -1,4 +1,4 @@
-#include "native/encoding/lowir_native_global_encoding.h"
+#include "native/encoding/globals.h"
 
 #include "native/lowering/lowir_native.h"
 #include "native/analysis/data_layout.h"

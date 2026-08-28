@@ -1,7 +1,7 @@
 #include "native/lowering/lowir_native.h"
 
 #include "lowir/optimize/force_inline.h"
-#include "native/eh/lowir_native_eh.h"
+#include "native/eh/lowering.h"
 #include "native/mir/control_flow.h"
 #include "native/mir/optimize.h"
 #include "lowir/analysis/phi_edges.h"

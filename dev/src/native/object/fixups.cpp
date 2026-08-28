@@ -1,4 +1,4 @@
-#include "native/object/lowir_native_object_fixups.h"
+#include "native/object/fixups.h"
 
 #include <climits>
 #include <cstdint>

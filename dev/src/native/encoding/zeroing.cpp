@@ -1,6 +1,6 @@
-#include "native/encoding/lowir_native_zero_encoding.h"
+#include "native/encoding/zeroing.h"
 
-#include "native/encoding/lowir_native_encoding.h"
+#include "native/encoding/instructions.h"
 
 #include <climits>
 #include <cstdint>

@@ -1,7 +1,7 @@
-#include "native/object/lowir_native_object_elf.h"
-#include "native/object/lowir_native_elf_string_table.h"
-#include "native/eh/lowir_native_lsda.h"
-#include "native/object/lowir_native_object_fixups.h"
+#include "native/object/elf_format.h"
+#include "native/object/string_table.h"
+#include "native/eh/lsda.h"
+#include "native/object/fixups.h"
 
 #include <algorithm>
 #include <chrono>

@@ -1,4 +1,4 @@
-#include "native/object/lowir_native_elf_string_table.h"
+#include "native/object/string_table.h"
 
 #include <limits>
 #include <stdexcept>

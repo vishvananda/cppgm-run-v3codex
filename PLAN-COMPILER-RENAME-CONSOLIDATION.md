@@ -1482,3 +1482,28 @@ checkpoint where applicable, commit, and push state.
   file audit remained zero-fatal/32-warning.  R10 remains open for native leaf
   and identifier vocabulary plus the explicit mixed-owner audit.  Push: with
   this amended checkpoint.
+- `2b8fed43`, `5ec67431`, and this commit — R10 native leaf vocabulary
+  checkpoint.  Removed the redundant `lowir_native_`, `mir_model`, and
+  `x86_register_model` leaf prefixes from the MIR, analysis, driver,
+  allocation, frame, encoding, EH, and object directories.  Ambiguous owners
+  received responsibility names, including `mir/construction`,
+  `mir/optimize`, `encoding/instructions`, `eh/host_regions`,
+  `object/elf_format`, and `object/elf_writer`; simple domain-qualified names
+  such as `frame/layout` and `driver/session` stayed short.  PA29 and PA38 now
+  describe the optional scaffolds at `native/mir/model.h` and
+  `native/mir/registers.h`.  Source count, translation-unit contents, and
+  canonical link order are unchanged.
+
+  Against the pre-rename native tools, all four executables are byte-exact
+  after stripping symbols and the GNU build-id.  Allocated text/data/bss sizes
+  remain 7,085,510/21,712/6,792 for `cppgm++`,
+  412,387/3,736/1,728 for `lowir2cy86`, 1,127,673/3,904/1,736 for `lowiropt`,
+  and 1,400,829/4,864/2,496 for `lowir2native`; therefore a performance run is
+  not applicable to this mechanical batch.
+
+  Focused PA29-PA31 and PA38 gates passed and all 18 frozen output surfaces
+  remained exact.  The three-commit checkpoint passed 5471/5471; LowIR
+  remained 124/99, semantic ownership remained 850/0, lowering ownership
+  remained 100/13/45/0, layout remained 0/0/0/18, and the file audit remained
+  zero-fatal/32-warning.  The lowering leaves and native mixed-owner manifest
+  remain for the R10 closure.  Push: with this amended checkpoint.
