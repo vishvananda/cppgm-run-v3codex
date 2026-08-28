@@ -1017,6 +1017,7 @@ private:
 	void CompleteTranslationUnitDemand();
 	void CompleteFunctionDefinition(BindingId binding);
 	void PublishFunctionDemandStats();
+	void QueueDeferredFunctionDefinition(BindingId binding);
 	void QueueFunctionDefinitionValidation(BindingId binding);
 	void DemandVtableFunction(BindingId binding);
 	void EnsureFunctionExceptionSpecification(BindingId binding);

@@ -142,6 +142,11 @@ void SemanticAnalyzer::DemandRuntimeDefinition(BindingId binding)
 		if (base_entry != kNoBinding && base_entry != binding)
 			DemandRuntimeDefinition(base_entry);
 	}
+	QueueDeferredFunctionDefinition(binding);
+}
+
+void SemanticAnalyzer::QueueDeferredFunctionDefinition(BindingId binding)
+{
 	if (binding >= function_fact_by_binding_.size() ||
 		function_fact_by_binding_[binding] == kNoDumpEdge) return;
 	FunctionInfo& function = GetMutableFunction(binding);

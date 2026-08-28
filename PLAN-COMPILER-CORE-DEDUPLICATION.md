@@ -680,3 +680,31 @@ not reuse measurements from a different source tree.
   7,066,657 to 7,066,337.  PA15 passes 121/121, PA16 300/300, PA30 100/100,
   report-through-PA30 passes 4,346/4,346, the audit remains zero-fatal/34, and
   `git diff --check` is clean.
+- **C2-A3 COVERAGE AUDIT (DEFERRED FUNCTION QUEUE).**
+  `QueueFunctionDefinitionValidation` and `DemandRuntimeDefinition` end in the
+  same fact-availability check and `deferred && NOT_STARTED` transition to
+  `QUEUED`, followed by the same ordered worklist append and push counter.
+  Exception-specification validation remains unique to the first caller;
+  emission demand, demand-edge replay, vtable marking, and lifecycle base-entry
+  recursion remain unique to the second.  `DemandVtableFunction` deliberately
+  queues the inverse non-deferred policy and is excluded.  PA12's function-
+  definition/address-taking contract and the `300-deferred-demand-closure`
+  reducer cover runtime demand recursively materializing a selected member and
+  its constructor dependency; out-of-class/defaulted special-member fixtures
+  cover validation queueing, while PA16 demand-driven lifecycle tests exercise
+  the later consumer.  Fast gates are that PA12 reducer, PA12, and PA16,
+  followed by report-through-PA16 and the audit.
+- **C2-A3 (DEFERRED FUNCTION QUEUE).**
+  `QueueDeferredFunctionDefinition` now solely owns fact availability and the
+  deferred `NOT_STARTED -> QUEUED` transition, ordered append, and statistics
+  increment.  Validation, runtime-demand prerequisites, and the deliberately
+  inverse vtable policy remain local.  The focused recursive-demand reducer
+  passes 1/1, PA12 passes 183/183, PA16 passes 300/300, report-through-PA16
+  passes 1,498/1,498, and the audit remains zero-fatal/34.  GCC-O3 compiler text
+  is 7,065,729 bytes, 608 below C2-A2.  A first timing block was invalidated
+  when an unrelated forced rebuild modified `dev/cppgm++` during the samples;
+  the candidate was then copied immutably and all rerun objects matched at
+  `b0d3d8d3...`.  Candidate median user time is 4.08 s versus 4.09 s at the
+  most recent C2-A1 O3/O0 guard, so the new queue call boundary shows no
+  incremental regression; wall/system samples were still cooling from the
+  competing rebuild and receive no retention credit.

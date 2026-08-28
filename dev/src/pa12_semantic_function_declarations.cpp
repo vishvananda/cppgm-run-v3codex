@@ -66,14 +66,7 @@ void SemanticAnalyzer::QueueFunctionDefinitionValidation(BindingId binding)
 	EnsureFunctionExceptionSpecification(binding);
 	DemandClassTemplateMemberDefinitions(
 		program_->bindings[binding].member_owner);
-	if (binding >= function_fact_by_binding_.size() ||
-		function_fact_by_binding_[binding] == kNoDumpEdge) return;
-	FunctionInfo& function = GetMutableFunction(binding);
-	if (!function.deferred ||
-		function.definition_state != FUNCTION_DEFINITION_NOT_STARTED) return;
-	function.definition_state = FUNCTION_DEFINITION_QUEUED;
-	demanded_functions_.push_back(binding);
-	++demand_worklist_pushes_;
+	QueueDeferredFunctionDefinition(binding);
 }
 
 }
