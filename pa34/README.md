@@ -232,7 +232,8 @@ To complete PA34, implement hosted compatibility for:
   specifiers such as `__float128` / `_Float128`
 - builtin traits, transforms, intrinsics, and builtin families used during
   hosted compile acceptance, including lowering `__builtin_abort` as a
-  non-returning call to the host C runtime
+  non-returning call to the host C runtime; fixed-arity hosted integer
+  intrinsics reject calls with the wrong number of operands
 - hosted compiler intrinsics lowered directly to typed LowIR operations do not
   unwind; an explicit `noexcept` wrapper containing only such operations shall
   not acquire a terminate landing

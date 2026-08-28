@@ -257,7 +257,8 @@ PA12 must support:
 - supported integral `constexpr` complete objects, enumerator constants, the
   course-supported `__builtin_constant_p` query over propagated integral
   expressions, and semantic recognition of a zero-argument `__builtin_abort`
-  call (without requiring its later control-flow lowering)
+  call (without requiring its later control-flow lowering); passing arguments
+  to `__builtin_abort` is rejected
 - rejection of type, call-arity, and control-flow violations within this
   supported slice, including mismatched indirect-call arity, nonconstant case
   labels, `break` or `continue` outside a permitted statement, `default`

@@ -772,3 +772,13 @@ not reuse measurements from a different source tree.
   differences of +0.04, -0.03, and 0.00 seconds; all output objects are exact
   at `b0d3d8d3...`.  The range ownership is therefore retained without size or
   performance credit.
+- **C4 COVERAGE AUDIT AND BACKFILL (BOUND INTRINSIC CALL SHELL).** Ordinary
+  builtin and hosted integer-intrinsic call builders repeat the same typed call
+  node, bound callee, ordered argument edges, and prvalue result shell.  Binding
+  selection, integer folding, target conversion, and expression accounting
+  remain separate.  PA12 already covers zero-argument `__builtin_abort` and
+  PA34 covers constant and runtime bswap/clz/ctz/popcount families, but neither
+  family had a focused invalid-arity control.  The PA12 and PA34 READMEs now
+  state those arity rules, and reference-generated negative reducers cover
+  both.  The focused cases pass 1/1 each, PA12 passes 184/184, and PA34 passes
+  375/375.  This coverage commit precedes the construction-helper change.
