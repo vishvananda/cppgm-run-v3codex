@@ -1225,3 +1225,37 @@ checkpoint where applicable, commit, and push state.
   oracle.  Frozen optimized-host paired changes were GCC-O3 -0.64% wall /
   -0.24% user and Clang-O3 -0.31% wall / -0.69% user.  The namespace merge is
   therefore performance-neutral.  Push: with this ledger checkpoint.
+- `70b034ee` — R7 lowering public vocabulary.  Replaced the last historical
+  typed-lowering API names with `lowering::Source`, `lowering::Stats`,
+  `lowering::ir::Program`, `lowering::BuildProgram`, and
+  `lowering::WriteLowIR`; named the graph and rendering boundaries
+  `lowering::LowerGraph` and `lowering::ir::RenderLowIR`.  The IR-program name
+  exposed ambiguous imported `Program` leaves, so every affected source-model
+  boundary now explicitly says `semantic::Program` rather than relying on a
+  using-directive lookup accident.  No alias or forwarding API remains.
+- `687610f4` — R7 lowering include guards.  Replaced all 25 PA-numbered
+  lowering guards with path-derived `CPPGM_LOWERING_*` guards.  Rebuilding the
+  hot lowering translation unit left the compiler SHA-256 exactly
+  `5c60a215cafd4533c50caeceb49f7cd10e0732ed3e5f25602368741256512211`;
+  the layout identifier census fell from 68 to 18, with the remaining
+  production identifiers owned by the PA30 compiler-object phase.
+
+  PA15 passed 121/121, PA34 passed 375/375, and all 18 frozen output surfaces
+  were exact.  The scheduled cumulative report passed 5471/5471; LowIR
+  remained 124/99, semantic ownership remained 850/0, and file audit remained
+  zero-fatal/33-warning.  Fresh explicit-O1 32/32/32 inception matched all 216
+  objects and the final compiler.  Old/new self compilers had identical
+  allocated section sizes; six identical-current-source lanes measured hot-TU
+  medians of 7.680/7.620 seconds, with paired wall/user changes of -0.20% and
+  -0.55%.
+
+  The corrected three-lane 216-source matrix measured self/GCC/Clang wall
+  medians of 31.64/21.48/21.93 seconds, or 1.473x/1.443x.  Aggregate-CPU
+  medians were 907.95/590.66/607.91 seconds, or 1.537x/1.494x, effectively
+  unchanged from the earlier accepted matrix.  Across the extended reversed-
+  order GCC-O3 frozen samples, old/new wall and aggregate-CPU medians changed
+  by +0.22%/+0.22%; Clang-O3 changed by +0.41%/+0.41%.  Both are within the
+  0.5% measurement floor, so the vocabulary batch is retained.  R7 exits with
+  generated LowIR exact, all lowering behavior gates clean, and only the PA30
+  namespaces and paths reserved for R9 still present.  Push: with this ledger
+  checkpoint.
