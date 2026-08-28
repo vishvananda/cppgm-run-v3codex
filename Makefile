@@ -65,7 +65,7 @@ SUBMAKE_OBJ_ARG = $(if $(strip $(OBJ)),OBJ=$(OBJ))
 SUBMAKE_GENERATED_ARG = $(if $(strip $(GENERATED)),GENERATED=$(GENERATED))
 SUBMAKE_CC_FLAGS_ARG = $(if $(strip $(CC_FLAGS)),CC_FLAGS="$(CC_FLAGS)")
 
-.PHONY: all build test audit-lowir-contract audit-compiler-layout audit-semantic-owners audit-lowering-owners ref-test ref-test-strict ref-test-debuginfo \
+.PHONY: all build test audit-lowir-contract audit-compiler-layout audit-semantic-owners audit-lowering-owners audit-native-owners ref-test ref-test-strict ref-test-debuginfo \
 	test-strict test-strict-nobuild test-debuginfo test-debuginfo-nobuild \
 	test-report inception clean run-cppgm run-cppgm-nobuild \
 	test-report-nobuild test-report-through-% test-report-through-%-nobuild \
@@ -87,6 +87,9 @@ audit-semantic-owners:
 
 audit-lowering-owners:
 	@perl scripts/audit_lowering_owners.pl
+
+audit-native-owners:
+	@perl scripts/audit_native_owners.pl
 
 build:
 	@mkdir -p obj
