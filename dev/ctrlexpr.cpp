@@ -11,7 +11,7 @@ using namespace std;
 
 #include "preprocess/expressions/control_expression.h"
 
-// mock implementation of IsDefinedIdentifier for PA3
+// Mock identifier-definition policy for the standalone expression adapter.
 // return true iff first code point is odd
 bool MockIsDefinedIdentifier(const string& identifier)
 {

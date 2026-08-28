@@ -1,16 +1,110 @@
-kind	pattern	reason
-diagnostic	^pa10_stats$	PA10 documented statistics record
-diagnostic	^pa11_stats$	PA11 documented statistics record
-diagnostic	^pa12_stats$	PA12 documented statistics record
-diagnostic	^pa15_stats$	PA15 documented statistics record
-diagnostic	^pa15_retained_fallback$	existing lowering diagnostic record
-diagnostic	^pa15_unreachable_internal$	existing lowering diagnostic record
-diagnostic	^pa30_compile_stats$	PA30 compile statistics record
-diagnostic	^pa30_driver_stats$	PA30 driver statistics record
-diagnostic	^pa31_object_stats$	PA31 object statistics record
-diagnostic	^pa34_preproc_stats$	PA34 preprocessing statistics record
-diagnostic	^pa37_opt_stats$	PA37 documented optimization record
-diagnostic	^pa37_prepare_stats$	PA37 documented preparation record
-error-prose	\bPA[0-9]+\b	existing diagnostic prose remains output-inert
-comment	\bPA[0-9]+\b	assignment ownership or compatibility explanation
-
+kind	path	token	reason
+comment	dev/abimangle.cpp	PA14	assignment boundary or compatibility note
+comment	dev/cppgm++.cpp	PA10	assignment boundary or compatibility note
+comment	dev/cy86.cpp	PA9	assignment boundary or compatibility note
+comment	dev/lowir2native.cpp	PA29	assignment boundary or compatibility note
+comment	dev/lowiropt.cpp	PA37	assignment boundary or compatibility note
+comment	dev/src/abi/itanium/abi_mangle.h	PA14	assignment boundary or compatibility note
+comment	dev/src/abi/itanium/abi_mangle_expression.h	PA14	assignment boundary or compatibility note
+comment	dev/src/abi/itanium/abi_mangle_reference.h	PA14	assignment boundary or compatibility note
+comment	dev/src/abi/itanium/abi_mangle_terminal.h	PA14	assignment boundary or compatibility note
+comment	dev/src/lowering/api.h	PA12	assignment boundary or compatibility note
+comment	dev/src/lowering/api.h	PA15	assignment boundary or compatibility note
+comment	dev/src/lowir/model/program.h	PA13	assignment boundary or compatibility note
+comment	dev/src/lowir/optimize/inline_o1.cpp	PA37	assignment boundary or compatibility note
+comment	dev/src/namespace_initialization/driver.h	PA8	assignment boundary or compatibility note
+comment	dev/src/namespace_semantics/analysis.h	PA7	assignment boundary or compatibility note
+comment	dev/src/native/encoding/instructions.cpp	PA32	assignment boundary or compatibility note
+comment	dev/src/native/mir/optimize.cpp	PA29	assignment boundary or compatibility note
+comment	dev/src/native/mir/optimize.cpp	PA38	assignment boundary or compatibility note
+comment	dev/src/preprocess/expressions/control_expression.cpp	PA1	assignment boundary or compatibility note
+comment	dev/src/preprocess/expressions/control_expression.cpp	PA3	assignment boundary or compatibility note
+comment	dev/src/preprocess/expressions/control_expression.h	PA2	assignment boundary or compatibility note
+comment	dev/src/preprocess/expressions/control_expression.h	PA3	assignment boundary or compatibility note
+comment	dev/src/preprocess/macros/macro_processor.h	PA2	assignment boundary or compatibility note
+comment	dev/src/preprocess/macros/macro_processor.h	PA4	assignment boundary or compatibility note
+comment	dev/src/preprocess/macros/macro_processor.h	PA5	assignment boundary or compatibility note
+comment	dev/src/preprocess/tokens/pp_tokenizer.cpp	PA2	assignment boundary or compatibility note
+comment	dev/src/preprocess/tokens/IPPTokenStream.h	PA1	assignment boundary or compatibility note
+comment	dev/src/preprocess/tokens/IPPTokenStream.h	PA4	assignment boundary or compatibility note
+comment	dev/src/preprocess/tokens/post_tokenizer.h	PA1	assignment boundary or compatibility note
+comment	dev/src/preprocess/tokens/post_tokenizer.h	PA2	assignment boundary or compatibility note
+comment	dev/src/preprocess/tokens/post_tokenizer.h	PA3	assignment boundary or compatibility note
+comment	dev/src/recognition/grammar_definition.h	PA6	assignment boundary or compatibility note
+comment	dev/src/recognition/recognizer.h	PA5	assignment boundary or compatibility note
+comment	dev/src/recognition/recognizer.h	PA6	assignment boundary or compatibility note
+comment	dev/src/semantic/analysis/analyzer.cpp	PA34	assignment boundary or compatibility note
+comment	dev/src/semantic/constants/analysis.cpp	PA15	assignment boundary or compatibility note
+comment	dev/src/semantic/constants/analysis.cpp	PA21	assignment boundary or compatibility note
+comment	dev/src/semantic/declarations/analysis.cpp	PA12	assignment boundary or compatibility note
+comment	dev/src/semantic/extensions/range_for.cpp	PA25	assignment boundary or compatibility note
+comment	dev/src/semantic/initialization/analysis.cpp	PA23	assignment boundary or compatibility note
+comment	dev/src/semantic/lifetime/special_members.cpp	PA17	assignment boundary or compatibility note
+comment	dev/src/semantic/model/graph.h	PA12	assignment boundary or compatibility note
+comment	dev/src/semantic/model/graph.h	PA25	assignment boundary or compatibility note
+comment	dev/src/semantic/presentation/type_projection.cpp	PA11	assignment boundary or compatibility note
+comment	dev/src/semantic/semantic.h	PA10	assignment boundary or compatibility note
+comment	dev/src/semantic/semantic.h	PA12	assignment boundary or compatibility note
+comment	dev/src/semantic/templates/aliases_and_lambdas.cpp	PA25	assignment boundary or compatibility note
+comment	dev/src/semantic/templates/ambiguities.cpp	PA10	assignment boundary or compatibility note
+comment	dev/src/semantic/templates/validation.cpp	PA10	assignment boundary or compatibility note
+comment	dev/src/semantic/type_view.h	PA10	assignment boundary or compatibility note
+comment	dev/src/semantic/type_view.h	PA11	assignment boundary or compatibility note
+comment	dev/src/syntax/syntax.h	PA10	assignment boundary or compatibility note
+diagnostic	dev/cppgm++.cpp	pa10_stats	stable emitted statistics key
+diagnostic	dev/cppgm++.cpp	pa11_stats	stable emitted statistics key
+diagnostic	dev/cppgm++.cpp	pa12_stats	stable emitted statistics key
+diagnostic	dev/cppgm++.cpp	pa15_stats	stable emitted statistics key
+diagnostic	dev/cppgm++.cpp	pa30_compile_stats	stable emitted statistics key
+diagnostic	dev/cppgm++.cpp	pa30_driver_stats	stable emitted statistics key
+diagnostic	dev/cppgm++.cpp	pa31_object_stats	stable emitted statistics key
+diagnostic	dev/cppgm++.cpp	pa34_preproc_stats	stable emitted statistics key
+diagnostic	dev/src/lowir/driver/stats_report.cpp	pa15_retained_fallback	stable emitted statistics key
+diagnostic	dev/src/lowir/driver/stats_report.cpp	pa15_unreachable_internal	stable emitted statistics key
+diagnostic	dev/src/lowir/driver/stats_report.cpp	pa37_opt_stats	stable emitted statistics key
+diagnostic	dev/src/lowir/driver/stats_report.cpp	pa37_prepare_stats	stable emitted statistics key
+error-prose	dev/src/lowering/abi/mangling.cpp	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/calls/arguments.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/calls/function_calls.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/control/control_flow.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/control/regions.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/control/statements.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/core/driver.cpp	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/core/program_lowerer.cpp	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/core/source_types.cpp	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/expressions/assignment.h	PA12	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/expressions/assignment.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/expressions/core.h	PA12	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/expressions/core.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/ir/model.cpp	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/ir/render.cpp	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/ir/render.cpp	PA16	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/ir/render.cpp	PA17	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/ir/render.cpp	PA26	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/ir/types.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/objects/initialization.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/objects/initialization.h	PA17	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/objects/polymorphism.cpp	PA18	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/objects/static_initialization.cpp	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/objects/static_initialization.cpp	PA16	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/objects/static_members.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/objects/storage_access.h	PA15	existing diagnostic prose; output contract
+error-prose	dev/src/lowering/objects/temporary_lifetime.h	PA17	existing diagnostic prose; output contract
+error-prose	dev/src/lowir/cy86/converter.cpp	PA13	existing diagnostic prose; output contract
+error-prose	dev/src/namespace_initialization/driver.cpp	PA8	existing diagnostic prose; output contract
+error-prose	dev/src/namespace_semantics/analysis.cpp	PA7	existing diagnostic prose; output contract
+error-prose	dev/src/preprocess/tokens/post_tokenizer.cpp	PA2	existing diagnostic prose; output contract
+error-prose	dev/src/recognition/recognizer.cpp	PA6	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/analysis/analyzer.cpp	PA12	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/declarations/analysis.cpp	PA12	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/declarations/declarator_types.cpp	PA11	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/expressions/literals.cpp	PA12	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/initialization/analysis.cpp	PA16	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/initialization/analysis.cpp	PA17	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/model/graph.h	PA12	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/model/program.cpp	PA11	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/presentation/type_projection.cpp	PA11	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/templates/aliases_and_lambdas.cpp	PA22	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/templates/arguments.cpp	PA20	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/templates/function_instantiation.cpp	PA12	existing diagnostic prose; output contract
+error-prose	dev/src/semantic/templates/placeholders.cpp	PA23	existing diagnostic prose; output contract

@@ -1507,7 +1507,7 @@ checkpoint where applicable, commit, and push state.
   remained 100/13/45/0, layout remained 0/0/0/18, and the file audit remained
   zero-fatal/32-warning.  The lowering leaves and native mixed-owner manifest
   remain for the R10 closure.  Push: with this amended checkpoint.
-- `4e242f24`, `375ebcb0`, and `323ecb40` — R10 native ownership and tier
+- `4e242f24`, `375ebcb0`, and `c3d46ebc` — R10 native ownership and tier
   closure.  Removed the redundant prefix and lowering suffix from every
   operation-family leaf under `native/lowering`.  Added a native symbol-owner
   audit covering the mixed public interface and private hot lowerer; its 14
@@ -1554,3 +1554,43 @@ checkpoint where applicable, commit, and push state.
   R10 exits with LowIR/native contracts, output, layout, and performance
   intact and the self/GCC wall ratio below 1.50x.  Push: with this amended
   tier-closure checkpoint.
+- `79a55059` and this commit — R11 migration-residue closure.  Renamed the
+  final two PA-bearing internal helpers and seven PA-numbered include guards,
+  then removed the now-empty legacy layout exceptions.  The layout audit now
+  reports zero production PA paths, includes, namespace declarations, and
+  identifiers.  One generic mock comment was rewritten in architectural
+  terms; the remaining assignment-number comments all describe a staged
+  contract or compatibility boundary.
+
+  Replaced the broad comment/error allowlist expressions with 109 exact
+  kind/path/token entries: 12 stable diagnostic keys, 45 diagnostic-prose
+  sites, and 52 assignment-boundary comment sites.  The audit observes and
+  approves 12/123/60 occurrences respectively, rejects any unlisted site, and
+  rejects stale entries.  A deliberate `PA99` comment was rejected.  Added
+  `make audit-frontend-source-sets`; it independently expands all 47 ordered
+  responsibility variables, rejects duplicates and missing/stale paths,
+  cross-checks the 14 tools against `dev/Makefile`, and proves that all 229
+  production translation units have an intended owner.  A deliberate
+  duplicate source ID was rejected through every affected expansion.
+
+  Removed 632 obsolete rebuildable object/depfile artifacts (22,329,359
+  bytes) from the shared object cache, leaving zero artifacts without a
+  current source owner.  A fresh 32-way build in a separate object root then
+  built all 14 tools using only current source IDs.  `cppgm++` and `ctrlexpr`
+  are byte-exact against their pre-rename baselines after removing symbols and
+  the GNU build-id; their allocated text/data/bss sizes remain
+  7,085,510/21,712/6,792 and 163,218/6,192/5,408.  Therefore this batch has no
+  executable-performance mutation.  All 18 frozen output surfaces remained
+  exact.
+
+  The normal file audit remains zero-fatal/32-warning.  The refreshed
+  report-only tight scan contains 141 duplicate and 30 division advisories:
+  74 include/namespace/type preambles, 51 unchanged same-file structural
+  symmetries, and 16 already-independent cross-owner semantic patterns.  The
+  seven-warning increase from R0 is six path-induced preamble matches and one
+  shifted cross-owner representative; the same-file implementation count is
+  unchanged.  The full checkpoint passed 5471/5471; LowIR remains 124/99,
+  semantic ownership 850/0, lowering ownership 100/13/45/0, and native
+  ownership 14/0.  R11 exits with no compatibility header or migration alias,
+  no duplicate source ID, and no dependency on a removed path.  Push: with
+  this checkpoint.

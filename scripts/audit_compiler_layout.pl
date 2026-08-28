@@ -10,6 +10,7 @@ use FindBin;
 
 my $root = abs_path("$FindBin::Bin/..");
 my $legacy_path = "$root/doc/compiler-layout-legacy.tsv";
+my $contract_path = "$root/doc/compiler-pa-contract-allowlist.tsv";
 
 sub read_text
 {
@@ -83,6 +84,34 @@ for (my $i = 0; $i < scalar(@legacy_lines); ++$i)
 	};
 }
 
+my @contract;
+my @contract_lines = split /\n/, read_text($contract_path);
+my $contract_header = shift @contract_lines;
+die "$contract_path has an invalid header\n"
+	if !defined($contract_header) ||
+		$contract_header ne "kind\tpath\ttoken\treason";
+my %contract_key;
+for (my $i = 0; $i < scalar(@contract_lines); ++$i)
+{
+	next if $contract_lines[$i] eq '';
+	my @fields = split /\t/, $contract_lines[$i], -1;
+	die "$contract_path:" . ($i + 2) . " must contain four fields\n"
+		if scalar(@fields) != 4;
+	die "$contract_path:" . ($i + 2) . " has an invalid kind\n"
+		if $fields[0] !~ /\A(?:comment|diagnostic|error-prose)\z/;
+	die "$contract_path:" . ($i + 2) . " has an invalid path\n"
+		if $fields[1] !~ m{\Adev/(?:src/)?[^\t]+\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)\z};
+	die "$contract_path:" . ($i + 2) . " has an invalid token\n"
+		if $fields[2] !~ /\A(?:PA\d+|pa\d[A-Za-z0-9_]*)\z/;
+	my $key = join "\t", @fields[0 .. 2];
+	die "$contract_path:" . ($i + 2) . " duplicates an earlier row\n"
+		if $contract_key{$key}++;
+	push @contract, {
+		kind => $fields[0], path => $fields[1], token => $fields[2],
+		reason => $fields[3], line => $i + 2, matches => 0,
+	};
+}
+
 my @files;
 find({
 	wanted => sub {
@@ -100,6 +129,7 @@ for my $path (glob "$root/dev/*")
 @files = sort @files;
 
 my @finding;
+my @contract_finding;
 my %namespace_name;
 my @code_by_file;
 
@@ -112,6 +142,42 @@ sub add_finding
 	};
 }
 
+sub add_contract_finding
+{
+	my ($kind, $token, $path, $line) = @_;
+	push @contract_finding, {
+		kind => $kind, token => $token, path => $path, line => $line,
+		allowed => 0,
+	};
+}
+
+sub find_contract_references
+{
+	my ($text, $path) = @_;
+	while ($text =~ m{
+		(?<raw>(?:u8|u|U|L)?R"(?<delimiter>[^\s()\\]{0,16})\(.*?\)\k<delimiter>")
+		|(?<line>//[^\n]*)
+		|(?<block>/\*.*?\*/)
+		|(?<string>(?:u8|u|U|L)?"(?:\\.|[^"\\])*")
+		|(?<character>(?:u8|u|U|L)?'(?:\\.|[^'\\])*')
+	}gsx)
+	{
+		my $segment = $&;
+		my $offset = $-[0];
+		my $is_comment = defined($+{line}) || defined($+{block});
+		next if defined($+{character});
+		while ($segment =~ /\b(pa\d[A-Za-z0-9_]*)\b/gi)
+		{
+			my $token = $1;
+			my $token_offset = $-[1];
+			my $kind = $is_comment ? 'comment' :
+				($token =~ /\Apa/ ? 'diagnostic' : 'error-prose');
+			add_contract_finding($kind, $token, $path,
+				line_number($text, $offset + $token_offset));
+		}
+	}
+}
+
 for my $path (@files)
 {
 	my $rel = relative_path($path);
@@ -121,6 +187,7 @@ for my $path (@files)
 	}
 
 	my $text = read_text($path);
+	find_contract_references($text, $rel);
 	while ($text =~ /^\s*#\s*include\s+"(pa\d[^\"]*)"/gim)
 	{
 		add_finding('include', $1, $rel, line_number($text, $-[0]));
@@ -132,6 +199,19 @@ for my $path (@files)
 	{
 		$namespace_name{$1} = 1;
 		add_finding('namespace', $1, $rel, line_number($code, $-[1]));
+	}
+}
+
+for my $finding (@contract_finding)
+{
+	for my $allowed (@contract)
+	{
+		next if $allowed->{kind} ne $finding->{kind};
+		next if $allowed->{path} ne $finding->{path};
+		next if $allowed->{token} ne $finding->{token};
+		$finding->{allowed} = 1;
+		++$allowed->{matches};
+		last;
 	}
 }
 
@@ -174,6 +254,18 @@ for my $legacy (@legacy)
 		"pattern '$legacy->{text}' for $legacy->{destination}"
 		if !$legacy->{matches};
 }
+for my $finding (@contract_finding)
+{
+	next if $finding->{allowed};
+	push @error, "$finding->{path}:$finding->{line}: unclassified " .
+		"$finding->{kind} PA reference '$finding->{token}'";
+}
+for my $allowed (@contract)
+{
+	push @error, "$contract_path:$allowed->{line}: stale " .
+		"$allowed->{kind} entry for $allowed->{path} '$allowed->{token}'"
+		if !$allowed->{matches};
+}
 
 if (@error)
 {
@@ -185,7 +277,12 @@ if (@error)
 
 my %count = map { $_ => 0 } qw(path include namespace identifier);
 ++ $count{$_->{kind}} for @finding;
+my %contract_count = map { $_ => 0 } qw(comment diagnostic error-prose);
+++$contract_count{$_->{kind}} for @contract_finding;
 print "Compiler layout audit passed: " . scalar(@files) . " files; " .
 	"$count{path} legacy paths, $count{include} legacy includes, " .
 	"$count{namespace} legacy namespace declarations, and " .
-	"$count{identifier} legacy identifier uses remain.\n";
+	"$count{identifier} legacy identifier uses remain; " .
+	"$contract_count{diagnostic} diagnostic, " .
+	"$contract_count{'error-prose'} error-prose, and " .
+	"$contract_count{comment} comment PA references are contract-approved.\n";
