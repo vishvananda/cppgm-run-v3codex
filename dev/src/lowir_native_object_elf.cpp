@@ -951,6 +951,35 @@ void assign_relocation_target(
   }
 }
 
+HostRelocation host_relocation_envelope(
+    EncodedFixup::Kind kind,
+    mir_model::MirOperand::AddressBinding address_binding,
+    std::size_t offset, long long addend, EncodedSection & source)
+{
+  HostRelocation relocation;
+  if(kind == EncodedFixup::EF_TLS_OFFSET32) {
+    relocation.kind = HostRelocation::HR_TPOFF32;
+  } else if(kind == EncodedFixup::EF_ADDRESS32) {
+    const bool local_address =
+      address_binding == mir_model::MirOperand::ADDRESS_LOCAL;
+    relocation.kind = local_address ? HostRelocation::HR_PC32 :
+      HostRelocation::HR_GOTPCRELX;
+    if(!local_address) {
+      if(offset < 2 || offset > source.bytes.size() ||
+         source.bytes[offset - 2] != 0x8d)
+        throw std::logic_error("symbol-address fixup is not RIP-relative LEA");
+      source.bytes[offset - 2] = 0x8b;
+    }
+  } else {
+    relocation.kind = kind == EncodedFixup::EF_ABSOLUTE64 ?
+      HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
+  }
+  relocation.offset = offset;
+  relocation.addend = kind == EncodedFixup::EF_RELATIVE32 ||
+    kind == EncodedFixup::EF_ADDRESS32 ? addend - 4 : addend;
+  return relocation;
+}
+
 std::vector<HostRelocation> host_relocations(
     EncodedSection & source,
     const EncodedLabels & labels,
@@ -961,29 +990,9 @@ std::vector<HostRelocation> host_relocations(
   result.reserve(source.fixups.size() + source.symbol_fixups.size());
   for(std::size_t i = 0; i < source.fixups.size(); ++i) {
     const EncodedFixup & fixup = source.fixups[i];
-    HostRelocation relocation;
-    if(fixup.kind == EncodedFixup::EF_TLS_OFFSET32) {
-      relocation.kind = HostRelocation::HR_TPOFF32;
-    } else if(fixup.kind == EncodedFixup::EF_ADDRESS32) {
-      const bool local_address = fixup.address_binding ==
-        mir_model::MirOperand::ADDRESS_LOCAL;
-      relocation.kind = local_address ? HostRelocation::HR_PC32 :
-        HostRelocation::HR_GOTPCRELX;
-      if(!local_address) {
-        if(fixup.offset < 2 || fixup.offset > source.bytes.size() ||
-           source.bytes[fixup.offset - 2] != 0x8d)
-          throw std::logic_error("symbol-address fixup is not RIP-relative LEA");
-        source.bytes[fixup.offset - 2] = 0x8b;
-      }
-    } else {
-      relocation.kind = fixup.kind == EncodedFixup::EF_ABSOLUTE64 ?
-        HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
-    }
-    relocation.offset = fixup.offset;
+    HostRelocation relocation = host_relocation_envelope(
+      fixup.kind, fixup.address_binding, fixup.offset, fixup.addend, source);
     assign_relocation_target(relocation, fixup.target, labels);
-    relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
-      fixup.kind == EncodedFixup::EF_ADDRESS32 ?
-      fixup.addend - 4 : fixup.addend;
     result.push_back(relocation);
   }
   for(std::size_t i = 0; i < source.symbol_fixups.size(); ++i) {
@@ -991,25 +1000,8 @@ std::vector<HostRelocation> host_relocations(
     const std::uint32_t symbol = fixup.target;
     if(!fixup.target.valid() || symbol >= program.symbol_names.size())
       throw std::logic_error("invalid host relocation symbol identity");
-    HostRelocation relocation;
-    if(fixup.kind == EncodedFixup::EF_TLS_OFFSET32) {
-      relocation.kind = HostRelocation::HR_TPOFF32;
-    } else if(fixup.kind == EncodedFixup::EF_ADDRESS32) {
-      const bool local_address = fixup.address_binding ==
-        mir_model::MirOperand::ADDRESS_LOCAL;
-      relocation.kind = local_address ? HostRelocation::HR_PC32 :
-        HostRelocation::HR_GOTPCRELX;
-      if(!local_address) {
-        if(fixup.offset < 2 || fixup.offset > source.bytes.size() ||
-           source.bytes[fixup.offset - 2] != 0x8d)
-          throw std::logic_error("symbol-address fixup is not RIP-relative LEA");
-        source.bytes[fixup.offset - 2] = 0x8b;
-      }
-    } else {
-      relocation.kind = fixup.kind == EncodedFixup::EF_ABSOLUTE64 ?
-        HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
-    }
-    relocation.offset = fixup.offset;
+    HostRelocation relocation = host_relocation_envelope(
+      fixup.kind, fixup.address_binding, fixup.offset, fixup.addend, source);
     const DeclarationObjectSymbol * declared =
       declarations.find(fixup.target);
     if(declared) {
@@ -1023,9 +1015,6 @@ std::vector<HostRelocation> host_relocations(
       relocation.target = host_symbol_spelling(
         lowir_model::lowir_symbol_name(program, fixup.target));
     }
-    relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
-      fixup.kind == EncodedFixup::EF_ADDRESS32 ?
-      fixup.addend - 4 : fixup.addend;
     result.push_back(relocation);
   }
   return result;

@@ -932,3 +932,20 @@ not reuse measurements from a different source tree.
   compiler text grows 340 bytes.  Performance is deferred to the cumulative C8
   checkpoint because this cold fixup path does not justify another noisy
   two-pair micro-run.
+- **C8-3 COVERAGE AUDIT (HOST RELOCATION ENVELOPE).** Named and typed host
+  fixups repeat relocation-kind selection, the nonlocal address LEA-to-load
+  rewrite, offset publication, and ELF addend normalization.  Raw-name lookup
+  and typed declaration/object/program-symbol lookup must remain separate.
+  PA30 data/imported-function address cases cover absolute and external named
+  targets, PA31 runtime relocation facts cover host call/EH classes, and PA32
+  imported-global GOT plus thread-local import inspection covers typed
+  GOTPCRELX and TPOFF32 targets.  These object facts distinguish both target
+  identity and relocation class, so no additional fixture is needed.
+- **C8-3 (HOST RELOCATION ENVELOPE).** One helper now initializes relocation
+  kind, validates and rewrites nonlocal RIP-relative addresses, publishes the
+  offset, and normalizes the ELF addend for both raw-name and typed-symbol
+  fixups.  Raw-name lookup and typed declaration/object/program-symbol lookup
+  remain local and unchanged.  The six focused PA30/PA31/PA32 controls and all
+  three assignment gates pass; both audits remain clean with the file audit at
+  34 warnings.  The frozen O0 object is exact and GCC-O3 compiler text grows
+  80 bytes.
