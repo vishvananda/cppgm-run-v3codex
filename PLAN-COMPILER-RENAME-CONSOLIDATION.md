@@ -921,3 +921,54 @@ checkpoint where applicable, commit, and push state.
   inherited 1.499x checkpoint, inside the 0.5% retention floor but not yet the
   final `<= 1.50x` exit gate, so that gate remains explicitly open for R12.
   Pushed with this ledger checkpoint.
+- `990ac6a8` and `27cf5542` — R5 semantic paths.  Moved the PA11 model and
+  every PA12/later semantic implementation into the responsibility-specific
+  `semantic/` hierarchy while preserving the expanded source list and link
+  order.  PA11/PA12 and explicit-O1 32/32/32 inception passed after the first
+  group; the completed path set passed 5471/5471, all 18 output surfaces,
+  LowIR 124/99, and the zero-fatal/33-warning file audit.  The GCC-O3
+  compiler retained 7,061,813 text bytes and every meaningful allocated
+  section was exact against the R4 checkpoint.  Pushed with the namespace
+  checkpoint.
+- `6b176c40` — R5 semantic namespace and API completion.  Atomically
+  collapsed `pa11`, `pa12_semantic_detail`, `pa25_semantic_detail`, and the
+  three presentation namespace families into `cppgm::semantic` and
+  `cppgm::semantic::presentation`, without aliases.  Renamed the analyzer,
+  graph storage, statistics, type-view, and semantic entry APIs.  PA11,
+  PA12, PA15, and PA34 passed 752/752; the cumulative report passed
+  5471/5471; all 18 outputs and fresh explicit-O1 32/32/32 inception were
+  exact; LowIR remained 124/99; and the file audit remained
+  zero-fatal/33-warning.  The layout namespace census fell from 374 to 154.
+
+  Six corrected current-revision lanes measured self/GCC wall medians of
+  31.95/20.99 seconds and three Clang lanes measured 21.54 seconds, or
+  1.522x/1.483x.  Median aggregate CPU was 906.79/590.46/606.15 seconds.
+  The preserved pre-namespace source and matching producers measured
+  32.56/21.02 seconds wall and 913.79/591.87 seconds aggregate CPU, or
+  1.549x/1.544x: the rename therefore improves the matched-revision wall and
+  CPU ratios by 1.7% and 0.5%, respectively, and reduces absolute self CPU by
+  0.77%.  The global `<= 1.50x` wall gate remains open rather than being
+  hidden by this machine window.
+
+  A reverse identical-current-source confirmation was +0.25% aggregate CPU;
+  the combined direct set was +0.57% only because two renamed lanes carried
+  visible system-load spikes.  Fully optimized frozen objects were exact in
+  every lane.  Six-lane GCC-O3 medians were 4.615/4.635 seconds baseline/new
+  wall and 4.095/4.115 user (+0.43%/+0.49%); three-lane Clang-O3 medians were
+  4.92/4.90 seconds.  GCC/Clang compiler text fell 55/40 bytes, with code-size
+  stability and deltas explained by semantic manglings, RTTI/unwind
+  references, string tables, and build ID.  Pushed.
+- `a7537498` — R5 overload-resolution path correction.  The ownership census
+  found the remaining 34-method semantic implementation at
+  `pa16_operator_resolution.cpp`; moved it to
+  `semantic/expressions/overload_resolution.cpp` and gave it an explicit
+  semantic source-set owner at the same link position.  PA16 passed 300/300,
+  all 18 output surfaces were exact, and every meaningful allocated compiler
+  section was byte-identical.  Push: with this ledger checkpoint.
+- `0aebe1eb` — R5 semantic symbol-owner manifest.  Added an audited inventory
+  of all 850 out-of-line `semantic::Analyzer` definitions, keyed by path,
+  method, and overload ordinal.  The starting audit records 694 methods with
+  coherent owners and queues the 156 definitions in seven mixed owners for
+  explicit R6 routing; unrecorded or stale cross-file moves now fail
+  `make audit-semantic-owners`.  Compiler mutation: none.  Push: with this
+  ledger checkpoint.
