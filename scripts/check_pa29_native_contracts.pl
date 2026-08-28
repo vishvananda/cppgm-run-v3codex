@@ -161,6 +161,33 @@ sub count_register_immediate_compares
 	return $count;
 }
 
+sub has_register_and_width
+{
+	my ($code, $wide, $immediate) = @_;
+	for(my $offset = 0; $offset + 2 < length($code); ++$offset) {
+		my $opcode = $offset;
+		my $first = ord(substr($code, $opcode, 1));
+		my $rex_w = 0;
+		if($first >= 0x40 && $first <= 0x4f) {
+			$rex_w = ($first & 8) != 0;
+			++$opcode;
+		}
+		next if $rex_w != $wide || $opcode + 2 >= length($code);
+		my $opcode_byte = ord(substr($code, $opcode, 1));
+		my $modrm = ord(substr($code, $opcode + 1, 1));
+		next if ($modrm >> 6) != 3;
+		if(defined($immediate)) {
+			next if $opcode_byte != 0x83 || (($modrm >> 3) & 7) != 4;
+			return 1 if ord(substr($code, $opcode + 2, 1)) == $immediate;
+		} else {
+			return 1 if $opcode_byte == 0x21;
+			return 1 if ($opcode_byte == 0x81 || $opcode_byte == 0x83) &&
+				(($modrm >> 3) & 7) == 4;
+		}
+	}
+	return 0;
+}
+
 sub has_vector_copy_pair
 {
 	my ($code) = @_;
@@ -311,6 +338,14 @@ for my $test (@tests)
 			if !has_register_shift_left($code);
 		die "$test: structured-factor multiply retained an integer multiply\n"
 			if has_integer_multiply($code);
+		next;
+	}
+	if($test =~ /zero-extending-and-mask/) {
+		my $code = main_code($test, $program);
+		die "$test: upper-clearing i64 mask did not select a 32-bit AND\n"
+			if !has_register_and_width($code, 0, undef);
+		die "$test: upper-preserving i64 mask incorrectly selected a 32-bit AND\n"
+			if !has_register_and_width($code, 1, undef);
 		next;
 	}
 	if($test =~ /large-switch-immediate-cases/) {

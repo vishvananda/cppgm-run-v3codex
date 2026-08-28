@@ -884,6 +884,10 @@ strategies include:
   materialize a scratch only when the concrete x86 encoding requires it, and
   place division or variable-shift operands directly in their required
   registers while keeping a fixed shift count on the shift instruction
+- when an `i64` bitwise AND has a constant mask that clears every upper
+  32-bit result bit, select the equivalent 32-bit x86 operation so the
+  architectural zero extension supplies the complete `i64` value; retain the
+  64-bit operation when any upper result bit may survive
 - admit direct division-to-return setup only when its dividend is already a
   register or immediate; otherwise reuse the ordinary typed materialization
   path before assigning `rax` and `rdx`
