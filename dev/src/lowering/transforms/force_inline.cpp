@@ -34,7 +34,7 @@ void AppendOrdinalReservation(const std::string& name, const char* prefix,
 		reservations->append(kind, ordinal);
 }
 
-void ClassifyPresentationReservations(TypedProgram* program)
+void ClassifyPresentationReservations(lowering::ir::Program* program)
 {
 	if (!program->retain_local_names)
 	{
@@ -93,7 +93,7 @@ void ClassifyPresentationReservations(TypedProgram* program)
 class PresentationNames
 {
 public:
-	PresentationNames(TypedProgram* program, Function* function)
+	PresentationNames(lowering::ir::Program* program, Function* function)
 		: program_(*program), function_(*function), next_(0) {}
 
 	lowir_model::StringId SlotName()
@@ -127,7 +127,7 @@ private:
 			std::string(role) + "_" + std::to_string(ordinal));
 	}
 
-	TypedProgram& program_;
+	lowering::ir::Program& program_;
 	Function& function_;
 	std::uint32_t next_;
 };
@@ -135,7 +135,7 @@ private:
 class Inliner
 {
 public:
-	Inliner(TypedProgram* program, LowIRLoweringStats* stats)
+	Inliner(lowering::ir::Program* program, lowering::Stats* stats)
 		: program_(*program), stats_(stats), candidate_count_(0),
 		  tarjan_next_(0)
 	{
@@ -156,8 +156,8 @@ public:
 	}
 
 private:
-	TypedProgram& program_;
-	LowIRLoweringStats* stats_;
+	lowering::ir::Program& program_;
+	lowering::Stats* stats_;
 	std::vector<std::size_t> candidate_by_symbol_;
 	std::size_t candidate_count_;
 	std::vector<bool> recursive_;
@@ -668,7 +668,7 @@ private:
 
 }
 
-void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
+void RewriteProgram(lowering::ir::Program* program, lowering::Stats* stats,
 	bool prune_unreachable_weak_functions)
 {
 	if (!program) throw std::logic_error("force-inline program is null");

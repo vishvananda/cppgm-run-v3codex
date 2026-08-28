@@ -117,20 +117,20 @@ bool PreferLocalObjectBinding(const semantic::Program& program,
 
 void PreparePolymorphism(
 	const semantic::SemanticGraphView& graph,
-	lowering::ir::TypedProgram& output, LowIRLoweringStats* stats,
+	lowering::ir::Program& output, lowering::Stats* stats,
 	std::size_t source_ordinal,
 	const std::vector<lowering::ir::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 
 void EmitDeletingDestructors(
 	const semantic::SemanticGraphView& graph,
-	lowering::ir::TypedProgram& output, LowIRLoweringStats* stats,
+	lowering::ir::Program& output, lowering::Stats* stats,
 	const std::vector<lowering::ir::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 
 void EmitVtableThunks(
 	const semantic::SemanticGraphView& graph,
-	lowering::ir::TypedProgram& output, LowIRLoweringStats* stats,
+	lowering::ir::Program& output, lowering::Stats* stats,
 	const std::vector<lowering::ir::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 

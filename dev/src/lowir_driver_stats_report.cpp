@@ -547,7 +547,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 }
 
 void ReportPreparation(std::ostream& output, const std::string& path,
-	const cppgm::LowIRLoweringStats& stats,
+	const cppgm::lowering::Stats& stats,
 	const lowir_model::LowirPreparationStats& preparation_stats)
 {
 	for (std::size_t fallback = 0;
@@ -611,7 +611,7 @@ void ReportPreparation(std::ostream& output, const std::string& path,
 }
 
 void ReportCompilePhases(std::ostream& output,
-	const cppgm::LowIRLoweringStats& stats,
+	const cppgm::lowering::Stats& stats,
 	const lowir_model::LowirPreparationStats& preparation_stats,
 	std::uint64_t typed_pipeline_nanoseconds,
 	std::uint64_t adapter_nanoseconds,

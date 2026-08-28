@@ -9,7 +9,7 @@ namespace zero_initialization
 
 using namespace semantic;
 
-bool ContiguousSpanEligible(const Program& program, TypeId type)
+bool ContiguousSpanEligible(const semantic::Program& program, TypeId type)
 {
 	const TypeRecord* record = &program.types.Get(type);
 	while (record->kind == TYPE_QUALIFIED || record->kind == TYPE_ARRAY)

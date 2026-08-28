@@ -8,12 +8,11 @@ namespace lowering
 {
 namespace ir
 {
-struct TypedProgram;
+struct Program;
+
+// Serialize the explicit LowIR tool view without changing typed ownership.
+void RenderLowIR(const Program& program, std::ostream& output);
+
 }
 }
-
-// Serialize the explicit PA15 LowIR tool view without changing typed ownership.
-void RenderLowIRProgram(const lowering::ir::TypedProgram& program,
-	std::ostream& output);
-
 }

@@ -65,7 +65,7 @@ void WriteType(std::ostream& output, const LowType& type)
 	throw std::logic_error("missing PA15 LowIR type");
 }
 
-void WriteParameter(std::ostream& output, const TypedProgram& program,
+void WriteParameter(std::ostream& output, const lowering::ir::Program& program,
 	const Parameter& parameter)
 {
 	output << '%' << program.strings.get(parameter.name) << " : ";
@@ -101,7 +101,7 @@ void WriteParameter(std::ostream& output, const TypedProgram& program,
 }
 
 void WriteBoundary(std::ostream& output,
-	const TypedProgram& program, const std::vector<Parameter>& parameters,
+	const lowering::ir::Program& program, const std::vector<Parameter>& parameters,
 	const LowType& result,
 	bool variadic)
 {
@@ -117,7 +117,7 @@ void WriteBoundary(std::ostream& output,
 }
 
 void WriteOperand(std::ostream& output, const Operand& operand,
-	const TypedProgram& program, const Function& function)
+	const lowering::ir::Program& program, const Function& function)
 {
 	switch (operand.kind)
 	{
@@ -161,7 +161,7 @@ void ValidateExtraRange(const Instruction& instruction, std::size_t size,
 }
 
 void WriteInstruction(std::ostream& output, const Instruction& instruction,
-	const TypedProgram& program, const Function& function)
+	const lowering::ir::Program& program, const Function& function)
 {
 	switch (instruction.kind)
 	{
@@ -468,7 +468,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 }
 
 void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
-	const TypedProgram& program,
+	const lowering::ir::Program& program,
 	bool entry, bool function, bool initializer = false,
 	bool finalizer = false, bool readonly = false)
 {
@@ -562,7 +562,7 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 	output << ']';
 }
 
-void RenderProgram(const TypedProgram& program, std::ostream& output)
+void RenderProgram(const lowering::ir::Program& program, std::ostream& output)
 {
 	bool wrote = false;
 	for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
@@ -707,7 +707,7 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 
 }
 
-void RenderLowIRProgram(const lowering::ir::TypedProgram& program,
+void lowering::ir::RenderLowIR(const Program& program,
 	std::ostream& output)
 {
 	RenderProgram(program, output);

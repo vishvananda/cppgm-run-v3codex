@@ -59,7 +59,7 @@ std::uint16_t semantic_retention_reasons(const Symbol& symbol)
 class Analyzer
 {
 public:
-	Analyzer(const TypedProgram& program, bool retain_internal_roots)
+	Analyzer(const lowering::ir::Program& program, bool retain_internal_roots)
 		: program_(program), function_by_symbol_(program.symbols.size(),
 			kNoFunction), reachable_(program.functions.size(), 0),
 			retention_reasons_(program.functions.size(), 0),
@@ -111,7 +111,7 @@ public:
 	}
 
 private:
-	const TypedProgram& program_;
+	const lowering::ir::Program& program_;
 	std::vector<std::size_t> function_by_symbol_;
 	std::vector<unsigned char> reachable_;
 	std::vector<std::uint16_t> retention_reasons_;
@@ -261,7 +261,7 @@ private:
 namespace
 {
 
-void PreserveReachableLifecycleBaseEntries(TypedProgram* program,
+void PreserveReachableLifecycleBaseEntries(lowering::ir::Program* program,
 	const Analyzer& analyzer)
 {
 	for (std::size_t i = 0; i < program->functions.size(); ++i)
@@ -275,7 +275,7 @@ void PreserveReachableLifecycleBaseEntries(TypedProgram* program,
 
 }
 
-Summary Analyze(TypedProgram* program)
+Summary Analyze(lowering::ir::Program* program)
 {
 	if (!program) throw std::logic_error(
 		"cannot analyze a null typed LowIR program");
@@ -285,12 +285,12 @@ Summary Analyze(TypedProgram* program)
 	return Analyzer(*program, true).Run();
 }
 
-Summary AuditWithoutInternalRoots(const TypedProgram& program)
+Summary AuditWithoutInternalRoots(const lowering::ir::Program& program)
 {
 	return Analyzer(program, false).Run();
 }
 
-Summary PruneUnreachableWeakFunctions(TypedProgram* program)
+Summary PruneUnreachableWeakFunctions(lowering::ir::Program* program)
 {
 	if (!program) throw std::logic_error(
 		"cannot prune a null typed LowIR program");

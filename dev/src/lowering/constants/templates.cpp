@@ -40,7 +40,7 @@ bool EqualType(const LowType& left, const LowType& right)
 
 }
 
-Pool::Pool(TypedProgram& output, LowIRLoweringStats* stats)
+Pool::Pool(lowering::ir::Program& output, lowering::Stats* stats)
 	: output_(output), stats_(stats) {}
 
 std::size_t Pool::Hash(const Global& global)

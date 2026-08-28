@@ -771,7 +771,7 @@ void optimize_lowir(lowir_model::LowirProgram * program, int level,
 }
 
 void report_lowir_preparation_stats(
-	const string & path, const cppgm::LowIRLoweringStats & stats,
+	const string & path, const cppgm::lowering::Stats & stats,
 	const lowir_model::LowirPreparationStats & preparation_stats)
 {
 	lowir_driver_stats_report::ReportPreparation(
@@ -779,7 +779,7 @@ void report_lowir_preparation_stats(
 }
 
 void report_compile_phase_stats(
-	const cppgm::LowIRLoweringStats & stats,
+	const cppgm::lowering::Stats & stats,
 	const lowir_model::LowirPreparationStats & preparation_stats,
 	uint64_t typed_pipeline_nanoseconds, uint64_t adapter_nanoseconds,
 	uint64_t text_parse_nanoseconds, uint64_t prune_nanoseconds,
@@ -803,8 +803,8 @@ void clear_nonsemantic_source_stats(lowir_model::LowirProgram * program)
 }
 
 lowir_model::LowirProgram adapt_typed_lowir_for_object(
-	cppgm::lowering::ir::TypedProgram && typed,
-	const cppgm::LowIRLoweringStats & lowering_stats,
+	cppgm::lowering::ir::Program && typed,
+	const cppgm::lowering::Stats & lowering_stats,
 	bool collect_stats, lowir_model::PresentationPolicy presentation_policy,
 	lowir_model::LowirPreparationStats * preparation_stats,
 	uint64_t * elapsed_nanoseconds)
@@ -840,7 +840,7 @@ lowir_model::LowirProgram build_source_lowir(
 	const DriverInvocation & invocation,
 	bool prune_unreachable_weak_functions,
 	lowir_model::PresentationPolicy presentation_policy,
-	cppgm::LowIRLoweringStats * stats,
+	cppgm::lowering::Stats * stats,
 	lowir_model::LowirPreparationStats * preparation_stats,
 	SourceCompileTimings * timings)
 {
@@ -864,14 +864,14 @@ lowir_model::LowirProgram build_source_lowir(
 		}
 		return result;
 	}
-	vector<cppgm::LowIRSource> sources;
-	sources.push_back(cppgm::LowIRSource(path, source));
+	vector<cppgm::lowering::Source> sources;
+	sources.push_back(cppgm::lowering::Source(path, source));
 	const cppgm::PreprocessingOptions options =
 		make_driver_preprocessing_options(invocation);
 	chrono::steady_clock::time_point started;
 	if(collect_stats) started = chrono::steady_clock::now();
-	cppgm::lowering::ir::TypedProgram typed =
-		cppgm::BuildTypedLowIRProgram(sources, options,
+	cppgm::lowering::ir::Program typed =
+		cppgm::lowering::BuildProgram(sources, options,
 			collect_stats ? stats : 0, true, true,
 			prune_unreachable_weak_functions,
 			presentation_policy == lowir_model::PRESENTATION_SERIALIZABLE);
@@ -926,7 +926,7 @@ void report_generated_identity_stats(
 }
 
 void report_source_compile_stats(
-	const string & path, const cppgm::LowIRLoweringStats & stats,
+	const string & path, const cppgm::lowering::Stats & stats,
 	const lowir_model::LowirPreparationStats & preparation_stats,
 	const SourceCompileTimings & timings);
 
@@ -939,7 +939,7 @@ cppgm::pa30::CompilerObject compile_source_object(
 {
 	const bool collect_stats = invocation.collect_stats;
   const string source = read_source_file(path);
-	cppgm::LowIRLoweringStats stats;
+	cppgm::lowering::Stats stats;
 	SourceCompileTimings timings;
   cppgm::pa30::CompilerObject object;
   object.target = target;
@@ -961,7 +961,7 @@ cppgm::pa30::CompilerObject compile_source_object(
 }
 
 void report_source_compile_stats(
-	const string & path, const cppgm::LowIRLoweringStats & stats,
+	const string & path, const cppgm::lowering::Stats & stats,
 	const lowir_model::LowirPreparationStats & preparation_stats,
 	const SourceCompileTimings & timings)
 {
@@ -2125,8 +2125,8 @@ int run_emit_semantics_mode(const vector<string> & args)
   return EXIT_SUCCESS;
 }
 
-void report_lowir_semantic_stats(const cppgm::LowIRLoweringStats & stats);
-void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats);
+void report_lowir_semantic_stats(const cppgm::lowering::Stats & stats);
+void report_lowir_lowering_stats(const cppgm::lowering::Stats & stats);
 
 int run_emit_lowir_mode(const vector<string> & args)
 {
@@ -2137,15 +2137,15 @@ int run_emit_lowir_mode(const vector<string> & args)
 		throw runtime_error("unable to open output file: " + invocation.output);
 	}
 	cppgm::PreprocessingOptions options = make_preprocessing_options();
-	vector<cppgm::LowIRSource> sources;
+	vector<cppgm::lowering::Source> sources;
 	for(size_t i = 0; i < invocation.inputs.size(); ++i) {
 		const string & path = invocation.inputs[i];
 		ifstream input(path.c_str(), ios::in | ios::binary);
 		if(!input) throw runtime_error("unable to open source file: " + path);
-		sources.push_back(cppgm::LowIRSource(path,
+		sources.push_back(cppgm::lowering::Source(path,
 			string((istreambuf_iterator<char>(input)), istreambuf_iterator<char>())));
 	}
-	cppgm::LowIRLoweringStats stats;
+	cppgm::lowering::Stats stats;
 	const bool object_capable_output = invocation.has_debug_info ||
 		invocation.has_optimization_level;
 	if(!object_capable_output) {
@@ -2154,7 +2154,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 				cppgm::PreprocessingOptions::MacroAction(
 					invocation.macro_actions[i].define,
 					invocation.macro_actions[i].argument));
-		cppgm::WriteLowIRProgram(sources, options, output,
+		cppgm::lowering::WriteLowIR(sources, options, output,
 			invocation.collect_stats ? &stats : 0);
 	} else {
 		options.include_search_paths = invocation.include_paths;
@@ -2168,8 +2168,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 					invocation.macro_actions[i].argument));
 		lowir_model::LowirProgram program;
 		{
-			cppgm::lowering::ir::TypedProgram typed =
-				cppgm::BuildTypedLowIRProgram(sources, options,
+			cppgm::lowering::ir::Program typed =
+				cppgm::lowering::BuildProgram(sources, options,
 					invocation.collect_stats ? &stats : 0, true, true, false);
 			program = cppgm::AdaptTypedLowIRForNative(std::move(typed));
 		}
@@ -2188,7 +2188,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 	return EXIT_SUCCESS;
 }
 
-void report_lowir_semantic_stats(const cppgm::LowIRLoweringStats & stats)
+void report_lowir_semantic_stats(const cppgm::lowering::Stats & stats)
 {
 	const cppgm::semantic::Stats & semantic = stats.semantic;
 	cerr << "pa15_stats"
@@ -2368,7 +2368,7 @@ void report_lowir_semantic_stats(const cppgm::LowIRLoweringStats & stats)
 	report_generated_identity_stats(semantic);
 }
 
-void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
+void report_lowir_lowering_stats(const cppgm::lowering::Stats & stats)
 {
 	const cppgm::semantic::Stats & semantic = stats.semantic;
 	cerr << " template_partial_deduction_visits="

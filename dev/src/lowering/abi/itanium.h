@@ -13,7 +13,7 @@ namespace lowering
 {
 namespace ir
 {
-struct TypedProgram;
+struct Program;
 }
 }
 namespace lowering
@@ -50,14 +50,14 @@ void ApplyBuiltinSymbolMetadata(lowering::ir::Symbol* symbol,
 	semantic::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind);
 void ApplyNativeRuntimeSymbolMetadata(
-	const lowering::ir::TypedProgram& program,
+	const lowering::ir::Program& program,
 	lowering::ir::Symbol* symbol);
 void ApplyBuiltinParameterAliasMetadata(lowering::ir::Parameter* parameter,
 	semantic::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind, std::size_t index);
 void ApplyLifecycleSymbolMetadata(const semantic::Program& program,
 	const semantic::DumpNode& node,
-	lowering::ir::TypedProgram* output,
+	lowering::ir::Program* output,
 	lowering::ir::SymbolId symbol,
 	abi_mangle::AbiMangleContext* context = 0,
 	abi_mangle::AbiMangleStats* stats = 0);

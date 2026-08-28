@@ -44,11 +44,11 @@ struct Summary
 		retained_conservative_fallback(0) {}
 };
 
-Summary Analyze(lowering::ir::TypedProgram* program);
+Summary Analyze(lowering::ir::Program* program);
 Summary AuditWithoutInternalRoots(
-	const lowering::ir::TypedProgram& program);
+	const lowering::ir::Program& program);
 Summary PruneUnreachableWeakFunctions(
-	lowering::ir::TypedProgram* program);
+	lowering::ir::Program* program);
 
 }  // namespace reachability
 }  // namespace lowering

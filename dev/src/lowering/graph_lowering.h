@@ -9,9 +9,9 @@ namespace cppgm
 namespace lowering
 {
 
-void LowerSemanticGraph(
+void LowerGraph(
 	const semantic::SemanticGraphView& graph,
-	lowering::ir::TypedProgram& program, LowIRLoweringStats* stats,
+	lowering::ir::Program& program, lowering::Stats* stats,
 	std::size_t source_ordinal);
 
 }

@@ -17,7 +17,7 @@ namespace constant_pool
 class Pool
 {
 public:
-	Pool(lowering::ir::TypedProgram& output, LowIRLoweringStats* stats);
+	Pool(lowering::ir::Program& output, lowering::Stats* stats);
 
 	lowering::ir::SymbolId Intern(lowering::ir::Global candidate);
 
@@ -39,8 +39,8 @@ private:
 	std::size_t FindSlot(std::size_t hash,
 		const lowering::ir::Global& candidate, bool* found) const;
 
-	lowering::ir::TypedProgram& output_;
-	LowIRLoweringStats* stats_;
+	lowering::ir::Program& output_;
+	lowering::Stats* stats_;
 	std::vector<Entry> entries_;
 	std::vector<std::uint32_t> slots_;
 };

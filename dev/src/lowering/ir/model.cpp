@@ -61,7 +61,7 @@ void EmissionIdentityTable::UseDirectNames(bool enabled)
 	direct_names_ = enabled;
 }
 
-IdentityPathId EmissionIdentityTable::InternPath(const Program& program,
+IdentityPathId EmissionIdentityTable::InternPath(const semantic::Program& program,
 	ScopeId owner, NameId terminal)
 {
 	IdentityPathId path = InternScopePath(program, owner);
@@ -71,7 +71,7 @@ IdentityPathId EmissionIdentityTable::InternPath(const Program& program,
 }
 
 IdentityPathId EmissionIdentityTable::InternScopePath(
-	const Program& program, ScopeId owner)
+	const semantic::Program& program, ScopeId owner)
 {
 	const std::size_t begin = scope_scratch_.size();
 	for (ScopeId scope = owner;
@@ -109,7 +109,7 @@ IdentityPathId EmissionIdentityTable::InternScopePath(
 }
 
 IdentityPathId EmissionIdentityTable::InternEntityPath(
-	const Program& program, EntityId entity)
+	const semantic::Program& program, EntityId entity)
 {
 	const EntityRecord& record = program.entities[entity];
 	if (!record.lambda_closure)
@@ -133,7 +133,7 @@ IdentityPathId EmissionIdentityTable::InternEntityPath(
 }
 
 IdentityPathId EmissionIdentityTable::InternClassMemberPath(
-	const Program& program, EntityId owner, NameId terminal)
+	const semantic::Program& program, EntityId owner, NameId terminal)
 {
 	const IdentityPathId parent = InternEntityPath(program, owner);
 	const IdentityPathKey key = { parent,
@@ -141,7 +141,7 @@ IdentityPathId EmissionIdentityTable::InternClassMemberPath(
 	return InternPathKey(key);
 }
 
-IdentityTypeId EmissionIdentityTable::InternType(const Program& program,
+IdentityTypeId EmissionIdentityTable::InternType(const semantic::Program& program,
 	TypeId type, std::vector<IdentityTypeId>& cache)
 {
 	if (cache.size() <= type)
@@ -172,7 +172,7 @@ IdentityTypeId EmissionIdentityTable::InternType(const Program& program,
 }
 
 IdentityTypeId EmissionIdentityTable::InternFunctionSignature(
-	const Program& program, TypeId type, std::vector<IdentityTypeId>& cache)
+	const semantic::Program& program, TypeId type, std::vector<IdentityTypeId>& cache)
 {
 	const TypeRecord& source = program.types.Get(type);
 	if (source.kind != TYPE_FUNCTION)
@@ -189,7 +189,7 @@ IdentityTypeId EmissionIdentityTable::InternFunctionSignature(
 }
 
 IdentityTypeId EmissionIdentityTable::InternTypeSequence(
-	const Program& program, const TypeId* types, std::size_t count,
+	const semantic::Program& program, const TypeId* types, std::size_t count,
 	std::vector<IdentityTypeId>& cache)
 {
 	IdentityTypeKey key;
@@ -201,7 +201,7 @@ IdentityTypeId EmissionIdentityTable::InternTypeSequence(
 }
 
 IdentityTypeId EmissionIdentityTable::InternBindingTemplateArguments(
-	const Program& program, const BindingRecord& binding,
+	const semantic::Program& program, const BindingRecord& binding,
 	std::vector<IdentityTypeId>& cache)
 {
 	if (binding.template_argument_count == 0) return kNoLowId;
@@ -224,7 +224,7 @@ IdentityTypeId EmissionIdentityTable::InternBindingTemplateArguments(
 }
 
 IdentityTypeId EmissionIdentityTable::InternEntityTemplateArguments(
-	const Program& program, const EntityRecord& entity,
+	const semantic::Program& program, const EntityRecord& entity,
 	std::vector<IdentityTypeId>& cache)
 {
 	if (entity.template_argument_count == 0) return kNoLowId;
@@ -246,7 +246,7 @@ IdentityTypeId EmissionIdentityTable::InternEntityTemplateArguments(
 }
 
 IdentityTypeId EmissionIdentityTable::InternLambdaContextIdentity(
-	const Program& program, EntityId entity,
+	const semantic::Program& program, EntityId entity,
 	std::vector<IdentityTypeId>& cache)
 {
 	if (entity >= program.entities.size() ||
@@ -301,7 +301,7 @@ std::size_t EmissionIdentityTable::TypeCount() const
 	return type_records_.size();
 }
 
-IdentityNameId EmissionIdentityTable::InternName(const Program& program,
+IdentityNameId EmissionIdentityTable::InternName(const semantic::Program& program,
 	NameId name)
 {
 	return direct_names_ ? name : names_.Intern(program.names.Get(name));
@@ -325,7 +325,7 @@ void EmissionIdentityTable::PushDependency(TypeId dependency,
 		pending.push_back(PendingType(dependency, false));
 }
 
-void EmissionIdentityTable::PushTypeDependencies(const Program& program,
+void EmissionIdentityTable::PushTypeDependencies(const semantic::Program& program,
 	const TypeRecord& source, TypeId type,
 	std::vector<IdentityTypeId>& cache, std::vector<PendingType>& pending)
 {
@@ -408,7 +408,7 @@ void EmissionIdentityTable::PushTypeDependencies(const Program& program,
 	}
 }
 
-IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
+IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const semantic::Program& program,
 	const TypeRecord& source, TypeId type,
 	std::vector<IdentityTypeId>& cache)
 {
@@ -459,7 +459,7 @@ IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 }
 
 IdentityTypeId EmissionIdentityTable::InternStoredTemplateArgument(
-	const Program& program, std::size_t argument,
+	const semantic::Program& program, std::size_t argument,
 	const std::vector<IdentityTypeId>& cache)
 {
 	if (argument >= program.template_arguments.size())
@@ -622,7 +622,7 @@ std::size_t StringCounterTable::StorageBytes() const
 	return names_.StorageBytes() + values_.capacity() * sizeof(std::size_t);
 }
 
-lowir_model::StringId TypedProgram::InternUniqueSymbolName(
+lowir_model::StringId Program::InternUniqueSymbolName(
 	const std::string& proposed)
 {
 	const lowir_model::StringId base = strings.intern(proposed);
@@ -637,7 +637,7 @@ lowir_model::StringId TypedProgram::InternUniqueSymbolName(
 		proposed + "__sym" + std::to_string(ordinal));
 }
 
-std::size_t TypedStorageBytes(const TypedProgram& program)
+std::size_t ProgramStorageBytes(const Program& program)
 {
 	std::size_t bytes = program.symbols.capacity() * sizeof(Symbol) +
 		program.global_declarations.capacity() * sizeof(GlobalDeclaration) +

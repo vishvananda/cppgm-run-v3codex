@@ -120,41 +120,41 @@ public:
 	EmissionIdentityTable();
 	void UseDirectNames(bool enabled);
 
-	IdentityPathId InternPath(const Program& program, ScopeId owner,
+	IdentityPathId InternPath(const semantic::Program& program, ScopeId owner,
 		NameId terminal);
-	IdentityPathId InternEntityPath(const Program& program, EntityId entity);
-	IdentityPathId InternClassMemberPath(const Program& program,
+	IdentityPathId InternEntityPath(const semantic::Program& program, EntityId entity);
+	IdentityPathId InternClassMemberPath(const semantic::Program& program,
 		EntityId owner, NameId terminal);
-	IdentityTypeId InternType(const Program& program, TypeId type,
+	IdentityTypeId InternType(const semantic::Program& program, TypeId type,
 		std::vector<IdentityTypeId>& cache);
-	IdentityTypeId InternFunctionSignature(const Program& program, TypeId type,
+	IdentityTypeId InternFunctionSignature(const semantic::Program& program, TypeId type,
 		std::vector<IdentityTypeId>& cache);
-	IdentityTypeId InternTypeSequence(const Program& program,
+	IdentityTypeId InternTypeSequence(const semantic::Program& program,
 		const TypeId* types, std::size_t count,
 		std::vector<IdentityTypeId>& cache);
-	IdentityTypeId InternBindingTemplateArguments(const Program& program,
+	IdentityTypeId InternBindingTemplateArguments(const semantic::Program& program,
 		const BindingRecord& binding, std::vector<IdentityTypeId>& cache);
-	IdentityTypeId InternLambdaContextIdentity(const Program& program,
+	IdentityTypeId InternLambdaContextIdentity(const semantic::Program& program,
 		EntityId entity, std::vector<IdentityTypeId>& cache);
-	IdentityTypeId InternEntityTemplateArguments(const Program& program,
+	IdentityTypeId InternEntityTemplateArguments(const semantic::Program& program,
 		const EntityRecord& entity, std::vector<IdentityTypeId>& cache);
 	std::size_t StorageBytes() const;
 	std::size_t PathCount() const;
 	std::size_t TypeCount() const;
 
 private:
-	IdentityNameId InternName(const Program& program, NameId name);
-	IdentityPathId InternScopePath(const Program& program, ScopeId owner);
+	IdentityNameId InternName(const semantic::Program& program, NameId name);
+	IdentityPathId InternScopePath(const semantic::Program& program, ScopeId owner);
 	static bool HasChild(TypeKind kind);
 	static void PushDependency(TypeId dependency,
 		std::vector<IdentityTypeId>& cache, std::vector<PendingType>& pending);
-	static void PushTypeDependencies(const Program& program,
+	static void PushTypeDependencies(const semantic::Program& program,
 		const TypeRecord& source, TypeId type,
 		std::vector<IdentityTypeId>& cache, std::vector<PendingType>& pending);
-	IdentityTypeKey MakeTypeKey(const Program& program,
+	IdentityTypeKey MakeTypeKey(const semantic::Program& program,
 		const TypeRecord& source, TypeId type,
 		std::vector<IdentityTypeId>& cache);
-	IdentityTypeId InternStoredTemplateArgument(const Program& program,
+	IdentityTypeId InternStoredTemplateArgument(const semantic::Program& program,
 		std::size_t argument, const std::vector<IdentityTypeId>& cache);
 	IdentityPathId InternPathKey(const IdentityPathKey& key);
 	void RehashPaths(std::size_t capacity);
@@ -246,7 +246,7 @@ struct ObjectAlias
 		: object_name(object_name_value), target(target_value) {}
 };
 
-struct TypedProgram
+struct Program
 {
 	std::vector<Symbol> symbols;
 	std::vector<GlobalDeclaration> global_declarations;
@@ -270,7 +270,7 @@ struct TypedProgram
 	bool host_object_emission;
 	bool retain_local_names;
 
-	TypedProgram()
+	Program()
 		: string_literal_count(0), terminate_runtime_symbol(kNoLowId),
 		  terminate_helper_symbol(kNoLowId), call_unexpected_symbol(kNoLowId),
 		  host_object_emission(false), retain_local_names(true) {}
@@ -280,13 +280,13 @@ struct TypedProgram
 };
 
 inline lowir_model::StringId InternLocalName(
-	TypedProgram& program, const std::string& name)
+	Program& program, const std::string& name)
 {
 	return program.retain_local_names ? program.strings.intern(name) :
 		lowir_model::StringId();
 }
 
-std::size_t TypedStorageBytes(const TypedProgram& program);
+std::size_t ProgramStorageBytes(const Program& program);
 
 }
 }

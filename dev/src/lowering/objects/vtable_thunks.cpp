@@ -20,8 +20,8 @@ namespace
 class VtableThunkEmitter
 {
 public:
-	VtableThunkEmitter(const SemanticGraphView& graph, TypedProgram& output,
-		LowIRLoweringStats* stats, const std::vector<SymbolId>& function_symbols,
+	VtableThunkEmitter(const SemanticGraphView& graph, lowering::ir::Program& output,
+		lowering::Stats* stats, const std::vector<SymbolId>& function_symbols,
 		PolymorphismLoweringState* state)
 		: program_(graph.program), output_(output), stats_(stats),
 		  function_symbols_(function_symbols), state_(*state),
@@ -223,9 +223,9 @@ private:
 		}
 	}
 
-	const Program& program_;
-	TypedProgram& output_;
-	LowIRLoweringStats* stats_;
+	const semantic::Program& program_;
+	lowering::ir::Program& output_;
+	lowering::Stats* stats_;
 	const std::vector<SymbolId>& function_symbols_;
 	PolymorphismLoweringState& state_;
 	lowering::SourceTypeLowering source_types_;
@@ -233,8 +233,8 @@ private:
 
 }
 
-void EmitVtableThunks(const SemanticGraphView& graph, TypedProgram& output,
-	LowIRLoweringStats* stats, const std::vector<SymbolId>& function_symbols,
+void EmitVtableThunks(const SemanticGraphView& graph, lowering::ir::Program& output,
+	lowering::Stats* stats, const std::vector<SymbolId>& function_symbols,
 	PolymorphismLoweringState* state)
 {
 	VtableThunkEmitter(graph, output, stats, function_symbols, state).EmitAll();

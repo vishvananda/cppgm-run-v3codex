@@ -21,8 +21,8 @@ public:
 	StaticInitializerLowering(
 		const semantic::Program& program,
 		const semantic::DumpArena& arena,
-		lowering::ir::TypedProgram& output,
-		LowIRLoweringStats* stats,
+		lowering::ir::Program& output,
+		lowering::Stats* stats,
 		const std::vector<lowering::ir::SymbolId>& function_symbols,
 		const std::vector<lowering::ir::SymbolId>& global_symbols,
 		std::vector<lowering::ir::SymbolId>& literal_symbols,
@@ -63,8 +63,8 @@ private:
 
 	const semantic::Program& program_;
 	const semantic::DumpArena& arena_;
-	lowering::ir::TypedProgram& output_;
-	LowIRLoweringStats* stats_;
+	lowering::ir::Program& output_;
+	lowering::Stats* stats_;
 	const std::vector<lowering::ir::SymbolId>& function_symbols_;
 	const std::vector<lowering::ir::SymbolId>& global_symbols_;
 	std::vector<lowering::ir::SymbolId>& literal_symbols_;

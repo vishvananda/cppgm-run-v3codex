@@ -67,7 +67,7 @@ bool IsCompleteBoundaryObject(const semantic::Program& program, semantic::TypeId
 
 void ApplyLifecycleSymbolMetadata(const semantic::Program& program,
 	const semantic::DumpNode& node,
-	lowering::ir::TypedProgram* output,
+	lowering::ir::Program* output,
 	lowering::ir::SymbolId symbol,
 	abi_mangle::AbiMangleContext* context,
 	abi_mangle::AbiMangleStats* stats)
@@ -120,7 +120,7 @@ namespace
 
 using namespace semantic;
 
-bool MakeBuiltinAbiType(const Program& program, const TypeRecord& source,
+bool MakeBuiltinAbiType(const semantic::Program& program, const TypeRecord& source,
 	abi_mangle::AbiType* result)
 {
 	using namespace abi_mangle;
@@ -203,7 +203,7 @@ void AppendTypedFact(abi_mangle::AbiTypedCase* facts,
 	throw std::logic_error("invalid production ABI fact record");
 }
 
-void AppendFunctionAbiTagFacts(const Program& program,
+void AppendFunctionAbiTagFacts(const semantic::Program& program,
 	const BindingRecord& binding, abi_mangle::AbiMangleContext* context,
 	abi_mangle::AbiTypedCase* facts)
 {
@@ -224,7 +224,7 @@ void AppendFunctionAbiTagFacts(const Program& program,
 	}
 }
 
-void AppendComponentAbiTagFacts(const Program& program,
+void AppendComponentAbiTagFacts(const semantic::Program& program,
 	const EntityRecord& entity, abi_mangle::AbiMangleContext* context,
 	abi_mangle::AbiTypedCase* facts)
 {
@@ -259,7 +259,7 @@ struct StandardTemplateSubstitution
 		: code(code_value), includes_arguments(includes_arguments_value) {}
 };
 
-NameId StandardTemplateTerminal(const Program& program,
+NameId StandardTemplateTerminal(const semantic::Program& program,
 	const EntityRecord& entity)
 {
 	std::vector<NameId> path;
@@ -273,7 +273,7 @@ bool IsClassTemplateSpecialization(const EntityRecord& entity)
 	return entity.template_argument_begin != kNoBinding;
 }
 
-bool ClassOwnerHasAbiTags(const Program& program, EntityId entity)
+bool ClassOwnerHasAbiTags(const semantic::Program& program, EntityId entity)
 {
 	for (std::size_t depth = 0;
 		entity != kNoEntity && entity < program.entities.size() &&
@@ -286,7 +286,7 @@ bool ClassOwnerHasAbiTags(const Program& program, EntityId entity)
 	return false;
 }
 
-bool ClassOwnerHasSpecializedAncestor(const Program& program, EntityId entity)
+bool ClassOwnerHasSpecializedAncestor(const semantic::Program& program, EntityId entity)
 {
 	bool first = true;
 	for (std::size_t depth = 0;
@@ -301,13 +301,13 @@ bool ClassOwnerHasSpecializedAncestor(const Program& program, EntityId entity)
 	return false;
 }
 
-bool ClassOwnerIsNested(const Program& program, EntityId entity)
+bool ClassOwnerIsNested(const semantic::Program& program, EntityId entity)
 {
 	return entity != kNoEntity && entity < program.entities.size() &&
 		program.entities[entity].enclosing_class != kNoEntity;
 }
 
-bool IsFundamentalType(const Program& program, TypeId type,
+bool IsFundamentalType(const semantic::Program& program, TypeId type,
 	FundamentalKind fundamental)
 {
 	type = program.types.RemoveTopCv(type);
@@ -316,7 +316,7 @@ bool IsFundamentalType(const Program& program, TypeId type,
 		record.fundamental == fundamental;
 }
 
-bool IsStandardUnaryCharTemplate(const Program& program, TypeId type,
+bool IsStandardUnaryCharTemplate(const semantic::Program& program, TypeId type,
 	const char* terminal)
 {
 	type = program.types.RemoveTopCv(type);
@@ -333,7 +333,7 @@ bool IsStandardUnaryCharTemplate(const Program& program, TypeId type,
 		program.template_arguments[entity.template_argument_begin], FUND_CHAR);
 }
 
-bool HasExactStandardCharacterArguments(const Program& program,
+bool HasExactStandardCharacterArguments(const semantic::Program& program,
 	const EntityRecord& entity, bool allocator)
 {
 	const std::size_t expected = allocator ? 3 : 2;
@@ -351,7 +351,7 @@ bool HasExactStandardCharacterArguments(const Program& program,
 }
 
 StandardTemplateSubstitution StandardSubstitutionFor(
-	const Program& program, const EntityRecord& entity)
+	const semantic::Program& program, const EntityRecord& entity)
 {
 	const NameId terminal_id = StandardTemplateTerminal(program, entity);
 	if (terminal_id == 0) return StandardTemplateSubstitution();
@@ -2234,7 +2234,7 @@ void ApplyBuiltinSymbolMetadata(lowering::ir::Symbol* symbol,
 }
 
 void ApplyNativeRuntimeSymbolMetadata(
-	const lowering::ir::TypedProgram& program,
+	const lowering::ir::Program& program,
 	lowering::ir::Symbol* symbol)
 {
 	using lowering::ir::Symbol;

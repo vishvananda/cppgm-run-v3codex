@@ -5,7 +5,7 @@
 #include <string>
 
 namespace abi_mangle { struct AbiMangleStats; }
-namespace cppgm { struct LowIRLoweringStats; }
+namespace cppgm { namespace lowering { struct Stats; } }
 namespace lowir_model {
 struct FunctionPruningSummary;
 struct LowirPreparationStats;
@@ -27,11 +27,11 @@ void FinalizeOptimizer(const lowir_model::Program& program,
 	lowir_opt::Stats* stats, std::uint64_t elapsed_nanoseconds);
 
 void ReportPreparation(std::ostream& output, const std::string& path,
-	const cppgm::LowIRLoweringStats& stats,
+	const cppgm::lowering::Stats& stats,
 	const lowir_model::LowirPreparationStats& preparation_stats);
 
 void ReportCompilePhases(std::ostream& output,
-	const cppgm::LowIRLoweringStats& stats,
+	const cppgm::lowering::Stats& stats,
 	const lowir_model::LowirPreparationStats& preparation_stats,
 	std::uint64_t typed_pipeline_nanoseconds,
 	std::uint64_t adapter_nanoseconds,

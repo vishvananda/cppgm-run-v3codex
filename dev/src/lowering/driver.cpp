@@ -29,7 +29,7 @@ namespace lowering
 class SemanticGraphConsumer : public semantic::SemanticGraphConsumer
 {
 public:
-	SemanticGraphConsumer(TypedProgram& program, LowIRLoweringStats* stats,
+	SemanticGraphConsumer(lowering::ir::Program& program, lowering::Stats* stats,
 		std::size_t source_ordinal)
 		: program_(program), stats_(stats), source_ordinal_(source_ordinal) {}
 
@@ -37,7 +37,7 @@ public:
 	{
 		const std::chrono::steady_clock::time_point started =
 			std::chrono::steady_clock::now();
-		LowerSemanticGraph(graph, program_, stats_, source_ordinal_);
+		LowerGraph(graph, program_, stats_, source_ordinal_);
 		if (stats_)
 			stats_->lowering_nanoseconds += static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -45,8 +45,8 @@ public:
 	}
 
 private:
-	TypedProgram& program_;
-	LowIRLoweringStats* stats_;
+	lowering::ir::Program& program_;
+	lowering::Stats* stats_;
 	std::size_t source_ordinal_;
 };
 
@@ -55,7 +55,7 @@ private:
 namespace
 {
 
-SymbolId AddLifecycleHelperSymbol(TypedProgram* program,
+SymbolId AddLifecycleHelperSymbol(lowering::ir::Program* program,
 	const std::string& proposed)
 {
 	const SymbolId symbol = static_cast<SymbolId>(program->symbols.size());
@@ -68,7 +68,7 @@ SymbolId AddLifecycleHelperSymbol(TypedProgram* program,
 	return symbol;
 }
 
-void CoalesceLifecycleRole(TypedProgram* program, LowIRLoweringStats* stats,
+void CoalesceLifecycleRole(lowering::ir::Program* program, lowering::Stats* stats,
 	bool initializer)
 {
 	std::vector<std::size_t> owners;
@@ -125,8 +125,8 @@ void CoalesceLifecycleRole(TypedProgram* program, LowIRLoweringStats* stats,
 	}
 }
 
-void CoalesceLifecycleFunctions(TypedProgram* program,
-	LowIRLoweringStats* stats)
+void CoalesceLifecycleFunctions(lowering::ir::Program* program,
+	lowering::Stats* stats)
 {
 	CoalesceLifecycleRole(program, stats, true);
 	CoalesceLifecycleRole(program, stats, false);
@@ -294,7 +294,7 @@ void AccumulateSemanticNameStats(semantic::Stats* target,
 
 }
 
-LowIRLoweringStats::LowIRLoweringStats()
+lowering::Stats::Stats()
 	: source_bytes(0), semantic(), lowered_nodes(0), functions(0), globals(0),
 	  blocks(0), instructions(0), abi(), binding_index_probes(0),
 	  slot_implicit_object_fact_reads(0),
@@ -356,14 +356,14 @@ LowIRLoweringStats::LowIRLoweringStats()
 {
 }
 
-TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
-	const PreprocessingOptions& options, LowIRLoweringStats* stats,
+lowering::ir::Program lowering::BuildProgram(const std::vector<lowering::Source>& sources,
+	const PreprocessingOptions& options, lowering::Stats* stats,
 	bool complete_constructor_unwind, bool host_object_emission,
 	bool prune_unreachable_weak_functions, bool retain_local_names)
 {
 	if (sources.empty()) throw std::runtime_error("no PA15 source inputs");
-	if (stats) *stats = LowIRLoweringStats();
-	TypedProgram program;
+	if (stats) *stats = lowering::Stats();
+	lowering::ir::Program program;
 	program.host_object_emission = host_object_emission;
 	program.retain_local_names = retain_local_names;
 	program.identities.UseDirectNames(sources.size() == 1);
@@ -590,21 +590,21 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 		stats->typed_identity_paths = program.identities.PathCount();
 		stats->typed_identity_types = program.identities.TypeCount();
 		stats->typed_identity_bytes = program.identities.StorageBytes();
-		stats->typed_storage_bytes = TypedStorageBytes(program);
+		stats->typed_storage_bytes = lowering::ir::ProgramStorageBytes(program);
 	}
 	return program;
 }
 
-void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
+void lowering::WriteLowIR(const std::vector<lowering::Source>& sources,
 	const PreprocessingOptions& options, std::ostream& output,
-	LowIRLoweringStats* stats)
+	lowering::Stats* stats)
 {
-	TypedProgram program = BuildTypedLowIRProgram(sources, options, stats);
+	lowering::ir::Program program = lowering::BuildProgram(sources, options, stats);
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
 	CountingStreamBuffer buffer(output.rdbuf());
 	std::ostream rendered(&buffer);
-	RenderLowIRProgram(program, rendered);
+	lowering::ir::RenderLowIR(program, rendered);
 	rendered.flush();
 	if (!rendered || !output)
 		throw std::runtime_error("unable to write LowIR output");

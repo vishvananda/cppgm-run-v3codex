@@ -17,15 +17,15 @@ namespace lowering
 namespace presentation
 {
 
-lowir_model::StringId InternOrdinalName(lowering::ir::TypedProgram& program,
+lowir_model::StringId InternOrdinalName(lowering::ir::Program& program,
 	const char* prefix, std::size_t prefix_size, std::uint32_t ordinal);
 lowering::ir::BlockPresentationName ExactBlockPresentation(
-	lowering::ir::TypedProgram& program, const std::string& name);
+	lowering::ir::Program& program, const std::string& name);
 lowering::ir::BlockPresentationName GeneratedBlockPresentation(
-	lowering::ir::TypedProgram& program, const std::string& prefix,
+	lowering::ir::Program& program, const std::string& prefix,
 	std::uint32_t ordinal);
 lowering::ir::Block MakePresentedBlock(
-	lowering::ir::TypedProgram& program,
+	lowering::ir::Program& program,
 	lowering::ir::Function* function,
 	const lowering::ir::BlockPresentationName& presentation);
 
@@ -49,7 +49,7 @@ struct LocalPresentationCounters
 		  block_order_comparisons(0), block_order_characters(0) {}
 };
 
-void FinalizeBlockPresentation(lowering::ir::TypedProgram* program,
+void FinalizeBlockPresentation(lowering::ir::Program* program,
 	LocalPresentationCounters* counters);
 
 class LocalPresentationState
@@ -65,7 +65,7 @@ public:
 	std::string UniqueSlotName(const std::string& requested);
 	std::string GeneratedSlotName(const std::string& prefix);
 	lowering::ir::BlockPresentationName GeneratedBlockName(
-		lowering::ir::TypedProgram& program, const std::string& prefix);
+		lowering::ir::Program& program, const std::string& prefix);
 	bool ReservesTemporary(std::uint32_t ordinal);
 
 private:

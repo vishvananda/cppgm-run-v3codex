@@ -19,7 +19,7 @@ using namespace lowering::support;
 namespace
 {
 
-lowir_model::StringId DecodeTypedFloating(TypedProgram& program,
+lowir_model::StringId DecodeTypedFloating(lowering::ir::Program& program,
 	const std::string& spelling, const LowType& type,
 	std::uint64_t* low, std::uint64_t* high)
 {
@@ -32,8 +32,9 @@ lowir_model::StringId DecodeTypedFloating(TypedProgram& program,
 }
 
 StaticInitializerLowering::StaticInitializerLowering(
-	const Program& program, const DumpArena& arena, TypedProgram& output,
-	LowIRLoweringStats* stats, const std::vector<SymbolId>& function_symbols,
+	const semantic::Program& program, const DumpArena& arena,
+	lowering::ir::Program& output,
+	lowering::Stats* stats, const std::vector<SymbolId>& function_symbols,
 	const std::vector<SymbolId>& global_symbols,
 	std::vector<SymbolId>& literal_symbols,
 	const std::vector<std::uint32_t>& function_definitions,

@@ -39,7 +39,7 @@ PolymorphismLoweringState::PolymorphismLoweringState()
 {
 }
 
-bool IsFunctionLocalEntity(const Program& program, EntityId entity)
+bool IsFunctionLocalEntity(const semantic::Program& program, EntityId entity)
 {
 	if (entity == kNoEntity || entity >= program.entities.size()) return false;
 	for (ScopeId scope = program.entities[entity].owner;
@@ -51,7 +51,7 @@ bool IsFunctionLocalEntity(const Program& program, EntityId entity)
 	return false;
 }
 
-bool PreferLocalObjectBinding(const Program& program, EntityId entity)
+bool PreferLocalObjectBinding(const semantic::Program& program, EntityId entity)
 {
 	if (entity == kNoEntity || entity >= program.entities.size()) return false;
 	EntityId owner = entity;
@@ -72,7 +72,7 @@ bool PreferLocalObjectBinding(const Program& program, EntityId entity)
 	return false;
 }
 
-std::uint32_t ResolveHostVirtualSlot(const Program& program,
+std::uint32_t ResolveHostVirtualSlot(const semantic::Program& program,
 	bool host_object_emission, const PolymorphismLoweringState& state,
 	const DumpNode& record, EntityId object_entity)
 {
@@ -93,8 +93,8 @@ namespace
 class GlobalEmitter
 {
 public:
-	GlobalEmitter(const SemanticGraphView& graph, TypedProgram& output,
-		LowIRLoweringStats* stats, std::size_t source_ordinal,
+	GlobalEmitter(const SemanticGraphView& graph, lowering::ir::Program& output,
+		lowering::Stats* stats, std::size_t source_ordinal,
 		const std::vector<SymbolId>& function_symbols,
 		PolymorphismLoweringState* state)
 		: graph_(graph), program_(graph.program), output_(output), stats_(stats),
@@ -1926,9 +1926,9 @@ private:
 	}
 
 	const SemanticGraphView& graph_;
-	const Program& program_;
-	TypedProgram& output_;
-	LowIRLoweringStats* stats_;
+	const semantic::Program& program_;
+	lowering::ir::Program& output_;
+	lowering::Stats* stats_;
 	std::size_t source_ordinal_;
 	const std::vector<SymbolId>& function_symbols_;
 	PolymorphismLoweringState& state_;
@@ -1942,7 +1942,7 @@ class DeletingDestructorBuilder
 {
 public:
 	DeletingDestructorBuilder(const SemanticGraphView& graph,
-		TypedProgram& output, LowIRLoweringStats* stats,
+		lowering::ir::Program& output, lowering::Stats* stats,
 		const std::vector<SymbolId>& function_symbols,
 		PolymorphismLoweringState* state)
 		: graph_(graph), program_(graph.program), output_(output), stats_(stats),
@@ -2367,9 +2367,9 @@ private:
 	}
 
 	const SemanticGraphView& graph_;
-	const Program& program_;
-	TypedProgram& output_;
-	LowIRLoweringStats* stats_;
+	const semantic::Program& program_;
+	lowering::ir::Program& output_;
+	lowering::Stats* stats_;
 	const std::vector<SymbolId>& function_symbols_;
 	PolymorphismLoweringState& state_;
 	Function* function_;
@@ -2385,7 +2385,7 @@ private:
 }
 
 void PreparePolymorphism(const SemanticGraphView& graph,
-	TypedProgram& output, LowIRLoweringStats* stats,
+	lowering::ir::Program& output, lowering::Stats* stats,
 	std::size_t source_ordinal, const std::vector<SymbolId>& function_symbols,
 	PolymorphismLoweringState* state)
 {
@@ -2394,7 +2394,7 @@ void PreparePolymorphism(const SemanticGraphView& graph,
 }
 
 void EmitDeletingDestructors(const SemanticGraphView& graph,
-	TypedProgram& output, LowIRLoweringStats* stats,
+	lowering::ir::Program& output, lowering::Stats* stats,
 	const std::vector<SymbolId>& function_symbols,
 	PolymorphismLoweringState* state)
 {

@@ -13,17 +13,19 @@
 
 namespace cppgm
 {
+namespace lowering
+{
 
-struct LowIRSource
+struct Source
 {
 	std::string path;
 	std::string source;
 
-	LowIRSource(const std::string& path_value, const std::string& source_value)
+	Source(const std::string& path_value, const std::string& source_value)
 		: path(path_value), source(source_value) {}
 };
 
-struct LowIRLoweringStats
+struct Stats
 {
 	lowering::presentation::LocalPresentationCounters local_presentation;
 	std::size_t source_bytes;
@@ -121,15 +123,15 @@ struct LowIRLoweringStats
 	std::uint64_t lowering_nanoseconds;
 	std::uint64_t render_nanoseconds;
 
-	LowIRLoweringStats();
+	Stats();
 };
 
 // Construct the production typed LowIR result.  Textual LowIR is only a view
-// produced by WriteLowIRProgram and is not required by in-process consumers.
-lowering::ir::TypedProgram BuildTypedLowIRProgram(
-	const std::vector<LowIRSource>& sources,
+// produced by lowering::WriteLowIR and is not required by in-process consumers.
+ir::Program BuildProgram(
+	const std::vector<Source>& sources,
 	const PreprocessingOptions& options,
-	LowIRLoweringStats* stats = 0,
+	Stats* stats = 0,
 	bool complete_constructor_unwind = false,
 	bool host_object_emission = false,
 	bool prune_unreachable_weak_functions = false,
@@ -137,8 +139,9 @@ lowering::ir::TypedProgram BuildTypedLowIRProgram(
 
 // Analyze all inputs through PA12, lower directly from the borrowed canonical
 // graph into one typed LowIR program, and serialize the PA15 assignment view.
-void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
+void WriteLowIR(const std::vector<Source>& sources,
 	const PreprocessingOptions& options, std::ostream& output,
-	LowIRLoweringStats* stats = 0);
+	Stats* stats = 0);
 
+}  // namespace lowering
 }

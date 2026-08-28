@@ -15,7 +15,7 @@ namespace presentation
 
 using namespace lowering::ir;
 
-lowir_model::StringId InternOrdinalName(lowering::ir::TypedProgram& program,
+lowir_model::StringId InternOrdinalName(lowering::ir::Program& program,
 	const char* prefix, std::size_t prefix_size, std::uint32_t ordinal)
 {
 	if (!program.retain_local_names) return lowir_model::StringId();
@@ -23,13 +23,13 @@ lowir_model::StringId InternOrdinalName(lowering::ir::TypedProgram& program,
 		detail::PrefixedUnsignedDecimal(prefix, prefix_size, ordinal));
 }
 
-BlockPresentationName ExactBlockPresentation(TypedProgram& program,
+BlockPresentationName ExactBlockPresentation(lowering::ir::Program& program,
 	const std::string& name)
 {
 	return BlockPresentationName(program.strings.intern(name));
 }
 
-BlockPresentationName GeneratedBlockPresentation(TypedProgram& program,
+BlockPresentationName GeneratedBlockPresentation(lowering::ir::Program& program,
 	const std::string& prefix, std::uint32_t ordinal)
 {
 	if (!program.retain_local_names)
@@ -40,7 +40,7 @@ BlockPresentationName GeneratedBlockPresentation(TypedProgram& program,
 	return BlockPresentationName(program.strings.intern(name));
 }
 
-Block MakePresentedBlock(TypedProgram& program, Function* function,
+Block MakePresentedBlock(lowering::ir::Program& program, Function* function,
 	const BlockPresentationName& presentation)
 {
 	if (!function)
@@ -103,7 +103,7 @@ bool RequiresBlockPresentationOrder(const Function& function)
 
 }
 
-void FinalizeBlockPresentation(TypedProgram* program,
+void FinalizeBlockPresentation(lowering::ir::Program* program,
 	LocalPresentationCounters* counters)
 {
 	if (!program || program->retain_local_names) return;
@@ -307,7 +307,7 @@ std::string LocalPresentationState::GeneratedSlotName(
 }
 
 BlockPresentationName LocalPresentationState::GeneratedBlockName(
-	TypedProgram& program, const std::string& prefix)
+	lowering::ir::Program& program, const std::string& prefix)
 {
 	return GeneratedBlockPresentation(
 		program, prefix, static_cast<std::uint32_t>(++generated_block_ordinal_));

@@ -86,8 +86,8 @@ class ProgramLowerer :
 	private lowering::ComplexLowering<ProgramLowerer>
 {
 public:
-	ProgramLowerer(const SemanticGraphView& graph, TypedProgram& output,
-		LowIRLoweringStats* stats, std::size_t source_ordinal)
+	ProgramLowerer(const SemanticGraphView& graph, lowering::ir::Program& output,
+		lowering::Stats* stats, std::size_t source_ordinal)
 		: graph_(graph), program_(graph.program), arena_(graph.arena),
 		  output_(output), stats_(stats),
 		  abi_context_(stats ? &stats->abi : 0),
@@ -2638,10 +2638,10 @@ private:
 		EmitBranch(value, true_block, false_block);
 	}
 	const SemanticGraphView& graph_;
-	const Program& program_;
+	const semantic::Program& program_;
 	const DumpArena& arena_;
-	TypedProgram& output_;
-	LowIRLoweringStats* stats_;
+	lowering::ir::Program& output_;
+	lowering::Stats* stats_;
 	abi_mangle::AbiMangleContext abi_context_;
 	std::vector<SymbolId> function_symbols_;
 	std::vector<LifecycleBaseEntry> lifecycle_base_entries_;
@@ -2729,8 +2729,8 @@ private:
 	lowering::constant_pool::Pool constant_templates_;
 };
 }
-void LowerSemanticGraph(const SemanticGraphView& graph, TypedProgram& program,
-	LowIRLoweringStats* stats, std::size_t source_ordinal)
+void LowerGraph(const SemanticGraphView& graph, lowering::ir::Program& program,
+	lowering::Stats* stats, std::size_t source_ordinal)
 {
 	ProgramLowerer(graph, program, stats, source_ordinal).Lower();
 }

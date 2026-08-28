@@ -11,7 +11,7 @@ using namespace semantic;
 using namespace semantic;
 using namespace lowering::ir;
 
-SourceTypeLowering::SourceTypeLowering(const Program& program)
+SourceTypeLowering::SourceTypeLowering(const semantic::Program& program)
 	: program_(program)
 {
 }
