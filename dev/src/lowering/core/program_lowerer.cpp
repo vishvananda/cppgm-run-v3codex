@@ -26,7 +26,7 @@
 #include "lowering/expressions/bit_fields.h"
 #include "lowering/expressions/logical.h"
 #include "lowering/calls/value_boundary.h"
-#include "lowering/lifetime/special_members.h"
+#include "lowering/calls/special_members.h"
 #include "lowering/lifetime/temporaries.h"
 #include "lowering/objects/polymorphism.h"
 #include "lowering/constants/values.h"
