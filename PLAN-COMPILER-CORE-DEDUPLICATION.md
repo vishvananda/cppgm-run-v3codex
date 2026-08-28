@@ -1241,3 +1241,45 @@ not reuse measurements from a different source tree.
   maximum RSS 369,672/369,148 KiB.  All GCC objects are exact at `b0d3d8d3...`
   and all Clang objects at `1fe5f0e4...`.  C11 is retained, but the 1.548x
   self/GCC result leaves the parity target open and requires another lever.
+- **C12-1 (PA29 CONTROL FAILURE PROPAGATION).** Investigation of the
+  stable-address replay probe exposed a harness defect independent of that
+  rejected optimization: PA29's final control recipe ran four property
+  checkers in one shell without `set -e`, so a failure in an early checker
+  could be hidden by a later successful checker.  The recipe now stops on the
+  first failure, matching the already-correct oracle loop above it.  No
+  student contract or fixture changes are needed for this harness-only rule.
+  PA29 passes 291/291 and report-through-PA29 passes 4,251/4,251 with all four
+  control invocations reported separately.
+- **C12 STABLE-PARAMETER ADDRESS REPLAY RECHECK REJECTED.** The previously
+  rejected P32-L115 replay class was reconstructed because its old static
+  result suggested it might recover the remaining GCC-relative gap.  The
+  implementation proved replay-safe identity-copy closures and storage,
+  call-argument, pointer-store, and scalar-return boundaries.  Debugging the
+  first self-host found two genuine proof/emission hazards: an ordinary
+  allocator spill slot is not stable storage after its last modeled use, and
+  replay must use the selected stable parameter home rather than switching
+  opportunistically back to an incoming ABI register that parallel call setup
+  may overwrite.  A temporary behavioral/relationship-level PA29 control
+  exercised both constraints without matching a complete MIR program, and a
+  Valgrind compile completed with zero errors after the fixes.
+
+  The corrected same-source result still rejects the feature.  Three all-32
+  self lanes were 34.45, 31.42, and 31.66 seconds; three GCC-built lanes were
+  20.89, 21.20, and 20.75 seconds.  Their medians are 31.66/20.89 = **1.516x**,
+  above the exit target.  A clean reverse-order identical-candidate-source
+  pair was 31.89/905.01 seconds wall/aggregate CPU with the prior self compiler
+  versus 31.54/903.32 with the candidate, only a 0.19% aggregate-work
+  improvement.  Every candidate lane reproduced the 215-object compiler at
+  SHA-256 `764d1aa1...`.
+
+  More importantly, the current optimizer stack reverses the old density
+  signal: relative to the identical candidate source compiled by the prior
+  self compiler, `pp_tokenizer.o` grows 30,026 -> 30,344 text bytes,
+  `Lexer::Run` grows 11,668 -> 11,715 bytes, and the complete compiler grows
+  8,635,051 -> 8,665,879 text bytes.  Repeated address reconstruction is now
+  destructively interacting with later layout/placement choices instead of
+  removing profitable lifetimes.  The implementation, temporary README
+  language, and temporary feature control are removed; rejected behavior is
+  not made part of the student contract.  The independent PA29 harness fix is
+  retained.  No Cachegrind, Valgrind, profiler, compiler, or build process
+  remains active.
