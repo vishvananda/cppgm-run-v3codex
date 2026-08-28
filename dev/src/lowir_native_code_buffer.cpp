@@ -19,6 +19,39 @@ namespace
 const std::uint64_t kLoadAddress = 0x400000;
 const std::size_t kExecutableContentOffset = 120;
 
+std::uint32_t checked_relative32_delta(std::size_t target,
+	std::size_t offset, long long addend, const char* error)
+{
+	if (target > static_cast<std::size_t>(LLONG_MAX) ||
+		offset > static_cast<std::size_t>(LLONG_MAX - 4))
+		throw std::runtime_error(error);
+	std::int64_t delta = static_cast<std::int64_t>(target) -
+		static_cast<std::int64_t>(offset + 4);
+	if ((addend > 0 && delta > LLONG_MAX - addend) ||
+		(addend < 0 && delta < LLONG_MIN - addend))
+		throw std::runtime_error(error);
+	delta += addend;
+	if (delta < INT32_MIN || delta > INT32_MAX)
+		throw std::runtime_error(error);
+	return static_cast<std::uint32_t>(delta);
+}
+
+std::uint64_t apply_absolute_addend(std::uint64_t address, long long addend)
+{
+	if (addend >= 0)
+	{
+		const std::uint64_t magnitude = static_cast<std::uint64_t>(addend);
+		if (UINT64_MAX - address < magnitude)
+			throw std::runtime_error("native address fixup overflows");
+		return address + magnitude;
+	}
+	const std::uint64_t magnitude =
+		static_cast<std::uint64_t>(-(addend + 1)) + 1;
+	if (address < magnitude)
+		throw std::runtime_error("native address fixup underflows");
+	return address - magnitude;
+}
+
 }
 
 std::size_t CodeOffsetAdjustment::translate(std::size_t offset) const
@@ -786,14 +819,8 @@ void CodeBuffer::resolve_local_fixups(std::size_t begin)
 			patch(fixup.offset, address, 8);
 			continue;
 		}
-		if (target > static_cast<std::size_t>(LLONG_MAX) ||
-			fixup.offset > static_cast<std::size_t>(LLONG_MAX - 4))
-			throw std::runtime_error("native local fixup exceeds rel32");
-		const std::int64_t delta = static_cast<std::int64_t>(target) -
-			static_cast<std::int64_t>(fixup.offset + 4);
-		if (delta < INT32_MIN || delta > INT32_MAX)
-			throw std::runtime_error("native local fixup exceeds rel32");
-		patch(fixup.offset, static_cast<std::uint32_t>(delta), 4);
+		patch(fixup.offset, checked_relative32_delta(target, fixup.offset, 0,
+			"native local fixup exceeds rel32"), 4);
 	}
 	local_fixups_.resize(first);
 }
@@ -815,34 +842,15 @@ void CodeBuffer::resolve()
 			fixup.kind == Fixup::ADDRESS32 ||
 			fixup.kind == Fixup::TLS_OFFSET32)
 		{
-			const std::int64_t delta =
-				static_cast<std::int64_t>(target->second) -
-				static_cast<std::int64_t>(fixup.offset + 4) + fixup.addend;
-			if (delta < INT32_MIN || delta > INT32_MAX)
-				throw std::runtime_error(
-					"native branch displacement exceeds rel32");
-			patch(fixup.offset, static_cast<std::uint32_t>(delta), 4);
+			patch(fixup.offset, checked_relative32_delta(target->second,
+				fixup.offset, fixup.addend,
+				"native branch displacement exceeds rel32"), 4);
 			continue;
 		}
 
-		std::uint64_t address = kLoadAddress + kExecutableContentOffset +
-			target->second;
-		if (fixup.addend >= 0)
-		{
-			const std::uint64_t addend =
-				static_cast<std::uint64_t>(fixup.addend);
-			if (UINT64_MAX - address < addend)
-				throw std::runtime_error("native address fixup overflows");
-			address += addend;
-		}
-		else
-		{
-			const std::uint64_t magnitude =
-				static_cast<std::uint64_t>(-(fixup.addend + 1)) + 1;
-			if (address < magnitude)
-				throw std::runtime_error("native address fixup underflows");
-			address -= magnitude;
-		}
+		const std::uint64_t address = apply_absolute_addend(
+			kLoadAddress + kExecutableContentOffset + target->second,
+			fixup.addend);
 		patch(fixup.offset, address, 8);
 	}
 	for (std::size_t i = 0; i < symbol_fixups_.size(); ++i)
@@ -867,33 +875,12 @@ void CodeBuffer::resolve()
 			fixup.kind == Fixup::ADDRESS32 ||
 			fixup.kind == Fixup::TLS_OFFSET32)
 		{
-			const std::int64_t delta =
-				static_cast<std::int64_t>(target) -
-				static_cast<std::int64_t>(fixup.offset + 4) + fixup.addend;
-			if (delta < INT32_MIN || delta > INT32_MAX)
-				throw std::runtime_error(
-					"native branch displacement exceeds rel32");
-			patch(fixup.offset, static_cast<std::uint32_t>(delta), 4);
+			patch(fixup.offset, checked_relative32_delta(target, fixup.offset,
+				fixup.addend, "native branch displacement exceeds rel32"), 4);
 			continue;
 		}
-		std::uint64_t address = kLoadAddress + kExecutableContentOffset +
-			target;
-		if (fixup.addend >= 0)
-		{
-			const std::uint64_t addend =
-				static_cast<std::uint64_t>(fixup.addend);
-			if (UINT64_MAX - address < addend)
-				throw std::runtime_error("native address fixup overflows");
-			address += addend;
-		}
-		else
-		{
-			const std::uint64_t magnitude =
-				static_cast<std::uint64_t>(-(fixup.addend + 1)) + 1;
-			if (address < magnitude)
-				throw std::runtime_error("native address fixup underflows");
-			address -= magnitude;
-		}
+		const std::uint64_t address = apply_absolute_addend(
+			kLoadAddress + kExecutableContentOffset + target, fixup.addend);
 		patch(fixup.offset, address, 8);
 	}
 }

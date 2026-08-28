@@ -913,3 +913,22 @@ not reuse measurements from a different source tree.
   exact and GCC-O3 compiler text grows 124 bytes.  Post-inception machine load
   roughly doubled absolute wall time and the two paired deltas reverse at
   -0.56 and +0.69 seconds, providing no directional regression signal.
+- **C8-2 COVERAGE AUDIT (CODE-BUFFER FIXUP ARITHMETIC).** Local, named, and
+  typed rel32 resolution repeat the same target/end/addend range validation;
+  named and typed absolute fixups repeat the same signed-addend overflow and
+  underflow checks.  PA29 direct branches cover local rel32, PA30 data
+  relocation through an indirect call covers absolute addresses, PA31 runtime
+  relocation facts cover hosted fixups, and PA38 fallthrough controls cover
+  relaxed branches.  Buffers large enough to exceed process-sized offset
+  validation cannot form a practical course fixture, and diagnostic text is
+  not an oracle; structural/object coverage and byte-exact A/B are sufficient.
+- **C8-2 (CHECKED CODE-BUFFER FIXUP ARITHMETIC).** One helper now validates
+  and computes local, named, and typed rel32 deltas, and one helper applies a
+  signed addend to named and typed absolute addresses.  Existing exception
+  text is preserved, while intermediate signed overflow is now rejected rather
+  than invoking undefined behavior.  Focused PA29/PA30/PA31/PA38 controls pass
+  5/5, all four affected assignment gates pass, and both audits remain clean
+  with the file audit at 34 warnings.  The frozen O0 object is exact and GCC-O3
+  compiler text grows 340 bytes.  Performance is deferred to the cumulative C8
+  checkpoint because this cold fixup path does not justify another noisy
+  two-pair micro-run.
