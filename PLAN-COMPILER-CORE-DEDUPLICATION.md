@@ -1192,3 +1192,13 @@ not reuse measurements from a different source tree.
   retain their separate state transition and are not part of this extraction.
   The focused reducers pass 2/2, PA4 passes 74/74, and report-through-PA4
   passes 173/173.  This fixture commit precedes the production extraction.
+- **C11-3 (VARIADIC MACRO CLOSE).** One parser-local helper now marks a
+  standard variadic macro, advances past `...`, requires the immediate closing
+  parenthesis, and returns the replacement-list boundary for both `(...)` and
+  `(identifier-list, ...)`.  Identifier validation, duplicate detection,
+  separator parsing, and GNU `name...` state remain local.  The four focused
+  valid/invalid controls pass 4/4, PA4 passes 74/74, report-through-PA4 passes
+  173/173, and the audit remains zero-fatal/33.  `macro_processor.cpp` falls
+  from 2,996 to 2,993 lines.  Isolated O1-self/GCC-O3/Clang-O3 object text
+  changes by +42/+18/0 bytes; this cold, exact extraction is retained as
+  performance-neutral, with cumulative timing deferred to the next checkpoint.

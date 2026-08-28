@@ -1807,14 +1807,7 @@ private:
 		if (IsOperator(directive[position], ")"))
 			return position + 1;
 		if (IsOperator(directive[position], "..."))
-		{
-			macro->variadic = true;
-			++position;
-			if (position >= directive.size() ||
-				!IsOperator(directive[position], ")"))
-				throw std::runtime_error("invalid variadic parameter list");
-			return position + 1;
-		}
+			return ParseVariadicClose(directive, position, macro);
 
 		while (true)
 		{
@@ -1849,15 +1842,19 @@ private:
 			if (position >= directive.size())
 				throw std::runtime_error("unterminated macro parameter list");
 			if (IsOperator(directive[position], "..."))
-			{
-				macro->variadic = true;
-				++position;
-				if (position >= directive.size() ||
-					!IsOperator(directive[position], ")"))
-					throw std::runtime_error("invalid variadic parameter list");
-				return position + 1;
-			}
+				return ParseVariadicClose(directive, position, macro);
 		}
+	}
+
+	std::size_t ParseVariadicClose(const std::vector<Token>& directive,
+		std::size_t position, Macro* macro)
+	{
+		macro->variadic = true;
+		++position;
+		if (position >= directive.size() ||
+			!IsOperator(directive[position], ")"))
+			throw std::runtime_error("invalid variadic parameter list");
+		return position + 1;
 	}
 
 	void BuildReplacement(const std::vector<Token>& directive,
