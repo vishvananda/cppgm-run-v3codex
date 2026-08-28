@@ -1,7 +1,7 @@
-#include "native/frame/lowir_native_frame_home_planning.h"
+#include "native/frame/home_planning.h"
 
 #include "native/lowering/lowir_native_abi.h"
-#include "native/frame/lowir_native_frame_layout.h"
+#include "native/frame/layout.h"
 #include "native/mir/construction.h"
 
 #include <algorithm>

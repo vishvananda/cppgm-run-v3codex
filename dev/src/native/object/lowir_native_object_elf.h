@@ -2,7 +2,7 @@
 
 #include "native/lowering/lowir_native.h"
 #include "native/mir/construction.h"
-#include "native/allocation/lowir_native_registers.h"
+#include "native/allocation/registers.h"
 
 #include <cstddef>
 #include <cstdint>

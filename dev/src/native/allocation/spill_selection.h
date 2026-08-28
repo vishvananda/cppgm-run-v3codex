@@ -4,7 +4,7 @@
 #include "native/lowering/lowir_native.h"
 #include "native/analysis/function.h"
 #include "native/lowering/lowir_native_control_flow.h"
-#include "native/allocation/lowir_native_location_planning.h"
+#include "native/allocation/location_planning.h"
 #include "native/mir/construction.h"
 #include "native/mir/model.h"
 #include "native/mir/registers.h"

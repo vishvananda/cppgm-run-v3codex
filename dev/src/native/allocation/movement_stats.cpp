@@ -1,4 +1,4 @@
-#include "native/allocation/lowir_native_movement_stats.h"
+#include "native/allocation/movement_stats.h"
 
 #include <algorithm>
 

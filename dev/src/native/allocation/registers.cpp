@@ -1,4 +1,4 @@
-#include "native/allocation/lowir_native_registers.h"
+#include "native/allocation/registers.h"
 
 #include <algorithm>
 #include <limits>

@@ -1,4 +1,4 @@
-#include "native/frame/lowir_native_stack.h"
+#include "native/frame/stack.h"
 
 #include "native/mir/construction.h"
 

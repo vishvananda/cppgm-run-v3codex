@@ -1,6 +1,6 @@
-#include "native/frame/lowir_native_epilogue.h"
+#include "native/frame/epilogue.h"
 
-#include "native/allocation/lowir_native_registers.h"
+#include "native/allocation/registers.h"
 
 #include <stdexcept>
 

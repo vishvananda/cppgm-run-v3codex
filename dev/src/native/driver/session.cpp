@@ -6,7 +6,7 @@
 #include "native/mir/optimize.h"
 #include "lowir/analysis/phi_edges.h"
 #include "native/driver/program.h"
-#include "native/allocation/lowir_native_registers.h"
+#include "native/allocation/registers.h"
 #include "native/driver/session.h"
 
 #include <algorithm>

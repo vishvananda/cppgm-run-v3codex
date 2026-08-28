@@ -2,7 +2,7 @@
 
 #include "native/mir/construction.h"
 #include "native/lowering/lowir_native_selection.h"
-#include "native/frame/lowir_native_stack.h"
+#include "native/frame/stack.h"
 #include "native/lowering/lowir_native_varargs.h"
 #include "native/lowering/lowir_native_value.h"
 

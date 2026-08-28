@@ -1,4 +1,4 @@
-#include "native/allocation/lowir_native_frame_forwarding.h"
+#include "native/allocation/frame_forwarding.h"
 
 #include "native/lowering/lowir_native.h"
 #include "native/analysis/data_layout.h"

@@ -1,4 +1,4 @@
-#include "native/allocation/lowir_native_spill_slots.h"
+#include "native/allocation/spill_slots.h"
 
 #include <algorithm>
 #include <limits>

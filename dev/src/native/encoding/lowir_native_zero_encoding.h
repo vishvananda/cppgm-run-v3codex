@@ -1,7 +1,7 @@
 #pragma once
 
 #include "native/object/lowir_native_code_buffer.h"
-#include "native/allocation/lowir_native_registers.h"
+#include "native/allocation/registers.h"
 
 #include <cstddef>
 
