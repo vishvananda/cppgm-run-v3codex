@@ -1,4 +1,4 @@
-#include "lowering/analysis/function_reachability.h"
+#include "lowering/core/reachability.h"
 
 #include "semantic/lifetime/demand_reason.h"
 

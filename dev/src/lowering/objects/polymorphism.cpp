@@ -3,7 +3,7 @@
 #include "lowering/abi/itanium.h"
 #include "lowering/presentation/local_names.h"
 #include "lowering/support/utilities.h"
-#include "lowering/types/source_type.h"
+#include "lowering/core/source_types.h"
 
 #include <limits>
 #include <stdexcept>

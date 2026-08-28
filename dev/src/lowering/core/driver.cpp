@@ -2,7 +2,7 @@
 
 #include "semantic/semantic.h"
 #include "lowering/transforms/force_inline.h"
-#include "lowering/graph_lowering.h"
+#include "lowering/core/graph_lowering.h"
 #include "lowering/presentation/local_names.h"
 #include "lowering/ir/model.h"
 #include "lowering/ir/render.h"

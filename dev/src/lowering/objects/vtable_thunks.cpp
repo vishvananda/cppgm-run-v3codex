@@ -1,7 +1,7 @@
 #include "lowering/objects/polymorphism.h"
 
 #include "lowering/presentation/local_names.h"
-#include "lowering/types/source_type.h"
+#include "lowering/core/source_types.h"
 
 #include <stdexcept>
 

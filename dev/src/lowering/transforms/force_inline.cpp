@@ -1,6 +1,6 @@
 #include "lowering/transforms/force_inline.h"
 
-#include "lowering/analysis/function_reachability.h"
+#include "lowering/core/reachability.h"
 #include "lowering/presentation/local_names.h"
 #include "lowering/api.h"
 

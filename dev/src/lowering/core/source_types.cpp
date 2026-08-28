@@ -1,4 +1,4 @@
-#include "lowering/types/source_type.h"
+#include "lowering/core/source_types.h"
 
 #include <stdexcept>
 
