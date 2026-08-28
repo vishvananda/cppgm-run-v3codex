@@ -10,8 +10,10 @@
 
 namespace cppgm
 {
+namespace namespace_semantics
+{
 
-struct SemanticAnalysisStats
+struct Stats
 {
 	PreprocessingStats preprocessing;
 	std::size_t tokens;
@@ -39,23 +41,23 @@ struct SemanticAnalysisStats
 	std::size_t peak_stage_storage_bytes;
 	std::uint64_t elapsed_nanoseconds;
 
-	SemanticAnalysisStats();
+	Stats();
 };
 
 // Owns the canonical PA7 semantic graph for one translation unit. Parsing is
 // integrated with semantic construction; the phase-7 token buffer is released
 // when construction returns.
-class SemanticTranslationUnit
+class TranslationUnit
 {
 public:
-	SemanticTranslationUnit(const std::string& path,
+	TranslationUnit(const std::string& path,
 		const std::string& source, const PreprocessingOptions& options,
-		SemanticAnalysisStats* stats = 0);
-	~SemanticTranslationUnit();
+		Stats* stats = 0);
+	~TranslationUnit();
 
-	SemanticTranslationUnit(SemanticTranslationUnit&& other) noexcept;
-	SemanticTranslationUnit& operator=(
-		SemanticTranslationUnit&& other) noexcept;
+	TranslationUnit(TranslationUnit&& other) noexcept;
+	TranslationUnit& operator=(
+		TranslationUnit&& other) noexcept;
 
 	void Render(std::ostream& output) const;
 
@@ -63,8 +65,9 @@ private:
 	struct Impl;
 	std::unique_ptr<Impl> impl_;
 
-	SemanticTranslationUnit(const SemanticTranslationUnit&);
-	SemanticTranslationUnit& operator=(const SemanticTranslationUnit&);
+	TranslationUnit(const TranslationUnit&);
+	TranslationUnit& operator=(const TranslationUnit&);
 };
 
+}
 }

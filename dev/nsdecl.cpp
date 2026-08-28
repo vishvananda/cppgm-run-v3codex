@@ -39,7 +39,7 @@ cppgm::PreprocessingOptions BuildOptions()
 }
 
 void ReportStats(const std::string& path,
-	const cppgm::SemanticAnalysisStats& stats)
+	const cppgm::namespace_semantics::Stats& stats)
 {
 	std::cerr << "nsdecl_stats"
 		<< " file=" << path
@@ -96,8 +96,8 @@ int main(int argc, char** argv)
 			const std::string path(argv[i]);
 			output << "start translation unit " << path << '\n';
 			const std::string source = ReadSource(path);
-			cppgm::SemanticAnalysisStats stats;
-			cppgm::SemanticTranslationUnit unit(path, source, options,
+			cppgm::namespace_semantics::Stats stats;
+			cppgm::namespace_semantics::TranslationUnit unit(path, source, options,
 				report_stats ? &stats : 0);
 			unit.Render(output);
 			output << "end translation unit\n";

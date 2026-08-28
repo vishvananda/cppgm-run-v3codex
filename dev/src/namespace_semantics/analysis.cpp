@@ -13,6 +13,8 @@
 
 namespace cppgm
 {
+namespace namespace_semantics
+{
 namespace
 {
 
@@ -859,10 +861,10 @@ struct QualifiedName
 	QualifiedName() : absolute(false) {}
 };
 
-class SemanticModel
+class Program
 {
 public:
-	explicit SemanticModel(SemanticAnalysisStats* stats)
+	explicit Program(Stats* stats)
 		: stats_(stats), using_edge_slots_(16, 0), lookup_generation_(0)
 	{
 		namespaces_.push_back(NamespaceRecord());
@@ -1483,7 +1485,7 @@ private:
 		}
 	}
 
-	SemanticAnalysisStats* stats_;
+	Stats* stats_;
 	std::vector<NamespaceRecord> namespaces_;
 	std::vector<EntityRecord> entities_;
 	std::vector<Binding> bindings_;
@@ -1604,11 +1606,11 @@ struct FundamentalSpecifiers
 	}
 };
 
-class SemanticParser
+class Parser
 {
 public:
-	SemanticParser(const std::vector<SemanticToken>& tokens,
-		SemanticModel& model, SemanticAnalysisStats* stats)
+	Parser(const std::vector<SemanticToken>& tokens,
+		Program& model, Stats* stats)
 		: tokens_(tokens), model_(model), stats_(stats), position_(0),
 		  current_namespace_(0), declarator_memo_generation_(0),
 		  declarator_call_depth_(0), memo_child_storage_bytes_(0),
@@ -2395,8 +2397,8 @@ private:
 	}
 
 	const std::vector<SemanticToken>& tokens_;
-	SemanticModel& model_;
-	SemanticAnalysisStats* stats_;
+	Program& model_;
+	Stats* stats_;
 	std::size_t position_;
 	NamespaceId current_namespace_;
 	std::vector<NamespaceId> namespace_stack_;
@@ -2410,14 +2412,14 @@ private:
 
 }
 
-struct SemanticTranslationUnit::Impl
+struct TranslationUnit::Impl
 {
-	explicit Impl(SemanticAnalysisStats* stats) : model(stats) {}
+	explicit Impl(Stats* stats) : model(stats) {}
 
-	SemanticModel model;
+	Program model;
 };
 
-SemanticAnalysisStats::SemanticAnalysisStats()
+Stats::Stats()
 	: tokens(0), token_storage_bytes(0), declarator_frames(0),
 	  declarator_cache_hits(0), declarator_cache_misses(0),
 	  declarator_memo_entries(0), peak_parser_scratch_bytes(0),
@@ -2432,15 +2434,15 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 {
 }
 
-SemanticTranslationUnit::SemanticTranslationUnit(const std::string& path,
+TranslationUnit::TranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	SemanticAnalysisStats* stats)
+	Stats* stats)
 	: impl_(new Impl(stats))
 {
 	std::chrono::steady_clock::time_point started;
 	if (stats)
 	{
-		*stats = SemanticAnalysisStats();
+		*stats = Stats();
 		started = std::chrono::steady_clock::now();
 	}
 	SemanticTokenSink sink(impl_->model.identifiers);
@@ -2451,7 +2453,7 @@ SemanticTranslationUnit::SemanticTranslationUnit(const std::string& path,
 		stats->tokens = sink.Tokens().size();
 		stats->token_storage_bytes = sink.StorageBytes();
 	}
-	SemanticParser parser(sink.Tokens(), impl_->model, stats);
+	Parser parser(sink.Tokens(), impl_->model, stats);
 	parser.Parse();
 	if (stats)
 	{
@@ -2472,24 +2474,25 @@ SemanticTranslationUnit::SemanticTranslationUnit(const std::string& path,
 	}
 }
 
-SemanticTranslationUnit::~SemanticTranslationUnit() {}
+TranslationUnit::~TranslationUnit() {}
 
-SemanticTranslationUnit::SemanticTranslationUnit(
-	SemanticTranslationUnit&& other) noexcept
+TranslationUnit::TranslationUnit(
+	TranslationUnit&& other) noexcept
 	: impl_(std::move(other.impl_))
 {
 }
 
-SemanticTranslationUnit& SemanticTranslationUnit::operator=(
-	SemanticTranslationUnit&& other) noexcept
+TranslationUnit& TranslationUnit::operator=(
+	TranslationUnit&& other) noexcept
 {
 	impl_ = std::move(other.impl_);
 	return *this;
 }
 
-void SemanticTranslationUnit::Render(std::ostream& output) const
+void TranslationUnit::Render(std::ostream& output) const
 {
 	impl_->model.Render(output);
 }
 
+}
 }
