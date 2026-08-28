@@ -12,7 +12,9 @@
 
 namespace cppgm
 {
-namespace pa15_lowir_detail
+namespace lowering
+{
+namespace ir
 {
 
 using namespace semantic;
@@ -521,5 +523,6 @@ struct Symbol
 		  inline_hint(false), no_inline(false) {}
 };
 
+}
 }
 }

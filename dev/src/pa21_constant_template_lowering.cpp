@@ -11,7 +11,7 @@ namespace pa21_constant_template_lowering
 namespace
 {
 
-using namespace pa15_lowir_detail;
+using namespace lowering::ir;
 
 const std::uint32_t kEmptySlot = kNoLowId;
 

@@ -11,9 +11,9 @@ namespace cppgm
 namespace pa15_local_presentation
 {
 
-using namespace pa15_lowir_detail;
+using namespace lowering::ir;
 
-lowir_model::StringId InternOrdinalName(pa15_lowir_detail::TypedProgram& program,
+lowir_model::StringId InternOrdinalName(lowering::ir::TypedProgram& program,
 	const char* prefix, std::size_t prefix_size, std::uint32_t ordinal)
 {
 	if (!program.retain_local_names) return lowir_model::StringId();

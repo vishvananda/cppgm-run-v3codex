@@ -16,7 +16,7 @@ namespace pa21_lowering_detail
 
 using namespace semantic;
 using namespace semantic;
-using namespace pa15_lowir_detail;
+using namespace lowering::ir;
 using namespace pa15_lowering_support;
 
 inline std::string HexLocalStaticSymbolComponent(const std::string& value)

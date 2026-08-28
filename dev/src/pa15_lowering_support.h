@@ -37,9 +37,9 @@ bool IsLambdaCaptureMember(
 std::string MissingStorageBindingDetail(
 	const semantic::Program& program, semantic::BindingId binding);
 std::string NormalizeFloatingLiteral(const std::string& spelling,
-	const pa15_lowir_detail::LowType& type);
+	const lowering::ir::LowType& type);
 bool DecodeFloatingLiteral(const std::string& spelling,
-	const pa15_lowir_detail::LowType& type, std::uint64_t* low,
+	const lowering::ir::LowType& type, std::uint64_t* low,
 	std::uint64_t* high);
 
 class PresentationNameMap
@@ -141,7 +141,7 @@ private:
 };
 
 typedef SmallSequence<std::uint32_t, 8> NodeChildren;
-typedef SmallSequence<pa15_lowir_detail::Operand, 8> CallArguments;
+typedef SmallSequence<lowering::ir::Operand, 8> CallArguments;
 typedef SmallSequence<std::uint8_t, 8> CallArgumentFlags;
 typedef SmallSequence<std::uint32_t, 8> SwitchCases;
 

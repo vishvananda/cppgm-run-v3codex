@@ -21,24 +21,24 @@ public:
 	StaticInitializerLowering(
 		const semantic::Program& program,
 		const semantic::DumpArena& arena,
-		pa15_lowir_detail::TypedProgram& output,
+		lowering::ir::TypedProgram& output,
 		LowIRLoweringStats* stats,
-		const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
-		const std::vector<pa15_lowir_detail::SymbolId>& global_symbols,
-		std::vector<pa15_lowir_detail::SymbolId>& literal_symbols,
+		const std::vector<lowering::ir::SymbolId>& function_symbols,
+		const std::vector<lowering::ir::SymbolId>& global_symbols,
+		std::vector<lowering::ir::SymbolId>& literal_symbols,
 		const std::vector<std::uint32_t>& function_definitions,
-		const std::vector<pa15_lowir_detail::SymbolId>& class_vtable_symbols);
+		const std::vector<lowering::ir::SymbolId>& class_vtable_symbols);
 
 	bool Lower(const semantic::NamespaceObjectAction& action,
-		bool thread_local_object, pa15_lowir_detail::Global* global,
+		bool thread_local_object, lowering::ir::Global* global,
 		bool* needs_global_class_initializer,
 		bool* keep_global_class_address = 0);
 	bool LowerConstantObject(semantic::TypeId type, std::uint32_t initializer,
-		pa15_lowir_detail::Global* global);
-	void SetZero(semantic::TypeId type, pa15_lowir_detail::Global* global);
+		lowering::ir::Global* global);
+	void SetZero(semantic::TypeId type, lowering::ir::Global* global);
 	bool HasConstantAddress(std::uint32_t node);
-	pa15_lowir_detail::SymbolId EnsureStringLiteral(std::uint32_t node);
-	pa15_lowir_detail::SymbolId EnsureStringLiteralSpelling(
+	lowering::ir::SymbolId EnsureStringLiteral(std::uint32_t node);
+	lowering::ir::SymbolId EnsureStringLiteralSpelling(
 		const std::string& spelling);
 
 private:
@@ -47,29 +47,29 @@ private:
 		const pa15_lowering_support::NodeChildren& children) const;
 	bool IsEmptyConstructionTransferRecipe(std::uint32_t node) const;
 	bool SymbolForBinding(semantic::BindingId binding,
-		pa15_lowir_detail::SymbolId* symbol);
+		lowering::ir::SymbolId* symbol);
 	bool ResolveConstantAddress(std::uint32_t node,
-		pa15_lowir_detail::SymbolId* symbol, std::int64_t* offset);
+		lowering::ir::SymbolId* symbol, std::int64_t* offset);
 	bool RequiresDynamicAddress(std::uint32_t node) const;
 	void AppendZero(std::size_t bytes,
-		std::vector<pa15_lowir_detail::Global::DataItem>* items);
+		std::vector<lowering::ir::Global::DataItem>* items);
 	bool AppendValue(semantic::TypeId type, std::uint32_t node,
-		std::vector<pa15_lowir_detail::Global::DataItem>* items,
+		std::vector<lowering::ir::Global::DataItem>* items,
 		const std::vector<std::pair<semantic::BindingId, std::uint32_t> >*
 			substitutions = 0, bool allow_constructor = true);
 	bool AppendConstructorValue(semantic::TypeId type, std::uint32_t action_node,
-		std::vector<pa15_lowir_detail::Global::DataItem>* items,
+		std::vector<lowering::ir::Global::DataItem>* items,
 		bool require_vptr = false);
 
 	const semantic::Program& program_;
 	const semantic::DumpArena& arena_;
-	pa15_lowir_detail::TypedProgram& output_;
+	lowering::ir::TypedProgram& output_;
 	LowIRLoweringStats* stats_;
-	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols_;
-	const std::vector<pa15_lowir_detail::SymbolId>& global_symbols_;
-	std::vector<pa15_lowir_detail::SymbolId>& literal_symbols_;
+	const std::vector<lowering::ir::SymbolId>& function_symbols_;
+	const std::vector<lowering::ir::SymbolId>& global_symbols_;
+	std::vector<lowering::ir::SymbolId>& literal_symbols_;
 	const std::vector<std::uint32_t>& function_definitions_;
-	const std::vector<pa15_lowir_detail::SymbolId>& class_vtable_symbols_;
+	const std::vector<lowering::ir::SymbolId>& class_vtable_symbols_;
 	pa15_lowering_detail::SourceTypeLowering types_;
 };
 

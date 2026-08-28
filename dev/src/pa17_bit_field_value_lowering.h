@@ -55,20 +55,20 @@ protected:
 		}
 	}
 
-	pa15_lowir_detail::Operand ConstructorBitFieldStorage(
+	lowering::ir::Operand ConstructorBitFieldStorage(
 		semantic::BindingId binding)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const pa15_lowir_detail::Operand object = derived.LoadStorage(
+		const lowering::ir::Operand object = derived.LoadStorage(
 			derived.StorageFor(derived.current_this_binding_,
-				pa15_lowir_detail::LowPtr()), pa15_lowir_detail::LowPtr());
+				lowering::ir::LowPtr()), lowering::ir::LowPtr());
 		return derived.ProjectAggregateMember(object, binding);
 	}
 
 	void LowerConstructorBitField(
 		semantic::BindingId binding,
-		const pa15_lowir_detail::Operand& value,
-		const pa15_lowir_detail::LowType& type)
+		const lowering::ir::Operand& value,
+		const lowering::ir::LowType& type)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const semantic::BindingRecord& field =
@@ -77,7 +77,7 @@ protected:
 				derived.bit_field_storage_transfer_owners_.size() ||
 			!derived.bit_field_storage_transfer_owners_[field.member_owner])
 		{
-			const pa15_lowir_detail::Operand destination =
+			const lowering::ir::Operand destination =
 				ConstructorBitFieldStorage(binding);
 			derived.InitializeBitField(binding, value, destination, type);
 			return;
@@ -85,18 +85,18 @@ protected:
 		const bool preserve = derived.PreserveInitializedBitField(binding);
 		if (!preserve)
 		{
-			const pa15_lowir_detail::Operand positioned =
+			const lowering::ir::Operand positioned =
 				derived.PrepareBitFieldValue(binding, value, type);
 			derived.EmitBitFieldStore(type, positioned,
 				ConstructorBitFieldStorage(binding));
 			return;
 		}
-		const pa15_lowir_detail::Operand cleared =
+		const lowering::ir::Operand cleared =
 			derived.ClearBitFieldStorage(
 				binding, ConstructorBitFieldStorage(binding), type);
-		const pa15_lowir_detail::Operand positioned =
+		const lowering::ir::Operand positioned =
 			derived.PrepareBitFieldValue(binding, value, type);
-		const pa15_lowir_detail::Operand stored =
+		const lowering::ir::Operand stored =
 			derived.CombineBitFieldValue(cleared, positioned, type);
 		derived.EmitBitFieldStore(type, stored,
 			ConstructorBitFieldStorage(binding));

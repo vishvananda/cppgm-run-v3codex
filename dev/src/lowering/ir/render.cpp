@@ -10,7 +10,7 @@ namespace cppgm
 namespace
 {
 
-using namespace pa15_lowir_detail;
+using namespace lowering::ir;
 
 const char* RuntimeRoleName(Symbol::RuntimeRole role)
 {
@@ -707,7 +707,7 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 
 }
 
-void RenderLowIRProgram(const pa15_lowir_detail::TypedProgram& program,
+void RenderLowIRProgram(const lowering::ir::TypedProgram& program,
 	std::ostream& output)
 {
 	RenderProgram(program, output);

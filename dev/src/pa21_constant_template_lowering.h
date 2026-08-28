@@ -15,9 +15,9 @@ namespace pa21_constant_template_lowering
 class Pool
 {
 public:
-	Pool(pa15_lowir_detail::TypedProgram& output, LowIRLoweringStats* stats);
+	Pool(lowering::ir::TypedProgram& output, LowIRLoweringStats* stats);
 
-	pa15_lowir_detail::SymbolId Intern(pa15_lowir_detail::Global candidate);
+	lowering::ir::SymbolId Intern(lowering::ir::Global candidate);
 
 private:
 	struct Entry
@@ -29,15 +29,15 @@ private:
 			: hash(hash_value), global(global_value) {}
 	};
 
-	static std::size_t Hash(const pa15_lowir_detail::Global& global);
-	static bool Equal(const pa15_lowir_detail::Global& left,
-		const pa15_lowir_detail::Global& right);
+	static std::size_t Hash(const lowering::ir::Global& global);
+	static bool Equal(const lowering::ir::Global& left,
+		const lowering::ir::Global& right);
 	void EnsureCapacity();
 	void Rehash(std::size_t capacity);
 	std::size_t FindSlot(std::size_t hash,
-		const pa15_lowir_detail::Global& candidate, bool* found) const;
+		const lowering::ir::Global& candidate, bool* found) const;
 
-	pa15_lowir_detail::TypedProgram& output_;
+	lowering::ir::TypedProgram& output_;
 	LowIRLoweringStats* stats_;
 	std::vector<Entry> entries_;
 	std::vector<std::uint32_t> slots_;

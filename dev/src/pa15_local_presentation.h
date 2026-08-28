@@ -15,17 +15,17 @@ class DumpArena;
 namespace pa15_local_presentation
 {
 
-lowir_model::StringId InternOrdinalName(pa15_lowir_detail::TypedProgram& program,
+lowir_model::StringId InternOrdinalName(lowering::ir::TypedProgram& program,
 	const char* prefix, std::size_t prefix_size, std::uint32_t ordinal);
-pa15_lowir_detail::BlockPresentationName ExactBlockPresentation(
-	pa15_lowir_detail::TypedProgram& program, const std::string& name);
-pa15_lowir_detail::BlockPresentationName GeneratedBlockPresentation(
-	pa15_lowir_detail::TypedProgram& program, const std::string& prefix,
+lowering::ir::BlockPresentationName ExactBlockPresentation(
+	lowering::ir::TypedProgram& program, const std::string& name);
+lowering::ir::BlockPresentationName GeneratedBlockPresentation(
+	lowering::ir::TypedProgram& program, const std::string& prefix,
 	std::uint32_t ordinal);
-pa15_lowir_detail::Block MakePresentedBlock(
-	pa15_lowir_detail::TypedProgram& program,
-	pa15_lowir_detail::Function* function,
-	const pa15_lowir_detail::BlockPresentationName& presentation);
+lowering::ir::Block MakePresentedBlock(
+	lowering::ir::TypedProgram& program,
+	lowering::ir::Function* function,
+	const lowering::ir::BlockPresentationName& presentation);
 
 // Stats-only counters for the T5 presentation audit; null disables them.
 struct LocalPresentationCounters
@@ -47,7 +47,7 @@ struct LocalPresentationCounters
 		  block_order_comparisons(0), block_order_characters(0) {}
 };
 
-void FinalizeBlockPresentation(pa15_lowir_detail::TypedProgram* program,
+void FinalizeBlockPresentation(lowering::ir::TypedProgram* program,
 	LocalPresentationCounters* counters);
 
 class LocalPresentationState
@@ -62,8 +62,8 @@ public:
 		lowir_model::GeneratedNameReservations* generated);
 	std::string UniqueSlotName(const std::string& requested);
 	std::string GeneratedSlotName(const std::string& prefix);
-	pa15_lowir_detail::BlockPresentationName GeneratedBlockName(
-		pa15_lowir_detail::TypedProgram& program, const std::string& prefix);
+	lowering::ir::BlockPresentationName GeneratedBlockName(
+		lowering::ir::TypedProgram& program, const std::string& prefix);
 	bool ReservesTemporary(std::uint32_t ordinal);
 
 private:
@@ -75,9 +75,9 @@ private:
 	LocalPresentationCounters* counters_;
 	std::size_t generated_slot_ordinal_;
 	std::size_t generated_block_ordinal_;
-	pa15_lowir_detail::StringCounterTable used_names_;
-	pa15_lowir_detail::StringCounterTable assigned_names_;
-	pa15_lowir_detail::StringCounterTable slot_name_counts_;
+	lowering::ir::StringCounterTable used_names_;
+	lowering::ir::StringCounterTable assigned_names_;
+	lowering::ir::StringCounterTable slot_name_counts_;
 	std::vector<std::uint32_t> temporaries_;
 };
 

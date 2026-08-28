@@ -161,7 +161,7 @@ protected:
 					derived.current_indirect_result_)
 				{
 					derived.binding_indirect_parameters_[record.binding] =
-						pa15_lowir_detail::ParameterId(0);
+						lowering::ir::ParameterId(0);
 					derived.function_slot_bindings_.push_back(record.binding);
 				}
 				else if (derived.binding_slots_[record.binding] == kNoLowId)
@@ -230,7 +230,7 @@ protected:
 					(void)derived.EnsureGeneratedSlot(current,
 						record.logical_operation == LOGICAL_OPERATION_AND ?
 							"land" : "lor",
-						pa15_lowir_detail::LowI64());
+						lowering::ir::LowI64());
 			}
 			if (record.kind == DUMP_CALL_EXPRESSION &&
 				record.full_expression_staging &&
@@ -294,7 +294,7 @@ protected:
 				if (pointer_source && adjusted && !nonnull_this &&
 					!known_nonnull_address)
 					(void)derived.EnsureGeneratedSlot(
-						children[0], "basecast", pa15_lowir_detail::LowPtr());
+						children[0], "basecast", lowering::ir::LowPtr());
 			}
 			if (variable_initializer)
 				PlanConstructorReferenceArgumentSlots(record, children);
@@ -389,17 +389,17 @@ protected:
 					 children.size() == 2);
 				if (retain_size && call.size() > 1)
 					(void)derived.EnsureGeneratedSlot(call[1],
-						"array_new_size", pa15_lowir_detail::LowI64());
+						"array_new_size", lowering::ir::LowI64());
 				if (record.value_initialization)
 					(void)derived.EnsureGeneratedSlot(children[0],
-						"zeroinit_offset", pa15_lowir_detail::LowI64());
+						"zeroinit_offset", lowering::ir::LowI64());
 				if (children.size() == 2)
 				{
 					(void)derived.EnsureGeneratedSlot(children[1],
-						"array_new_index", pa15_lowir_detail::LowI64());
+						"array_new_index", lowering::ir::LowI64());
 					if (record.selected_binding != kNoBinding)
 						(void)derived.EnsureGeneratedSlot(current,
-							"array_dtor_index", pa15_lowir_detail::LowI64());
+							"array_dtor_index", lowering::ir::LowI64());
 				}
 			}
 			for (std::size_t i = children.size(); i != 0; --i)

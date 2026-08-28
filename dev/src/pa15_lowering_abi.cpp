@@ -65,13 +65,13 @@ bool IsCompleteBoundaryObject(const semantic::Program& program, semantic::TypeId
 
 void ApplyLifecycleSymbolMetadata(const semantic::Program& program,
 	const semantic::DumpNode& node,
-	pa15_lowir_detail::TypedProgram* output,
-	pa15_lowir_detail::SymbolId symbol,
+	lowering::ir::TypedProgram* output,
+	lowering::ir::SymbolId symbol,
 	abi_mangle::AbiMangleContext* context,
 	abi_mangle::AbiMangleStats* stats)
 {
 	using namespace semantic;
-	using namespace pa15_lowir_detail;
+	using namespace lowering::ir;
 	const BindingRecord& binding = program.bindings[node.binding];
 	const TypeRecord& function = program.types.Get(node.type);
 	if (function.kind != TYPE_FUNCTION)
@@ -2178,12 +2178,12 @@ bool HasWeakLinkage(
 		  !record.explicit_function_specialization)));
 }
 
-void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
+void ApplyBuiltinSymbolMetadata(lowering::ir::Symbol* symbol,
 	semantic::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind)
 {
 	using namespace semantic;
-	using pa15_lowir_detail::Symbol;
+	using lowering::ir::Symbol;
 	if (kind == BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC)
 	{
 		switch (hosted_builtin::GetMemoryIntrinsic(memory_kind).effect)
@@ -2232,10 +2232,10 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 }
 
 void ApplyNativeRuntimeSymbolMetadata(
-	const pa15_lowir_detail::TypedProgram& program,
-	pa15_lowir_detail::Symbol* symbol)
+	const lowering::ir::TypedProgram& program,
+	lowering::ir::Symbol* symbol)
 {
-	using pa15_lowir_detail::Symbol;
+	using lowering::ir::Symbol;
 	if (!symbol->c_linkage || !symbol->object_name.valid()) return;
 	const std::string& object_name = program.strings.get(symbol->object_name);
 	if (object_name == "malloc")
@@ -2244,12 +2244,12 @@ void ApplyNativeRuntimeSymbolMetadata(
 		symbol->runtime_role = Symbol::RUNTIME_ROLE_FREE_MEMORY;
 }
 
-void ApplyBuiltinParameterAliasMetadata(pa15_lowir_detail::Parameter* parameter,
+void ApplyBuiltinParameterAliasMetadata(lowering::ir::Parameter* parameter,
 	semantic::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind, std::size_t index)
 {
 	using namespace semantic;
-	using pa15_lowir_detail::Parameter;
+	using lowering::ir::Parameter;
 	if (kind == BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC)
 	{
 		if (memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCPY && index < 2)

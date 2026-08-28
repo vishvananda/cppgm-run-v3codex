@@ -13,9 +13,9 @@ class SourceTypeLowering
 public:
 	explicit SourceTypeLowering(const semantic::Program& program);
 
-	pa15_lowir_detail::LowType Lower(semantic::TypeId type) const;
-	pa15_lowir_detail::LowType LowerExpression(semantic::TypeId type) const;
-	pa15_lowir_detail::LowType LowerStorage(semantic::TypeId type) const;
+	lowering::ir::LowType Lower(semantic::TypeId type) const;
+	lowering::ir::LowType LowerExpression(semantic::TypeId type) const;
+	lowering::ir::LowType LowerStorage(semantic::TypeId type) const;
 	bool IsReference(semantic::TypeId type) const;
 	bool IsArray(semantic::TypeId type) const;
 	bool IsFunction(semantic::TypeId type) const;

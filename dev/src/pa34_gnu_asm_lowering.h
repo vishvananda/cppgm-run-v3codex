@@ -19,7 +19,7 @@ protected:
 		const pa15_lowering_support::NodeChildren& children)
 	{
 		using namespace semantic;
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (record.kind != DUMP_GNU_ASM_STATEMENT) return false;
 		if (record.array_count != children.size() || record.storage_size != 0)

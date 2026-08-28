@@ -126,7 +126,7 @@ struct LowIRLoweringStats
 
 // Construct the production typed LowIR result.  Textual LowIR is only a view
 // produced by WriteLowIRProgram and is not required by in-process consumers.
-pa15_lowir_detail::TypedProgram BuildTypedLowIRProgram(
+lowering::ir::TypedProgram BuildTypedLowIRProgram(
 	const std::vector<LowIRSource>& sources,
 	const PreprocessingOptions& options,
 	LowIRLoweringStats* stats = 0,

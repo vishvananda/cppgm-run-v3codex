@@ -17,8 +17,8 @@ namespace pa18_lowering_detail
 
 struct VtableThunkLoweringFact
 {
-	pa15_lowir_detail::SymbolId symbol;
-	pa15_lowir_detail::SymbolId target;
+	lowering::ir::SymbolId symbol;
+	lowering::ir::SymbolId target;
 	semantic::BindingId function;
 	std::int64_t this_adjustment;
 	std::int64_t return_adjustment;
@@ -26,8 +26,8 @@ struct VtableThunkLoweringFact
 	std::int64_t return_runtime_vtable_offset;
 	bool return_adjustment_virtual;
 
-	VtableThunkLoweringFact(pa15_lowir_detail::SymbolId symbol_value,
-		pa15_lowir_detail::SymbolId target_value, semantic::BindingId function_value,
+	VtableThunkLoweringFact(lowering::ir::SymbolId symbol_value,
+		lowering::ir::SymbolId target_value, semantic::BindingId function_value,
 		std::int64_t this_adjustment_value,
 		std::int64_t return_adjustment_value,
 		std::int64_t return_vtable_offset_value,
@@ -43,61 +43,61 @@ struct VtableThunkLoweringFact
 
 struct PolymorphismLoweringState
 {
-	std::vector<pa15_lowir_detail::SymbolId> class_vtable_symbols;
+	std::vector<lowering::ir::SymbolId> class_vtable_symbols;
 	std::vector<std::uint8_t> class_vtable_external;
-	std::vector<pa15_lowir_detail::SymbolId> class_vtt_symbols;
+	std::vector<lowering::ir::SymbolId> class_vtt_symbols;
 	std::vector<std::uint64_t> class_vtable_address_points;
-	std::vector<std::vector<pa15_lowir_detail::SymbolId> >
+	std::vector<std::vector<lowering::ir::SymbolId> >
 		class_view_vtable_symbols;
 	std::vector<std::vector<std::uint64_t> > class_view_address_points;
-	std::vector<std::vector<std::vector<pa15_lowir_detail::SymbolId> > >
+	std::vector<std::vector<std::vector<lowering::ir::SymbolId> > >
 		class_construction_vtable_symbols;
 	std::vector<std::vector<std::uint64_t> >
 		class_construction_vtt_offsets;
-	std::vector<std::vector<std::vector<pa15_lowir_detail::SymbolId> > >
+	std::vector<std::vector<std::vector<lowering::ir::SymbolId> > >
 		class_view_slot_symbols;
-	std::vector<std::vector<std::vector<pa15_lowir_detail::SymbolId> > >
+	std::vector<std::vector<std::vector<lowering::ir::SymbolId> > >
 		class_view_deleting_slot_symbols;
 	std::vector<std::vector<semantic::VirtualSlotFact> >
 		class_host_primary_slots;
 	std::vector<std::uint32_t> host_primary_slot_by_binding;
 	std::vector<VtableThunkLoweringFact> vtable_thunks;
-	std::vector<pa15_lowir_detail::SymbolId> class_rtti_symbols;
-	std::vector<pa15_lowir_detail::SymbolId> class_type_name_symbols;
+	std::vector<lowering::ir::SymbolId> class_rtti_symbols;
+	std::vector<lowering::ir::SymbolId> class_type_name_symbols;
 	std::vector<std::uint8_t> class_rtti_demanded;
-	std::vector<pa15_lowir_detail::SymbolId> type_rtti_symbols;
-	std::vector<pa15_lowir_detail::SymbolId> type_name_symbols;
+	std::vector<lowering::ir::SymbolId> type_rtti_symbols;
+	std::vector<lowering::ir::SymbolId> type_name_symbols;
 	std::vector<std::uint8_t> type_rtti_demanded;
 	std::vector<std::uint8_t> exception_type_demanded;
 	std::vector<std::uint8_t> thrown_type_demanded;
-	std::vector<pa15_lowir_detail::SymbolId> exception_rtti_symbols;
-	std::vector<pa15_lowir_detail::SymbolId> exception_object_symbols;
-	std::vector<pa15_lowir_detail::SymbolId> deleting_destructor_symbols;
+	std::vector<lowering::ir::SymbolId> exception_rtti_symbols;
+	std::vector<lowering::ir::SymbolId> exception_object_symbols;
+	std::vector<lowering::ir::SymbolId> deleting_destructor_symbols;
 	std::vector<std::uint8_t> deleting_destructor_external;
 	std::vector<semantic::BindingId> deallocation_bindings;
 	std::vector<semantic::BindingId> complete_destructor_bindings;
 	std::vector<semantic::BindingId> base_destructor_bindings;
 	std::vector<std::uint8_t> deleting_destructor_calls_complete;
-	pa15_lowir_detail::SymbolId pure_virtual_symbol;
-	pa15_lowir_detail::SymbolId rtti_class_symbol;
-	pa15_lowir_detail::SymbolId rtti_si_symbol;
-	pa15_lowir_detail::SymbolId rtti_vmi_symbol;
-	pa15_lowir_detail::SymbolId rtti_fundamental_symbol;
-	pa15_lowir_detail::SymbolId rtti_pointer_symbol;
-	pa15_lowir_detail::SymbolId rtti_enum_symbol;
-	pa15_lowir_detail::SymbolId rtti_array_symbol;
-	pa15_lowir_detail::SymbolId rtti_function_symbol;
-	pa15_lowir_detail::SymbolId rtti_member_pointer_symbol;
-	pa15_lowir_detail::SymbolId dynamic_cast_symbol;
-	pa15_lowir_detail::SymbolId bad_cast_symbol;
-	pa15_lowir_detail::SymbolId bad_typeid_symbol;
-	pa15_lowir_detail::SymbolId eh_resume_symbol;
-	pa15_lowir_detail::SymbolId eh_allocate_exception_symbol;
-	pa15_lowir_detail::SymbolId eh_begin_catch_symbol;
-	pa15_lowir_detail::SymbolId eh_end_catch_symbol;
-	pa15_lowir_detail::SymbolId eh_rethrow_symbol;
-	pa15_lowir_detail::SymbolId eh_throw_symbol;
-	pa15_lowir_detail::SymbolId eh_personality_symbol;
+	lowering::ir::SymbolId pure_virtual_symbol;
+	lowering::ir::SymbolId rtti_class_symbol;
+	lowering::ir::SymbolId rtti_si_symbol;
+	lowering::ir::SymbolId rtti_vmi_symbol;
+	lowering::ir::SymbolId rtti_fundamental_symbol;
+	lowering::ir::SymbolId rtti_pointer_symbol;
+	lowering::ir::SymbolId rtti_enum_symbol;
+	lowering::ir::SymbolId rtti_array_symbol;
+	lowering::ir::SymbolId rtti_function_symbol;
+	lowering::ir::SymbolId rtti_member_pointer_symbol;
+	lowering::ir::SymbolId dynamic_cast_symbol;
+	lowering::ir::SymbolId bad_cast_symbol;
+	lowering::ir::SymbolId bad_typeid_symbol;
+	lowering::ir::SymbolId eh_resume_symbol;
+	lowering::ir::SymbolId eh_allocate_exception_symbol;
+	lowering::ir::SymbolId eh_begin_catch_symbol;
+	lowering::ir::SymbolId eh_end_catch_symbol;
+	lowering::ir::SymbolId eh_rethrow_symbol;
+	lowering::ir::SymbolId eh_throw_symbol;
+	lowering::ir::SymbolId eh_personality_symbol;
 	bool need_dynamic_cast;
 	bool need_bad_cast;
 	bool need_bad_typeid;
@@ -117,21 +117,21 @@ bool PreferLocalObjectBinding(const semantic::Program& program,
 
 void PreparePolymorphism(
 	const semantic::SemanticGraphView& graph,
-	pa15_lowir_detail::TypedProgram& output, LowIRLoweringStats* stats,
+	lowering::ir::TypedProgram& output, LowIRLoweringStats* stats,
 	std::size_t source_ordinal,
-	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
+	const std::vector<lowering::ir::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 
 void EmitDeletingDestructors(
 	const semantic::SemanticGraphView& graph,
-	pa15_lowir_detail::TypedProgram& output, LowIRLoweringStats* stats,
-	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
+	lowering::ir::TypedProgram& output, LowIRLoweringStats* stats,
+	const std::vector<lowering::ir::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 
 void EmitVtableThunks(
 	const semantic::SemanticGraphView& graph,
-	pa15_lowir_detail::TypedProgram& output, LowIRLoweringStats* stats,
-	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
+	lowering::ir::TypedProgram& output, LowIRLoweringStats* stats,
+	const std::vector<lowering::ir::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 
 std::uint32_t ResolveHostVirtualSlot(const semantic::Program& program,
@@ -143,11 +143,11 @@ template <class Derived>
 class PolymorphismActionLowering
 {
 protected:
-	pa15_lowir_detail::Operand LowerVirtualCallee(
+	lowering::ir::Operand LowerVirtualCallee(
 		const semantic::DumpNode& record,
-		const pa15_lowir_detail::Operand& object, std::uint32_t virtual_slot)
+		const lowering::ir::Operand& object, std::uint32_t virtual_slot)
 	{
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.stats_) ++derived.stats_->virtual_calls;
 		const Operand table = derived.LoadStorage(object, LowPtr());
@@ -163,7 +163,7 @@ protected:
 		const semantic::DumpNode& action)
 	{
 		using namespace semantic;
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.stats_) ++derived.stats_->vptr_stores;
 		const EntityId entity = derived.ClassEntity(action.type);
@@ -283,25 +283,25 @@ protected:
 		}
 	}
 
-	pa15_lowir_detail::Operand ProjectBaseSubobject(
-		const pa15_lowir_detail::Operand& object, semantic::EntityId entity)
+	lowering::ir::Operand ProjectBaseSubobject(
+		const lowering::ir::Operand& object, semantic::EntityId entity)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		return ProjectBaseSubobjectOffset(object, entity == semantic::kNoEntity ? 0 :
 			derived.program_.entities[entity].direct_base_offset);
 	}
 
-	pa15_lowir_detail::Operand ProjectBaseSubobjectOffset(
-		const pa15_lowir_detail::Operand& object, std::uint64_t offset)
+	lowering::ir::Operand ProjectBaseSubobjectOffset(
+		const lowering::ir::Operand& object, std::uint64_t offset)
 	{
 		return ProjectBaseSubobjectAdjustment(object,
 			static_cast<std::int64_t>(offset));
 	}
 
-	pa15_lowir_detail::Operand ProjectBaseSubobjectAdjustment(
-		const pa15_lowir_detail::Operand& object, std::int64_t offset)
+	lowering::ir::Operand ProjectBaseSubobjectAdjustment(
+		const lowering::ir::Operand& object, std::int64_t offset)
 	{
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		const Operand projected = derived.Temp(LowPtr());
 		Instruction index(Instruction::INDEX);

@@ -15,7 +15,7 @@ namespace pa15_function_reachability
 namespace
 {
 
-using namespace pa15_lowir_detail;
+using namespace lowering::ir;
 
 const std::size_t kNoFunction = std::numeric_limits<std::size_t>::max();
 

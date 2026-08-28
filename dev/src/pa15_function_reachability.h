@@ -42,11 +42,11 @@ struct Summary
 		retained_conservative_fallback(0) {}
 };
 
-Summary Analyze(pa15_lowir_detail::TypedProgram* program);
+Summary Analyze(lowering::ir::TypedProgram* program);
 Summary AuditWithoutInternalRoots(
-	const pa15_lowir_detail::TypedProgram& program);
+	const lowering::ir::TypedProgram& program);
 Summary PruneUnreachableWeakFunctions(
-	pa15_lowir_detail::TypedProgram* program);
+	lowering::ir::TypedProgram* program);
 
 }
 }

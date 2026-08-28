@@ -15,7 +15,7 @@ namespace cppgm
 namespace
 {
 
-using namespace pa15_lowir_detail;
+using namespace lowering::ir;
 
 struct AdapterTelemetry
 {

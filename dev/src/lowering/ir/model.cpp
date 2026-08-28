@@ -2,7 +2,9 @@
 
 namespace cppgm
 {
-namespace pa15_lowir_detail
+namespace lowering
+{
+namespace ir
 {
 
 const char* LowOperationText(LowOperation operation)
@@ -680,5 +682,6 @@ std::size_t TypedStorageBytes(const TypedProgram& program)
 	return bytes;
 }
 
+}
 }
 }

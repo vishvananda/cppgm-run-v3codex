@@ -803,7 +803,7 @@ void clear_nonsemantic_source_stats(lowir_model::LowirProgram * program)
 }
 
 lowir_model::LowirProgram adapt_typed_lowir_for_object(
-	cppgm::pa15_lowir_detail::TypedProgram && typed,
+	cppgm::lowering::ir::TypedProgram && typed,
 	const cppgm::LowIRLoweringStats & lowering_stats,
 	bool collect_stats, lowir_model::PresentationPolicy presentation_policy,
 	lowir_model::LowirPreparationStats * preparation_stats,
@@ -870,7 +870,7 @@ lowir_model::LowirProgram build_source_lowir(
 		make_driver_preprocessing_options(invocation);
 	chrono::steady_clock::time_point started;
 	if(collect_stats) started = chrono::steady_clock::now();
-	cppgm::pa15_lowir_detail::TypedProgram typed =
+	cppgm::lowering::ir::TypedProgram typed =
 		cppgm::BuildTypedLowIRProgram(sources, options,
 			collect_stats ? stats : 0, true, true,
 			prune_unreachable_weak_functions,
@@ -2168,7 +2168,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 					invocation.macro_actions[i].argument));
 		lowir_model::LowirProgram program;
 		{
-			cppgm::pa15_lowir_detail::TypedProgram typed =
+			cppgm::lowering::ir::TypedProgram typed =
 				cppgm::BuildTypedLowIRProgram(sources, options,
 					invocation.collect_stats ? &stats : 0, true, true, false);
 			program = cppgm::AdaptTypedLowIRForNative(std::move(typed));

@@ -63,9 +63,9 @@ bool Key::operator==(const Key& other) const
 		mode == other.mode;
 }
 
-State::State() : block(pa15_lowir_detail::BlockId(0)), block_bound(false) {}
+State::State() : block(lowering::ir::BlockId(0)), block_bound(false) {}
 State::State(const Key& key_value)
-	: key(key_value), block(pa15_lowir_detail::BlockId(0)),
+	: key(key_value), block(lowering::ir::BlockId(0)),
 	  block_bound(false) {}
 
 Interner::Slot::Slot() : fingerprint(0), state(0), occupied(false) {}
@@ -190,7 +190,7 @@ const State& Interner::Get(std::uint32_t state) const
 }
 
 void Interner::BindBlock(std::uint32_t state,
-	pa15_lowir_detail::BlockId block)
+	lowering::ir::BlockId block)
 {
 	if (state >= states_.size())
 		throw std::logic_error("invalid cleanup continuation identity");
@@ -210,7 +210,7 @@ void Interner::BindBlock(std::uint32_t state,
 }
 
 std::uint32_t Interner::StateForBlock(
-	pa15_lowir_detail::BlockId block) const
+	lowering::ir::BlockId block) const
 {
 	const std::uint32_t block_index = block;
 	return block_index < block_states_.size() ? block_states_[block_index] :

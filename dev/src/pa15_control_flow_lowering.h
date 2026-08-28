@@ -12,7 +12,7 @@ namespace cppgm
 namespace pa15_lowering_detail
 {
 
-using namespace pa15_lowir_detail;
+using namespace lowering::ir;
 
 template <class Derived>
 class ControlFlowLowering

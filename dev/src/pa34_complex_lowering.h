@@ -17,13 +17,13 @@ template <typename Derived>
 class ComplexLowering
 {
 protected:
-	pa15_lowir_detail::Operand LowerComplexConstruction(
+	lowering::ir::Operand LowerComplexConstruction(
 		std::uint32_t node,
 		const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children)
 	{
 		using namespace semantic;
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 2)
 			throw std::logic_error("invalid complex construction graph");
@@ -49,11 +49,11 @@ protected:
 		return slot;
 	}
 
-	pa15_lowir_detail::Operand LowerComplexComponentStorage(
+	lowering::ir::Operand LowerComplexComponentStorage(
 		const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children)
 	{
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 1)
 			throw std::logic_error("invalid complex component graph");
@@ -74,7 +74,7 @@ protected:
 	bool TryLowerComplexStorage(std::uint32_t node,
 		const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children,
-		pa15_lowir_detail::Operand* result)
+		lowering::ir::Operand* result)
 	{
 		if (record.kind == semantic::DUMP_COMPLEX_CONSTRUCTION)
 			*result = LowerComplexConstruction(node, record, children);
@@ -87,9 +87,9 @@ protected:
 	bool TryLowerComplexValue(std::uint32_t node,
 		const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children,
-		pa15_lowir_detail::Operand* result)
+		lowering::ir::Operand* result)
 	{
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (record.kind == semantic::DUMP_COMPLEX_CONSTRUCTION)
 			*result = LowerComplexConstruction(node, record, children);
@@ -102,9 +102,9 @@ protected:
 	}
 
 	bool LowerIndirectComplexResult(std::uint32_t node,
-		const pa15_lowir_detail::Operand& destination)
+		const lowering::ir::Operand& destination)
 	{
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		const semantic::DumpNode& record = derived.arena_.nodes[node];
 		if (!derived.IsComplexObjectType(record.type)) return false;
@@ -123,9 +123,9 @@ protected:
 	bool TryLowerComplexVariableInitialization(
 		const semantic::DumpNode& record,
 		const pa15_lowering_support::NodeChildren& children,
-		const pa15_lowir_detail::Operand& retained_destination)
+		const lowering::ir::Operand& retained_destination)
 	{
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (!derived.IsComplexObjectType(record.type)) return false;
 		if (children.empty()) return true;

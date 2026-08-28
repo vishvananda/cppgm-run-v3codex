@@ -29,7 +29,6 @@ namespace	^pa15_local_presentation$	cppgm::lowering::presentation
 namespace	^pa15_lowering_abi$	cppgm::lowering::abi
 namespace	^pa15_lowering_detail$	cppgm::lowering
 namespace	^pa15_lowering_support$	cppgm::lowering::support
-namespace	^pa15_lowir_detail$	cppgm::lowering::ir
 namespace	^pa16_cleanup_continuation$	cppgm::lowering::cleanup
 namespace	^pa16_lowering_detail$	cppgm::lowering
 namespace	^pa16_zero_initialization$	cppgm::lowering::zero_initialization

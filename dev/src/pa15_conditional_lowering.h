@@ -17,7 +17,7 @@ class ConditionalLowering
 {
 protected:
 	void FinishConditionalBranch(std::uint32_t node, std::uint32_t child,
-		pa15_lowir_detail::BlockId end_block)
+		lowering::ir::BlockId end_block)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.CurrentBlock().terminated) return;
@@ -27,11 +27,11 @@ protected:
 		derived.EmitJump(end_block);
 	}
 
-	pa15_lowir_detail::Operand LowerDiscardedConditional(
+	lowering::ir::Operand LowerDiscardedConditional(
 		std::uint32_t node,
 		const pa15_lowering_support::NodeChildren& children)
 	{
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		const BlockId then_block =
 			derived.AddBlock(derived.NewLabel("discard_cond_then"));
@@ -54,11 +54,11 @@ protected:
 	}
 
 	void LowerConditionalAddressBranch(std::uint32_t node,
-		std::uint32_t child, const pa15_lowir_detail::Operand& slot,
-		pa15_lowir_detail::BlockId end_block)
+		std::uint32_t child, const lowering::ir::Operand& slot,
+		lowering::ir::BlockId end_block)
 	{
 		using namespace semantic;
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.arena_.nodes[child].kind == DUMP_THROW_EXPRESSION)
 			(void)derived.LowerValue(child);
@@ -73,11 +73,11 @@ protected:
 		FinishConditionalBranch(node, child, end_block);
 	}
 
-	pa15_lowir_detail::Operand LowerConditionalAddress(
+	lowering::ir::Operand LowerConditionalAddress(
 		std::uint32_t node,
 		const pa15_lowering_support::NodeChildren& children)
 	{
-		using namespace pa15_lowir_detail;
+		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 3)
 			throw std::runtime_error("invalid semantic address conditional");

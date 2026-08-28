@@ -9,9 +9,12 @@
 
 namespace cppgm
 {
-namespace pa15_lowir_detail
+namespace lowering
+{
+namespace ir
 {
 struct TypedProgram;
+}
 }
 namespace pa15_lowering_abi
 {
@@ -41,19 +44,19 @@ std::string MangleThreadLocalWrapper(const semantic::Program& program,
 	semantic::BindingId binding, semantic::NameId fallback_name,
 	abi_mangle::AbiMangleStats* stats = 0,
 	abi_mangle::AbiMangleContext* context = 0);
-void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
+void ApplyBuiltinSymbolMetadata(lowering::ir::Symbol* symbol,
 	semantic::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind);
 void ApplyNativeRuntimeSymbolMetadata(
-	const pa15_lowir_detail::TypedProgram& program,
-	pa15_lowir_detail::Symbol* symbol);
-void ApplyBuiltinParameterAliasMetadata(pa15_lowir_detail::Parameter* parameter,
+	const lowering::ir::TypedProgram& program,
+	lowering::ir::Symbol* symbol);
+void ApplyBuiltinParameterAliasMetadata(lowering::ir::Parameter* parameter,
 	semantic::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind, std::size_t index);
 void ApplyLifecycleSymbolMetadata(const semantic::Program& program,
 	const semantic::DumpNode& node,
-	pa15_lowir_detail::TypedProgram* output,
-	pa15_lowir_detail::SymbolId symbol,
+	lowering::ir::TypedProgram* output,
+	lowering::ir::SymbolId symbol,
 	abi_mangle::AbiMangleContext* context = 0,
 	abi_mangle::AbiMangleStats* stats = 0);
 

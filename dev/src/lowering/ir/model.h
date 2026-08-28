@@ -4,7 +4,9 @@
 
 namespace cppgm
 {
-namespace pa15_lowir_detail
+namespace lowering
+{
+namespace ir
 {
 
 using namespace semantic;
@@ -286,5 +288,6 @@ inline lowir_model::StringId InternLocalName(
 
 std::size_t TypedStorageBytes(const TypedProgram& program);
 
+}
 }
 }

@@ -11,7 +11,7 @@ namespace pa15_lowering_detail
 
 void LowerSemanticGraph(
 	const semantic::SemanticGraphView& graph,
-	pa15_lowir_detail::TypedProgram& program, LowIRLoweringStats* stats,
+	lowering::ir::TypedProgram& program, LowIRLoweringStats* stats,
 	std::size_t source_ordinal);
 
 }

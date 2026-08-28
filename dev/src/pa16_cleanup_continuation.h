@@ -69,7 +69,7 @@ struct Key
 struct State
 {
 	Key key;
-	pa15_lowir_detail::BlockId block;
+	lowering::ir::BlockId block;
 	bool block_bound;
 
 	State();
@@ -86,8 +86,8 @@ public:
 	const Action& GetAction(std::uint32_t action) const;
 	std::uint32_t Intern(const Key& key, bool* inserted);
 	const State& Get(std::uint32_t state) const;
-	void BindBlock(std::uint32_t state, pa15_lowir_detail::BlockId block);
-	std::uint32_t StateForBlock(pa15_lowir_detail::BlockId block) const;
+	void BindBlock(std::uint32_t state, lowering::ir::BlockId block);
+	std::uint32_t StateForBlock(lowering::ir::BlockId block) const;
 
 private:
 	struct Slot

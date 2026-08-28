@@ -121,15 +121,15 @@ protected:
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (derived.IsReferenceType(type))
-			return pa15_lowir_detail::Instruction::CALL_PASS_REFERENCE;
+			return lowering::ir::Instruction::CALL_PASS_REFERENCE;
 		return UsesIndirectClassParameter(type) ?
-			pa15_lowir_detail::Instruction::CALL_PASS_BY_ADDRESS :
-			pa15_lowir_detail::Instruction::CALL_PASS_VALUE;
+			lowering::ir::Instruction::CALL_PASS_BY_ADDRESS :
+			lowering::ir::Instruction::CALL_PASS_VALUE;
 	}
 
 	void FillBoundary(std::uint32_t node,
-		std::vector<pa15_lowir_detail::Parameter>* parameters,
-		pa15_lowir_detail::LowType* result, bool* variadic,
+		std::vector<lowering::ir::Parameter>* parameters,
+		lowering::ir::LowType* result, bool* variadic,
 		bool declaration = false) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
@@ -139,15 +139,15 @@ protected:
 			derived.program_.types.Get(record.type);
 		const bool indirect_result =
 			UsesIndirectClassResult(function_type.child, record.binding);
-		*result = indirect_result ? pa15_lowir_detail::LowVoid() :
+		*result = indirect_result ? lowering::ir::LowVoid() :
 			derived.LowerBoundaryResult(function_type.child);
 		*variadic = function_type.variadic;
 		if (indirect_result)
 		{
-			pa15_lowir_detail::Parameter parameter;
-			parameter.name = pa15_lowir_detail::InternLocalName(
+			lowering::ir::Parameter parameter;
+			parameter.name = lowering::ir::InternLocalName(
 				derived.output_, "ret");
-			parameter.type = pa15_lowir_detail::LowPtr();
+			parameter.type = lowering::ir::LowPtr();
 			parameter.indirect_result = true;
 			parameters->push_back(parameter);
 		}
@@ -186,7 +186,7 @@ protected:
 			const semantic::DumpNode& child =
 				derived.arena_.nodes[children[i]];
 			if (child.kind != semantic::DUMP_PARAMETER) continue;
-			pa15_lowir_detail::Parameter parameter;
+			lowering::ir::Parameter parameter;
 			if (derived.output_.retain_local_names)
 			{
 				std::string name = child.text == 0 ? std::string() :
@@ -194,13 +194,13 @@ protected:
 				if (name.empty()) name = (declaration || record.kind ==
 					semantic::DUMP_FUNCTION_DECLARATION ?
 					"arg" : "__param") + std::to_string(parameter_index);
-				parameter.name = pa15_lowir_detail::InternLocalName(
+				parameter.name = lowering::ir::InternLocalName(
 					derived.output_, name);
 			}
 			const bool by_address =
 				parameter_index < function_type.parameter_count &&
 				UsesIndirectClassParameter(source_parameters[parameter_index]);
-			parameter.type = by_address ? pa15_lowir_detail::LowPtr() :
+			parameter.type = by_address ? lowering::ir::LowPtr() :
 				derived.LowerType(child.type);
 			parameter.reference = parameter_index < function_type.parameter_count &&
 				derived.IsReferenceType(source_parameters[parameter_index]);
@@ -208,25 +208,25 @@ protected:
 			pa15_lowering_abi::ApplyBuiltinParameterAliasMetadata(
 				&parameter, builtin, memory_builtin, parameter_index);
 			if (copy_or_move_constructor && parameter_index < 2)
-				parameter.alias = pa15_lowir_detail::Parameter::ALIAS_NOALIAS;
+				parameter.alias = lowering::ir::Parameter::ALIAS_NOALIAS;
 			parameters->push_back(parameter);
 			++parameter_index;
 		}
 		while (parameter_index < function_type.parameter_count)
 		{
-			pa15_lowir_detail::Parameter parameter;
+			lowering::ir::Parameter parameter;
 			if (derived.output_.retain_local_names)
 			{
 				const std::string name =
 					(declaration || record.kind ==
 						semantic::DUMP_FUNCTION_DECLARATION ?
 						"arg" : "__param") + std::to_string(parameter_index);
-				parameter.name = pa15_lowir_detail::InternLocalName(
+				parameter.name = lowering::ir::InternLocalName(
 					derived.output_, name);
 			}
 			const bool by_address =
 				UsesIndirectClassParameter(source_parameters[parameter_index]);
-			parameter.type = by_address ? pa15_lowir_detail::LowPtr() :
+			parameter.type = by_address ? lowering::ir::LowPtr() :
 				derived.LowerType(source_parameters[parameter_index]);
 			parameter.reference =
 				derived.IsReferenceType(source_parameters[parameter_index]);
@@ -234,7 +234,7 @@ protected:
 			pa15_lowering_abi::ApplyBuiltinParameterAliasMetadata(
 				&parameter, builtin, memory_builtin, parameter_index);
 			if (copy_or_move_constructor && parameter_index < 2)
-				parameter.alias = pa15_lowir_detail::Parameter::ALIAS_NOALIAS;
+				parameter.alias = lowering::ir::Parameter::ALIAS_NOALIAS;
 			parameters->push_back(parameter);
 			++parameter_index;
 		}
@@ -246,12 +246,12 @@ protected:
 		std::size_t parameter_index)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const pa15_lowir_detail::Parameter& parameter =
+		const lowering::ir::Parameter& parameter =
 			derived.function_->parameters[parameter_index];
 		if (parameter.by_address)
 		{
 			derived.binding_indirect_parameters_[source.binding] =
-				pa15_lowir_detail::ParameterId(parameter_index);
+				lowering::ir::ParameterId(parameter_index);
 			derived.function_slot_bindings_.push_back(source.binding);
 			return;
 		}
@@ -260,21 +260,21 @@ protected:
 			const semantic::TypeRecord& object = derived.program_.types.Get(
 				derived.ExpressionObjectType(source.type));
 			if (derived.program_.entities[object.entity].empty_class) return;
-			const pa15_lowir_detail::Operand value(
-				pa15_lowir_detail::ParameterId(parameter_index), parameter.type);
-			const pa15_lowir_detail::Operand destination =
-				derived.AddressOfStorage(pa15_lowir_detail::Operand(
+			const lowering::ir::Operand value(
+				lowering::ir::ParameterId(parameter_index), parameter.type);
+			const lowering::ir::Operand destination =
+				derived.AddressOfStorage(lowering::ir::Operand(
 					derived.binding_slots_[source.binding],
 					derived.LowerStorageType(source.type)));
 			derived.EmitClassObjectCopy(source.type, value, destination);
 			return;
 		}
-		pa15_lowir_detail::Instruction store(
-			pa15_lowir_detail::Instruction::STORE);
+		lowering::ir::Instruction store(
+			lowering::ir::Instruction::STORE);
 		store.type = parameter.type;
-		store.first = pa15_lowir_detail::Operand(
-			pa15_lowir_detail::ParameterId(parameter_index), store.type);
-		store.second = pa15_lowir_detail::Operand(
+		store.first = lowering::ir::Operand(
+			lowering::ir::ParameterId(parameter_index), store.type);
+		store.second = lowering::ir::Operand(
 			derived.binding_slots_[source.binding], store.type);
 		derived.Emit(store);
 	}
