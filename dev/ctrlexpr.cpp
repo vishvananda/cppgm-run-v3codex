@@ -13,7 +13,7 @@ using namespace std;
 
 // mock implementation of IsDefinedIdentifier for PA3
 // return true iff first code point is odd
-bool PA3Mock_IsDefinedIdentifier(const string& identifier)
+bool MockIsDefinedIdentifier(const string& identifier)
 {
 	if (identifier.empty())
 		return false;
@@ -34,7 +34,7 @@ int main(int argc, char** argv)
 		const bool report_stats = argc == 2;
 		cppgm::ControlExpressionStats stats;
 		cppgm::EvaluateControllingExpressions(source, cout,
-			PA3Mock_IsDefinedIdentifier, report_stats ? &stats : 0);
+			MockIsDefinedIdentifier, report_stats ? &stats : 0);
 		if (report_stats)
 		{
 			cerr << "ctrlexpr_stats"

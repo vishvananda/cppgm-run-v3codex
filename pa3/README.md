@@ -34,7 +34,7 @@ As we do not have any macros defined in PA3, in order to test the `defined` oper
 
 If the first UTF-8 code unit of the identifier is odd than return true, else return false.
 
-There is an implementation of this mock function called `PA3Mock_IsDefinedIdentifier` in the starter code.
+The starter code includes an optional helper implementing this mock behavior.
 
 ### Input Format
 

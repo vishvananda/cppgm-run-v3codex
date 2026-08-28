@@ -1,4 +1,1 @@
 kind	pattern	destination
-identifier	^CPPGM_PA[0-9][A-Za-z0-9_]*$	guard derived from destination path
-identifier	^PA3Mock_IsDefinedIdentifier$	MockIsDefinedIdentifier
-identifier	^append_pa12_template_stats$	append_template_analysis_stats

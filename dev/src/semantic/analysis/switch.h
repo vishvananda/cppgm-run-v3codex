@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA15_SWITCH_SEMANTIC_H
-#define CPPGM_PA15_SWITCH_SEMANTIC_H
+#ifndef CPPGM_SEMANTIC_ANALYSIS_SWITCH_H
+#define CPPGM_SEMANTIC_ANALYSIS_SWITCH_H
 
 #include "semantic/model/program.h"
 

@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA10_SYNTAX_TAGS_H
-#define CPPGM_PA10_SYNTAX_TAGS_H
+#ifndef CPPGM_SYNTAX_MODEL_TAGS_H
+#define CPPGM_SYNTAX_MODEL_TAGS_H
 
 #include "syntax/model/tag_catalog.h"
 

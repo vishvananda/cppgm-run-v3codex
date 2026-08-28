@@ -1,5 +1,5 @@
-#ifndef CPPGM_PA10_PARSER_NAME_FACTS_H
-#define CPPGM_PA10_PARSER_NAME_FACTS_H
+#ifndef CPPGM_SYNTAX_PARSER_NAME_FACTS_H
+#define CPPGM_SYNTAX_PARSER_NAME_FACTS_H
 
 #include "syntax/model/arena.h"
 #include "syntax/parser/token_classification.h"

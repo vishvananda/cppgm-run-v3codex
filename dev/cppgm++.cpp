@@ -1872,7 +1872,7 @@ int run_emit_types_mode(const vector<string> & args)
   return EXIT_SUCCESS;
 }
 
-void append_pa12_template_stats(
+void append_template_analysis_stats(
 	ostream & output, const cppgm::semantic::Stats & stats)
 {
 	output << " function_template_default_materializations="
@@ -2071,7 +2071,7 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.template_specialization_requests
            << " template_specialization_cache_hits="
            << stats.template_specialization_cache_hits;
-		append_pa12_template_stats(cerr, stats);
+		append_template_analysis_stats(cerr, stats);
 		cerr << " constexpr_call_requests=" << stats.constexpr_call_requests
 	           << " constexpr_call_cache_hits=" << stats.constexpr_call_cache_hits
 	           << " constant_conversion_fact_requests="
