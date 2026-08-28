@@ -1079,3 +1079,38 @@ not reuse measurements from a different source tree.
   414/414, report-through-PA23 passes 3,137/3,137, and the PA38 file audit
   remains zero-fatal/33.  This README-and-fixture increment is committed before
   the production slot-rebuild extraction.
+- **C10-1 (CACHED-HASH SLOT REBUILD).** One `.cpp`-local typed algorithm now
+  rebuilds the zero-sentinel, entry-index-plus-one slot vectors for template-
+  argument partitions and function-template result identities.  It allocates
+  the same one replacement vector, walks cached hashes in insertion order,
+  uses the same mask and linear probe, swaps at the same point, and touches no
+  request, hit, probe, atom-visit, identity, or storage-accounting state.  Both
+  growth reducers retain their exact output hashes and all recorded counters
+  and peak storage.  PA20 passes 175/175, PA23 414/414, root 32-way report-
+  through-PA38 passes 5,469/5,469, and the audit remains zero-fatal/33.  The
+  helper makes one implementation explicit at a net four source lines.
+  Self-built O1 compiler text is unchanged at 7,898,066 bytes; GCC-O3 text
+  grows 128 bytes and Clang-O3 text grows 64 bytes.
+- **C10-1 PERFORMANCE.** Four rotating current-source lanes have median wall
+  times of 32.15 seconds self and 21.675 seconds Clang-built; three GCC-built
+  lanes have a 22.46-second median.  The corrected ratios are therefore 1.432x
+  self/GCC and 1.483x self/Clang.  Median self aggregate CPU is 905.77 seconds,
+  +0.47% from C9 and below the repeated-regression threshold; every lane has
+  final compiler SHA-256 `ca24f63a...`, shared-object census SHA-256
+  `6a271141...`, and the same text.  A direct pre-change/current self ABBA on
+  identical current source had alternating load outliers; its clean lanes have
+  31.74/31.64-second baseline/candidate wall medians and 906.13/906.35-second
+  aggregate-CPU medians, or -0.32% wall and +0.02% CPU.  The GCC-O3 frozen
+  block is exact at `b0d3d8d3...`, with baseline/candidate medians 4.55/4.56
+  seconds and a -0.27% paired wall delta.  A final clean Clang-O3 block is
+  exact at `1fe5f0e4...`, with 4.850/4.805-second medians and a -0.93% paired
+  wall delta.  Earlier Clang samples contained late 6-second outliers that
+  moved from candidate to candidate when labels were reversed; they receive no
+  retention credit.
+- **C10-1 REJECTED HELPER SHAPES.** Returning the replacement vector recovered
+  GCC text but outlined two typed copies in the self compiler and grew final
+  self O1 text by 320 bytes.  Forcing that version inline made GCC and Clang
+  exact but grew self text by 1,488 bytes.  A raw-entry-pointer variant still
+  grew the self table object by 156 bytes.  All three experiments were removed;
+  the retained vector-reference/destination-pointer form keeps final self text
+  exact and has the best cross-compiler balance.

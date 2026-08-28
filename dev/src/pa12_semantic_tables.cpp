@@ -8,6 +8,26 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+namespace
+{
+
+template<typename Entry>
+void RebuildCachedHashSlots(const std::vector<Entry>& entries,
+	std::size_t capacity, std::vector<std::uint32_t>* slots)
+{
+	std::vector<std::uint32_t> replacement(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < entries.size(); ++i)
+	{
+		std::size_t slot = entries[i].hash & mask;
+		while (replacement[slot] != 0) slot = (slot + 1) & mask;
+		replacement[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+	slots->swap(replacement);
+}
+
+}
+
 UsingFunctionIdentityTable::UsingFunctionIdentityTable()
 	: slots_(32, 0)
 {
@@ -521,15 +541,7 @@ TemplateArgumentPartitionTable::TemplateArgumentPartitionTable()
 
 void TemplateArgumentPartitionTable::Rehash(std::size_t capacity)
 {
-	std::vector<std::uint32_t> replacement(capacity, 0);
-	const std::size_t mask = capacity - 1;
-	for (std::size_t i = 0; i < entries_.size(); ++i)
-	{
-		std::size_t slot = entries_[i].hash & mask;
-		while (replacement[slot] != 0) slot = (slot + 1) & mask;
-		replacement[slot] = static_cast<std::uint32_t>(i + 1);
-	}
-	slots_.swap(replacement);
+	RebuildCachedHashSlots(entries_, capacity, &slots_);
 }
 
 TemplateArgumentPartitionId TemplateArgumentPartitionTable::Intern(
@@ -605,15 +617,7 @@ FunctionTemplateResultIdentityTable::
 
 void FunctionTemplateResultIdentityTable::Rehash(std::size_t capacity)
 {
-	std::vector<std::uint32_t> replacement(capacity, 0);
-	const std::size_t mask = capacity - 1;
-	for (std::size_t i = 0; i < entries_.size(); ++i)
-	{
-		std::size_t slot = entries_[i].hash & mask;
-		while (replacement[slot] != 0) slot = (slot + 1) & mask;
-		replacement[slot] = static_cast<std::uint32_t>(i + 1);
-	}
-	slots_.swap(replacement);
+	RebuildCachedHashSlots(entries_, capacity, &slots_);
 }
 
 FunctionTemplateResultIdentityId FunctionTemplateResultIdentityTable::Intern(
