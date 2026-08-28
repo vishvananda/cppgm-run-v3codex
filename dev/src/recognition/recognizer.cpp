@@ -513,7 +513,7 @@ std::vector<RawRule> ReadRawGrammar()
 	std::vector<RawRule> rules;
 	std::string line;
 	std::string continued;
-	const std::string grammar(kPA6Grammar);
+	const std::string grammar(kCppGrammarDefinition);
 	std::size_t start = 0;
 	while (start <= grammar.size())
 	{
@@ -818,7 +818,7 @@ std::uint32_t GrammarExpressionReader::Parse()
 	return root;
 }
 
-const Grammar& PA6Grammar()
+const Grammar& CppGrammar()
 {
 	static const Grammar grammar;
 	return grammar;
@@ -829,7 +829,7 @@ class Parser
 public:
 	Parser(const std::vector<RecognitionToken>& tokens,
 		const IdentifierTable& identifiers, RecognitionStats* stats)
-		: grammar_(PA6Grammar()), tokens_(tokens), identifiers_(identifiers),
+		: grammar_(CppGrammar()), tokens_(tokens), identifiers_(identifiers),
 		  stats_(stats), stride_(tokens.size() + 1),
 		  memo_(grammar_.RuleCount() * stride_, kMemoUnvisited)
 	{

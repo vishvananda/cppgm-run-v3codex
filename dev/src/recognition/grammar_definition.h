@@ -5,7 +5,7 @@
 namespace cppgm
 {
 
-static const char kPA6Grammar[] = R"CPPGM_PA6(
+static const char kCppGrammarDefinition[] = R"CPPGM_GRAMMAR(
 translation-unit:
 	declaration* ST_EOF
 
@@ -873,6 +873,6 @@ type-id-dots:
 
 noexcept-specification:
 	KW_NOEXCEPT (OP_LPAREN constant-expression OP_RPAREN)?
-)CPPGM_PA6";
+)CPPGM_GRAMMAR";
 
 }

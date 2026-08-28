@@ -78,6 +78,4 @@ namespace	^pa34_source_identity$	cppgm::semantic::presentation
 namespace	^pa34_syntax_detail$	cppgm::syntax
 identifier	^CPPGM_PA[0-9][A-Za-z0-9_]*$	guard derived from destination path
 identifier	^PA3Mock_IsDefinedIdentifier$	MockIsDefinedIdentifier
-identifier	^kPA6Grammar$	recognition::kCppGrammarDefinition
-identifier	^PA6Grammar$	recognition::CppGrammar
 identifier	^append_pa12_template_stats$	append_template_analysis_stats
