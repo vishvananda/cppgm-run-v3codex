@@ -1,5 +1,4 @@
 kind	pattern	destination
-path	^dev/src/pa10_	syntax/
 path	^dev/src/pa11_	semantic/
 path	^dev/src/pa12_	semantic/
 path	^dev/src/pa15_	semantic/, lowering/
@@ -20,7 +19,6 @@ path	^dev/src/pa30_	compiler_object/, syntax/, semantic/, lowering/
 path	^dev/src/pa32_	syntax/, semantic/
 path	^dev/src/pa33_	semantic/, lowering/
 path	^dev/src/pa34_	syntax/, semantic/, lowering/
-include	^pa10_	syntax/
 include	^pa11_	semantic/
 include	^pa12_	semantic/
 include	^pa15_	semantic/, lowering/
@@ -35,7 +33,6 @@ include	^pa26_	semantic/, lowering/
 include	^pa27_	semantic/object_model/, lowering/objects/
 include	^pa28_	semantic/object_model/, lowering/objects/
 include	^pa30_	compiler_object/, syntax/, semantic/, lowering/
-include	^pa32_	syntax/, semantic/
 include	^pa33_	semantic/, lowering/
 include	^pa34_	syntax/, semantic/, lowering/
 namespace	^pa10_syntax_detail$	cppgm::syntax

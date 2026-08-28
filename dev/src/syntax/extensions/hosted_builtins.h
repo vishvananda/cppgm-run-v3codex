@@ -1,7 +1,7 @@
 #pragma once
 
 #include "preprocess/hosted/builtin_registry.h"
-#include "pa10_syntax_model.h"
+#include "syntax/model/arena.h"
 
 #include <string>
 

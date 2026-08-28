@@ -1,7 +1,7 @@
 #pragma once
 
-#include "pa10_syntax.h"
-#include "pa10_syntax_model.h"
+#include "syntax/syntax.h"
+#include "syntax/model/arena.h"
 #include "function_demand_edge.h"
 #include "function_demand_reason.h"
 #include "pa11_model.h"

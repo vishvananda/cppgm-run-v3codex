@@ -1,7 +1,7 @@
 #ifndef CPPGM_PA34_AGGREGATE_SYNTAX_H
 #define CPPGM_PA34_AGGREGATE_SYNTAX_H
 
-#include "pa10_syntax_model.h"
+#include "syntax/model/arena.h"
 
 #include <string>
 #include <vector>

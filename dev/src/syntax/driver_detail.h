@@ -1,7 +1,7 @@
 #pragma once
 
 #include "support/interning/frontend_intern.h"
-#include "pa10_syntax.h"
+#include "syntax/syntax.h"
 
 namespace cppgm
 {

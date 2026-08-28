@@ -1,4 +1,4 @@
-#include "pa32_object_attribute_syntax.h"
+#include "syntax/extensions/object_attributes.h"
 
 #include "hosted_extension_registry.h"
 

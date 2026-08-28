@@ -1,4 +1,4 @@
-#include "pa10_syntax.h"
+#include "syntax/syntax.h"
 
 namespace cppgm
 {

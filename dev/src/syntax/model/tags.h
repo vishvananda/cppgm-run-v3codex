@@ -1,7 +1,7 @@
 #ifndef CPPGM_PA10_SYNTAX_TAGS_H
 #define CPPGM_PA10_SYNTAX_TAGS_H
 
-#include "pa10_syntax_tag_catalog.h"
+#include "syntax/model/tag_catalog.h"
 
 #include <cstdint>
 

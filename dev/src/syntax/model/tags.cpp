@@ -1,4 +1,4 @@
-#include "pa10_syntax_tags.h"
+#include "syntax/model/tags.h"
 
 #include <cstring>
 

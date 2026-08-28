@@ -1,8 +1,8 @@
 #ifndef CPPGM_PA10_PARSER_NAME_FACTS_H
 #define CPPGM_PA10_PARSER_NAME_FACTS_H
 
-#include "pa10_syntax_model.h"
-#include "pa10_parser_token_classification.h"
+#include "syntax/model/arena.h"
+#include "syntax/parser/token_classification.h"
 #include "preprocess/hosted/builtin_registry.h"
 
 #include <cstddef>

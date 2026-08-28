@@ -1,4 +1,4 @@
-#include "pa10_syntax_model.h"
+#include "syntax/model/arena.h"
 #include "preprocess/tokens/post_tokenizer.h"
 
 #include <algorithm>

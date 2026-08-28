@@ -1,8 +1,8 @@
 #pragma once
 
 #include "preprocess/macros/macro_processor.h"
-#include "pa10_syntax.h"
-#include "pa10_syntax_tags.h"
+#include "syntax/syntax.h"
+#include "syntax/model/tags.h"
 
 #include <cstddef>
 #include <cstdint>

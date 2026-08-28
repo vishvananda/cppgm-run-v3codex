@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pa10_syntax_model.h"
+#include "syntax/model/arena.h"
 
 #include <cstddef>
 #include <cstdint>

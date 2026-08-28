@@ -1,4 +1,4 @@
-#include "pa10_brace_matching.h"
+#include "syntax/parser/brace_matching.h"
 
 #include <limits>
 #include <stdexcept>

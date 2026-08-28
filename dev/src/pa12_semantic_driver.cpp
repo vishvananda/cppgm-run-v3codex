@@ -1,6 +1,6 @@
 #include "pa12_semantic_detail.h"
 
-#include "pa10_syntax_driver_detail.h"
+#include "syntax/driver_detail.h"
 
 #include <chrono>
 #include <ostream>

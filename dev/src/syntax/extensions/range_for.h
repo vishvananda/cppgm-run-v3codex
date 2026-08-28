@@ -1,7 +1,7 @@
 #ifndef CPPGM_PA25_RANGE_FOR_SYNTAX_H
 #define CPPGM_PA25_RANGE_FOR_SYNTAX_H
 
-#include "pa10_syntax_model.h"
+#include "syntax/model/arena.h"
 
 #include <cstddef>
 #include <cstdint>
