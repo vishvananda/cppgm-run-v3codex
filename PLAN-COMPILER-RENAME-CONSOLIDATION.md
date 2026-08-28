@@ -889,3 +889,35 @@ checkpoint where applicable, commit, and push state.
   counts fell from 215/428/426/72 to 203/415/421/68.  Performance: not
   applicable to these independent early-tool path/name batches.  Push: with
   this ledger checkpoint.
+- `caf2c41a` — R4 syntax paths.  Moved the syntax arena, tags, parser
+  machinery, driver, statistics, and extension mixins under `syntax/model/`,
+  `syntax/parser/`, and `syntax/extensions/` without changing source-set or
+  link order.  PA10, PA25, PA30, PA32, and PA34 passed 933/933; all 18 output
+  surfaces and explicit-O1 32/32/32 inception were exact.  The GCC-O3 compiler
+  retained 7,061,845 text bytes, and every section except symbol/string tables
+  and the path-derived build ID was byte-identical.  Pushed with the R4
+  checkpoint.
+- `d6b203ab` — R4 syntax namespace/API completion.  Collapsed the five
+  PA-numbered syntax namespaces into `cppgm::syntax`; renamed the public
+  statistics and translation-unit entry points and the private parser; and
+  updated semantic and driver consumers atomically after a collision audit.
+  The closing report passed 5471/5471, the LowIR audit remained 124/99, the
+  file audit remained zero-fatal/33-warning, the layout census fell to
+  179/365/374/68, and all 18 output surfaces and 32/32/32 inception were exact.
+
+  A three-block identical-current-source parser A/B measured prior/current
+  wall medians of 3.015/2.990 seconds and user medians of 2.900/2.880 seconds.
+  The full-corpus prior/current guard was tied in aggregate CPU (920.97/921.70
+  seconds, +0.08%); its wall median moved 32.33/32.62 seconds with pairs in
+  both directions.  Fully optimized frozen `-O0` guards improved GCC-O3
+  4.610/4.580 seconds (-0.97% paired) and Clang-O3 4.785/4.775 seconds
+  (-0.11% paired), with exact objects.
+
+  The first corrected matrix accidentally selected the PA39 default-O3 self
+  producer and is discarded.  With source-matched O1 producers, six
+  self/GCC lanes and three Clang lanes measured 31.805/21.170/21.650-second
+  wall medians, or 1.502x self/GCC and 1.469x self/Clang; median aggregate CPU
+  was 903.80/589.58/604.87 seconds.  The self/GCC result is 0.24% above the
+  inherited 1.499x checkpoint, inside the 0.5% retention floor but not yet the
+  final `<= 1.50x` exit gate, so that gate remains explicitly open for R12.
+  Pushed with this ledger checkpoint.
