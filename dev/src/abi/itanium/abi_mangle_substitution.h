@@ -2,7 +2,7 @@
 
 // Per-encoding Itanium ABI substitution state.
 
-#include "abi_mangle_stats.h"
+#include "abi/itanium/abi_mangle_stats.h"
 
 #include <cstddef>
 #include <memory>

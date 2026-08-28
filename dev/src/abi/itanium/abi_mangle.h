@@ -2,8 +2,8 @@
 
 // Typed ABI records and public PA14 mangling API.
 
-#include "abi_mangle_facts.h"
-#include "abi_mangle_stats.h"
+#include "abi/itanium/abi_mangle_facts.h"
+#include "abi/itanium/abi_mangle_stats.h"
 
 #include <iosfwd>
 

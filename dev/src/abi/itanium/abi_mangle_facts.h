@@ -2,10 +2,10 @@
 
 // Reusable typed vocabulary for Itanium ABI naming facts.
 
-#include "abi_mangle_expression.h"
-#include "abi_mangle_reference.h"
-#include "abi_mangle_terminal.h"
-#include "abi_mangle_type_vocabulary.h"
+#include "abi/itanium/abi_mangle_expression.h"
+#include "abi/itanium/abi_mangle_reference.h"
+#include "abi/itanium/abi_mangle_terminal.h"
+#include "abi/itanium/abi_mangle_type_vocabulary.h"
 
 #include <cstddef>
 #include <string>

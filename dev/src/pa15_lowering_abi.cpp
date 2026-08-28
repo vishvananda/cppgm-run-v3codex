@@ -1,6 +1,6 @@
 #include "pa15_lowering_abi.h"
 
-#include "abi_mangle.h"
+#include "abi/itanium/abi_mangle.h"
 #include "pa15_lowir_model.h"
 #include "pa18_polymorphism_lowering.h"
 #include "pa22_lambda_presentation.h"

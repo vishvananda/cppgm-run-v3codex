@@ -1,4 +1,4 @@
-#include "abi_mangle_type_vocabulary.h"
+#include "abi/itanium/abi_mangle_type_vocabulary.h"
 
 #include <limits>
 #include <stdexcept>

@@ -2,7 +2,7 @@
 
 // Canonical type records used by the numeric ABI mangling graph.
 
-#include "abi_mangle_facts.h"
+#include "abi/itanium/abi_mangle_facts.h"
 
 #include <cstddef>
 #include <vector>

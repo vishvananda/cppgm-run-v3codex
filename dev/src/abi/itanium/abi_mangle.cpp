@@ -1,9 +1,9 @@
-#include "abi_mangle.h"
-#include "abi_mangle_graph_argument.h"
-#include "abi_mangle_graph_type.h"
-#include "abi_mangle_hash.h"
-#include "abi_mangle_presentation.h"
-#include "abi_mangle_substitution.h"
+#include "abi/itanium/abi_mangle.h"
+#include "abi/itanium/abi_mangle_graph_argument.h"
+#include "abi/itanium/abi_mangle_graph_type.h"
+#include "abi/itanium/abi_mangle_hash.h"
+#include "abi/itanium/abi_mangle_presentation.h"
+#include "abi/itanium/abi_mangle_substitution.h"
 
 #include <algorithm>
 #include <cstdint>

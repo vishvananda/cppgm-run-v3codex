@@ -1,6 +1,6 @@
 #pragma once
 
-#include "abi_mangle.h"
+#include "abi/itanium/abi_mangle.h"
 #include "pa11_model.h"
 #include "pa12_semantic_model.h"
 #include "pa15_lowir_types.h"

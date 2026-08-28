@@ -1,6 +1,6 @@
 // Student-facing scaffold for the PA14 `abimangle` binary.
 
-#include "abi_mangle.h"
+#include "abi/itanium/abi_mangle.h"
 
 #include <cstdlib>
 #include <fstream>

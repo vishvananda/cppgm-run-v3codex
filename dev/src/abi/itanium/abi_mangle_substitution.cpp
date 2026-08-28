@@ -1,7 +1,7 @@
-#include "abi_mangle_substitution.h"
+#include "abi/itanium/abi_mangle_substitution.h"
 
-#include "abi_mangle_hash.h"
-#include "abi_mangle_presentation.h"
+#include "abi/itanium/abi_mangle_hash.h"
+#include "abi/itanium/abi_mangle_presentation.h"
 
 #include <utility>
 

@@ -1,5 +1,5 @@
-#include "abi_mangle_graph_argument.h"
-#include "abi_mangle_hash.h"
+#include "abi/itanium/abi_mangle_graph_argument.h"
+#include "abi/itanium/abi_mangle_hash.h"
 
 #include <functional>
 

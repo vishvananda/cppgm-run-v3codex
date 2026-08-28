@@ -1,6 +1,6 @@
 #include "lowir_driver_stats_report.h"
 
-#include "abi_mangle_stats.h"
+#include "abi/itanium/abi_mangle_stats.h"
 #include "lowir_function_reachability.h"
 #include "lowir_inline_analysis.h"
 #include "lowir_opt.h"
