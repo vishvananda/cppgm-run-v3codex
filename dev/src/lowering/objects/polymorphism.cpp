@@ -1,4 +1,4 @@
-#include "pa18_polymorphism_lowering.h"
+#include "lowering/objects/polymorphism.h"
 
 #include "lowering/abi/itanium.h"
 #include "lowering/presentation/local_names.h"

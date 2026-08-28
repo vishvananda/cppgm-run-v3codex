@@ -2,7 +2,7 @@
 
 #include "abi/itanium/abi_mangle.h"
 #include "lowering/ir/model.h"
-#include "pa18_polymorphism_lowering.h"
+#include "lowering/objects/polymorphism.h"
 #include "semantic/presentation/lambdas.h"
 
 #include <limits>

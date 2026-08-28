@@ -1,4 +1,4 @@
-#include "pa18_polymorphism_lowering.h"
+#include "lowering/objects/polymorphism.h"
 
 #include "lowering/presentation/local_names.h"
 #include "lowering/types/source_type.h"

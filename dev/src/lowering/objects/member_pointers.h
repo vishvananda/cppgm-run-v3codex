@@ -5,7 +5,7 @@
 #include "semantic/model/graph.h"
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"
-#include "pa27_member_function_pointer_lowering.h"
+#include "lowering/objects/member_function_pointers.h"
 
 #include <stdexcept>
 #include <string>
