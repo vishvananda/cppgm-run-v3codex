@@ -21,7 +21,7 @@
 #include "lowering/initialization/actions.h"
 #include "lowering/lifetime/actions.h"
 #include "lowering/expressions/member_address.h"
-#include "pa16_static_initializer_lowering.h"
+#include "lowering/initialization/static_storage.h"
 #include "lowering/storage/slots.h"
 #include "lowering/expressions/bit_fields.h"
 #include "lowering/control/expressions.h"

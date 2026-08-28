@@ -1,4 +1,4 @@
-#include "pa16_static_initializer_lowering.h"
+#include "lowering/initialization/static_storage.h"
 
 #include "lowering/support/utilities.h"
 #include "preprocess/tokens/post_tokenizer.h"

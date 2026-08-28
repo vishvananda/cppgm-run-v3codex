@@ -4,7 +4,7 @@
 #include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
-#include "pa16_zero_initialization.h"
+#include "lowering/initialization/zero_fill.h"
 
 #include <cstdint>
 #include <stdexcept>
