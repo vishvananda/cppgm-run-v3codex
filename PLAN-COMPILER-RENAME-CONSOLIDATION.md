@@ -1352,3 +1352,23 @@ checkpoint where applicable, commit, and push state.
   this batch.  The three-commit checkpoint passed 5471/5471, LowIR 124/99,
   semantic ownership 850/0, lowering ownership 185/44, layout 6/6/4/18, and
   zero-fatal/32-warning file audit.  Push: with this ledger checkpoint.
+- `2b9c6e47`, `a12366b7`, and this commit — R8 value and statement ownership.
+  Moved storage access and scalar-expression routing out of the central
+  `ProgramLowerer` into named CRTP owners.  Consolidated destructor handling
+  with special-member calls and statement scheduling with exception statements,
+  removing two arbitrary header divisions while keeping the file-audit census
+  at zero fatal findings and 32 warnings.  The lowering ownership manifest now
+  covers 100 class/struct definitions and the 45 deliberately retained central
+  methods, with no R8 method queued for repair.
+
+  The expression/lifecycle increment was allocated-byte exact after local
+  symbols and derived build-id data were removed.  The statement increment
+  reduced optimized-host compiler text by 180 bytes.  Across both A/B label
+  orders (12 samples per compiler), old/candidate frozen medians were
+  4.580/4.595 seconds wall (+0.33%), 4.090/4.070 seconds user (-0.49%), and
+  369818/369390 KiB RSS (-0.12%), so the layout change is neutral.  Focused
+  PA15, PA16, PA17, PA18, PA21, PA26, and PA34 gates passed, all 18 output
+  surfaces remained exact, and the cumulative checkpoint passed 5471/5471.
+  LowIR remained 124/99, semantic ownership remained 850/0, and the layout
+  census remained 6/6/4/18.  Fresh inception remains scheduled for the
+  completed lowering tier.  Push: with this ledger checkpoint.

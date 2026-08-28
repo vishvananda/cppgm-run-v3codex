@@ -1,5 +1,5 @@
-#ifndef CPPGM_LOWERING_EXTENSIONS_EXCEPTIONS_H
-#define CPPGM_LOWERING_EXTENSIONS_EXCEPTIONS_H
+#ifndef CPPGM_LOWERING_CONTROL_STATEMENTS_H
+#define CPPGM_LOWERING_CONTROL_STATEMENTS_H
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"
@@ -1217,7 +1217,622 @@ private:
 	std::int64_t function_exception_filter_selector_;
 };
 
-}
-}
+template <class Derived>
+class StatementLowering
+{
+protected:
+	enum StatementTaskKind : std::uint8_t
+	{
+		STATEMENT_NODE,
+		STATEMENT_SEQUENCE,
+		STATEMENT_FOR_COMPONENTS,
+		STATEMENT_IF_AFTER_THEN,
+		STATEMENT_IF_AFTER_ELSE,
+		STATEMENT_LOOP_AFTER_BODY,
+		STATEMENT_DO_AFTER_BODY,
+		STATEMENT_FOR_AFTER_INIT,
+		STATEMENT_FOR_AFTER_BODY,
+		STATEMENT_FOR_AFTER_ITERATION,
+		STATEMENT_SWITCH_AFTER_BODY,
+		STATEMENT_TRY_AFTER_BODY,
+		STATEMENT_HANDLER_AFTER_BODY
+	};
+
+	struct StatementTask
+	{
+		std::uint32_t node;
+		std::uint32_t auxiliary;
+		std::uint32_t last;
+		BlockId first;
+		BlockId second;
+		BlockId third;
+		StatementTaskKind kind;
+		bool flag;
+
+		explicit StatementTask(StatementTaskKind kind_value)
+			: node(kNoDumpEdge), auxiliary(kNoDumpEdge), last(kNoDumpEdge),
+			  first(kNoLowId), second(kNoLowId), third(kNoLowId),
+			  kind(kind_value), flag(false) {}
+	};
+
+	void PushStatementNode(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		StatementTask task(STATEMENT_NODE);
+		task.node = node;
+		derived.statement_tasks_.push_back(task);
+	}
+
+	void PushStatementSequence(std::uint32_t edge,
+		StatementTaskKind kind = STATEMENT_SEQUENCE)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (edge == kNoDumpEdge) return;
+		StatementTask task(kind);
+		task.node = edge;
+		derived.statement_tasks_.push_back(task);
+	}
+
+	void RunStatementTask(const StatementTask& task)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (task.kind == STATEMENT_NODE)
+		{
+			derived.LowerStatementNode(task.node);
+			return;
+		}
+		if (task.kind == STATEMENT_SEQUENCE)
+		{
+			const std::uint32_t child = derived.arena_.edges[task.node].child;
+			const DumpKind child_kind = derived.arena_.nodes[child].kind;
+			if (derived.CurrentBlock().terminated && child_kind != DUMP_CASE_STATEMENT &&
+				child_kind != DUMP_DEFAULT_STATEMENT &&
+				child_kind != DUMP_LABELED_STATEMENT)
+				return;
+			derived.PushStatementSequence(derived.arena_.edges[task.node].next);
+			derived.PushStatementNode(child);
+			return;
+		}
+		if (task.kind == STATEMENT_FOR_COMPONENTS)
+		{
+			const std::uint32_t child = derived.arena_.edges[task.node].child;
+			derived.PushStatementSequence(derived.arena_.edges[task.node].next,
+				STATEMENT_FOR_COMPONENTS);
+			derived.LowerForComponent(child);
+			return;
+		}
+		if (task.kind == STATEMENT_IF_AFTER_THEN)
+		{
+			const bool then_terminated = derived.CurrentBlock().terminated;
+			if (!then_terminated) derived.EmitJump(task.second);
+			derived.SelectBlock(task.first);
+			StatementTask after(STATEMENT_IF_AFTER_ELSE);
+			after.first = task.second;
+			after.flag = then_terminated;
+			derived.statement_tasks_.push_back(after);
+			if (task.node != kNoDumpEdge) derived.PushStatementNode(task.node);
+			return;
+		}
+		if (task.kind == STATEMENT_IF_AFTER_ELSE)
+		{
+			const bool else_terminated = derived.CurrentBlock().terminated;
+			if (!else_terminated) derived.EmitJump(task.first);
+			if (!task.flag || !else_terminated) derived.SelectBlock(task.first);
+			return;
+		}
+		if (task.kind == STATEMENT_LOOP_AFTER_BODY)
+		{
+			derived.PopLoopTargets();
+			if (!derived.CurrentBlock().terminated) derived.EmitJump(task.first);
+			derived.SelectBlock(task.second);
+			return;
+		}
+		if (task.kind == STATEMENT_DO_AFTER_BODY)
+		{
+			derived.PopLoopTargets();
+			if (!derived.CurrentBlock().terminated) derived.EmitJump(task.second);
+			derived.SelectBlock(task.second);
+			derived.EmitBranch(derived.LowerControlCondition(task.node), task.first, task.third);
+			derived.SelectBlock(task.third);
+			return;
+		}
+		if (task.kind == STATEMENT_FOR_AFTER_INIT)
+		{
+			derived.StartForLoop(task.node, task.auxiliary, task.last);
+			return;
+		}
+		if (task.kind == STATEMENT_FOR_AFTER_BODY)
+		{
+			derived.PopLoopTargets();
+			if (!derived.CurrentBlock().terminated) derived.EmitJump(task.first);
+			derived.SelectBlock(task.first);
+			StatementTask after(STATEMENT_FOR_AFTER_ITERATION);
+			after.first = task.second;
+			after.second = task.third;
+			derived.statement_tasks_.push_back(after);
+			if (task.node != kNoDumpEdge) derived.PushStatementNode(task.node);
+			return;
+		}
+		if (task.kind == STATEMENT_FOR_AFTER_ITERATION)
+		{
+			if (!derived.CurrentBlock().terminated) derived.EmitJump(task.first);
+			derived.SelectBlock(task.second);
+			return;
+		}
+		if (task.kind == STATEMENT_SWITCH_AFTER_BODY)
+		{
+			if (derived.break_targets_.empty())
+				throw std::logic_error("missing PA15 switch target");
+			derived.break_targets_.pop_back();
+			if (!derived.CurrentBlock().terminated) derived.EmitContinuationJump(task.first);
+			derived.SelectBlock(task.first);
+			return;
+		}
+		if (derived.RunExceptionStatementTask(task)) return;
+		throw std::logic_error("invalid PA15 statement task");
+	}
+	void PopLoopTargets()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.break_targets_.empty() || derived.continue_targets_.empty())
+			throw std::logic_error("missing PA15 loop target");
+		derived.continue_targets_.pop_back();
+		derived.break_targets_.pop_back();
+	}
+
+	void LowerStatementNode(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.stats_) ++derived.stats_->lowered_nodes;
+		const DumpNode& record = derived.arena_.nodes[node];
+		const NodeChildren children = derived.Children(node);
+		if (derived.TryLowerGnuAsmStatement(record, children)) return;
+		if (record.kind == DUMP_TYPE_ALIAS) return;
+		if (record.kind == DUMP_COMPOUND_STATEMENT ||
+			record.kind == DUMP_CONDITION_DECLARATION ||
+			record.kind == DUMP_THEN || record.kind == DUMP_ELSE)
+		{
+			derived.PushStatementSequence(record.first_edge);
+			return;
+		}
+		if (record.kind == DUMP_SIMPLE_DECLARATION)
+		{
+			if (!children.empty() &&
+				derived.arena_.nodes[children[0]].kind == DUMP_VARIABLE)
+			{
+				const DumpNode& variable = derived.arena_.nodes[children[0]];
+				const std::uint32_t local_static = variable.binding <
+					derived.local_static_action_.size() ?
+					derived.local_static_action_[variable.binding] : kNoDumpEdge;
+				if (local_static != kNoDumpEdge)
+				{
+					derived.LowerLocalStaticVariable(local_static, variable,
+						derived.Children(children[0]), &children);
+					return;
+				}
+			}
+			if (!record.full_expression_staging ||
+				!derived.TryLowerFullExpressionDeclaration(children))
+				derived.PushStatementSequence(record.first_edge);
+			return;
+		}
+		if (record.kind == DUMP_VARIABLE)
+		{
+			const std::uint32_t local_static = record.binding <
+				derived.local_static_action_.size() ?
+				derived.local_static_action_[record.binding] : kNoDumpEdge;
+			if (local_static != kNoDumpEdge)
+				derived.LowerLocalStaticVariable(local_static, record, children);
+			else derived.LowerFullExpressionVariableInitialization(record, children);
+			return;
+		}
+		if (record.kind == DUMP_INITIALIZER_ACTION)
+		{
+			derived.LowerMemberInitializationAction(record, children);
+			return;
+		}
+		if (record.kind == DUMP_VPTR_INITIALIZATION_ACTION)
+		{
+			derived.LowerVptrInitializationAction(record);
+			return;
+		}
+		if (derived.TryLowerConstructorInitializationAction(record, children)) return;
+		if (record.kind == DUMP_DESTRUCTOR_ACTION)
+		{
+			derived.LowerDestructorAction(record);
+			return;
+		}
+		if (record.kind == DUMP_RETURN_STATEMENT)
+		{
+			derived.LowerReturn(node, children);
+			return;
+		}
+		if (record.kind == DUMP_EXPRESSION_STATEMENT) {
+			derived.LowerFullExpressionStatement(children);
+			return;
+		}
+		if (record.kind == DUMP_IF_STATEMENT) { derived.LowerIf(children); return; }
+		if (record.kind == DUMP_WHILE_STATEMENT) { derived.LowerWhile(children); return; }
+		if (record.kind == DUMP_DO_STATEMENT) { derived.LowerDo(children); return; }
+		if (record.kind == DUMP_FOR_STATEMENT) { derived.LowerFor(children); return; }
+		if (record.kind == DUMP_SWITCH_STATEMENT) { derived.LowerSwitch(children); return; }
+		if (derived.TryLowerExceptionStatement(node, record, children)) return;
+		if (record.kind == DUMP_CASE_STATEMENT ||
+			record.kind == DUMP_DEFAULT_STATEMENT)
+		{
+			if (node >= derived.switch_case_blocks_.size() ||
+				derived.switch_case_blocks_[node] == kNoLowId)
+				throw std::runtime_error("PA15 case has no switch target");
+			const BlockId target = derived.switch_case_blocks_[node];
+			if (!derived.CurrentBlock().terminated) derived.EmitContinuationJump(target);
+			derived.SelectBlock(target);
+			std::uint32_t edge = record.first_edge;
+			if (record.kind == DUMP_CASE_STATEMENT && edge != kNoDumpEdge)
+				edge = derived.arena_.edges[edge].next;
+			derived.PushStatementSequence(edge);
+			return;
+		}
+		if (record.kind == DUMP_LABELED_STATEMENT)
+		{
+			const BlockId target = derived.LabelBlock(record.text);
+			if (!derived.CurrentBlock().terminated) derived.EmitJump(target);
+			derived.SelectBlock(target);
+			derived.PushStatementSequence(record.first_edge);
+			return;
+		}
+		if (record.kind == DUMP_GOTO_STATEMENT)
+		{
+			derived.LowerGotoControlExit(record, children);
+			derived.EmitJump(derived.LabelBlock(record.text));
+			return;
+		}
+		if (record.kind == DUMP_ITERATION ||
+			(record.kind == DUMP_FOR_INIT_STATEMENT && !children.empty() &&
+			 derived.arena_.nodes[children[0]].kind != DUMP_SIMPLE_DECLARATION))
+		{ derived.LowerFullExpressionStatement(children); return; }
+		if (record.kind == DUMP_FOR_INIT_STATEMENT)
+		{ derived.PushStatementSequence(record.first_edge, STATEMENT_FOR_COMPONENTS); return; }
+		if (record.kind == DUMP_BREAK_STATEMENT)
+		{
+			if (derived.break_targets_.empty())
+				throw std::runtime_error("PA15 break has no target");
+			derived.LowerStructuredControlExit(children, derived.break_targets_.back().region_depth);
+			derived.EmitJump(derived.break_targets_.back().block);
+			return;
+		}
+		if (record.kind == DUMP_CONTINUE_STATEMENT)
+		{
+			if (derived.continue_targets_.empty())
+				throw std::runtime_error("PA15 continue has no target");
+			derived.LowerStructuredControlExit(children, derived.continue_targets_.back().region_depth);
+			derived.EmitJump(derived.continue_targets_.back().block);
+			return;
+		}
+		throw std::runtime_error("statement is outside the active PA15 checkpoint");
+	}
+
+	__attribute__((noinline)) Operand LowerControlCondition(
+		std::uint32_t condition_node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const NodeChildren condition_children = derived.Children(condition_node);
+		if (condition_children.empty())
+			throw std::runtime_error("invalid PA15 control condition");
+		const std::uint32_t child = condition_children[0];
+		if (derived.arena_.nodes[child].kind != DUMP_CONDITION_DECLARATION)
+		{
+			return derived.LowerFullExpressionCondition(condition_children);
+		}
+		return derived.LowerDeclaredCondition(condition_children, true);
+	}
+
+	__attribute__((noinline)) Operand LowerSwitchCondition(
+		std::uint32_t condition_node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const NodeChildren condition_children = derived.Children(condition_node);
+		if (condition_children.empty())
+			throw std::runtime_error("invalid PA15 switch condition");
+		const std::uint32_t child = condition_children[0];
+		if (derived.arena_.nodes[child].kind != DUMP_CONDITION_DECLARATION)
+			return derived.LowerFullExpressionCondition(condition_children);
+		return derived.LowerDeclaredCondition(condition_children, false);
+	}
+
+	std::uint32_t FindChildKind(const NodeChildren& children, DumpKind kind) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		for (std::size_t i = 0; i < children.size(); ++i)
+			if (derived.arena_.nodes[children[i]].kind == kind) return children[i];
+		return kNoDumpEdge;
+	}
+
+	std::uint32_t FindLoopBody(const NodeChildren& children) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		for (std::size_t i = 0; i < children.size(); ++i)
+		{
+			const DumpKind kind = derived.arena_.nodes[children[i]].kind;
+			if (kind != DUMP_CONDITION && kind != DUMP_FOR_INIT_STATEMENT &&
+				kind != DUMP_ITERATION)
+				return children[i];
+		}
+		return kNoDumpEdge;
+	}
+
+	BlockId LabelBlock(NameId name)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		std::uint32_t found = kNoLowId;
+		if (derived.label_blocks_.Find(name, &found)) return found;
+		const BlockId block = derived.AddBlock(derived.NewLabel("goto"));
+		derived.label_blocks_.Insert(name, block);
+		return block;
+	}
+
+	void CollectSwitchCases(std::uint32_t node, SwitchCases* cases) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		std::vector<std::uint32_t> pending(1, node);
+		while (!pending.empty())
+		{
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			const DumpNode& record = derived.arena_.nodes[current];
+			if (record.kind == DUMP_SWITCH_STATEMENT) continue;
+			if (record.kind == DUMP_CASE_STATEMENT ||
+				record.kind == DUMP_DEFAULT_STATEMENT)
+				cases->Push(current);
+			const NodeChildren children = derived.Children(current);
+			for (std::size_t i = children.size(); i != 0; --i)
+			{
+				if (record.kind == DUMP_CASE_STATEMENT && i == 1) continue;
+				pending.push_back(children[i - 1]);
+			}
+		}
+	}
+
+	__attribute__((noinline)) void LowerSwitch(const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const std::uint32_t condition = derived.FindChildKind(children, DUMP_CONDITION);
+		std::uint32_t body = kNoDumpEdge;
+		for (std::size_t i = 0; i < children.size(); ++i)
+			if (derived.arena_.nodes[children[i]].kind != DUMP_CONDITION)
+				body = children[i];
+		if (condition == kNoDumpEdge || body == kNoDumpEdge)
+			throw std::runtime_error("invalid PA15 switch statement");
+		SwitchCases cases;
+		derived.CollectSwitchCases(body, &cases);
+		const Operand value = derived.LowerSwitchCondition(condition);
+		const BlockId dispatch = derived.AddBlock(derived.NewLabel("switch_dispatch"));
+		const BlockId end = derived.AddBlock(derived.NewLabel("switch_end"));
+		BlockId default_target = end;
+		for (std::size_t i = 0; i < cases.size(); ++i)
+		{
+			const bool is_default =
+				derived.arena_.nodes[cases[i]].kind == DUMP_DEFAULT_STATEMENT;
+			const BlockId target = derived.AddBlock(derived.NewLabel(is_default ?
+				"switch_default" : "switch_case"));
+			derived.switch_case_blocks_[cases[i]] = target;
+			if (is_default) default_target = target;
+		}
+		derived.EmitJump(dispatch);
+		derived.SelectBlock(dispatch);
+		Instruction instruction(Instruction::SWITCH);
+		instruction.first = value;
+		instruction.target = default_target;
+		SmallSequence<std::int64_t, 8> case_values;
+		SmallSequence<BlockId, 8> case_targets;
+		for (std::size_t i = 0; i < cases.size(); ++i)
+		{
+			if (derived.arena_.nodes[cases[i]].kind != DUMP_CASE_STATEMENT) continue;
+			const NodeChildren case_children = derived.Children(cases[i]);
+			if (case_children.empty() || !derived.arena_.nodes[case_children[0]].constant)
+				throw std::runtime_error("PA15 case lacks constant value");
+			case_values.Push(derived.arena_.nodes[case_children[0]].constant_value);
+			case_targets.Push(derived.switch_case_blocks_[cases[i]]);
+		}
+		derived.AttachSwitchCases(&instruction, case_values, case_targets);
+		derived.Emit(instruction);
+		derived.RecordBlockIncoming(default_target);
+		for (std::size_t i = 0; i < case_targets.size(); ++i)
+			derived.RecordBlockIncoming(case_targets[i]);
+		derived.break_targets_.push_back(typename Derived::ExceptionControlTarget(end, derived.ActiveExceptionRegionCount()));
+		StatementTask after(STATEMENT_SWITCH_AFTER_BODY);
+		after.first = end;
+		derived.statement_tasks_.push_back(after);
+		derived.PushStatementNode(body);
+	}
+
+	void AttachSwitchCases(Instruction* instruction,
+		const SmallSequence<std::int64_t, 8>& values,
+		const SmallSequence<BlockId, 8>& targets)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (values.size() != targets.size())
+			throw std::logic_error("PA15 switch case fact mismatch");
+		if (values.empty()) return;
+		if (values.size() >= kNoLowId ||
+			derived.output_.switch_case_values.size() > kNoLowId - values.size() ||
+			derived.output_.switch_case_values.size() !=
+				derived.output_.switch_case_targets.size())
+			throw std::runtime_error("too many PA15 switch cases");
+		instruction->extra_first = static_cast<std::uint32_t>(
+			derived.output_.switch_case_values.size());
+		instruction->extra_count = static_cast<std::uint32_t>(values.size());
+		for (std::size_t i = 0; i < values.size(); ++i)
+		{
+			derived.output_.switch_case_values.push_back(values[i]);
+			derived.output_.switch_case_targets.push_back(targets[i]);
+		}
+	}
+
+	__attribute__((noinline)) void LowerWhile(const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const std::uint32_t condition = derived.FindChildKind(children, DUMP_CONDITION);
+		const std::uint32_t body = derived.FindLoopBody(children);
+		if (condition == kNoDumpEdge || body == kNoDumpEdge)
+			throw std::runtime_error("invalid PA15 while statement");
+		const BlockId cond_block = derived.AddBlock(derived.NewLabel("while_cond"));
+		const BlockId body_block = derived.AddBlock(derived.NewLabel("while_body"));
+		const BlockId end_block = derived.AddBlock(derived.NewLabel("while_end"));
+		derived.EmitJump(cond_block);
+		derived.SelectBlock(cond_block);
+		derived.EmitBranch(derived.LowerControlCondition(condition), body_block, end_block);
+		derived.SelectBlock(body_block);
+		derived.break_targets_.push_back(typename Derived::ExceptionControlTarget(end_block, derived.ActiveExceptionRegionCount()));
+		derived.continue_targets_.push_back(typename Derived::ExceptionControlTarget(cond_block, derived.ActiveExceptionRegionCount()));
+		StatementTask after(STATEMENT_LOOP_AFTER_BODY);
+		after.first = cond_block;
+		after.second = end_block;
+		derived.statement_tasks_.push_back(after);
+		derived.PushStatementNode(body);
+	}
+
+	__attribute__((noinline)) void LowerDo(const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const std::uint32_t condition = derived.FindChildKind(children, DUMP_CONDITION);
+		const std::uint32_t body = derived.FindLoopBody(children);
+		if (condition == kNoDumpEdge || body == kNoDumpEdge)
+			throw std::runtime_error("invalid PA15 do statement");
+		const BlockId body_block = derived.AddBlock(derived.NewLabel("do_body"));
+		const BlockId cond_block = derived.AddBlock(derived.NewLabel("do_cond"));
+		const BlockId end_block = derived.AddBlock(derived.NewLabel("do_end"));
+		derived.EmitJump(body_block);
+		derived.SelectBlock(body_block);
+		derived.break_targets_.push_back(typename Derived::ExceptionControlTarget(end_block, derived.ActiveExceptionRegionCount()));
+		derived.continue_targets_.push_back(typename Derived::ExceptionControlTarget(cond_block, derived.ActiveExceptionRegionCount()));
+		StatementTask after(STATEMENT_DO_AFTER_BODY);
+		after.node = condition;
+		after.first = body_block;
+		after.second = cond_block;
+		after.third = end_block;
+		derived.statement_tasks_.push_back(after);
+		derived.PushStatementNode(body);
+	}
+
+	__attribute__((noinline)) void LowerFor(const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const std::uint32_t init = derived.FindChildKind(children, DUMP_FOR_INIT_STATEMENT);
+		const std::uint32_t condition = derived.FindChildKind(children, DUMP_CONDITION);
+		const std::uint32_t iteration = derived.FindChildKind(children, DUMP_ITERATION);
+		const std::uint32_t body = derived.FindLoopBody(children);
+		if (body == kNoDumpEdge)
+			throw std::runtime_error("invalid PA15 for statement");
+		if (init != kNoDumpEdge)
+		{
+			StatementTask after(STATEMENT_FOR_AFTER_INIT);
+			after.node = condition;
+			after.auxiliary = iteration;
+			after.last = body;
+			derived.statement_tasks_.push_back(after);
+			derived.PushStatementNode(init);
+			return;
+		}
+		derived.StartForLoop(condition, iteration, body);
+	}
+
+	void StartForLoop(std::uint32_t condition, std::uint32_t iteration,
+		std::uint32_t body)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const BlockId cond_block = derived.AddBlock(derived.NewLabel("for_cond"));
+		const BlockId body_block = derived.AddBlock(derived.NewLabel("for_body"));
+		const BlockId iter_block = derived.AddBlock(derived.NewLabel("for_iter"));
+		const BlockId end_block = derived.AddBlock(derived.NewLabel("for_end"));
+		derived.EmitJump(cond_block);
+		derived.SelectBlock(cond_block);
+		if (condition == kNoDumpEdge) derived.EmitJump(body_block);
+		else derived.EmitBranch(derived.LowerControlCondition(condition), body_block, end_block);
+		derived.SelectBlock(body_block);
+		derived.break_targets_.push_back(typename Derived::ExceptionControlTarget(end_block, derived.ActiveExceptionRegionCount()));
+		derived.continue_targets_.push_back(typename Derived::ExceptionControlTarget(iter_block, derived.ActiveExceptionRegionCount()));
+		StatementTask after(STATEMENT_FOR_AFTER_BODY);
+		after.node = iteration;
+		after.first = iter_block;
+		after.second = cond_block;
+		after.third = end_block;
+		derived.statement_tasks_.push_back(after);
+		derived.PushStatementNode(body);
+	}
+
+	__attribute__((noinline)) void LowerIf(const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		std::uint32_t condition = kNoDumpEdge;
+		std::uint32_t then_node = kNoDumpEdge;
+		std::uint32_t else_node = kNoDumpEdge;
+		for (std::size_t i = 0; i < children.size(); ++i)
+		{
+			const DumpKind kind = derived.arena_.nodes[children[i]].kind;
+			if (kind == DUMP_CONDITION) condition = children[i];
+			else if (kind == DUMP_THEN) then_node = children[i];
+			else if (kind == DUMP_ELSE) else_node = children[i];
+		}
+		if (condition == kNoDumpEdge || then_node == kNoDumpEdge)
+			throw std::runtime_error("invalid semantic if statement");
+		const NodeChildren condition_children = derived.Children(condition);
+		if (condition_children.empty())
+			throw std::runtime_error("condition declarations are outside the active checkpoint");
+		const BlockId then_block = derived.AddBlock(derived.NewLabel("if_then"));
+		const BlockId else_block = derived.AddBlock(derived.NewLabel("if_else"));
+		const BlockId end_block = derived.AddBlock(derived.NewLabel("if_end"));
+		if (derived.arena_.nodes[condition_children[0]].kind ==
+			DUMP_CONDITION_DECLARATION)
+			derived.EmitBranch(derived.LowerControlCondition(condition), then_block, else_block);
+		else if (condition_children.size() != 1 ||
+			derived.arena_.nodes[condition].full_expression_staging)
+			derived.EmitFullExpressionConditionBranch(condition_children, then_block, else_block,
+				derived.InitializerListLifetimeObservationDispatch(condition));
+		else derived.EmitConditionBranch(condition_children[0], then_block, else_block);
+		derived.SelectBlock(then_block);
+		StatementTask after(STATEMENT_IF_AFTER_THEN);
+		after.node = else_node;
+		after.first = else_block;
+		after.second = end_block;
+		derived.statement_tasks_.push_back(after);
+		derived.PushStatementNode(then_node);
+	}
+
+	void EmitConditionBranch(std::uint32_t node, BlockId true_block,
+		BlockId false_block)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& record = derived.arena_.nodes[node];
+		const NodeChildren children = derived.Children(node);
+		if (record.constant &&
+			(record.kind == DUMP_LITERAL || children.empty()))
+		{ derived.EmitJump(record.constant_value ? true_block : false_block); return; }
+		if (record.kind == DUMP_BINARY_EXPRESSION && children.size() == 2)
+		{
+			if (record.logical_operation == LOGICAL_OPERATION_AND)
+			{
+				const BlockId rhs = derived.AddBlock(derived.NewLabel("land_rhs"));
+				derived.EmitConditionBranch(children[0], rhs, false_block);
+				derived.SelectBlock(rhs);
+				derived.EmitConditionBranch(children[1], true_block, false_block);
+				return;
+			}
+			if (record.logical_operation == LOGICAL_OPERATION_OR)
+			{
+				const BlockId rhs = derived.AddBlock(derived.NewLabel("lor_rhs"));
+				derived.EmitConditionBranch(children[0], true_block, rhs);
+				derived.SelectBlock(rhs);
+				derived.EmitConditionBranch(children[1], true_block, false_block);
+				return;
+			}
+		}
+		const Operand value = derived.LowerCondition(node);
+		if (derived.full_expression_cleanup_active_) derived.PauseFullExpressionCleanupSegment();
+		derived.EmitBranch(value, true_block, false_block);
+	}
+};
+
+}  // namespace lowering
+}  // namespace cppgm
 
 #endif
