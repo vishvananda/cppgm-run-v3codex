@@ -1217,3 +1217,27 @@ not reuse measurements from a different source tree.
   1,080/1,080, both audits pass, and the file audit remains zero-fatal/33.
   The four affected objects are text-size exact before/after under O1 self
   (298,553 bytes), GCC O3 (196,486 bytes), and Clang O3 (174,075 bytes).
+- **C11 CUMULATIVE CHECKPOINT B.** Commits `92b63c92`, `ce35359a`, and
+  `b2f45fb7` pass the 32-way report-through-PA38 gate at 5,471/5,471; both
+  audits pass and the file audit remains zero-fatal/33.  Three fresh 32-way
+  current-source lanes have median wall/user/system times of
+  32.50/855.21/50.15 seconds self, 21.00/541.94/45.01 GCC-built, and
+  21.62/559.29/45.65 Clang-built.  The corrected wall ratios are therefore
+  1.548x self/GCC and 1.503x self/Clang.  Median self aggregate CPU is 905.46
+  seconds, essentially unchanged from checkpoint A's 906.31 seconds; maximum
+  per-process RSS is 229,596/229,280/228,812 KiB.  Self and GCC lanes reproduce
+  compiler SHA-256 `ae80b984...` and 215-object census `33e0cf17...`; Clang
+  reproduces compiler `1ebb9254...` and census `f8a4263d...`.
+- **C11 DIRECT AND BEST-CASE RETENTION.** A direct B/A/B/A comparison of the
+  `8199bbf1` and current self compilers on identical current source produces
+  the exact current compiler and object census in every lane.  Pre/current
+  wall medians are 32.825/32.20 seconds and aggregate-CPU medians are
+  908.05/907.85 seconds (-0.02%), confirming that C11 did not cause the
+  less-efficient parallel scheduling seen in the ratio block.  Fully optimized
+  host producers preserve the frozen O0 compile as well: GCC baseline/current
+  wall medians are 4.535/4.550 seconds (+0.33%), user medians 4.03/4.05,
+  system medians 0.50/0.49, and maximum RSS 369,184/367,856 KiB; Clang medians
+  are 4.795/4.765 seconds (-0.63%), user 4.29/4.265, system 0.505/0.495, and
+  maximum RSS 369,672/369,148 KiB.  All GCC objects are exact at `b0d3d8d3...`
+  and all Clang objects at `1fe5f0e4...`.  C11 is retained, but the 1.548x
+  self/GCC result leaves the parity target open and requires another lever.
