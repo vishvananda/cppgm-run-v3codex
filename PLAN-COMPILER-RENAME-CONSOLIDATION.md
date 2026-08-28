@@ -1259,3 +1259,21 @@ checkpoint where applicable, commit, and push state.
   generated LowIR exact, all lowering behavior gates clean, and only the PA30
   namespaces and paths reserved for R9 still present.  Push: with this ledger
   checkpoint.
+- `96ee005b`, `6bfeaad1`, and this commit — R8 lowering ownership paths,
+  first batch.  Grouped the program driver, graph bridge, source-type support,
+  and reachability analysis under `lowering/core/`; moved exception and region
+  lowering from the extension bucket into `lowering/control/`; and placed
+  conditional and short-circuit logical expression lowering under
+  `lowering/expressions/`.  Source-set and link order did not change.  The four
+  moved implementation objects retained exact allocated non-`NOBITS` section
+  contents, and both header-only regroupings rebuilt the compiler to the exact
+  pre-move SHA-256
+  `a1338c6eefc576cc7f26cc3be4ffe8a8564ed3fc3e114c170c2dcc02405a355d`.
+
+  Focused PA15, PA17, PA26, PA34, and PA37 gates passed, and all 18 frozen
+  output surfaces remained exact after every increment.  The three-commit
+  checkpoint passed 5471/5471; LowIR remained 124/99, semantic ownership
+  remained 850/0, the compiler-layout census remained 6/6/4/18, and the file
+  audit remained zero-fatal/33-warning.  Performance measurement is not
+  applicable to this batch because executable bytes or every meaningful
+  allocated object section were exact.  Push: with this ledger checkpoint.
