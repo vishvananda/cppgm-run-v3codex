@@ -2725,7 +2725,7 @@ private:
 		full_expression_branch_cleanup_tails_;
 	std::vector<std::uint32_t> full_expression_branch_cleanup_next_;
 	std::vector<IdentityTypeId> identity_type_cache_;
-	PresentationNameMap presentation_names_;
+	lowering::presentation::EmissionNameMap presentation_names_;
 	lowering::SourceTypeLowering source_types_;
 	lowering::StaticInitializerLowering static_initializers_;
 	lowering::constant_pool::Pool constant_templates_;

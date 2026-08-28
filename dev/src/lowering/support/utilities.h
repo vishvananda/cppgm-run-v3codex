@@ -4,7 +4,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <streambuf>
 #include <string>
 #include <vector>
 
@@ -42,41 +41,6 @@ std::string NormalizeFloatingLiteral(const std::string& spelling,
 bool DecodeFloatingLiteral(const std::string& spelling,
 	const lowering::ir::LowType& type, std::uint64_t* low,
 	std::uint64_t* high);
-
-class PresentationNameMap
-{
-	public:
-	PresentationNameMap(const semantic::Program& program,
-		semantic::Stats* stats);
-	std::string Apply(const semantic::BindingRecord& binding) const;
-
-private:
-	const std::string& ClassTemplatePresentation(
-		std::uint32_t presentation) const;
-	const semantic::Program& program_;
-	semantic::Stats* stats_;
-	std::vector<std::uint32_t> replacement_presentations_;
-	std::vector<semantic::EntityId> presentation_entities_;
-	mutable std::vector<std::uint32_t> rendered_indices_;
-	mutable std::vector<std::string> rendered_presentations_;
-	mutable std::vector<semantic::NameId> path_;
-};
-
-class CountingStreamBuffer : public std::streambuf
-{
-public:
-	explicit CountingStreamBuffer(std::streambuf* destination);
-	std::size_t Bytes() const;
-
-protected:
-	int_type overflow(int_type character);
-	std::streamsize xsputn(const char* data, std::streamsize size);
-	int sync();
-
-private:
-	std::streambuf* destination_;
-	std::size_t bytes_;
-};
 
 }  // namespace support
 }  // namespace lowering

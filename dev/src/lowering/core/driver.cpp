@@ -6,12 +6,12 @@
 #include "lowering/presentation/local_names.h"
 #include "lowering/ir/model.h"
 #include "lowering/ir/render.h"
-#include "lowering/support/utilities.h"
 
 #include <algorithm>
 #include <chrono>
 #include <ostream>
 #include <stdexcept>
+#include <streambuf>
 #include <string>
 #include <vector>
 
@@ -21,7 +21,6 @@ namespace cppgm
 using namespace semantic;
 using namespace lowering::ir;
 using namespace lowering;
-using namespace lowering::support;
 
 namespace lowering
 {
@@ -54,6 +53,56 @@ private:
 
 namespace
 {
+
+class CountingStreamBuffer : public std::streambuf
+{
+public:
+	explicit CountingStreamBuffer(std::streambuf* destination);
+	std::size_t Bytes() const;
+
+protected:
+	int_type overflow(int_type character);
+	std::streamsize xsputn(const char* data, std::streamsize size);
+	int sync();
+
+private:
+	std::streambuf* destination_;
+	std::size_t bytes_;
+};
+
+CountingStreamBuffer::CountingStreamBuffer(std::streambuf* destination)
+	: destination_(destination), bytes_(0)
+{
+}
+
+std::size_t CountingStreamBuffer::Bytes() const
+{
+	return bytes_;
+}
+
+CountingStreamBuffer::int_type CountingStreamBuffer::overflow(
+	int_type character)
+{
+	if (traits_type::eq_int_type(character, traits_type::eof()))
+		return traits_type::not_eof(character);
+	const int_type written = destination_->sputc(
+		traits_type::to_char_type(character));
+	if (!traits_type::eq_int_type(written, traits_type::eof())) ++bytes_;
+	return written;
+}
+
+std::streamsize CountingStreamBuffer::xsputn(const char* data,
+	std::streamsize size)
+{
+	const std::streamsize written = destination_->sputn(data, size);
+	if (written > 0) bytes_ += static_cast<std::size_t>(written);
+	return written;
+}
+
+int CountingStreamBuffer::sync()
+{
+	return destination_->pubsync();
+}
 
 SymbolId AddLifecycleHelperSymbol(lowering::ir::Program* program,
 	const std::string& proposed)

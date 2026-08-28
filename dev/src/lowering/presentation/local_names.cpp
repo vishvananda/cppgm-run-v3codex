@@ -1,9 +1,13 @@
 #include "lowering/presentation/local_names.h"
 #include "support/numeric/decimal_spelling.h"
+#include "semantic/semantic.h"
 #include "semantic/model/graph.h"
+#include "semantic/presentation/templates.h"
+#include "semantic/presentation/lambdas.h"
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 
 namespace cppgm
@@ -14,6 +18,115 @@ namespace presentation
 {
 
 using namespace lowering::ir;
+
+EmissionNameMap::EmissionNameMap(const semantic::Program& program,
+	semantic::Stats* stats)
+	: program_(program), stats_(stats)
+{
+	for (std::size_t i = 0; i < program.entities.size(); ++i)
+	{
+		const semantic::EntityRecord& entity = program.entities[i];
+		if (!entity.class_template_presentation) continue;
+		if (entity.emission_name == 0)
+			throw std::logic_error(
+				"class template presentation has no emission name");
+		const semantic::NameId identity = entity.identity_name != 0 ?
+			entity.identity_name : entity.emission_name;
+		const semantic::NameId largest = std::max(entity.emission_name, identity);
+		if (replacement_presentations_.size() <= largest)
+			replacement_presentations_.resize(
+				static_cast<std::size_t>(largest) + 1, 0);
+		if (presentation_entities_.size() >=
+			std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error(
+				"too many class template presentations");
+		presentation_entities_.push_back(static_cast<semantic::EntityId>(i));
+		rendered_indices_.push_back(0);
+		const std::uint32_t encoded =
+			static_cast<std::uint32_t>(presentation_entities_.size());
+		replacement_presentations_[entity.emission_name] = encoded;
+		replacement_presentations_[identity] = encoded;
+	}
+}
+
+const std::string& EmissionNameMap::ClassTemplatePresentation(
+	std::uint32_t presentation) const
+{
+	if (presentation >= presentation_entities_.size() ||
+		presentation >= rendered_indices_.size())
+		throw std::logic_error(
+			"class template presentation index is invalid");
+	const semantic::EntityId entity = presentation_entities_[presentation];
+	if (entity >= program_.entities.size())
+		throw std::logic_error(
+			"class template presentation entity is invalid");
+	if (stats_)
+		++stats_->presentation_reads[
+			semantic::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION];
+	std::uint32_t index = rendered_indices_[presentation];
+	if (index == 0)
+	{
+		const semantic::EntityRecord& record = program_.entities[entity];
+		const std::size_t first = record.template_argument_begin;
+		const std::size_t count = record.template_argument_count;
+		if (record.identity_name == 0 || first == semantic::kNoBinding ||
+			first > program_.canonical_template_arguments.size() ||
+			count > program_.canonical_template_arguments.size() - first)
+			throw std::logic_error(
+				"class template presentation facts are invalid");
+		const semantic::TemplateArgument* arguments = count == 0 ? 0 :
+			&program_.canonical_template_arguments[first];
+		if (rendered_presentations_.size() >=
+			std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error(
+				"too many rendered class template presentations");
+		rendered_presentations_.push_back(
+			semantic::presentation::RenderClassTemplateSpecializationName(
+				program_, record.identity_name, arguments, count, stats_));
+		index = static_cast<std::uint32_t>(rendered_presentations_.size());
+		rendered_indices_[presentation] = index;
+	}
+	return rendered_presentations_[index - 1];
+}
+
+std::string EmissionNameMap::Apply(
+	const semantic::BindingRecord& binding) const
+{
+	if (binding.lambda_invocation)
+		return semantic::presentation::
+			RenderLambdaInvocationEmissionName(program_,
+				binding.lambda_invocation_owner, binding.owner, 0, stats_);
+	const semantic::EntityId owner_entity =
+		program_.EntityForScope(binding.owner);
+	if (owner_entity != semantic::kNoEntity &&
+		owner_entity < program_.entities.size() &&
+		program_.entities[owner_entity].lambda_closure)
+	{
+		std::string result =
+			semantic::presentation::RenderLambdaEntityEmissionName(
+				program_, owner_entity, 0, stats_);
+		result += "::";
+		result += semantic::presentation::RenderLambdaMemberTerminal(
+			program_, owner_entity, binding.name, stats_);
+		return result;
+	}
+	if (stats_)
+		++stats_->presentation_reads[
+			semantic::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION];
+	program_.BuildEmissionPath(binding.owner, binding.name, &path_);
+	std::string result;
+	for (std::size_t i = 0; i < path_.size(); ++i)
+	{
+		if (i != 0) result += "::";
+		const std::uint32_t encoded =
+			path_[i] < replacement_presentations_.size() ?
+				replacement_presentations_[path_[i]] : 0;
+		if (encoded != 0)
+			result += ClassTemplatePresentation(encoded - 1);
+		else result += program_.names.Get(path_[i]);
+	}
+	return result;
+}
 
 lowir_model::StringId InternOrdinalName(lowering::ir::Program& program,
 	const char* prefix, std::size_t prefix_size, std::uint32_t ordinal)

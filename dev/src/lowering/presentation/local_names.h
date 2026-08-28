@@ -11,11 +11,31 @@ namespace cppgm
 namespace semantic
 {
 class DumpArena;
+struct Stats;
 }
 namespace lowering
 {
 namespace presentation
 {
+
+class EmissionNameMap
+{
+public:
+	EmissionNameMap(const semantic::Program& program,
+		semantic::Stats* stats);
+	std::string Apply(const semantic::BindingRecord& binding) const;
+
+private:
+	const std::string& ClassTemplatePresentation(
+		std::uint32_t presentation) const;
+	const semantic::Program& program_;
+	semantic::Stats* stats_;
+	std::vector<std::uint32_t> replacement_presentations_;
+	std::vector<semantic::EntityId> presentation_entities_;
+	mutable std::vector<std::uint32_t> rendered_indices_;
+	mutable std::vector<std::string> rendered_presentations_;
+	mutable std::vector<semantic::NameId> path_;
+};
 
 lowir_model::StringId InternOrdinalName(lowering::ir::Program& program,
 	const char* prefix, std::size_t prefix_size, std::uint32_t ordinal);
