@@ -1,5 +1,5 @@
 #include "compiler_object/serialization.h"
-#include "lowir_prepare.h"
+#include "lowir/io/lowir_prepare.h"
 
 #include <algorithm>
 #include <chrono>

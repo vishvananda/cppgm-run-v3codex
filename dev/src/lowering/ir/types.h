@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lowir_identity.h"
+#include "lowir/model/lowir_identity.h"
 #include "semantic/model/program.h"
 
 #include <cstddef>

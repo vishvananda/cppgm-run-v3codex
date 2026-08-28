@@ -37,7 +37,7 @@ The PA13 starter kit contains:
 - `lowir2cy86.cpp`, a link to the editable `dev/lowir2cy86.cpp` entry point
 - the grammar for this assignment called `pa13.gram`
 - `lowir.md`, the LowIR format reference for this assignment family
-- optional typed LowIR model scaffolding in `dev/src/lowir_model.h` with
+- optional typed LowIR model scaffolding in `dev/src/lowir/model/lowir_model.h` with
   shared exported-symbol support in `dev/src/ir_symbol_model.h`
 - an HTML grammar explorer of `pa13.gram` in the sub-directory `grammar/`
 - `scripts/run_all_tests.pl` and `scripts/compare_results.pl`
@@ -189,7 +189,7 @@ Undefined continuation is represented directly by the operand-free
 terminator, it must be the final instruction in its block.
 
 You may keep a typed LowIR model internally, and the optional
-`dev/src/lowir_model.h` scaffold names the common program, symbol, type,
+`dev/src/lowir/model/lowir_model.h` scaffold names the common program, symbol, type,
 operand, block, and instruction pieces. The typed model is support for the
 text format, not a replacement for it: if a later backend or object writer
 needs a fact, that fact must be representable in serialized LowIR text and

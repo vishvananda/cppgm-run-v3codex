@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lowir_model.h"
+#include "lowir/model/lowir_model.h"
 #include "mir_model.h"
 
 namespace lowir_native {

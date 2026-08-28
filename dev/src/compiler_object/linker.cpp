@@ -1,5 +1,5 @@
 #include "compiler_object/linker.h"
-#include "lowir_prepare.h"
+#include "lowir/io/lowir_prepare.h"
 
 #include <chrono>
 #include <cstdint>

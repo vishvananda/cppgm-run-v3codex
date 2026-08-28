@@ -2,7 +2,7 @@
 #define CPPGM_LOWIR_NATIVE_BULK_LOWERING_H
 
 #include "lowir_native_mir.h"
-#include "lowir_model.h"
+#include "lowir/model/lowir_model.h"
 
 #include <vector>
 
