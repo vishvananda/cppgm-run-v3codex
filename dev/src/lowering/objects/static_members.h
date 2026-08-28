@@ -1,7 +1,7 @@
 #ifndef CPPGM_LOWERING_OBJECTS_STATIC_MEMBERS_H
 #define CPPGM_LOWERING_OBJECTS_STATIC_MEMBERS_H
 
-#include "lowering/abi/itanium.h"
+#include "lowering/abi/mangling.h"
 #include "lowering/abi/symbol_names.h"
 
 #include <stdexcept>

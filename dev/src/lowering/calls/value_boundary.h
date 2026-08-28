@@ -2,7 +2,7 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
-#include "lowering/abi/itanium.h"
+#include "lowering/abi/symbol_metadata.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/types.h"
 

@@ -1372,3 +1372,30 @@ checkpoint where applicable, commit, and push state.
   LowIR remained 124/99, semantic ownership remained 850/0, and the layout
   census remained 6/6/4/18.  Fresh inception remains scheduled for the
   completed lowering tier.  Push: with this ledger checkpoint.
+- `16b21bd7` — R8 ABI ownership and lowering-tier closure.  Renamed the
+  retained Itanium fact-builder core to `lowering/abi/mangling` and extracted
+  independent emission-policy and runtime-symbol-metadata translation units
+  with narrow public headers.  The shared 2,500-line mangling core remains
+  intact because its type, function, variable, and local-name routes all depend
+  on one private `AbiFactBuilder`; splitting it by size would create an
+  artificial cross-file interface.  Extended the lowering owner audit to all
+  13 public ABI functions.  It now passes with 100 class/struct definitions,
+  13 ABI functions, 45 deliberate `ProgramLowerer` methods, and no queued R8
+  repair.
+
+  The first two link orders exposed a repeatable layout penalty and were not
+  retained.  Keeping symbol metadata and emission policy adjacent to the
+  lowering driver, followed by the mangling core, reduced optimized-host text
+  from 7,060,722 to 7,059,254 bytes.  Across both final A/B label orders
+  (12 samples per compiler), old/candidate frozen medians were 4.645/4.640
+  seconds wall (-0.11%), 4.145/4.145 seconds user (tie), and
+  368866/369446 KiB RSS (+0.16%).  Focused PA14, PA15, PA16, PA18, PA31, and
+  PA34 gates passed and all 18 output surfaces remained exact.
+
+  The tier-closing report passed 5471/5471; LowIR remained 124/99, semantic
+  ownership remained 850/0, file audit remained zero-fatal/32-warning, and
+  layout remained 6/6/4/18.  Fresh explicit-O1 32/32/32 inception matched all
+  219 current objects and the final compiler exactly at SHA-256
+  `75e9321418e67dc21671c39b0e7c16b652181150858680ece851bed759bb0d43`.
+  R8 exits with no arbitrary lowering-generation split and no retained output
+  or performance regression.  Push: with this amended closure checkpoint.

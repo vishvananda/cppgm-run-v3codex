@@ -11,6 +11,7 @@ my $root = abs_path("$FindBin::Bin/..");
 my $manifest = "$root/doc/compiler-lowering-symbol-owners.tsv";
 my %actual;
 my $class_count = 0;
+my $function_count = 0;
 my $method_count = 0;
 
 my @headers;
@@ -39,6 +40,42 @@ for my $path (sort @headers)
 		$actual{"$kind\t$relative\t$symbol\t$number"} = 1;
 		++$class_count;
 	}
+}
+
+my @abi_headers = sort glob "$root/dev/src/lowering/abi/*.h";
+my @abi_sources = sort glob "$root/dev/src/lowering/abi/*.cpp";
+my %abi_function;
+for my $path (@abi_headers)
+{
+	open(my $fh, '<', $path) or die "unable to read $path: $!\n";
+	local $/;
+	my $source = <$fh>;
+	close($fh) or die "unable to close $path: $!\n";
+	while ($source =~ /(?:\A|\n)(?:std::string|bool|void)\s+
+		([A-Za-z_][A-Za-z0-9_]*)\s*\([^;{}]*\)\s*;/sgx)
+	{
+		$abi_function{$1} = 1;
+	}
+}
+for my $symbol (sort keys %abi_function)
+{
+	my @owner;
+	for my $path (@abi_sources)
+	{
+		open(my $fh, '<', $path) or die "unable to read $path: $!\n";
+		local $/;
+		my $source = <$fh>;
+		close($fh) or die "unable to close $path: $!\n";
+		push @owner, $path if $source =~ /(?:\A|\n)
+			(?:std::string|bool|void)\s+\Q$symbol\E\s*
+			\([^;{}]*\)\s*\{/sgx;
+	}
+	die "ABI function $symbol has " . scalar(@owner) .
+		" implementation owners\n" if @owner != 1;
+	my $relative = $owner[0];
+	$relative =~ s/^\Q$root\E\///;
+	$actual{"function\t$relative\t$symbol\t1"} = 1;
+	++$function_count;
 }
 
 my $program_lowerer = "$root/dev/src/lowering/core/program_lowerer.cpp";
@@ -99,7 +136,8 @@ while (my $line = <$manifest_fh>)
 	push @error, "$manifest:$line_number duplicates $key"
 		if $recorded{$key}++;
 	push @error, "$manifest:$line_number has invalid kind '$kind'"
-		if $kind ne 'class' && $kind ne 'struct' && $kind ne 'method';
+		if $kind ne 'class' && $kind ne 'struct' && $kind ne 'function' &&
+			$kind ne 'method';
 	push @error, "$manifest:$line_number has invalid ordinal '$ordinal'"
 		if $ordinal !~ /\A[1-9][0-9]*\z/;
 	push @error, "$manifest:$line_number has invalid disposition '$disposition'"
@@ -130,5 +168,5 @@ if (@error)
 }
 
 print "Lowering symbol-owner audit passed: $class_count class/struct " .
-	"definitions; $method_count ProgramLowerer methods; $review queued for " .
-	"R8 ownership repair.\n";
+	"definitions; $function_count ABI functions; $method_count ProgramLowerer " .
+	"methods; $review queued for R8 ownership repair.\n";

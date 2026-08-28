@@ -1,6 +1,6 @@
 #include "lowering/objects/polymorphism.h"
 
-#include "lowering/abi/itanium.h"
+#include "lowering/abi/mangling.h"
 #include "lowering/presentation/local_names.h"
 #include "lowering/abi/symbol_names.h"
 #include "lowering/core/source_types.h"
