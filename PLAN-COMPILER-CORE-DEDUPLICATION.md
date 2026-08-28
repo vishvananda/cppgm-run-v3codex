@@ -974,3 +974,21 @@ not reuse measurements from a different source tree.
   ASLR-disabled frozen O0 pairs emit the exact `b0d3d8d3...` object; excluding
   the first cold pair, both baseline and candidate have a 4.57-second median,
   so the extraction is performance-neutral at this oracle's timing floor.
+- **C8 CUMULATIVE CHECKPOINT.** Commits `f5a47d7f`, `1827e19d`,
+  `3fed967f`, and `22263f1d` retain the four exact native-support families.
+  Root 32-way report-through-PA38 passes 5,467/5,467; both audits pass and the
+  file audit remains zero-fatal/34.  Three fresh, current-source O1 compiler
+  lanes have median wall times of 31.71 seconds self, 23.02 seconds GCC-built,
+  and 21.31 seconds Clang-built: 1.378x self/GCC and 1.488x self/Clang.  The
+  repeated final compiler hashes are `3e4970b6...` for the common GCC-host
+  configuration and `6fafe92b...` for the Clang-host configuration.  Thus the
+  maximum wall ratio is below 1.5, but the Clang-relative ratio has materially
+  worsened from the early-plan checkpoint and remains a final-closure item;
+  the GCC improvement must not hide it.  A same-current-source self A/B
+  against pre-C8 `216f5690` reverses direction across its two ABBA blocks;
+  per-run median aggregate CPU moves only +0.25% and every final compiler is
+  exact, so there is no repeated C8 regression above the 0.5% threshold.
+  Across C8, GCC-O3 text grows 732 bytes and Clang-O3 text grows 44 bytes.
+  Two pinned, ASLR-disabled frozen blocks are exact for both families; GCC
+  baseline/candidate medians are 4.54/4.52 seconds and Clang medians are
+  4.725/4.695 seconds.  C8 therefore preserves the fully optimized best case.
