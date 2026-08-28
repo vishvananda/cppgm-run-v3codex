@@ -290,11 +290,10 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 	return true;
 }
 
-ExpressionInfo SemanticAnalyzer::BuildBuiltinIntrinsicCall(
-	BuiltinFunctionKind kind, const std::vector<ExpressionInfo>& arguments,
-	TypeId result_type, TypeId target)
+ExpressionInfo SemanticAnalyzer::BuildBoundIntrinsicCallShell(
+	BindingId binding, const std::vector<ExpressionInfo>& arguments,
+	TypeId result_type)
 {
-	const BindingId binding = EnsureBuiltinFunction(kind);
 	const FunctionInfo& function = GetFunction(binding);
 	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
 		VALUE_PRVALUE, 0, binding);
@@ -308,6 +307,16 @@ ExpressionInfo SemanticAnalyzer::BuildBuiltinIntrinsicCall(
 	result.type = result_type;
 	result.category = VALUE_PRVALUE;
 	result.binding = binding;
+	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::BuildBuiltinIntrinsicCall(
+	BuiltinFunctionKind kind, const std::vector<ExpressionInfo>& arguments,
+	TypeId result_type, TypeId target)
+{
+	const BindingId binding = EnsureBuiltinFunction(kind);
+	ExpressionInfo result = BuildBoundIntrinsicCallShell(
+		binding, arguments, result_type);
 	++expression_count_;
 	return ApplyTarget(result, target);
 }
@@ -363,19 +372,8 @@ ExpressionInfo SemanticAnalyzer::BuildIntegerIntrinsicCall(
 	TypeId target)
 {
 	const BindingId binding = EnsureIntegerIntrinsicFunction(kind);
-	const FunctionInfo& function = GetFunction(binding);
-	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
-		VALUE_PRVALUE, 0, binding);
-	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
-		VALUE_NONE, 0, binding);
-	dump_.Add(call, callee);
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-		dump_.Add(call, arguments[i].node);
-	ExpressionInfo result;
-	result.node = call;
-	result.type = result_type;
-	result.category = VALUE_PRVALUE;
-	result.binding = binding;
+	ExpressionInfo result = BuildBoundIntrinsicCallShell(
+		binding, arguments, result_type);
 	++expression_count_;
 	const hosted_builtin::IntegerIntrinsic& intrinsic =
 		hosted_builtin::GetIntegerIntrinsic(kind);
@@ -560,22 +558,11 @@ ExpressionInfo SemanticAnalyzer::BuildFloatingIntrinsicCall(
 	TypeId target)
 {
 	const BindingId binding = EnsureFloatingIntrinsicFunction(kind);
-	const FunctionInfo& function = GetFunction(binding);
-	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
-		VALUE_PRVALUE, 0, binding);
-	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
-		VALUE_NONE, 0, binding);
-	dump_.Add(call, callee);
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-		dump_.Add(call, arguments[i].node);
+	ExpressionInfo result = BuildBoundIntrinsicCallShell(
+		binding, arguments, result_type);
 	if (hosted_builtin::GetFloatingIntrinsic(kind).operation ==
 		hosted_builtin::FLOATING_OPERATION_EXTERNAL_CEIL)
 		DemandFunction(binding);
-	ExpressionInfo result;
-	result.node = call;
-	result.type = result_type;
-	result.category = VALUE_PRVALUE;
-	result.binding = binding;
 	++expression_count_;
 	return ApplyTarget(result, target);
 }
@@ -741,22 +728,11 @@ ExpressionInfo SemanticAnalyzer::BuildMemoryIntrinsicCall(
 	TypeId target)
 {
 	const BindingId binding = EnsureMemoryIntrinsicFunction(kind);
-	const FunctionInfo& function = GetFunction(binding);
-	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
-		VALUE_PRVALUE, 0, binding);
-	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
-		VALUE_NONE, 0, binding);
-	dump_.Add(call, callee);
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-		dump_.Add(call, arguments[i].node);
+	ExpressionInfo result = BuildBoundIntrinsicCallShell(
+		binding, arguments, result_type);
 	if (hosted_builtin::GetMemoryIntrinsic(kind).lowering ==
 		hosted_builtin::MEMORY_LOWER_EXTERNAL)
 		DemandFunction(binding);
-	ExpressionInfo result;
-	result.node = call;
-	result.type = result_type;
-	result.category = VALUE_PRVALUE;
-	result.binding = binding;
 	++expression_count_;
 	return ApplyTarget(result, target);
 }

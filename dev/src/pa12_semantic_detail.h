@@ -1221,21 +1221,17 @@ private:
 	ExpressionInfo AnalyzeAtomicOrderArgument(NodeId syntax, ScopeId scope);
 	TypeId AtomicPointerValueType(const ExpressionInfo& pointer,
 		bool require_atomic) const;
+	ExpressionInfo BuildBoundIntrinsicCallShell(BindingId binding,
+		const std::vector<ExpressionInfo>& arguments, TypeId result_type);
 	ExpressionInfo BuildBuiltinIntrinsicCall(BuiltinFunctionKind kind,
 		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
 		TypeId target);
-	ExpressionInfo BuildIntegerIntrinsicCall(
-		hosted_builtin::IntegerIntrinsicKind kind,
-		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
-		TypeId target);
-	ExpressionInfo BuildFloatingIntrinsicCall(
-		hosted_builtin::FloatingIntrinsicKind kind,
-		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
-		TypeId target);
-	ExpressionInfo BuildMemoryIntrinsicCall(
-		hosted_builtin::MemoryIntrinsicKind kind,
-		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
-		TypeId target);
+	ExpressionInfo BuildIntegerIntrinsicCall(hosted_builtin::IntegerIntrinsicKind kind,
+		const std::vector<ExpressionInfo>& arguments, TypeId result_type, TypeId target);
+	ExpressionInfo BuildFloatingIntrinsicCall(hosted_builtin::FloatingIntrinsicKind kind,
+		const std::vector<ExpressionInfo>& arguments, TypeId result_type, TypeId target);
+	ExpressionInfo BuildMemoryIntrinsicCall(hosted_builtin::MemoryIntrinsicKind kind,
+		const std::vector<ExpressionInfo>& arguments, TypeId result_type, TypeId target);
 	ExpressionInfo BuildAtomicIntrinsicCall(
 		hosted_builtin::AtomicIntrinsicKind kind,
 		const std::vector<ExpressionInfo>& arguments, TypeId value_type,

@@ -782,3 +782,18 @@ not reuse measurements from a different source tree.
   state those arity rules, and reference-generated negative reducers cover
   both.  The focused cases pass 1/1 each, PA12 passes 184/184, and PA34 passes
   375/375.  This coverage commit precedes the construction-helper change.
+- **C4 (BOUND INTRINSIC CALL SHELL).** One helper now owns the typed call node,
+  bound callee, ordered argument edges, and prvalue result shared by builtin,
+  integer, floating, and memory intrinsic calls.  Each caller still owns
+  binding selection, external-function demand, integer constant folding,
+  target conversion, and expression accounting.  Atomic and vector calls keep
+  their separate unbound typed shapes.  The change removes 28 net source lines
+  and reduces optimized compiler text by 4,756 bytes with GCC and 716 bytes
+  with Clang.  The focused PA12/PA34 cases pass 7/7, PA12 passes 184/184, PA21
+  149/149, PA34 375/375, and the through-PA34 report passes 5,001/5,001; the
+  32-way through-PA38 gate passes 5,467/5,467, and the audit remains
+  zero-fatal/34.  All frozen O0 output objects are exact.  Three
+  interleaved GCC pairs differ by -0.06, -0.04, and +0.01 seconds.  Four
+  order-alternated, CPU-pinned Clang pairs have median walls of 4.775 seconds
+  before and 4.765 seconds after (identical 4.275-second mean user time), so
+  the extraction is performance-neutral within measurement noise.
