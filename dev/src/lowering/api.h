@@ -3,7 +3,7 @@
 #include "abi/itanium/abi_mangle.h"
 #include "semantic/semantic.h"
 #include "lowering/ir/model.h"
-#include "pa15_local_presentation.h"
+#include "lowering/presentation/local_names.h"
 
 #include <cstddef>
 #include <cstdint>

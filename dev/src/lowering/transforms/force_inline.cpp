@@ -1,7 +1,7 @@
-#include "pa15_force_inline.h"
+#include "lowering/transforms/force_inline.h"
 
-#include "pa15_function_reachability.h"
-#include "pa15_local_presentation.h"
+#include "lowering/analysis/function_reachability.h"
+#include "lowering/presentation/local_names.h"
 #include "lowering/api.h"
 
 #include <algorithm>

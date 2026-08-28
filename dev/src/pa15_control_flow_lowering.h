@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pa15_local_presentation.h"
+#include "lowering/presentation/local_names.h"
 #include "lowering/ir/model.h"
 
 #include <limits>

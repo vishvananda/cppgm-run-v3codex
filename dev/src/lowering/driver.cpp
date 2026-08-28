@@ -1,9 +1,9 @@
 #include "lowering/api.h"
 
 #include "semantic/semantic.h"
-#include "pa15_force_inline.h"
+#include "lowering/transforms/force_inline.h"
 #include "lowering/graph_lowering.h"
-#include "pa15_local_presentation.h"
+#include "lowering/presentation/local_names.h"
 #include "lowering/ir/model.h"
 #include "lowering/ir/render.h"
 #include "lowering/support/utilities.h"
