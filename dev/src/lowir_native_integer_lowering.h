@@ -182,22 +182,16 @@ protected:
       append_integer_normalization(out, instruction.type, destination);
       lowerer.consume(instruction.first, destination.reg);
       lowerer.consume(instruction.second, destination.reg);
-      if(pressure_home.kind == MirOperand::OP_FRAME)
-        append_store(out, pressure_home, destination, instruction.type);
-      lowerer.define(instruction.dest, instruction.type,
-        pressure_home.kind == MirOperand::OP_FRAME ? pressure_home :
-        destination);
+      lowerer.finalize_integer_result(instruction.dest, instruction.type,
+        destination, pressure_home, out);
       return;
     } else if(shift) {
       emit_shift(instruction, destination, right, out);
       append_integer_normalization(out, instruction.type, destination);
       lowerer.consume(instruction.first, destination.reg);
       lowerer.consume(instruction.second, destination.reg);
-      if(pressure_home.kind == MirOperand::OP_FRAME)
-        append_store(out, pressure_home, destination, instruction.type);
-      lowerer.define(instruction.dest, instruction.type,
-        pressure_home.kind == MirOperand::OP_FRAME ? pressure_home :
-        destination);
+      lowerer.finalize_integer_result(instruction.dest, instruction.type,
+        destination, pressure_home, out);
       return;
     } else if(instruction.op.kind != LowOperation::LOP_ADD) {
       throw std::runtime_error(

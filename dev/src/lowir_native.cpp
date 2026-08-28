@@ -1223,6 +1223,12 @@ private:
             !has_live_location_alias(id, location))
       xmms_.release(location.xmm);
   }
+  void finalize_integer_result(lowir_model::ValueId value, const LowType & type,
+      const MirOperand & destination, const MirOperand & home,
+      std::vector<MirInstruction> & out) {
+    if(home.kind == MirOperand::OP_FRAME) append_store(out, home, destination, type);
+    define(value, type, home.kind == MirOperand::OP_FRAME ? home : destination);
+  }
   void emit_operand_address(std::vector<MirInstruction> & out,
                             X64Register destination,
                             const Operand & operand)

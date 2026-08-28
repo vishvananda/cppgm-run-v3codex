@@ -949,3 +949,28 @@ not reuse measurements from a different source tree.
   three assignment gates pass; both audits remain clean with the file audit at
   34 warnings.  The frozen O0 object is exact and GCC-O3 compiler text grows
   80 bytes.
+- **C8-4 COVERAGE AUDIT (PRESSURE-BACKED INTEGER RESULTS).** Atomic load,
+  exchange, and add-fetch plus integer division and shift share an exact
+  post-consumption tail: store a register result to its pressure home when one
+  exists, then define the value at the home or register.  Narrow normalization
+  and each operation's operand consumption must stay local and ordered.  PA29
+  already has focused atomic-load pressure, atomic-exchange loop pressure,
+  narrow signed frame-home shift/division, direct-return division, and
+  register-pressure division controls.  Together they exercise register and
+  frame results, narrow width, return placement, and liveness, so no fixture
+  backfill is needed.
+- **C8-4 (PRESSURE-BACKED INTEGER RESULT FINALIZATION).** `FunctionLowerer`
+  now owns the exact conditional pressure-home store and result publication
+  tail used by atomic load/exchange/add-fetch and integer division/shift;
+  normalization and operand consumption remain at each operation site.  The
+  five focused controls produce byte-identical MIR and identical executable
+  outcomes with the isolated pre-change `3fed967f` compiler.  Three legacy
+  PA29 exact-MIR sidecars disagree with both binaries, so they were not
+  regenerated or used to hide the equivalence result; PA29's supported
+  structural/behavioral gate passes 291/291 and PA38 passes 45/45.  Root
+  32-way report-through-PA38 passes 5,467/5,467, the LowIR audit passes, and
+  the file audit remains zero-fatal/34 at exactly 3,000 lines for
+  `lowir_native.cpp`.  GCC-O3 compiler text grows 188 bytes.  Four pinned,
+  ASLR-disabled frozen O0 pairs emit the exact `b0d3d8d3...` object; excluding
+  the first cold pair, both baseline and candidate have a 4.57-second median,
+  so the extraction is performance-neutral at this oracle's timing floor.

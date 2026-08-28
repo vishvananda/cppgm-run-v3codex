@@ -72,11 +72,8 @@ protected:
 		append_integer_normalization(out, instruction.type, destination);
 		derived.consume(instruction.first, destination.reg);
 		derived.consume(instruction.args[0]);
-		if (pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-			append_store(out, pressure_home, destination, instruction.type);
-		derived.define(instruction.dest, instruction.type,
-			pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
-			pressure_home : destination);
+		derived.finalize_integer_result(instruction.dest, instruction.type,
+			destination, pressure_home, out);
 	}
 
 	void emit_atomic_store(const lowir_model::Instruction& instruction,
@@ -136,11 +133,8 @@ protected:
 		derived.consume(instruction.first);
 		derived.consume(instruction.second);
 		derived.consume(instruction.args[0]);
-		if (pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-			append_store(out, pressure_home, destination, instruction.type);
-		derived.define(instruction.dest, instruction.type,
-			pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
-			pressure_home : destination);
+		derived.finalize_integer_result(instruction.dest, instruction.type,
+			destination, pressure_home, out);
 	}
 
 	void emit_atomic_add_fetch(const lowir_model::Instruction& instruction,
@@ -180,11 +174,8 @@ protected:
 		derived.consume(instruction.first);
 		derived.consume(instruction.second);
 		derived.consume(instruction.args[0]);
-		if (pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-			append_store(out, pressure_home, destination, instruction.type);
-		derived.define(instruction.dest, instruction.type,
-			pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
-			pressure_home : destination);
+		derived.finalize_integer_result(instruction.dest, instruction.type,
+			destination, pressure_home, out);
 	}
 
 	void emit_atomic_compare_exchange(
