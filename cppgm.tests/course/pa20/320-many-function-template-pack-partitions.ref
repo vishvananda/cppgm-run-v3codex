@@ -1,0 +1,670 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $total : i32
+  slot $argobj__1 : obj<1x1>
+  slot $argobj__2 : obj<1x1>
+  slot $argobj__3 : obj<1x1>
+  slot $argobj__4 : obj<1x1>
+  slot $argobj__5 : obj<1x1>
+  slot $argobj__6 : obj<1x1>
+  slot $argobj__7 : obj<1x1>
+  slot $argobj__8 : obj<1x1>
+  slot $argobj__9 : obj<1x1>
+  slot $argobj__10 : obj<1x1>
+  slot $argobj__11 : obj<1x1>
+  slot $argobj__12 : obj<1x1>
+  slot $argobj__13 : obj<1x1>
+  slot $argobj__14 : obj<1x1>
+  slot $argobj__15 : obj<1x1>
+  slot $argobj__16 : obj<1x1>
+  slot $argobj__17 : obj<1x1>
+  slot $argobj__18 : obj<1x1>
+  slot $argobj__19 : obj<1x1>
+  slot $argobj__20 : obj<1x1>
+  slot $argobj__21 : obj<1x1>
+  slot $argobj__22 : obj<1x1>
+  slot $argobj__23 : obj<1x1>
+  slot $argobj__24 : obj<1x1>
+  slot $cond__25 : i32
+
+  block ^entry:
+    store i32 0, $total
+    %t1 = load i32 $total
+    %t2 = addr $argobj__1
+    call void @types____types(%t2)
+    %t3 = call i32 @partition_size($argobj__1, 0)
+    %t4 = binary add i32 %t1, %t3
+    store i32 %t4, $total
+    %t5 = load i32 $total
+    %t6 = addr $argobj__2
+    call void @types_int___types(%t6)
+    %t7 = call i32 @partition_size__ov2($argobj__2, 0)
+    %t8 = binary add i32 %t5, %t7
+    store i32 %t8, $total
+    %t9 = load i32 $total
+    %t10 = addr $argobj__3
+    call void @types_int__int___types(%t10)
+    %t11 = call i32 @partition_size__ov3($argobj__3, 0)
+    %t12 = binary add i32 %t9, %t11
+    store i32 %t12, $total
+    %t13 = load i32 $total
+    %t14 = addr $argobj__4
+    call void @types_int__int__int___types(%t14)
+    %t15 = call i32 @partition_size__ov4($argobj__4, 0)
+    %t16 = binary add i32 %t13, %t15
+    store i32 %t16, $total
+    %t17 = load i32 $total
+    %t18 = addr $argobj__5
+    call void @types_int__int__int__int___types(%t18)
+    %t19 = call i32 @partition_size__ov5($argobj__5, 0)
+    %t20 = binary add i32 %t17, %t19
+    store i32 %t20, $total
+    %t21 = load i32 $total
+    %t22 = addr $argobj__6
+    call void @types_int__int__int__int__int___types(%t22)
+    %t23 = call i32 @partition_size__ov6($argobj__6, 0)
+    %t24 = binary add i32 %t21, %t23
+    store i32 %t24, $total
+    %t25 = load i32 $total
+    %t26 = addr $argobj__7
+    call void @types_int__int__int__int__int__int___types(%t26)
+    %t27 = call i32 @partition_size__ov7($argobj__7, 0)
+    %t28 = binary add i32 %t25, %t27
+    store i32 %t28, $total
+    %t29 = load i32 $total
+    %t30 = addr $argobj__8
+    call void @types_int__int__int__int__int__int__int___types(%t30)
+    %t31 = call i32 @partition_size__ov8($argobj__8, 0)
+    %t32 = binary add i32 %t29, %t31
+    store i32 %t32, $total
+    %t33 = load i32 $total
+    %t34 = addr $argobj__9
+    call void @types_int__int__int__int__int__int__int__int___types(%t34)
+    %t35 = call i32 @partition_size__ov9($argobj__9, 0)
+    %t36 = binary add i32 %t33, %t35
+    store i32 %t36, $total
+    %t37 = load i32 $total
+    %t38 = addr $argobj__10
+    call void @types_int__int__int__int__int__int__int__int__int___types(%t38)
+    %t39 = call i32 @partition_size__ov10($argobj__10, 0)
+    %t40 = binary add i32 %t37, %t39
+    store i32 %t40, $total
+    %t41 = load i32 $total
+    %t42 = addr $argobj__11
+    call void @types_int__int__int__int__int__int__int__int__int__int___types(%t42)
+    %t43 = call i32 @partition_size__ov11($argobj__11, 0)
+    %t44 = binary add i32 %t41, %t43
+    store i32 %t44, $total
+    %t45 = load i32 $total
+    %t46 = addr $argobj__12
+    call void @types_int__int__int__int__int__int__int__int__int__int__int___types(%t46)
+    %t47 = call i32 @partition_size__ov12($argobj__12, 0)
+    %t48 = binary add i32 %t45, %t47
+    store i32 %t48, $total
+    %t49 = load i32 $total
+    %t50 = addr $argobj__13
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int___types(%t50)
+    %t51 = call i32 @partition_size__ov13($argobj__13, 0)
+    %t52 = binary add i32 %t49, %t51
+    store i32 %t52, $total
+    %t53 = load i32 $total
+    %t54 = addr $argobj__14
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t54)
+    %t55 = call i32 @partition_size__ov14($argobj__14, 0)
+    %t56 = binary add i32 %t53, %t55
+    store i32 %t56, $total
+    %t57 = load i32 $total
+    %t58 = addr $argobj__15
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t58)
+    %t59 = call i32 @partition_size__ov15($argobj__15, 0)
+    %t60 = binary add i32 %t57, %t59
+    store i32 %t60, $total
+    %t61 = load i32 $total
+    %t62 = addr $argobj__16
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t62)
+    %t63 = call i32 @partition_size__ov16($argobj__16, 0)
+    %t64 = binary add i32 %t61, %t63
+    store i32 %t64, $total
+    %t65 = load i32 $total
+    %t66 = addr $argobj__17
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t66)
+    %t67 = call i32 @partition_size__ov17($argobj__17, 0)
+    %t68 = binary add i32 %t65, %t67
+    store i32 %t68, $total
+    %t69 = load i32 $total
+    %t70 = addr $argobj__18
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t70)
+    %t71 = call i32 @partition_size__ov18($argobj__18, 0)
+    %t72 = binary add i32 %t69, %t71
+    store i32 %t72, $total
+    %t73 = load i32 $total
+    %t74 = addr $argobj__19
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t74)
+    %t75 = call i32 @partition_size__ov19($argobj__19, 0)
+    %t76 = binary add i32 %t73, %t75
+    store i32 %t76, $total
+    %t77 = load i32 $total
+    %t78 = addr $argobj__20
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t78)
+    %t79 = call i32 @partition_size__ov20($argobj__20, 0)
+    %t80 = binary add i32 %t77, %t79
+    store i32 %t80, $total
+    %t81 = load i32 $total
+    %t82 = addr $argobj__21
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t82)
+    %t83 = call i32 @partition_size__ov21($argobj__21, 0)
+    %t84 = binary add i32 %t81, %t83
+    store i32 %t84, $total
+    %t85 = load i32 $total
+    %t86 = addr $argobj__22
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t86)
+    %t87 = call i32 @partition_size__ov22($argobj__22, 0)
+    %t88 = binary add i32 %t85, %t87
+    store i32 %t88, $total
+    %t89 = load i32 $total
+    %t90 = addr $argobj__23
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t90)
+    %t91 = call i32 @partition_size__ov23($argobj__23, 0)
+    %t92 = binary add i32 %t89, %t91
+    store i32 %t92, $total
+    %t93 = load i32 $total
+    %t94 = addr $argobj__24
+    call void @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%t94)
+    %t95 = call i32 @partition_size__ov24($argobj__24, 0)
+    %t96 = binary add i32 %t93, %t95
+    store i32 %t96, $total
+    %t97 = load i32 $total
+    %t98 = cmp eq i32 %t97, 300
+    branch %t98, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__25
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__25
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t99 = load i32 $cond__25
+    return i32 %t99
+}
+function @types____types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5typesIJiiiiiiiiiiiiiiiiiiiiiiiEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @partition_size(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 0
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov2(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 1
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov3(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 2
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov4(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 3
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov5(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 4
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov6(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 5
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov7(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 6
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov8(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 7
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov9(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 8
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov10(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 9
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov11(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 10
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov12(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 11
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov13(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 12
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov14(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 13
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov15(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 14
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov16(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 15
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov17(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 16
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov18(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 17
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov19(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 18
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov20(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 19
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov21(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 20
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov22(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 21
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov23(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 22
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+function @partition_size__ov24(%__param0 : obj<1x1>, %__param1 : i32) -> i32 [binding=weak, object=_Z14partition_sizeIJiiiiiiiiiiiiiiiiiiiiiiiEJiEEi5typesIJDpT_EEDpT0_] {
+  slot $__param0 : obj<1x1>
+  slot $__param1 : i32
+
+  block ^entry:
+    store i32 %__param1, $__param1
+    %t1 = const i64 23
+    %t2 = const i64 1
+    %t3 = binary add i64 %t1, %t2
+    %t4 = convert trunc i32 i64 %t3
+    return i32 %t4
+}
+alias object _ZN5typesIJEEC2Ev = @types____types
+alias object _ZN5typesIJiEEC2Ev = @types_int___types
+alias object _ZN5typesIJiiEEC2Ev = @types_int__int___types
+alias object _ZN5typesIJiiiEEC2Ev = @types_int__int__int___types
+alias object _ZN5typesIJiiiiEEC2Ev = @types_int__int__int__int___types
+alias object _ZN5typesIJiiiiiEEC2Ev = @types_int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiEEC2Ev = @types_int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types
+alias object _ZN5typesIJiiiiiiiiiiiiiiiiiiiiiiiEEC2Ev = @types_int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int__int___types

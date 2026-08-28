@@ -156,6 +156,9 @@ the implemented surface, including:
 - dependent-call, dependent-alias, and no-eager-instantiation behavior when the
   primary assertion is a single PA23-owned feature rather than a broad
   multi-feature composition
+- dozens of distinct dependent function-template result types may coexist in
+  one translation unit, and equivalent redeclarations retain the same result
+  meaning after all of those declarations have been processed
 
 ### Out Of Scope
 

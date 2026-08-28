@@ -1035,3 +1035,47 @@ not reuse measurements from a different source tree.
   second self lanes, clearly worse than the retained guarded outline.  Both
   experiments were removed; only the small exact eligibility predicate is
   force-inlined in the retained implementation.
+- **C10 TABLE INVARIANT AUDIT.** All ten PA12 open-address indexes use a zero
+  slot sentinel, power-of-two capacity, linear probing, and 70% growth, but
+  their policies are not otherwise interchangeable.  Using-function identity
+  stores insertion-order entry index plus one and rejects duplicates; the
+  request-local binding set stores binding plus one directly, starts at eight,
+  and rebuilds from occupied slots rather than entry order.  Pack bindings,
+  indexed sequences, and enum-operator candidates store stable entry index
+  plus one and own distinct duplicate/secondary-sequence policy.  Call
+  conversions and function signatures overwrite an existing value.  Template
+  specializations own a request-state transition machine.  Their hashes are,
+  respectively, typed key hashes or the shared two-half 64-bit hash; none have
+  probe counters, and storage accounting includes only each table's owned
+  entry, slot, secondary-head, and sequence capacities.  These eight families
+  remain local in the first increment.  Template-argument partitions and
+  function-template result identities alone have byte-equivalent rebuilds:
+  both store a cached hash in insertion-order entries and reconstruct a
+  zero-filled entry-index-plus-one slot vector without changing counters.
+  Partitions reserve identity zero for the empty sequence and otherwise count
+  requests, cache hits, and occupied/final probes; result identities return an
+  invalid sentinel for empty input and additionally count initial and equality
+  atom visits.  Their offset/atom and entry/slot capacities remain separately
+  included in semantic side storage.
+- **C10-1 COVERAGE AUDIT (CACHED-HASH SLOT REBUILD).** Existing PA20 pack
+  partition tests and PA23 dependent-result/SFINAE tests exercise insertion,
+  cache hits, and stable semantic identity, but no one translation unit crossed
+  the initial 32-slot table's 70% growth point.  PA20 and PA23 now state the
+  scalable student-facing behavior.  Focused course reducers form 24 distinct
+  two-pack argument partitions and 24 distinct, equivalently redeclared
+  dependent function results, then validate ordinary source/LowIR behavior;
+  they do not inspect table classes, helper names, or production source.  The
+  pre-change compiler's stats and output hashes are frozen before the helper
+  extraction.  Fast gates are those two reducers, PA20, and PA23, followed by
+  report-through-PA23 and the audit; as the pair completes two table families,
+  the full through-PA38, corrected performance, and inception checkpoints are
+  also required.
+- **C10-1 COVERAGE BACKFILL.** The reference-generated PA20 reducer passes with
+  72 partition requests, 48 hits, 123 probes, 957,852 peak semantic-stage
+  bytes, and current output SHA-256 `4e3f9813...`; its canonical reference is
+  `992fd3e3...`.  The PA23 reducer passes with 48 result-identity requests, 24
+  hits, 82 probes, 1,080 atom visits, 669,551 peak semantic-stage bytes, and
+  output/reference SHA-256 `485fc8e3...`.  PA20 passes 175/175, PA23 passes
+  414/414, report-through-PA23 passes 3,137/3,137, and the PA38 file audit
+  remains zero-fatal/33.  This README-and-fixture increment is committed before
+  the production slot-rebuild extraction.

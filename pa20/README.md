@@ -190,6 +190,9 @@ PA20 supports the following in addition to the PA19 subset:
 - function templates whose parameters may now include type parameter packs,
   integral non-type parameters, and integral non-type parameter packs when the
   arguments are supplied explicitly
+- a translation unit may instantiate dozens of distinct argument partitions
+  for a function template with multiple parameter packs; every partition keeps
+  its own argument-to-pack boundaries when specializations are reused
 - pack expansions in supported declarations, direct calls, and instantiated
   body shapes
 - integral constant-expression template arguments over the supported subset:
