@@ -1316,89 +1316,9 @@ void report_source_compile_stats(
 				<< " abi_context_definitions="
 				<< stats.abi.production_context_definitions
 				<< " abi_entity_definitions="
-				<< stats.abi.production_entity_definitions
-				<< " abi_type_cache_requests="
-			 << stats.abi.resolved_type_cache_requests
-			 << " abi_type_cache_hits="
-			 << stats.abi.resolved_type_cache_hits
-			 << " abi_canonical_types=" << stats.abi.canonical_types
-			 << " abi_canonical_arguments="
-			 << stats.abi.canonical_arguments
-			 << " abi_canonical_expressions="
-			 << stats.abi.canonical_expressions
-			 << " abi_typed_expression_operations="
-			 << stats.abi.typed_expression_operations
-			 << " abi_text_expression_operations="
-			 << stats.abi.text_expression_operations
-			 << " abi_typed_builtin_types="
-			 << stats.abi.typed_builtin_types
-			 << " abi_text_builtin_types="
-			 << stats.abi.text_builtin_types
-			 << " abi_typed_standard_substitutions="
-			 << stats.abi.typed_standard_substitutions
-			 << " abi_text_standard_substitutions="
-			 << stats.abi.text_standard_substitutions
-			 << " abi_typed_vendor_qualifiers="
-			 << stats.abi.typed_vendor_qualifiers
-			 << " abi_text_vendor_qualifiers="
-			 << stats.abi.text_vendor_qualifiers
-			 << " abi_typed_array_bounds="
-			 << stats.abi.typed_array_bounds
-			 << " abi_text_array_bounds="
-			 << stats.abi.text_array_bounds
-			 << " abi_typed_local_presentations="
-			 << stats.abi.typed_local_presentations
-			 << " abi_text_local_presentations="
-			 << stats.abi.text_local_presentations
-			 << " abi_typed_type_source_names="
-			 << stats.abi.typed_type_source_names
-			 << " abi_text_type_source_names="
-			 << stats.abi.text_type_source_names
-			 << " abi_typed_type_tags=" << stats.abi.typed_type_tags
-			 << " abi_text_type_tags=" << stats.abi.text_type_tags
-			 << " abi_typed_argument_source_names="
-			 << stats.abi.typed_argument_source_names
-			 << " abi_text_argument_source_names="
-			 << stats.abi.text_argument_source_names
-			 << " abi_typed_local_source_names="
-			 << stats.abi.typed_local_source_names
-			 << " abi_text_local_source_names="
-			 << stats.abi.text_local_source_names
-			 << " abi_typed_literal_suffixes="
-			 << stats.abi.typed_literal_suffixes
-			 << " abi_text_literal_suffixes="
-			 << stats.abi.text_literal_suffixes
-			 << " abi_typed_main_contexts=" << stats.abi.typed_main_contexts
-			 << " abi_external_assembly_names="
-			 << stats.abi.external_assembly_names
-			 << " abi_external_c_function_names="
-			 << stats.abi.external_c_function_names
-			 << " abi_external_builtin_runtime_names="
-			 << stats.abi.external_builtin_runtime_names
-			 << " abi_external_c_variable_names="
-			 << stats.abi.external_c_variable_names
-			 << " abi_external_global_tls_names="
-			 << stats.abi.external_global_tls_names
-			 << " abi_definition_cache_hits="
-			 << stats.abi.definition_cache_hits
-			 << " abi_path_components=" << stats.abi.path_components
-			 << " abi_text_type_path_components="
-			 << stats.abi.text_type_path_components
-			 << " abi_text_function_path_components="
-			 << stats.abi.text_function_path_components
-			 << " abi_text_object_path_components="
-			 << stats.abi.text_object_path_components
-			 << " abi_text_entity_path_components="
-			 << stats.abi.text_entity_path_components
-			 << " abi_text_substitution_path_components="
-			 << stats.abi.text_substitution_path_components
-			 << " abi_substitution_lookups="
-			 << stats.abi.substitution_lookups
-			 << " abi_substitution_hits="
-			 << stats.abi.substitution_hits
-			 << " abi_substitution_entries="
-			 << stats.abi.substitution_entries
-			 << " force_inline_candidates=" << stats.force_inline_candidates
+				<< stats.abi.production_entity_definitions;
+		lowir_driver_stats_report::ReportAbiResolution(cerr, stats.abi);
+		cerr << " force_inline_candidates=" << stats.force_inline_candidates
 			 << " force_inline_recursive_candidates="
 			 << stats.force_inline_recursive_candidates
 			 << " force_inline_call_probes=" << stats.force_inline_call_probes
@@ -2552,90 +2472,10 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << " instructions=" << stats.instructions
 			 << " abi_production_mangles="
 			 << stats.abi.production_mangles
-			 << " abi_fact_records=" << stats.abi.records
-			 << " abi_fact_bytes=" << stats.abi.production_fact_bytes
-			 << " abi_type_cache_requests="
-			 << stats.abi.resolved_type_cache_requests
-			 << " abi_type_cache_hits="
-			 << stats.abi.resolved_type_cache_hits
-			 << " abi_canonical_types=" << stats.abi.canonical_types
-			 << " abi_canonical_arguments="
-			 << stats.abi.canonical_arguments
-			 << " abi_canonical_expressions="
-			 << stats.abi.canonical_expressions
-			 << " abi_typed_expression_operations="
-			 << stats.abi.typed_expression_operations
-			 << " abi_text_expression_operations="
-			 << stats.abi.text_expression_operations
-			 << " abi_typed_builtin_types="
-			 << stats.abi.typed_builtin_types
-			 << " abi_text_builtin_types="
-			 << stats.abi.text_builtin_types
-			 << " abi_typed_standard_substitutions="
-			 << stats.abi.typed_standard_substitutions
-			 << " abi_text_standard_substitutions="
-			 << stats.abi.text_standard_substitutions
-			 << " abi_typed_vendor_qualifiers="
-			 << stats.abi.typed_vendor_qualifiers
-			 << " abi_text_vendor_qualifiers="
-			 << stats.abi.text_vendor_qualifiers
-			 << " abi_typed_array_bounds="
-			 << stats.abi.typed_array_bounds
-			 << " abi_text_array_bounds="
-			 << stats.abi.text_array_bounds
-			 << " abi_typed_local_presentations="
-			 << stats.abi.typed_local_presentations
-			 << " abi_text_local_presentations="
-			 << stats.abi.text_local_presentations
-			 << " abi_typed_type_source_names="
-			 << stats.abi.typed_type_source_names
-			 << " abi_text_type_source_names="
-			 << stats.abi.text_type_source_names
-			 << " abi_typed_type_tags=" << stats.abi.typed_type_tags
-			 << " abi_text_type_tags=" << stats.abi.text_type_tags
-			 << " abi_typed_argument_source_names="
-			 << stats.abi.typed_argument_source_names
-			 << " abi_text_argument_source_names="
-			 << stats.abi.text_argument_source_names
-			 << " abi_typed_local_source_names="
-			 << stats.abi.typed_local_source_names
-			 << " abi_text_local_source_names="
-			 << stats.abi.text_local_source_names
-			 << " abi_typed_literal_suffixes="
-			 << stats.abi.typed_literal_suffixes
-			 << " abi_text_literal_suffixes="
-			 << stats.abi.text_literal_suffixes
-			 << " abi_typed_main_contexts=" << stats.abi.typed_main_contexts
-			 << " abi_external_assembly_names="
-			 << stats.abi.external_assembly_names
-			 << " abi_external_c_function_names="
-			 << stats.abi.external_c_function_names
-			 << " abi_external_builtin_runtime_names="
-			 << stats.abi.external_builtin_runtime_names
-			 << " abi_external_c_variable_names="
-			 << stats.abi.external_c_variable_names
-			 << " abi_external_global_tls_names="
-			 << stats.abi.external_global_tls_names
-			 << " abi_definition_cache_hits="
-			 << stats.abi.definition_cache_hits
-			 << " abi_path_components=" << stats.abi.path_components
-			 << " abi_text_type_path_components="
-			 << stats.abi.text_type_path_components
-			 << " abi_text_function_path_components="
-			 << stats.abi.text_function_path_components
-			 << " abi_text_object_path_components="
-			 << stats.abi.text_object_path_components
-			 << " abi_text_entity_path_components="
-			 << stats.abi.text_entity_path_components
-			 << " abi_text_substitution_path_components="
-			 << stats.abi.text_substitution_path_components
-			 << " abi_substitution_lookups="
-			 << stats.abi.substitution_lookups
-			 << " abi_substitution_hits="
-			 << stats.abi.substitution_hits
-			 << " abi_substitution_entries="
-			 << stats.abi.substitution_entries
-			 << " binding_index_probes=" << stats.binding_index_probes
+				 << " abi_fact_records=" << stats.abi.records
+				 << " abi_fact_bytes=" << stats.abi.production_fact_bytes;
+	lowir_driver_stats_report::ReportAbiResolution(cerr, stats.abi);
+	cerr << " binding_index_probes=" << stats.binding_index_probes
 			 << " slot_implicit_object_fact_reads="
 			 << stats.slot_implicit_object_fact_reads
 			 << " virtual_calls=" << stats.virtual_calls

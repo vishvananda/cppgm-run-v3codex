@@ -604,3 +604,11 @@ not reuse measurements from a different source tree.
   warnings because removing it exposes another previously shadowed exact ABI
   statistics block in `cppgm++.cpp`; that newly visible driver-report family
   is assigned to a separate C1 follow-up rather than hidden in this commit.
+- **C1-A1 (DRIVER ABI-STATS BLOCK).** The newly exposed duplicate was one
+  exact ABI resolution/cache/path diagnostic sequence used by integrated
+  compile stats and `--emit-lowir` lowering stats.  It now belongs to
+  `lowir_driver_stats_report`; the distinct production-definition prefixes
+  and lowering suffixes remain local.  Both diagnostic key sequences and the
+  focused object/LowIR output are unchanged.  PA30 passes 100/100, PA37 passes
+  188/188, `git diff --check` is clean, and the default audit falls from 35 to
+  34 warnings with no new duplicate exposed.

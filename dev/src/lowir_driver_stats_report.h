@@ -4,6 +4,7 @@
 #include <iosfwd>
 #include <string>
 
+namespace abi_mangle { struct AbiMangleStats; }
 namespace cppgm { struct LowIRLoweringStats; }
 namespace lowir_model {
 struct FunctionPruningSummary;
@@ -14,6 +15,9 @@ namespace lowir_opt { struct Stats; }
 
 namespace lowir_driver_stats_report
 {
+
+void ReportAbiResolution(std::ostream& output,
+	const abi_mangle::AbiMangleStats& stats);
 
 void ReportOptimizer(std::ostream& output, const std::string& input,
 	const lowir_opt::Stats& stats);

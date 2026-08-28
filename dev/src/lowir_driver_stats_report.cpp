@@ -1,5 +1,6 @@
 #include "lowir_driver_stats_report.h"
 
+#include "abi_mangle_stats.h"
 #include "lowir_function_reachability.h"
 #include "lowir_inline_analysis.h"
 #include "lowir_opt.h"
@@ -24,6 +25,66 @@ std::size_t InstructionCount(const lowir_model::Program& program)
 	return result;
 }
 
+}
+
+void ReportAbiResolution(std::ostream& output,
+	const abi_mangle::AbiMangleStats& stats)
+{
+	output << " abi_type_cache_requests=" << stats.resolved_type_cache_requests
+		 << " abi_type_cache_hits=" << stats.resolved_type_cache_hits
+		 << " abi_canonical_types=" << stats.canonical_types
+		 << " abi_canonical_arguments=" << stats.canonical_arguments
+		 << " abi_canonical_expressions=" << stats.canonical_expressions
+		 << " abi_typed_expression_operations="
+		 << stats.typed_expression_operations
+		 << " abi_text_expression_operations="
+		 << stats.text_expression_operations
+		 << " abi_typed_builtin_types=" << stats.typed_builtin_types
+		 << " abi_text_builtin_types=" << stats.text_builtin_types
+		 << " abi_typed_standard_substitutions="
+		 << stats.typed_standard_substitutions
+		 << " abi_text_standard_substitutions="
+		 << stats.text_standard_substitutions
+		 << " abi_typed_vendor_qualifiers=" << stats.typed_vendor_qualifiers
+		 << " abi_text_vendor_qualifiers=" << stats.text_vendor_qualifiers
+		 << " abi_typed_array_bounds=" << stats.typed_array_bounds
+		 << " abi_text_array_bounds=" << stats.text_array_bounds
+		 << " abi_typed_local_presentations="
+		 << stats.typed_local_presentations
+		 << " abi_text_local_presentations=" << stats.text_local_presentations
+		 << " abi_typed_type_source_names=" << stats.typed_type_source_names
+		 << " abi_text_type_source_names=" << stats.text_type_source_names
+		 << " abi_typed_type_tags=" << stats.typed_type_tags
+		 << " abi_text_type_tags=" << stats.text_type_tags
+		 << " abi_typed_argument_source_names="
+		 << stats.typed_argument_source_names
+		 << " abi_text_argument_source_names="
+		 << stats.text_argument_source_names
+		 << " abi_typed_local_source_names=" << stats.typed_local_source_names
+		 << " abi_text_local_source_names=" << stats.text_local_source_names
+		 << " abi_typed_literal_suffixes=" << stats.typed_literal_suffixes
+		 << " abi_text_literal_suffixes=" << stats.text_literal_suffixes
+		 << " abi_typed_main_contexts=" << stats.typed_main_contexts
+		 << " abi_external_assembly_names=" << stats.external_assembly_names
+		 << " abi_external_c_function_names=" << stats.external_c_function_names
+		 << " abi_external_builtin_runtime_names="
+		 << stats.external_builtin_runtime_names
+		 << " abi_external_c_variable_names=" << stats.external_c_variable_names
+		 << " abi_external_global_tls_names=" << stats.external_global_tls_names
+		 << " abi_definition_cache_hits=" << stats.definition_cache_hits
+		 << " abi_path_components=" << stats.path_components
+		 << " abi_text_type_path_components=" << stats.text_type_path_components
+		 << " abi_text_function_path_components="
+		 << stats.text_function_path_components
+		 << " abi_text_object_path_components="
+		 << stats.text_object_path_components
+		 << " abi_text_entity_path_components="
+		 << stats.text_entity_path_components
+		 << " abi_text_substitution_path_components="
+		 << stats.text_substitution_path_components
+		 << " abi_substitution_lookups=" << stats.substitution_lookups
+		 << " abi_substitution_hits=" << stats.substitution_hits
+		 << " abi_substitution_entries=" << stats.substitution_entries;
 }
 
 void FinalizeOptimizer(const lowir_model::Program& program,
