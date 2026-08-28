@@ -220,6 +220,23 @@ void assign_candidate_location(const Candidate & candidate, X64Register reg,
     static_cast<unsigned>(reg)));
 }
 
+// Weighted region and crossing order share this prefix.  Crossing candidates
+// add a value-id tie break; region candidates deliberately leave equal
+// priorities equivalent.
+int compare_weighted_candidate_priority(
+    const Candidate & left, const Candidate & right,
+    const analysis::FunctionFacts & facts)
+{
+  const std::size_t left_uses =
+    facts.uses[static_cast<std::uint32_t>(left.value)];
+  const std::size_t right_uses =
+    facts.uses[static_cast<std::uint32_t>(right.value)];
+  if(left_uses != right_uses) return left_uses > right_uses ? -1 : 1;
+  if(left.definition != right.definition)
+    return left.definition < right.definition ? -1 : 1;
+  return 0;
+}
+
 // The reactive pool prefers RBX, R12, R13 in that order, so the planner
 // claims from the opposite end; the pools only meet under real pressure.
 // R14 and R15 extend coverage after the original three so earlier plans
@@ -323,12 +340,7 @@ void assign_candidate_registers(
             [&candidates, &facts](std::size_t left, std::size_t right) {
               const Candidate & a = candidates[left];
               const Candidate & b = candidates[right];
-              const std::size_t a_uses =
-                facts.uses[static_cast<std::uint32_t>(a.value)];
-              const std::size_t b_uses =
-                facts.uses[static_cast<std::uint32_t>(b.value)];
-              if(a_uses != b_uses) return a_uses > b_uses;
-              return a.definition < b.definition;
+              return compare_weighted_candidate_priority(a, b, facts) < 0;
             });
   for(std::size_t i = 0; i < region_order.size(); ++i) {
     const Candidate & candidate = candidates[region_order[i]];
@@ -414,13 +426,9 @@ void assign_candidate_registers(
             [&candidates, &facts](std::size_t left, std::size_t right) {
               const Candidate & a = candidates[left];
               const Candidate & b = candidates[right];
-              const std::size_t a_uses =
-                facts.uses[static_cast<std::uint32_t>(a.value)];
-              const std::size_t b_uses =
-                facts.uses[static_cast<std::uint32_t>(b.value)];
-              if(a_uses != b_uses) return a_uses > b_uses;
-              if(a.definition != b.definition)
-                return a.definition < b.definition;
+              const int priority =
+                compare_weighted_candidate_priority(a, b, facts);
+              if(priority) return priority < 0;
               return static_cast<std::uint32_t>(a.value) <
                 static_cast<std::uint32_t>(b.value);
             });

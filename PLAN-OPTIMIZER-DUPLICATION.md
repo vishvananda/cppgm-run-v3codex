@@ -1,6 +1,6 @@
 # Plan: Audit and Reduce Optimizer Duplication
 
-Status: executing; D0-D4 complete, D5 native consolidation next
+Status: executing; D0-D4 complete, D5 native consolidation in progress
 
 Date: 2026-08-27
 
@@ -1044,6 +1044,48 @@ This plan is complete only when:
   `df1e0fda...`/5,026,201.  Retain: exact encoding policy now has one owner,
   while superficially similar but semantically different eligibility stays
   explicit and measured performance is preserved.
+- **D5-S1 (GENERIC FAR-END PLACEMENT CLAIM, REJECTED).** A proposed helper
+  combined the cyclic-region and invariant loops that claim registers from
+  the far end of their respective pools.  The first local-lambda form passed
+  the host PA37/PA38 and audit gate but exposed an unsupported self-host
+  frontend case (`array member requires a braced initializer`) when the lambda
+  captured a local register array.  Replacing the lambda with a typed ordinary
+  helper restored exact self-host output: all 215 non-timing counter logs and
+  objects matched, and the generated compiler was `49a37085...` with
+  8,645,687 text and 334,936 data bytes.  That smaller binary nevertheless
+  developed a repeatable all-32 wall tail.  Two clean candidate lanes were
+  31.84/32.26 seconds wall and 899.40/900.84 aggregate CPU, while three clean
+  pre-change lanes were 31.94/31.79/31.05 wall and 901.58/899.64/898.40 CPU:
+  the wall means regress 1.446% even though aggregate CPU is effectively flat.
+  Removing only the claim helper and retaining the comparator consolidation
+  below removed that tail.  Reject: the two callers keep explicit pool type,
+  reverse iteration, busy/span checks, assignment, and statistics; their
+  superficial mechanics are not worth a self-host representability hazard or
+  a measured parallel-build regression.
+- **D5-P3 (WEIGHTED PLACEMENT PRIORITY, RETAINED).** On the tree based on
+  `35ca7ed7`, `compare_weighted_candidate_priority` now owns the exact shared
+  use-count and definition-order prefix used by cyclic-region and crossing
+  candidate sorts.  Region candidates deliberately leave equal priorities
+  equivalent, while crossing candidates visibly retain their value-id final
+  tie break.  Pool choice, claim direction, clobber/span exclusions, and claim
+  loops remain local.  PA37 is 188/188, PA38 is 45/45, `git diff --check` is
+  clean, and the default audit remains zero-fatal/35-warning.  The tight audit
+  remains at 13 warnings because it now reports the intentionally separate
+  far-end claim loops instead of the removed comparator prefix.  Fresh
+  exact-candidate-source private logs cover all 215 translation units: every
+  non-timing optimizer counter and object matches, and old/candidate compilers
+  link the same `613e97a9...` output.  Compiler text changes from 8,646,735 to
+  8,647,175 bytes, with data unchanged at 334,936 bytes.  Two reverse-order
+  paired self lanes are candidate 31.38/31.40 seconds wall and
+  897.64/898.39 aggregate CPU, versus old 31.92/31.07 wall and
+  898.41/897.43 CPU.  Means are 31.390/898.015 versus 31.495/897.920: wall
+  improves 0.333%, aggregate CPU regresses only 0.011%, and mean peak RSS is
+  230,290 versus 229,864 KiB.  Exact-source GCC lanes are 29.37/29.54 wall and
+  568.96/568.87 CPU; Clang lanes are 30.61/30.23 wall and 644.19/642.39 CPU.
+  Candidate ratios are 1.066x GCC and 1.032x Clang.  GCC/Clang hashes and text
+  are `97923fc6...`/5,788,440 and `455c4d42...`/5,026,233.  Retain: the exact
+  shared ordering fact has one owner, caller-specific tie semantics remain
+  explicit, output is exact, and measured performance is preserved.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
