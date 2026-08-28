@@ -1,7 +1,6 @@
 kind	pattern	destination
 path	^dev/src/pa15_	semantic/, lowering/
 path	^dev/src/pa16_	semantic/, lowering/
-path	^dev/src/pa17_	semantic/, lowering/
 path	^dev/src/pa18_	semantic/, lowering/
 path	^dev/src/pa21_	semantic/, lowering/
 path	^dev/src/pa25_	syntax/extensions/, semantic/extensions/, lowering/extensions/
@@ -9,11 +8,9 @@ path	^dev/src/pa26_	semantic/, lowering/
 path	^dev/src/pa27_	semantic/object_model/, lowering/objects/
 path	^dev/src/pa28_	semantic/object_model/, lowering/objects/
 path	^dev/src/pa30_	compiler_object/, syntax/, semantic/, lowering/
-path	^dev/src/pa33_	semantic/, lowering/
 path	^dev/src/pa34_	syntax/, semantic/, lowering/
 include	^pa15_	semantic/, lowering/
 include	^pa16_	semantic/, lowering/
-include	^pa17_	semantic/, lowering/
 include	^pa18_	semantic/, lowering/
 include	^pa21_	semantic/, lowering/
 include	^pa25_	syntax/extensions/, semantic/extensions/, lowering/extensions/
@@ -21,7 +18,6 @@ include	^pa26_	semantic/, lowering/
 include	^pa27_	semantic/object_model/, lowering/objects/
 include	^pa28_	semantic/object_model/, lowering/objects/
 include	^pa30_	compiler_object/, syntax/, semantic/, lowering/
-include	^pa33_	semantic/, lowering/
 include	^pa34_	syntax/, semantic/, lowering/
 namespace	^pa15_force_inline$	cppgm::lowering::inline_policy
 namespace	^pa15_function_reachability$	cppgm::lowering::reachability
