@@ -869,3 +869,27 @@ not reuse measurements from a different source tree.
   frozen O0 objects are exact.  Four
   pinned, ASLR-disabled pairs have zero median paired wall delta with GCC and
   +0.005 seconds with Clang, both below the timing floor.
+- **C7-B COVERAGE AUDIT (ROLE-NEUTRAL OPERAND VIEW).** The shared view visits
+  the three fixed operand fields followed by every variadic argument without
+  assigning value, label, callee, EH, or debug roles.  Existing PA13 direct and
+  indirect calls exercise fixed and variadic operands, the phi control-flow
+  case protects predecessor-label structure, and the empty EH-filter debug
+  roundtrip protects its specialized canonicalization.  PA29 native call
+  behavior and PA37 canonical plus direct-versus-serialized object roundtrips
+  cover preparation and re-derived address facts across the object boundary.
+  These structural and behavioral controls cover the ownership-only migration;
+  no source-specific fixture is justified.
+- **C7-B (NEUTRAL LOWIR OPERAND VIEW).** `lowir_operand_view.h` now owns the
+  allocation-free `first`, `second`, `third`, then `args` traversal.  The three
+  preparation walks use it for reference discovery, serialized-fact clearing,
+  and derived address binding; optimizer support retains source-compatible
+  aliases.  Phi, call, EH, debug, and all other role-sensitive logic remains
+  specialized.  The focused PA13 call/phi/EH controls, PA29 direct/indirect
+  calls, and PA37 canonical/object roundtrips pass; the PA13, PA29, and PA37
+  assignment gates pass, the 32-way through-PA37 report passes 5,422/5,422,
+  and both audits remain clean with the file audit at 34 warnings.  GCC-O3
+  compiler text falls 60 bytes and Clang-O3 grows 144 bytes; frozen O0 objects
+  are exact for both.  Four pinned, ASLR-disabled GCC pairs have a -0.06-second
+  median paired wall delta despite one isolated system outlier, with a fresh
+  confirmation pair at -0.01 seconds.  Four Clang pairs have a +0.005-second
+  median paired delta.  Both are performance-neutral at the timing floor.

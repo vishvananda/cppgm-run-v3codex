@@ -1,4 +1,5 @@
 #include "lowir_prepare.h"
+#include "lowir_operand_view.h"
 
 #include <algorithm>
 #include <chrono>
@@ -144,11 +145,10 @@ void canonicalize_frontend_lowir(Program& program,
 			{
 				const Instruction& ins =
 					program.functions[i].blocks[b].instructions[j];
-				note_operand_reference(ins.first, &referenced, stats);
-				note_operand_reference(ins.second, &referenced, stats);
-				note_operand_reference(ins.third, &referenced, stats);
-				for (std::size_t k = 0; k < ins.args.size(); ++k)
-					note_operand_reference(ins.args[k], &referenced, stats);
+				for (std::size_t k = 0;
+					k < operand_view::all_operand_count(ins); ++k)
+					note_operand_reference(
+						operand_view::all_operand_at(ins, k), &referenced, stats);
 			}
 	// A TLS wrapper's target is a semantic symbol edge even when no ordinary
 	// instruction names the variable directly.  It must participate in the
@@ -266,11 +266,10 @@ void canonicalize_serialized_lowir_facts(Program& program,
 			{
 				Instruction& instruction =
 					program.functions[f].blocks[b].instructions[i];
-				clear_serialized_operand_facts(instruction.first, stats);
-				clear_serialized_operand_facts(instruction.second, stats);
-				clear_serialized_operand_facts(instruction.third, stats);
-				for (std::size_t j = 0; j < instruction.args.size(); ++j)
-					clear_serialized_operand_facts(instruction.args[j], stats);
+				for (std::size_t j = 0;
+					j < operand_view::all_operand_count(instruction); ++j)
+					clear_serialized_operand_facts(
+						operand_view::all_operand_at(instruction, j), stats);
 				if (instruction.kind == Instruction::IK_COPYOBJ ||
 					instruction.kind == Instruction::IK_ZEROINIT ||
 					instruction.kind == Instruction::IK_VA_START)
@@ -357,15 +356,11 @@ void derive_lowir_object_facts(Program& program,
 			{
 				Instruction& instruction =
 					program.functions[f].blocks[b].instructions[i];
-				restore_address_binding(
-					instruction.first, local_definitions, stats);
-				restore_address_binding(
-					instruction.second, local_definitions, stats);
-				restore_address_binding(
-					instruction.third, local_definitions, stats);
-				for (std::size_t j = 0; j < instruction.args.size(); ++j)
+				for (std::size_t j = 0;
+					j < operand_view::all_operand_count(instruction); ++j)
 					restore_address_binding(
-						instruction.args[j], local_definitions, stats);
+						operand_view::all_operand_at(instruction, j),
+						local_definitions, stats);
 			}
 	propagate_direct_call_boundaries(program, stats);
 	publish_prederived_lowir_object_facts(program, stats);

@@ -1,38 +1,14 @@
 #pragma once
 
-#include "lowir_model.h"
+#include "lowir_operand_view.h"
 
 #include <cstddef>
 
 namespace lowir_opt {
 namespace optimizer_support {
 
-// A role-neutral view of first, second, third, then args.  It is allocation
-// free and preserves serialized operand order.  Callers that interpret roles
-// (notably phi value/label pairs) must keep their specialized traversal.
-inline std::size_t all_operand_count(
-    const lowir_model::Instruction & instruction)
-{
-  return 3 + instruction.args.size();
-}
-
-inline const lowir_model::Operand & all_operand_at(
-    const lowir_model::Instruction & instruction, std::size_t index)
-{
-  if(index == 0) return instruction.first;
-  if(index == 1) return instruction.second;
-  if(index == 2) return instruction.third;
-  return instruction.args[index - 3];
-}
-
-inline lowir_model::Operand & all_operand_at(
-    lowir_model::Instruction & instruction, std::size_t index)
-{
-  if(index == 0) return instruction.first;
-  if(index == 1) return instruction.second;
-  if(index == 2) return instruction.third;
-  return instruction.args[index - 3];
-}
+using lowir_model::operand_view::all_operand_at;
+using lowir_model::operand_view::all_operand_count;
 
 // The exact hash combiner used by LowIR optimizer keys.  Key field choice and
 // ordering remain with each key owner; this helper defines only the mixer.
