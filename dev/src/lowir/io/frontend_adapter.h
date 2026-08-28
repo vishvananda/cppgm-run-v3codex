@@ -6,7 +6,7 @@
 
 namespace cppgm
 {
-namespace compiler_object
+namespace lowir_io
 {
 
 // Convert between the front-end's compact typed LowIR and the backend's typed
@@ -18,5 +18,5 @@ lowir_model::LowirProgram AdaptTypedLowirForBackend(
 	lowir_model::PresentationPolicy presentation_policy =
 		lowir_model::PRESENTATION_SERIALIZABLE);
 
-}  // namespace compiler_object
+}  // namespace lowir_io
 }  // namespace cppgm

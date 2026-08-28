@@ -1,4 +1,4 @@
-#include "compiler_object/typed_lowir_adapter.h"
+#include "lowir/io/frontend_adapter.h"
 
 #include "support/numeric/decimal_spelling.h"
 #include "semantic/lifetime/demand_reason.h"
@@ -12,12 +12,12 @@
 
 namespace cppgm
 {
-namespace compiler_object
+namespace lowir_io
 {
 namespace
 {
 
-using namespace lowering::ir;
+using namespace cppgm::lowering::ir;
 
 struct AdapterTelemetry
 {
@@ -114,13 +114,13 @@ void CountTypedName(const std::string& name, AdapterTelemetry* telemetry)
 	telemetry->output->typed_name_bytes += name.size();
 }
 
-void CountTypedName(lowir_model::StringId name, const lowering::ir::Program& program,
+void CountTypedName(lowir_model::StringId name, const cppgm::lowering::ir::Program& program,
 	AdapterTelemetry* telemetry)
 {
 	if (name.valid()) CountTypedName(program.strings.get(name), telemetry);
 }
 
-void CountTypedNames(const lowering::ir::Program& program, AdapterTelemetry* telemetry)
+void CountTypedNames(const cppgm::lowering::ir::Program& program, AdapterTelemetry* telemetry)
 {
 	if (!telemetry->output) return;
 	for (std::size_t i = 0; i < program.symbols.size(); ++i)
@@ -186,7 +186,7 @@ struct AdaptedValues
 };
 
 void AdaptSymbolReference(std::uint32_t symbol_id,
-	const lowering::ir::Program& program, lowir_model::Operand* result)
+	const cppgm::lowering::ir::Program& program, lowir_model::Operand* result)
 {
 	if (symbol_id >= program.symbols.size())
 		throw std::logic_error("invalid typed LowIR symbol operand");
@@ -199,7 +199,7 @@ void AdaptSymbolReference(std::uint32_t symbol_id,
 }
 
 void AdaptOperand(const Operand& operand,
-	const lowering::ir::Program& program, const Function& function,
+	const cppgm::lowering::ir::Program& program, const Function& function,
 	const AdaptedValues& values, lowir_model::StringPool* literals,
 	AdapterTelemetry* telemetry, lowir_model::Operand* output)
 {
@@ -263,7 +263,7 @@ void AdaptOperand(const Operand& operand,
 }
 
 void AppendAdaptedOperand(const Operand& operand,
-	const lowering::ir::Program& program, const Function& function,
+	const cppgm::lowering::ir::Program& program, const Function& function,
 	const AdaptedValues& values, lowir_model::StringPool* literals,
 	AdapterTelemetry* telemetry, std::vector<lowir_model::Operand>* output)
 {
@@ -495,7 +495,7 @@ lowir_model::LowOperation AdaptOperation(LowOperation source)
 }
 
 void AdaptInstruction(const Instruction& source,
-	const lowering::ir::Program& program, const Function& function,
+	const cppgm::lowering::ir::Program& program, const Function& function,
 	const AdaptedValues& values, lowir_model::StringPool* literals,
 	AdapterTelemetry* telemetry, lowir_model::Instruction* output)
 {
@@ -828,7 +828,7 @@ void DiscardObjectOnlyPresentation(lowir_model::LowirProgram* program)
 }
 
 lowir_model::LowirProgram AdaptTypedLowirForBackend(
-	lowering::ir::Program&& source,
+	cppgm::lowering::ir::Program&& source,
 	lowir_model::LowirPreparationStats* preparation_stats,
 	lowir_model::PresentationPolicy presentation_policy)
 {
@@ -1076,5 +1076,5 @@ lowir_model::LowirProgram AdaptTypedLowirForBackend(
 	return target;
 }
 
-}  // namespace compiler_object
+}  // namespace lowir_io
 }  // namespace cppgm

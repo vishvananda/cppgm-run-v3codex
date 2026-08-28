@@ -5,7 +5,7 @@
 #include "semantic/type_view.h"
 #include "semantic/semantic.h"
 #include "lowering/api.h"
-#include "compiler_object/typed_lowir_adapter.h"
+#include "lowir/io/frontend_adapter.h"
 #include "compiler_object/linker.h"
 #include "compiler_object/serialization.h"
 #include "compiler_object/elf_import.h"
@@ -812,7 +812,7 @@ lowir_model::LowirProgram adapt_typed_lowir_for_object(
 	chrono::steady_clock::time_point started;
 	if(collect_stats) started = chrono::steady_clock::now();
 	lowir_model::LowirProgram result =
-		cppgm::compiler_object::AdaptTypedLowirForBackend(
+		cppgm::lowir_io::AdaptTypedLowirForBackend(
 		std::move(typed), collect_stats ? preparation_stats : 0,
 		presentation_policy);
 	if(collect_stats) {
@@ -2172,7 +2172,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 			cppgm::lowering::ir::Program typed =
 				cppgm::lowering::BuildProgram(sources, options,
 					invocation.collect_stats ? &stats : 0, true, true, false);
-			program = cppgm::compiler_object::AdaptTypedLowirForBackend(
+			program = cppgm::lowir_io::AdaptTypedLowirForBackend(
 				std::move(typed));
 		}
 		if(invocation.line_tables && sources.size() == 1)

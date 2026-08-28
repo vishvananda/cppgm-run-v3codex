@@ -268,7 +268,7 @@ record ownership; they do not authorize a generic framework.
 | PA15-PA34 `*_lowering*` files | the lowering subdirectory named by behavior |
 | `pa30_object*` | `compiler_object/model`, `serialization`, and `linker` |
 | `pa30_elf_object*` | `compiler_object/elf_import` |
-| `pa30_lowir_adapter*` | `compiler_object/typed_lowir_adapter` |
+| `pa30_lowir_adapter*` | `lowir/io/frontend_adapter` |
 | `pa30_region_*` | split among syntax, semantic, and lowering extension owners |
 | `abi_mangle_*` | `abi/itanium/` |
 | token, macro, hosted preprocessor files | `preprocess/` |
@@ -302,7 +302,7 @@ Representative leaf destinations make the intended naming concrete:
 | `pa15_lowering_abi.{h,cpp}` | `lowering/abi/abi_lowering.{h,cpp}` before symbol-family redistribution |
 | `pa18_polymorphism_lowering.{h,cpp}` | `lowering/objects/polymorphism.{h,cpp}` |
 | `pa30_object.{h,cpp}` | `compiler_object/model.h`, `serialization.{h,cpp}`, and `linker.{h,cpp}` |
-| `pa30_lowir_adapter.{h,cpp}` | `compiler_object/typed_lowir_adapter.{h,cpp}` |
+| `pa30_lowir_adapter.{h,cpp}` | `lowir/io/frontend_adapter.{h,cpp}` |
 | `lowir_inline_o1.{h,cpp}` | `lowir/optimize/inline_o1.{h,cpp}` |
 | `lowir_native_frame_layout.{h,cpp}` | `native/frame/layout.{h,cpp}` |
 | `lowir_native_elf.cpp` | `native/object/elf_writer.cpp` after ownership audit |
@@ -1418,3 +1418,39 @@ checkpoint where applicable, commit, and push state.
   includes, 0 legacy namespaces, and 18 legacy identifiers.  Performance
   measurement is not applicable because all meaningful allocated executable
   contents were exact.  Push: with this amended ledger checkpoint.
+- `59909bd5` and `ae0665ad` — R9 ownership split and tier closure.  Replaced
+  the mixed object-format owner with `compiler_object/model.h`, dedicated
+  serialization/deserialization and linker translation units, and narrow
+  public headers.  Renamed the private binary and ELF readers to
+  `BinaryWriter`, `BinaryReader`, and `ElfObjectReader`.  Moved the in-memory
+  typed-LowIR adapter out of object ownership to
+  `lowir/io/frontend_adapter` and `cppgm::lowir_io`; it does not render,
+  serialize, or import objects.  Region syntax, semantic analysis, and
+  lowering were confirmed already resident in their three pipeline owners.
+
+  The split adds one translation unit and 26,256 bytes of optimized-host text
+  (7,059,254 to 7,085,510), caused by heavy LowIR-model template emission in
+  both owners; rodata and writable data sizes did not change.  Across both A/B
+  label orders (12 samples per compiler), old/candidate frozen medians were
+  4.655/4.640 seconds wall (-0.32%), 4.165/4.135 seconds user (-0.72%), and
+  368692/369792 KiB RSS (+0.30%).  The later private-class and adapter
+  namespace renames retained the same allocated compiler sizes, so the
+  cross-TU layout is performance-neutral.
+
+  Old/new two-source private objects were byte-exact at SHA-256
+  `5e6aa5b4e29ad96e71f51d0f52dde78ea83703474852063369701ece201ded01`
+  and `1b99d0a9e3c7d6dbb02f0105a3cae79ab79f935a00f745a3004aecc7b35ba3a8`;
+  their linked executable was byte-exact at
+  `87a1901891ea285b412c41152e5bfb26d1cfaf9deb99483729d53b3234e02a76`.
+  Focused PA30-PA32, all 18 output surfaces, and the cumulative 5471/5471
+  report passed.  LowIR remained 124/99, semantic ownership remained 850/0,
+  lowering ownership remained 100/13/45/0, layout remained 0/0/0/18, and the
+  file audit remained zero-fatal/32-warning.
+
+  Fresh explicit-O1 32/32/32 inception matched all 218 shared source objects,
+  the entry and runner objects (220 total), and the final compiler exactly at
+  SHA-256
+  `4c7d7fedb8c28feb1f0f3ae9f68ac6c8beb7cafe69c0242355f116db9df60015`.
+  R9 exits with private serialization bytes, symbol/link order, foreign ELF
+  import behavior, presentation policy, diagnostics, and performance intact.
+  Push: with this amended tier-closure checkpoint.
