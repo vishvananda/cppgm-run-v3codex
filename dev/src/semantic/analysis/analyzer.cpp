@@ -1,6 +1,6 @@
 #include "semantic/analysis/analyzer.h"
-#include "pa15_switch_semantic.h"
-#include "hosted_extension_semantic.h"
+#include "semantic/analysis/switch.h"
+#include "semantic/extensions/hosted_extensions.h"
 #include <algorithm>
 #include <chrono>
 #include <iomanip>

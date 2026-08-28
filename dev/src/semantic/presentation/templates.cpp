@@ -1,4 +1,4 @@
-#include "pa19_template_presentation.h"
+#include "semantic/presentation/templates.h"
 
 #include "semantic/semantic.h"
 #include "semantic/model/graph.h"

@@ -1,6 +1,6 @@
 #include "semantic/analysis/analyzer.h"
-#include "hosted_extension_semantic.h"
-#include "pa33_function_control_attributes.h"
+#include "semantic/extensions/hosted_extensions.h"
+#include "semantic/extensions/function_control_attributes.h"
 #include <algorithm>
 #include <cctype>
 #include <limits>

@@ -2,8 +2,8 @@
 #include "lowir_model.h"
 #include "semantic/semantic.h"
 #include "semantic/model/graph.h"
-#include "pa19_template_presentation.h"
-#include "pa22_lambda_presentation.h"
+#include "semantic/presentation/templates.h"
+#include "semantic/presentation/lambdas.h"
 #include "preprocess/tokens/post_tokenizer.h"
 
 #include <algorithm>

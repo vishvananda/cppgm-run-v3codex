@@ -1,7 +1,7 @@
 #include "pa30_lowir_adapter.h"
 
 #include "support/numeric/decimal_spelling.h"
-#include "function_demand_reason.h"
+#include "semantic/lifetime/demand_reason.h"
 
 #include <algorithm>
 #include <cerrno>

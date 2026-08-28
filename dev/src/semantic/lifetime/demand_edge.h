@@ -1,6 +1,6 @@
 #pragma once
 
-#include "function_demand_reason.h"
+#include "semantic/lifetime/demand_reason.h"
 #include "semantic/model/program.h"
 
 namespace cppgm

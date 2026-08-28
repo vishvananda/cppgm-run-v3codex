@@ -1,30 +1,21 @@
 kind	pattern	destination
-path	^dev/src/pa12_	semantic/
 path	^dev/src/pa15_	semantic/, lowering/
 path	^dev/src/pa16_	semantic/, lowering/
 path	^dev/src/pa17_	semantic/, lowering/
 path	^dev/src/pa18_	semantic/, lowering/
-path	^dev/src/pa19_	semantic/templates/
-path	^dev/src/pa20_	semantic/
 path	^dev/src/pa21_	semantic/, lowering/
-path	^dev/src/pa22_	semantic/templates/
-path	^dev/src/pa23_	semantic/templates/
-path	^dev/src/pa24_	semantic/templates/
 path	^dev/src/pa25_	syntax/extensions/, semantic/extensions/, lowering/extensions/
 path	^dev/src/pa26_	semantic/, lowering/
 path	^dev/src/pa27_	semantic/object_model/, lowering/objects/
 path	^dev/src/pa28_	semantic/object_model/, lowering/objects/
 path	^dev/src/pa30_	compiler_object/, syntax/, semantic/, lowering/
-path	^dev/src/pa32_	syntax/, semantic/
 path	^dev/src/pa33_	semantic/, lowering/
 path	^dev/src/pa34_	syntax/, semantic/, lowering/
 include	^pa15_	semantic/, lowering/
 include	^pa16_	semantic/, lowering/
 include	^pa17_	semantic/, lowering/
 include	^pa18_	semantic/, lowering/
-include	^pa19_	semantic/templates/
 include	^pa21_	semantic/, lowering/
-include	^pa22_	semantic/templates/
 include	^pa25_	syntax/extensions/, semantic/extensions/, lowering/extensions/
 include	^pa26_	semantic/, lowering/
 include	^pa27_	semantic/object_model/, lowering/objects/

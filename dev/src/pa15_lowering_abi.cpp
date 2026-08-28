@@ -3,7 +3,7 @@
 #include "abi/itanium/abi_mangle.h"
 #include "pa15_lowir_model.h"
 #include "pa18_polymorphism_lowering.h"
-#include "pa22_lambda_presentation.h"
+#include "semantic/presentation/lambdas.h"
 
 #include <limits>
 #include <memory>

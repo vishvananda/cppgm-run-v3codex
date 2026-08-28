@@ -1,4 +1,4 @@
-#include "hosted_extension_semantic.h"
+#include "semantic/extensions/hosted_extensions.h"
 
 namespace cppgm
 {

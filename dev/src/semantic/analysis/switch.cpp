@@ -1,4 +1,4 @@
-#include "pa15_switch_semantic.h"
+#include "semantic/analysis/switch.h"
 
 #include <limits>
 #include <stdexcept>

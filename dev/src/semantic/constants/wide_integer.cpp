@@ -1,5 +1,5 @@
 #include "semantic/analysis/analyzer.h"
-#include "pa34_wide_constant_semantic.h"
+#include "semantic/constants/wide_integer.h"
 
 #include <cstdint>
 #include <stdexcept>

@@ -1,4 +1,4 @@
-#include "pa25_lambda_capture_semantic.h"
+#include "semantic/extensions/lambda_capture.h"
 
 #include <algorithm>
 #include <limits>

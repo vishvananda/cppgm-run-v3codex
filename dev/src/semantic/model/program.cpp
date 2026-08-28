@@ -1,5 +1,5 @@
 #include "semantic/model/program.h"
-#include "pa22_lambda_presentation.h"
+#include "semantic/presentation/lambdas.h"
 
 #include <algorithm>
 #include <ostream>

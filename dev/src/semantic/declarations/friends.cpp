@@ -1,5 +1,5 @@
 #include "semantic/analysis/analyzer.h"
-#include "pa33_function_control_attributes.h"
+#include "semantic/extensions/function_control_attributes.h"
 
 #include <stdexcept>
 #include <vector>
