@@ -1037,7 +1037,8 @@ checkpoint where applicable, commit, and push state.
   cleanup methods as one scratch-state pipeline.  PA12 and PA16 passed
   484/484, all 18 output surfaces were exact, and stripped old/new objects
   were byte-identical.  The file/layout audits retained their baselines.
-- **Rejected R6 template translation-unit split; combined owner retained.**
+- `5f2833dc` — **Rejected R6 template translation-unit split; combined owner
+  retained.**
   Split `semantic/templates/aliases_and_lambdas.cpp` into adjacent
   `lambda_runtime.cpp` and `alias_analysis.cpp` owners in original public
   definition order.  The source count rose from 216 to 217.  PA12, PA18,
@@ -1058,3 +1059,21 @@ checkpoint where applicable, commit, and push state.
   in the accurately named combined owner rather than paying this repeated
   parse/code-layout cost.  The semantic audit is now 850 definitions with 41
   core-analysis methods still queued.
+- `1d002c38` — R6 core analyzer ownership.  The final 41 queued definitions
+  are the deliberately cohesive `semantic/analysis/analyzer.cpp` core: syntax
+  access, type/conversion primitives, central expression/declaration/statement
+  dispatch, rendering traversal, and the translation-unit `Consume` entry.
+  The owner already matches the class and responsibility; no source mutation
+  or artificial split was made after the measured declaration and template
+  failures.  The audited manifest is closed at 850 definitions / 0 queued.
+
+  The R6 closing gate passed 5471/5471, all 18 output surfaces, LowIR 124/99,
+  the unchanged compiler-layout audit, and the zero-fatal/33-warning file
+  audit.  Fresh explicit-O1 inception from a 32/32/32 root matched all 216
+  current objects and the final compiler in 49.80 seconds wall, 1,402.93
+  seconds aggregate CPU, and 232,224 KiB peak RSS.  Every retained R6 source
+  mutation is path-only with either a byte-identical object or a basename-only
+  symbol-table delta; the only cross-TU/source-count candidates were rejected.
+  Therefore the R5 corrected performance checkpoint remains the retained code
+  baseline and the global `<= 1.50x` wall gate stays open for R12.  R6 is
+  complete.  Push: with this ledger checkpoint.
