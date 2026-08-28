@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "cy86_program.h"
+#include "cy86/cy86_program.h"
 #include "preprocess/tokens/post_tokenizer.h"
 
 namespace cppgm

@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "cy86_program.h"
+#include "cy86/cy86_program.h"
 
 namespace
 {

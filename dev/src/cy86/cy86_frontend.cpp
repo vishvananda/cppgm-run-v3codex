@@ -1,4 +1,4 @@
-#include "cy86_internal.h"
+#include "cy86/cy86_internal.h"
 
 #include <algorithm>
 #include <cstring>

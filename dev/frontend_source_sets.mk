@@ -18,7 +18,7 @@ ABI_MANGLE_TOOL_SOURCES := abi_mangle_model abi_mangle_parse abi_mangle_identity
 RECOGNITION_SOURCES := pa6_recognizer
 NAMESPACE_SEMANTIC_SOURCES := pa7_semantic
 NAMESPACE_INITIALIZATION_SOURCES := pa8_model pa8_parser pa8_semantic
-CY86_SOURCES := cy86_frontend cy86_backend cy86_program
+CY86_SOURCES := cy86/cy86_frontend cy86/cy86_backend cy86/cy86_program
 
 CPPGM_PREPROCESS_SOURCES := preprocess/tokens/pp_tokenizer preprocess/tokens/post_tokenizer preprocess/expressions/control_expression preprocess/hosted/preprocessor_probes preprocess/macros/macro_operator_code preprocess/macros/macro_processor preprocess/preprocessor support/interning/frontend_intern preprocess/hosted/builtin_registry hosted_extension_registry
 CPPGM_SYNTAX_PRIMARY_SOURCES := pa10_syntax_model pa10_brace_matching pa32_object_attribute_syntax pa10_syntax pa10_syntax_driver pa10_syntax_stats

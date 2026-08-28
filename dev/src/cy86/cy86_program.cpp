@@ -1,9 +1,9 @@
-#include "cy86_program.h"
+#include "cy86/cy86_program.h"
 
 #include <chrono>
 #include <stdexcept>
 
-#include "cy86_internal.h"
+#include "cy86/cy86_internal.h"
 
 namespace cppgm
 {
