@@ -1126,3 +1126,24 @@ not reuse measurements from a different source tree.
   parallelism all set to 32, compared 215/215 objects exactly and produced
   identical self/inception compilers with SHA-256 `ca24f63a...` and 8,631,459
   text bytes.
+- **C11-1 (SYNTAX EDGE MUTATION PREPARATION).** `SyntaxArena` now has one
+  private primitive that validates edge capacity, records the parent's prior
+  first/last links for rollback, and appends the new edge record.  Ordinary
+  append and prepend retain their distinct link-order tails and their common
+  no-node no-op policy.  Existing PA10 structured-tree coverage is sufficient:
+  ordinary parsing exercises append throughout, while the function-type alias
+  pack fixture requires prepend to place `parameter-pack` before an existing
+  declarator child.  That reducer passes 1/1, PA10 passes 164/164, report-
+  through-PA10 passes 583/583, and the audit remains zero-fatal/33.  The O1
+  self-built compiler falls 136 text bytes (8,631,459 to 8,631,323).  GCC-O3
+  compiler text grows 1,088 bytes, while the corresponding Clang-O3 object
+  falls 916 bytes.  Three pinned GCC-O3 frozen runs are exact at
+  `b0d3d8d3...`, with 4.56/4.52-second baseline/candidate wall medians and
+  equal 4.05-second user medians.  Three O1 self-built lanes are also exact,
+  with 7.92/7.79-second wall medians and 7.36/7.27-second user medians; the
+  isolated 8.41-second baseline rerun receives no retention credit.
+- **C11-1 REJECTED INLINE SHAPE.** Forcing the shared preparation primitive
+  inline changed the affected self/GCC/Clang object text by +2,055/+64/-24
+  bytes versus the duplicated baseline.  The experiment was removed: the
+  retained outline changes those objects by -115/+1,098/-916 bytes and avoids
+  multiplying the self compiler's large vector-growth path.

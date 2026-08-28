@@ -248,6 +248,7 @@ private:
 			: parent(parent_value), first_edge(first), last_edge(last) {}
 	};
 	TextId InternTag(const char* tag, SyntaxTagCode* code = 0) const;
+	std::uint32_t PrepareEdgeMutation(NodeId parent, NodeId child);
 
 	StringTable& strings_;
 	SyntaxInterningStats* stats_;

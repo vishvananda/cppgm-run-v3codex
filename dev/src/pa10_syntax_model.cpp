@@ -367,21 +367,15 @@ NodeId SyntaxArena::Make(const char* tag, const std::string& payload)
 void SyntaxArena::Add(NodeId parent, NodeId child)
 {
 	if (parent == kNoNode || child == kNoNode) return;
-	if (edges_.size() >= kNoEdge)
-		throw std::runtime_error("too many syntax edges");
-	const std::uint32_t edge = static_cast<std::uint32_t>(edges_.size());
+	const std::uint32_t edge = PrepareEdgeMutation(parent, child);
 	SyntaxNode& node = nodes_[parent];
-	edge_mutations_.push_back(
-		EdgeMutation(parent, node.first_edge, node.last_edge));
-	edges_.push_back(SyntaxEdge(child));
 	if (node.first_edge == kNoEdge) node.first_edge = edge;
 	else edges_[node.last_edge].next = edge;
 	node.last_edge = edge;
 }
 
-void SyntaxArena::Prepend(NodeId parent, NodeId child)
+std::uint32_t SyntaxArena::PrepareEdgeMutation(NodeId parent, NodeId child)
 {
-	if (parent == kNoNode || child == kNoNode) return;
 	if (edges_.size() >= kNoEdge)
 		throw std::runtime_error("too many syntax edges");
 	const std::uint32_t edge = static_cast<std::uint32_t>(edges_.size());
@@ -389,6 +383,14 @@ void SyntaxArena::Prepend(NodeId parent, NodeId child)
 	edge_mutations_.push_back(
 		EdgeMutation(parent, node.first_edge, node.last_edge));
 	edges_.push_back(SyntaxEdge(child));
+	return edge;
+}
+
+void SyntaxArena::Prepend(NodeId parent, NodeId child)
+{
+	if (parent == kNoNode || child == kNoNode) return;
+	const std::uint32_t edge = PrepareEdgeMutation(parent, child);
+	SyntaxNode& node = nodes_[parent];
 	edges_[edge].next = node.first_edge;
 	node.first_edge = edge;
 	if (node.last_edge == kNoEdge) node.last_edge = edge;
