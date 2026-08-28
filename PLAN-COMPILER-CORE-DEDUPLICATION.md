@@ -1147,3 +1147,11 @@ not reuse measurements from a different source tree.
   bytes versus the duplicated baseline.  The experiment was removed: the
   retained outline changes those objects by -115/+1,098/-916 bytes and avoids
   multiplying the self compiler's large vector-growth path.
+- **C11-2 COVERAGE AUDIT (UNARY NODE CONSTRUCTION).** PA10's nested-unary AST
+  fixture distinguishes recursive unary construction and exact operator-token
+  payloads.  The special identifier-spelled `__real__` and `__imag__` branch is
+  a PA34 hosted-extension contract rather than PA10 grammar; PA34's existing
+  GNU complex template-constructor fixture compiles both forms through syntax,
+  semantics, lowering, and object emission.  The PA34 README now names those
+  two component operators explicitly.  No test inspects parser source or helper
+  names, and no new fixture is needed before the construction-only extraction.

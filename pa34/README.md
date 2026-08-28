@@ -229,7 +229,8 @@ To complete PA34, implement hosted compatibility for:
   template-ids used as outer template arguments, builtin-trait identifiers
   referenced as ordinary names, GNU `__decltype`, parenthesized
   throw-expressions emitted by hosted helper macros, and GNU builtin float type
-  specifiers such as `__float128` / `_Float128`
+  specifiers such as `__float128` / `_Float128`, plus GNU complex component
+  operators `__real__` and `__imag__`
 - builtin traits, transforms, intrinsics, and builtin families used during
   hosted compile acceptance, including lowering `__builtin_abort` as a
   non-returning call to the host C runtime; fixed-arity hosted integer
