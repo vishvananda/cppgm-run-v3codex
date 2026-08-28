@@ -1,19 +1,7 @@
 kind	pattern	destination
 path	^dev/src/pa30_	compiler_object/, syntax/, semantic/, lowering/
 include	^pa30_	compiler_object/, syntax/, semantic/, lowering/
-namespace	^pa15_lowering_detail$	cppgm::lowering
-namespace	^pa16_lowering_detail$	cppgm::lowering
-namespace	^pa17_lowering_detail$	cppgm::lowering
-namespace	^pa18_lowering_detail$	cppgm::lowering
-namespace	^pa21_lowering_detail$	cppgm::lowering
-namespace	^pa25_lowering_detail$	cppgm::lowering
-namespace	^pa26_lowering_detail$	cppgm::lowering
-namespace	^pa27_lowering_detail$	cppgm::lowering
-namespace	^pa28_lowering_detail$	cppgm::lowering
 namespace	^pa30$	cppgm::compiler_object
-namespace	^pa30_lowering_detail$	cppgm::lowering
-namespace	^pa33_lowering_detail$	cppgm::lowering
-namespace	^pa34_lowering_detail$	cppgm::lowering
 identifier	^CPPGM_PA[0-9][A-Za-z0-9_]*$	guard derived from destination path
 identifier	^PA3Mock_IsDefinedIdentifier$	MockIsDefinedIdentifier
 identifier	^append_pa12_template_stats$	append_template_analysis_stats

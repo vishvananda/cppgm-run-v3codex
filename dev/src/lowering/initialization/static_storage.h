@@ -12,7 +12,7 @@
 
 namespace cppgm
 {
-namespace pa16_lowering_detail
+namespace lowering
 {
 
 class StaticInitializerLowering
@@ -70,7 +70,7 @@ private:
 	std::vector<lowering::ir::SymbolId>& literal_symbols_;
 	const std::vector<std::uint32_t>& function_definitions_;
 	const std::vector<lowering::ir::SymbolId>& class_vtable_symbols_;
-	pa15_lowering_detail::SourceTypeLowering types_;
+	lowering::SourceTypeLowering types_;
 };
 
 }

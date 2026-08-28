@@ -8,7 +8,7 @@
 
 namespace cppgm
 {
-namespace pa16_lowering_detail
+namespace lowering
 {
 
 using namespace semantic;

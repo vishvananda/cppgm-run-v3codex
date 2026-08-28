@@ -4,7 +4,7 @@
 
 namespace cppgm
 {
-namespace pa15_lowering_detail
+namespace lowering
 {
 
 using namespace semantic;

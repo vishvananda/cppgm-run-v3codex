@@ -11,7 +11,7 @@
 
 namespace cppgm
 {
-namespace pa16_lowering_detail
+namespace lowering
 {
 
 using namespace semantic;
@@ -1151,7 +1151,7 @@ protected:
 		return projected;
 	}
 	Operand ProjectConstructorMemberPath(
-		const pa16_lowering_detail::ConstructorMemberPath& path)
+		const lowering::ConstructorMemberPath& path)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		Operand destination = derived.LoadStorage(

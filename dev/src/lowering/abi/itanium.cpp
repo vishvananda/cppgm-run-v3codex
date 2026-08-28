@@ -1025,7 +1025,7 @@ public:
 				context.target_signature_is_parameter_list = true;
 				AbiFunctionTarget& target = context.function;
 				if (owner.local_context != kNoBinding &&
-					pa18_lowering_detail::PreferLocalObjectBinding(
+					lowering::PreferLocalObjectBinding(
 						program_, function.member_owner))
 				{
 					target.kind = ABI_FUNCTION_TARGET_LOCAL;
@@ -1846,7 +1846,7 @@ public:
 			else if (entity.lambda_closure)
 			{
 				if (entity.local_context != kNoBinding &&
-					pa18_lowering_detail::PreferLocalObjectBinding(
+					lowering::PreferLocalObjectBinding(
 						program_, record->entity))
 				{
 					result.kind = ABI_TYPE_LOCAL_TYPE;
@@ -2357,7 +2357,7 @@ std::string MangleLambdaCallOperator(const semantic::Program& program,
 	lambda_target.target.kind = ABI_TARGET_FACT_FUNCTION;
 	AbiFunctionTarget& function = lambda_target.target.function;
 	if (lambda.local_context != kNoBinding &&
-		pa18_lowering_detail::PreferLocalObjectBinding(
+		lowering::PreferLocalObjectBinding(
 			program, binding.member_owner))
 	{
 		function.kind = ABI_FUNCTION_TARGET_LOCAL;

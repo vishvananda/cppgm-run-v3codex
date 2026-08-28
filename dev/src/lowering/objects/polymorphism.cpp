@@ -12,7 +12,7 @@
 
 namespace cppgm
 {
-namespace pa18_lowering_detail
+namespace lowering
 {
 
 using namespace semantic;
@@ -1932,7 +1932,7 @@ private:
 	std::size_t source_ordinal_;
 	const std::vector<SymbolId>& function_symbols_;
 	PolymorphismLoweringState& state_;
-	pa15_lowering_detail::SourceTypeLowering source_types_;
+	lowering::SourceTypeLowering source_types_;
 	std::vector<std::uint8_t> local_function_definitions_;
 	std::vector<AdjustedSlotEntry> adjusted_slot_entries_;
 	std::vector<std::uint32_t> adjusted_slot_slots_;
@@ -2376,7 +2376,7 @@ private:
 	BlockId current_block_;
 	std::size_t temp_counter_;
 	std::size_t block_counter_;
-	pa15_lowering_detail::SourceTypeLowering source_types_;
+	lowering::SourceTypeLowering source_types_;
 	std::vector<Function> deleting_functions_;
 	std::vector<SymbolId> deleting_complete_symbols_;
 	std::vector<SymbolId> deleting_base_symbols_;

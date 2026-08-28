@@ -20,16 +20,16 @@ namespace cppgm
 
 using namespace semantic;
 using namespace lowering::ir;
-using namespace pa15_lowering_detail;
+using namespace lowering;
 using namespace lowering::support;
 
-namespace
+namespace lowering
 {
 
-class GraphConsumer : public SemanticGraphConsumer
+class SemanticGraphConsumer : public semantic::SemanticGraphConsumer
 {
 public:
-	GraphConsumer(TypedProgram& program, LowIRLoweringStats* stats,
+	SemanticGraphConsumer(TypedProgram& program, LowIRLoweringStats* stats,
 		std::size_t source_ordinal)
 		: program_(program), stats_(stats), source_ordinal_(source_ordinal) {}
 
@@ -49,6 +49,11 @@ private:
 	LowIRLoweringStats* stats_;
 	std::size_t source_ordinal_;
 };
+
+}  // namespace lowering
+
+namespace
+{
 
 SymbolId AddLifecycleHelperSymbol(TypedProgram* program,
 	const std::string& proposed)
@@ -364,7 +369,7 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 	program.identities.UseDirectNames(sources.size() == 1);
 	for (std::size_t i = 0; i < sources.size(); ++i)
 	{
-		GraphConsumer consumer(program, stats, i);
+		lowering::SemanticGraphConsumer consumer(program, stats, i);
 		semantic::Stats semantic_stats;
 		ConsumeTranslationUnit(sources[i].path, sources[i].source, options,
 			consumer, stats ? &semantic_stats : 0, complete_constructor_unwind,

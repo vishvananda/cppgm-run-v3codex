@@ -8,7 +8,7 @@
 
 namespace cppgm
 {
-namespace pa34_lowering_detail
+namespace lowering
 {
 
 template <class Derived>

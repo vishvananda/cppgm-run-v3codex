@@ -12,13 +12,11 @@
 
 namespace cppgm
 {
-namespace pa16_lowering_detail
+namespace lowering
 {
 
 using namespace semantic;
 using namespace semantic;
-using namespace pa15_lowering_detail;
-
 template <class Derived>
 class SlotPlanning
 {

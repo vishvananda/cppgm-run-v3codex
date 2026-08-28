@@ -48,46 +48,45 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-namespace cppgm { namespace {
+namespace cppgm { namespace lowering { namespace {
 using namespace semantic; using namespace semantic;
 using namespace lowering::ir; using namespace lowering::support;
-using pa16_lowering_detail::AggregatePath;
-class GraphLowerer :
-	private pa28_lowering_detail::VirtualBaseLowering<GraphLowerer>,
-	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
-	private pa15_lowering_detail::ConditionalLowering<GraphLowerer>,
-	private pa15_lowering_detail::ScalarUnaryLowering<GraphLowerer>,
-	private pa15_lowering_detail::StaticMemberSymbolLowering<GraphLowerer>,
-	private pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>,
-	private pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>,
-	private pa17_lowering_detail::ControlExpressionLowering<GraphLowerer>,
-	private pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>,
-	private pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>,
-	private pa16_lowering_detail::AssignmentLowering<GraphLowerer>,
-	private pa16_lowering_detail::AggregateHelperLowering<GraphLowerer>,
-	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>,
-	private pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>,
-	private pa16_lowering_detail::DestructorActionLowering<GraphLowerer>,
-	private pa16_lowering_detail::CallArgumentLowering<GraphLowerer>,
-	private pa16_lowering_detail::InitializationLowering<GraphLowerer>,
-	private pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>,
-	private pa16_lowering_detail::MemberAddressLowering<GraphLowerer>,
-	private pa16_lowering_detail::SlotPlanning<GraphLowerer>,
-	private pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>,
-	private pa21_lowering_detail::ConstantLowering<GraphLowerer>,
-	private pa21_lowering_detail::LocalStaticLowering<GraphLowerer>,
-	private pa25_lowering_detail::RangeForLowering<GraphLowerer>,
-	private pa26_lowering_detail::ExceptionLowering<GraphLowerer>,
-	private pa26_lowering_detail::InitializerListLowering<GraphLowerer>,
-	private pa26_lowering_detail::RttiLowering<GraphLowerer>,
-	private pa27_lowering_detail::MemberPointerLowering<GraphLowerer>,
-	private pa30_lowering_detail::RegionLowering<GraphLowerer>,
-	private pa33_lowering_detail::StaticLifecycleLowering<GraphLowerer>,
-	private pa34_lowering_detail::GnuAsmLowering<GraphLowerer>,
-	private pa34_lowering_detail::ComplexLowering<GraphLowerer>
+class ProgramLowerer :
+	private lowering::VirtualBaseLowering<ProgramLowerer>,
+	private lowering::ControlFlowLowering<ProgramLowerer>,
+	private lowering::ConditionalLowering<ProgramLowerer>,
+	private lowering::ScalarUnaryLowering<ProgramLowerer>,
+	private lowering::StaticMemberSymbolLowering<ProgramLowerer>,
+	private lowering::PolymorphismActionLowering<ProgramLowerer>,
+	private lowering::BitFieldValueLowering<ProgramLowerer>,
+	private lowering::ControlExpressionLowering<ProgramLowerer>,
+	private lowering::ValueBoundaryLowering<ProgramLowerer>,
+	private lowering::SpecialMemberLowering<ProgramLowerer>,
+	private lowering::AssignmentLowering<ProgramLowerer>,
+	private lowering::AggregateHelperLowering<ProgramLowerer>,
+	private lowering::ConstructorActionLowering<ProgramLowerer>,
+	private lowering::ArrayLifetimeLowering<ProgramLowerer>,
+	private lowering::DestructorActionLowering<ProgramLowerer>,
+	private lowering::CallArgumentLowering<ProgramLowerer>,
+	private lowering::InitializationLowering<ProgramLowerer>,
+	private lowering::LifetimeActionLowering<ProgramLowerer>,
+	private lowering::MemberAddressLowering<ProgramLowerer>,
+	private lowering::SlotPlanning<ProgramLowerer>,
+	private lowering::TemporaryLifetimeLowering<ProgramLowerer>,
+	private lowering::ConstantLowering<ProgramLowerer>,
+	private lowering::LocalStaticLowering<ProgramLowerer>,
+	private lowering::RangeForLowering<ProgramLowerer>,
+	private lowering::ExceptionLowering<ProgramLowerer>,
+	private lowering::InitializerListLowering<ProgramLowerer>,
+	private lowering::RttiLowering<ProgramLowerer>,
+	private lowering::MemberPointerLowering<ProgramLowerer>,
+	private lowering::RegionLowering<ProgramLowerer>,
+	private lowering::StaticLifecycleLowering<ProgramLowerer>,
+	private lowering::GnuAsmLowering<ProgramLowerer>,
+	private lowering::ComplexLowering<ProgramLowerer>
 {
 public:
-	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
+	ProgramLowerer(const SemanticGraphView& graph, TypedProgram& output,
 		LowIRLoweringStats* stats, std::size_t source_ordinal)
 		: graph_(graph), program_(graph.program), arena_(graph.arena),
 		  output_(output), stats_(stats),
@@ -195,7 +194,7 @@ public:
 						static_cast<std::uint32_t>(node);
 			}
 		RegisterLocalStaticObjects();
-		pa18_lowering_detail::PreparePolymorphism(graph_, output_, stats_,
+		lowering::PreparePolymorphism(graph_, output_, stats_,
 			source_ordinal_, function_symbols_, &polymorphism_);
 		PrepareFunctionExceptionPolicyRuntime();
 		EmitLocalStaticGlobals();
@@ -207,9 +206,9 @@ public:
 		}
 		else EmitTop(graph_.root, true, true);
 		OrderLifecycleBaseEntries();
-		pa18_lowering_detail::EmitDeletingDestructors(graph_, output_, stats_,
+		lowering::EmitDeletingDestructors(graph_, output_, stats_,
 			function_symbols_, &polymorphism_);
-		pa18_lowering_detail::EmitVtableThunks(graph_, output_, stats_,
+		lowering::EmitVtableThunks(graph_, output_, stats_,
 			function_symbols_, &polymorphism_);
 		EmitAggregateHelpers();
 		if (!output_.host_object_emission)
@@ -229,41 +228,41 @@ public:
 			}
 	}
 private:
-	friend class pa28_lowering_detail::VirtualBaseLowering<GraphLowerer>;
-	friend class pa15_lowering_detail::ConditionalLowering<GraphLowerer>;
-	friend class pa28_lowering_detail::VirtualBaseBoundaryShape<GraphLowerer>;
-	friend class pa28_lowering_detail::VirtualBaseContractLookup<GraphLowerer>;
-	friend class pa15_lowering_detail::ControlFlowLowering<GraphLowerer>;
-	friend class pa15_lowering_detail::ScalarUnaryLowering<GraphLowerer>;
-	friend class pa15_lowering_detail::StaticMemberSymbolLowering<GraphLowerer>;
-	friend class pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>;
-	friend class pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>;
-	friend class pa17_lowering_detail::ControlExpressionLowering<GraphLowerer>;
-	friend class pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>;
-	friend class pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>;
-	friend class pa16_lowering_detail::AssignmentLowering<GraphLowerer>;
-	friend class pa16_lowering_detail::AggregateHelperLowering<GraphLowerer>;
-	friend class pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>;
-	friend class pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>;
-	friend class pa16_lowering_detail::DestructorActionLowering<GraphLowerer>;
-	friend class pa16_lowering_detail::CallArgumentLowering<GraphLowerer>;
-	friend class pa16_lowering_detail::InitializationLowering<GraphLowerer>;
-	friend class pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>;
-	friend class pa16_lowering_detail::MemberAddressLowering<GraphLowerer>;
-	friend class pa16_lowering_detail::SlotPlanning<GraphLowerer>;
-	friend class pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>;
-	friend class pa21_lowering_detail::ConstantLowering<GraphLowerer>;
-	friend class pa21_lowering_detail::LocalStaticLowering<GraphLowerer>;
-	friend class pa25_lowering_detail::RangeForLowering<GraphLowerer>;
-	friend class pa26_lowering_detail::ExceptionLowering<GraphLowerer>;
-	friend class pa26_lowering_detail::InitializerListLowering<GraphLowerer>;
-	friend class pa26_lowering_detail::RttiLowering<GraphLowerer>;
-	friend class pa27_lowering_detail::MemberFunctionPointerLowering<GraphLowerer>;
-	friend class pa27_lowering_detail::MemberPointerLowering<GraphLowerer>;
-	friend class pa30_lowering_detail::RegionLowering<GraphLowerer>;
-	friend class pa33_lowering_detail::StaticLifecycleLowering<GraphLowerer>;
-	friend class pa34_lowering_detail::GnuAsmLowering<GraphLowerer>;
-	friend class pa34_lowering_detail::ComplexLowering<GraphLowerer>;
+	friend class lowering::VirtualBaseLowering<ProgramLowerer>;
+	friend class lowering::ConditionalLowering<ProgramLowerer>;
+	friend class lowering::VirtualBaseBoundaryShape<ProgramLowerer>;
+	friend class lowering::VirtualBaseContractLookup<ProgramLowerer>;
+	friend class lowering::ControlFlowLowering<ProgramLowerer>;
+	friend class lowering::ScalarUnaryLowering<ProgramLowerer>;
+	friend class lowering::StaticMemberSymbolLowering<ProgramLowerer>;
+	friend class lowering::PolymorphismActionLowering<ProgramLowerer>;
+	friend class lowering::BitFieldValueLowering<ProgramLowerer>;
+	friend class lowering::ControlExpressionLowering<ProgramLowerer>;
+	friend class lowering::ValueBoundaryLowering<ProgramLowerer>;
+	friend class lowering::SpecialMemberLowering<ProgramLowerer>;
+	friend class lowering::AssignmentLowering<ProgramLowerer>;
+	friend class lowering::AggregateHelperLowering<ProgramLowerer>;
+	friend class lowering::ConstructorActionLowering<ProgramLowerer>;
+	friend class lowering::ArrayLifetimeLowering<ProgramLowerer>;
+	friend class lowering::DestructorActionLowering<ProgramLowerer>;
+	friend class lowering::CallArgumentLowering<ProgramLowerer>;
+	friend class lowering::InitializationLowering<ProgramLowerer>;
+	friend class lowering::LifetimeActionLowering<ProgramLowerer>;
+	friend class lowering::MemberAddressLowering<ProgramLowerer>;
+	friend class lowering::SlotPlanning<ProgramLowerer>;
+	friend class lowering::TemporaryLifetimeLowering<ProgramLowerer>;
+	friend class lowering::ConstantLowering<ProgramLowerer>;
+	friend class lowering::LocalStaticLowering<ProgramLowerer>;
+	friend class lowering::RangeForLowering<ProgramLowerer>;
+	friend class lowering::ExceptionLowering<ProgramLowerer>;
+	friend class lowering::InitializerListLowering<ProgramLowerer>;
+	friend class lowering::RttiLowering<ProgramLowerer>;
+	friend class lowering::MemberFunctionPointerLowering<ProgramLowerer>;
+	friend class lowering::MemberPointerLowering<ProgramLowerer>;
+	friend class lowering::RegionLowering<ProgramLowerer>;
+	friend class lowering::StaticLifecycleLowering<ProgramLowerer>;
+	friend class lowering::GnuAsmLowering<ProgramLowerer>;
+	friend class lowering::ComplexLowering<ProgramLowerer>;
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -440,10 +439,10 @@ private:
 		}
 		const bool weak_linkage = lowering::abi::HasWeakLinkage(
 			program_, node.binding, kind == Symbol::FUNCTION_SYMBOL);
-		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
+		const bool local_member = lowering::IsFunctionLocalEntity(
 			program_, binding.member_owner);
 		const bool prefer_local =
-			pa18_lowering_detail::PreferLocalObjectBinding(
+			lowering::PreferLocalObjectBinding(
 				program_, binding.member_owner);
 		const bool internal = binding.unnamed_namespace_linkage ||
 			canonical_binding.unnamed_namespace_linkage ||
@@ -2650,7 +2649,7 @@ private:
 	std::vector<SymbolId> literal_symbols_;
 	std::vector<std::uint8_t> temporary_initialized_;
 	std::vector<Operand> temporary_addresses_;
-	pa26_lowering_detail::InitializerListLoweringState initializer_lists_;
+	lowering::InitializerListLoweringState initializer_lists_;
 	std::vector<std::pair<std::uint32_t, bool> > namespace_initializers_;
 	std::vector<std::uint32_t> dynamic_finalizers_;
 	std::vector<std::pair<std::uint32_t, std::string> > thread_local_objects_;
@@ -2662,7 +2661,7 @@ private:
 	SymbolId dso_handle_symbol_;
 	std::vector<std::uint32_t> function_definition_;
 	std::vector<std::uint32_t> function_declaration_;
-	pa28_lowering_detail::VirtualBaseContractState virtual_base_contracts_;
+	lowering::VirtualBaseContractState virtual_base_contracts_;
 	std::vector<std::uint32_t> global_node_;
 	std::vector<std::uint32_t> namespace_action_;
 	std::vector<std::uint32_t> local_static_action_;
@@ -2677,7 +2676,7 @@ private:
 	LowType current_result_;
 	bool current_result_reference_, current_indirect_result_;
 	std::size_t temp_counter_;
-	pa18_lowering_detail::PolymorphismLoweringState polymorphism_;
+	lowering::PolymorphismLoweringState polymorphism_;
 	std::vector<SlotId> binding_slots_;
 	std::vector<ParameterId> binding_indirect_parameters_; std::vector<BindingId> function_slot_bindings_;
 	std::vector<SlotId> generated_slots_; std::vector<std::uint32_t> generated_slot_nodes_;
@@ -2725,16 +2724,14 @@ private:
 	std::vector<std::uint32_t> full_expression_branch_cleanup_next_;
 	std::vector<IdentityTypeId> identity_type_cache_;
 	PresentationNameMap presentation_names_;
-	pa15_lowering_detail::SourceTypeLowering source_types_;
-	pa16_lowering_detail::StaticInitializerLowering static_initializers_;
+	lowering::SourceTypeLowering source_types_;
+	lowering::StaticInitializerLowering static_initializers_;
 	lowering::constant_pool::Pool constant_templates_;
 };
 }
-namespace pa15_lowering_detail
-{
 void LowerSemanticGraph(const SemanticGraphView& graph, TypedProgram& program,
 	LowIRLoweringStats* stats, std::size_t source_ordinal)
 {
-	GraphLowerer(graph, program, stats, source_ordinal).Lower();
+	ProgramLowerer(graph, program, stats, source_ordinal).Lower();
 }
 } }

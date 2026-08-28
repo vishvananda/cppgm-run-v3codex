@@ -12,7 +12,7 @@
 
 namespace cppgm
 {
-namespace pa18_lowering_detail
+namespace lowering
 {
 
 struct VtableThunkLoweringFact

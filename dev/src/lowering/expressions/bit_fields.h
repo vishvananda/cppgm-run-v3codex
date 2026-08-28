@@ -11,7 +11,7 @@
 
 namespace cppgm
 {
-namespace pa17_lowering_detail
+namespace lowering
 {
 
 template <class Derived>

@@ -7,7 +7,7 @@
 
 namespace cppgm
 {
-namespace pa18_lowering_detail
+namespace lowering
 {
 
 using namespace semantic;
@@ -228,7 +228,7 @@ private:
 	LowIRLoweringStats* stats_;
 	const std::vector<SymbolId>& function_symbols_;
 	PolymorphismLoweringState& state_;
-	pa15_lowering_detail::SourceTypeLowering source_types_;
+	lowering::SourceTypeLowering source_types_;
 };
 
 }
