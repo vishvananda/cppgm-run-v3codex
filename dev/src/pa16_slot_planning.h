@@ -1,7 +1,7 @@
 #ifndef CPPGM_PA16_SLOT_PLANNING_H
 #define CPPGM_PA16_SLOT_PLANNING_H
 
-#include "pa12_semantic_model.h"
+#include "semantic/model/graph.h"
 #include "pa15_lowering_support.h"
 
 #include <cstdint>

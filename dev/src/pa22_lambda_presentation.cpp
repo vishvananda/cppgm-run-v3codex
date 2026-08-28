@@ -1,7 +1,7 @@
 #include "pa22_lambda_presentation.h"
 
-#include "pa12_semantic_model.h"
-#include "pa12_semantic.h"
+#include "semantic/model/graph.h"
+#include "semantic/semantic.h"
 
 #include <cctype>
 #include <stdexcept>

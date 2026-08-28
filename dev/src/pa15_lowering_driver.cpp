@@ -1,6 +1,6 @@
 #include "pa15_lowering.h"
 
-#include "pa12_semantic.h"
+#include "semantic/semantic.h"
 #include "pa15_force_inline.h"
 #include "pa15_graph_lowering.h"
 #include "pa15_local_presentation.h"

@@ -1,4 +1,4 @@
-#include "pa12_semantic_tables.h"
+#include "semantic/analysis/index_tables.h"
 
 #include <limits>
 #include <stdexcept>

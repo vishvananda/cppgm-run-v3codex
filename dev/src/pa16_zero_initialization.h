@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pa12_semantic_model.h"
+#include "semantic/model/graph.h"
 
 namespace cppgm
 {

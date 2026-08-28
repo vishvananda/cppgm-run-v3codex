@@ -1,7 +1,7 @@
 #pragma once
 
 #include "syntax/model/arena.h"
-#include "pa11_model.h"
+#include "semantic/model/program.h"
 
 #include <cstdint>
 

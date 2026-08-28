@@ -1,4 +1,4 @@
-#include "pa12_semantic_detail.h"
+#include "semantic/analysis/analyzer.h"
 #include "support/containers/flat_hash_map.h"
 
 #include <algorithm>

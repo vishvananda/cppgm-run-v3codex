@@ -1,4 +1,4 @@
-#include "pa12_semantic_detail.h"
+#include "semantic/analysis/analyzer.h"
 #include "pa34_wide_constant_semantic.h"
 
 #include <algorithm>

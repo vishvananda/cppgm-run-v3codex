@@ -1,7 +1,7 @@
 #include "pa19_template_presentation.h"
 
-#include "pa12_semantic.h"
-#include "pa12_semantic_model.h"
+#include "semantic/semantic.h"
+#include "semantic/model/graph.h"
 
 #include <cctype>
 #include <sstream>

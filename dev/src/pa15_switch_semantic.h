@@ -1,7 +1,7 @@
 #ifndef CPPGM_PA15_SWITCH_SEMANTIC_H
 #define CPPGM_PA15_SWITCH_SEMANTIC_H
 
-#include "pa11_model.h"
+#include "semantic/model/program.h"
 
 #include <cstdint>
 #include <vector>

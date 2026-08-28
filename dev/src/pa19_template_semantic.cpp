@@ -1,4 +1,4 @@
-#include "pa12_semantic_detail.h"
+#include "semantic/analysis/analyzer.h"
 #include "pa19_template_presentation.h"
 
 #include <algorithm>

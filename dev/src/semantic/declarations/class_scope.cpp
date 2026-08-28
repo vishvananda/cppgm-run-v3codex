@@ -1,5 +1,5 @@
 // Stable class-definition scope creation and injected class-name bindings.
-#include "pa12_semantic_detail.h"
+#include "semantic/analysis/analyzer.h"
 
 namespace cppgm { namespace pa12_semantic_detail {
 

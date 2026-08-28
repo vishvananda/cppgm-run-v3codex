@@ -4,10 +4,10 @@
 #include "syntax/model/arena.h"
 #include "function_demand_edge.h"
 #include "function_demand_reason.h"
-#include "pa11_model.h"
-#include "pa12_semantic.h"
-#include "pa12_semantic_model.h"
-#include "pa12_semantic_tables.h"
+#include "semantic/model/program.h"
+#include "semantic/semantic.h"
+#include "semantic/model/graph.h"
+#include "semantic/analysis/index_tables.h"
 #include "pa25_lambda_capture_semantic.h"
 
 #include <deque>

@@ -1,8 +1,8 @@
 #ifndef CPPGM_PA27_MEMBER_POINTER_LOWERING_H
 #define CPPGM_PA27_MEMBER_POINTER_LOWERING_H
 
-#include "pa11_model.h"
-#include "pa12_semantic_model.h"
+#include "semantic/model/program.h"
+#include "semantic/model/graph.h"
 #include "pa15_lowering_support.h"
 #include "pa15_lowir_model.h"
 #include "pa27_member_function_pointer_lowering.h"

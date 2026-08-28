@@ -1,4 +1,4 @@
-#include "pa11_model.h"
+#include "semantic/model/program.h"
 
 namespace cppgm
 {

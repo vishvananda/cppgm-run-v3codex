@@ -1,7 +1,7 @@
 #pragma once
 
-#include "pa11_model.h"
-#include "pa12_semantic_model.h"
+#include "semantic/model/program.h"
+#include "semantic/model/graph.h"
 #include "pa15_lowering.h"
 #include "pa15_lowir_model.h"
 

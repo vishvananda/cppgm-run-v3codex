@@ -1,5 +1,4 @@
 kind	pattern	destination
-path	^dev/src/pa11_	semantic/
 path	^dev/src/pa12_	semantic/
 path	^dev/src/pa15_	semantic/, lowering/
 path	^dev/src/pa16_	semantic/, lowering/
@@ -19,8 +18,6 @@ path	^dev/src/pa30_	compiler_object/, syntax/, semantic/, lowering/
 path	^dev/src/pa32_	syntax/, semantic/
 path	^dev/src/pa33_	semantic/, lowering/
 path	^dev/src/pa34_	syntax/, semantic/, lowering/
-include	^pa11_	semantic/
-include	^pa12_	semantic/
 include	^pa15_	semantic/, lowering/
 include	^pa16_	semantic/, lowering/
 include	^pa17_	semantic/, lowering/

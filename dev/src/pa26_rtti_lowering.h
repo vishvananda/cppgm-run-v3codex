@@ -1,8 +1,8 @@
 #ifndef CPPGM_PA26_RTTI_LOWERING_H
 #define CPPGM_PA26_RTTI_LOWERING_H
 
-#include "pa11_model.h"
-#include "pa12_semantic_model.h"
+#include "semantic/model/program.h"
+#include "semantic/model/graph.h"
 #include "pa15_lowering_support.h"
 #include "pa15_lowir_model.h"
 

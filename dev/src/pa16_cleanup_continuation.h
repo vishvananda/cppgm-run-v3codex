@@ -2,7 +2,7 @@
 #define CPPGM_PA16_CLEANUP_CONTINUATION_H
 
 #include "pa15_lowir_model.h"
-#include "pa12_semantic_model.h"
+#include "semantic/model/graph.h"
 
 #include <cstddef>
 #include <cstdint>

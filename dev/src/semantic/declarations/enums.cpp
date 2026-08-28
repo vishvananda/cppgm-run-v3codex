@@ -1,6 +1,6 @@
 // Enum declaration analysis: builds enum entities, their enumerators, and
 // their underlying-type facts from syntax.
-#include "pa12_semantic_detail.h"
+#include "semantic/analysis/analyzer.h"
 #include <stdexcept>
 #include <string>
 #include <vector>

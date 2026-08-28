@@ -1,5 +1,5 @@
 // Source-facing PA11 projections over the canonical semantic graph.
-#include "pa12_semantic_detail.h"
+#include "semantic/analysis/analyzer.h"
 
 #include <stdexcept>
 #include <string>

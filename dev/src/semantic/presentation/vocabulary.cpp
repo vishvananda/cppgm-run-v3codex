@@ -1,7 +1,7 @@
 // Fixed operator and keyword vocabulary classification: one packed
 // simple-token kind per distinct payload or operation name, classified once
 // at the semantic input boundary and memoized by ID.
-#include "pa12_semantic_detail.h"
+#include "semantic/analysis/analyzer.h"
 
 namespace cppgm { namespace pa12_semantic_detail {
 

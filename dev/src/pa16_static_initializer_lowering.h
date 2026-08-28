@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pa12_semantic_model.h"
+#include "semantic/model/graph.h"
 #include "pa15_lowering.h"
 #include "pa15_lowering_support.h"
 #include "pa15_source_type_lowering.h"

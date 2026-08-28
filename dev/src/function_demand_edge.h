@@ -1,7 +1,7 @@
 #pragma once
 
 #include "function_demand_reason.h"
-#include "pa11_model.h"
+#include "semantic/model/program.h"
 
 namespace cppgm
 {

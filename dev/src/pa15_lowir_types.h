@@ -1,7 +1,7 @@
 #pragma once
 
 #include "lowir_identity.h"
-#include "pa11_model.h"
+#include "semantic/model/program.h"
 
 #include <cstddef>
 #include <cstdint>

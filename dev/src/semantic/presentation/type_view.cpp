@@ -1,7 +1,7 @@
-#include "pa11_semantic.h"
+#include "semantic/type_view.h"
 
-#include "pa12_semantic.h"
-#include "pa12_semantic_detail.h"
+#include "semantic/semantic.h"
+#include "semantic/analysis/analyzer.h"
 
 #include <algorithm>
 #include <chrono>

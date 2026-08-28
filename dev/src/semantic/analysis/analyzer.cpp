@@ -1,4 +1,4 @@
-#include "pa12_semantic_detail.h"
+#include "semantic/analysis/analyzer.h"
 #include "pa15_switch_semantic.h"
 #include "hosted_extension_semantic.h"
 #include <algorithm>

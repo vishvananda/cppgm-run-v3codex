@@ -1,7 +1,7 @@
 #pragma once
 
 #include "abi/itanium/abi_mangle.h"
-#include "pa12_semantic.h"
+#include "semantic/semantic.h"
 #include "pa15_lowir_model.h"
 #include "pa15_local_presentation.h"
 

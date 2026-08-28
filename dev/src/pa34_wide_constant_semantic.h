@@ -1,7 +1,7 @@
 #ifndef CPPGM_PA34_WIDE_CONSTANT_SEMANTIC_H
 #define CPPGM_PA34_WIDE_CONSTANT_SEMANTIC_H
 
-#include "pa12_semantic_model.h"
+#include "semantic/model/graph.h"
 
 #include <cstddef>
 #include <string>

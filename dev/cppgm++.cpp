@@ -2,8 +2,8 @@
 
 #include "support/exceptions.h"
 #include "syntax/syntax.h"
-#include "pa11_semantic.h"
-#include "pa12_semantic.h"
+#include "semantic/type_view.h"
+#include "semantic/semantic.h"
 #include "pa15_lowering.h"
 #include "pa15_lowering_support.h"
 #include "pa30_lowir_adapter.h"
