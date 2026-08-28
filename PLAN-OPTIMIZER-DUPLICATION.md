@@ -784,6 +784,39 @@ This plan is complete only when:
   Reject and restore the original ownership.  A future D3 boundary must move
   a cohesive helper unit rather than adding cross-module leaf calls merely to
   satisfy a line-count target.
+- **D3-S2 (COHESIVE LOCAL-CLEANUP UNIT, REJECTED).** On the tree based on
+  `9d5e27aa`, scalar simplification/folding, DCE, CFG cleanup, scalar slot
+  promotion, and their reusable scratch moved together into a new
+  `lowir_local_cleanup.cpp` behind a function-level `LocalCleanupSession`.
+  The coordinator retained pass order and whole-pipeline boundaries; the new
+  source was in both tool source sets.  This reduced `lowir_opt.cpp` from
+  2,997 to 558 lines while keeping the new implementation at 2,499 lines and
+  its header at 63.  A first private run exposed that the late-inline callback
+  historically accounts nested slot transforms as inline work rather than
+  standalone slot runs.  Three explicit untracked session entries restored
+  that contract before measurement.  Focused PA37 controls 389, 508, 524,
+  and 525 pass; PA37 is 188/188, PA38 is 45/45, `git diff --check` is clean,
+  and the default audit remains zero-fatal with 36 warnings.  Fresh
+  exact-candidate-source private logs cover all 216 translation units: every
+  non-timing optimizer counter and all 216 objects match, and old/candidate
+  self compilers link the same `c91c2910...` output.  The candidate benchmark
+  compiler grows from `a460771a...`/8,637,371 text and 334,744 data bytes to
+  `c91c2910...`/8,638,719 text and 335,336 data bytes.  Three
+  reverse/interleaved self lanes are candidate 31.73/32.19/31.52 seconds wall
+  and 905.46/907.30/905.28 aggregate CPU, versus old 31.44/31.47/31.50 wall
+  and 905.44/902.45/907.81 CPU.  Means are 31.813/906.013 versus
+  31.470/905.233: wall regresses 1.091% while CPU regresses only 0.086%.
+  Candidate mean peak RSS is 229,455 KiB versus 228,540 KiB.  Exact-source
+  GCC lanes are 30.26/29.50 wall and 576.59/571.40 CPU; Clang lanes are
+  31.10/30.79 wall and 648.90/648.31 CPU.  Candidate ratios are 1.065x GCC
+  and 1.028x Clang, both worse than the old compiler's 1.053x/1.017x on the
+  same source.  GCC/Clang hashes and text are `30a4e3e9...`/5,787,720 and
+  `45f011d2...`/5,023,761.  The exact counters and nearly flat CPU offer no
+  pass-work attribution; the remaining suspects are the added session
+  allocation, compiler code layout, and parallel tail latency.  Reject under
+  the confirmed greater-than-0.5% wall rule.  A lower-overhead D3 boundary
+  must keep scratch ownership local without adding a per-translation-unit
+  heap allocation or a broad out-of-line call facade.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
