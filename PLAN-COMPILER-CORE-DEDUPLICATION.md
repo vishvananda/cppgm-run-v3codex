@@ -1,6 +1,6 @@
 # Plan: Deduplicate the Compiler Core Outside `lowir_opt`
 
-Status: execution in progress
+Status: complete
 
 Date: 2026-08-28
 
@@ -1283,3 +1283,87 @@ not reuse measurements from a different source tree.
   not made part of the student contract.  The independent PA29 harness fix is
   retained.  No Cachegrind, Valgrind, profiler, compiler, or build process
   remains active.
+- **C13 COVERAGE AND ZERO-EXTENDING AND SELECTION.** The remaining tokenizer
+  shape gap included 64-bit `and` instructions whose constant mask made every
+  upper result bit provably zero.  PA29 now describes the student-visible
+  target-selection relationship: an `i64` AND may use the equivalent 32-bit
+  x86 operation only when a constant mask clears all upper 32 bits, while a
+  mask that can preserve an upper bit must remain 64-bit.  Control
+  `919-zero-extending-and-mask` validates the generated behavior and the two
+  instruction-width relationships in the bounded entry function.  It does not
+  match production source, helper names, a complete LowIR program, or a
+  complete MIR program.  The relationship checker failed against the
+  pre-change backend before the implementation was enabled.
+
+  Native integer selection now gives that AND operation an `i32` MIR machine
+  type when either resolved operand is an immediate in `[0, 0xffffffff]`.
+  The ELF encoder honors the selected AND width; backend-created untyped ANDs
+  retain their established 64-bit fallback.  The LowIR type and result remain
+  `i64`, relying on the architectural zero extension of a 32-bit destination,
+  so this adds no LowIR or MIR syntax.  PA29 passes 291/291 and PA38 passes
+  45/45.  Coverage commit is `2bf9fa58`; implementation commit is `05bcee2d`.
+- **C13 STATIC AND DIRECT RETENTION.** On identical current source, the final
+  self-built O1 compiler falls from 8,631,371 to 8,627,271 text bytes and has
+  SHA-256 `bc37312c...`.  `pp_tokenizer.o` falls 30,026 -> 29,969 text bytes;
+  `Lexer::Run` falls 11,668 -> 11,627 bytes.  The immutable frozen O0 object
+  selects 17 immediate 32-bit ANDs where the old object selected none; four of
+  those also avoid a separately materialized wide constant.  Its total text
+  falls 842,171 -> 842,140 bytes and its ELF file falls 32 bytes.
+
+  Two clean reverse-order, identical-candidate-source direct pairs measured
+  prior/candidate aggregate CPU as 904.84/898.43 and 909.76/899.44 seconds.
+  Those are 0.71% and 1.13% reductions in generated work.  The corresponding
+  wall pairs were 31.63/31.79 and 32.89/31.14 seconds, showing the expected
+  parallel-tail variance but no repeated absolute regression.  This evidence
+  is independent of movement in the host-compiler denominator.
+- **C13 CORRECTED THREE-COMPILER ORACLE.** Three interleaved all-32 lanes on
+  the exact current source measured self wall times of 31.67, 32.75, and
+  31.36 seconds; GCC-built times of 22.16, 20.65, and 21.52 seconds; and
+  Clang-built times of 21.58, 21.58, and 21.36 seconds.  Median wall times are
+  therefore 31.67/21.52/21.58 seconds, giving corrected ratios of **1.472x
+  self/GCC** and **1.468x self/Clang**.  The maximum ratio is again below the
+  1.50x exit target.
+
+  Median aggregate CPU is 902.71/588.95/607.17 seconds, or 1.533x GCC and
+  1.487x Clang; median maximum RSS is 229,644/226,880/227,692 KiB.  The exact
+  source-matched producer hashes are `bc37312c...` self, `e0e8e70f...` GCC,
+  and `dd4c3b77...` Clang.  The primary metric remains the maximum same-source
+  wall ratio because the 32-way build is the user-facing workload; aggregate
+  CPU remains the lower-noise direct-retention guard above.
+- **C13 FULLY OPTIMIZED HOST GUARD.** Fully optimized current GCC and Clang
+  producers have SHA-256 `a965e677...` and `5f2e4665...`, with text sizes
+  7,061,349 and 5,490,043 bytes.  Relative to exact pre-C13 producers, the
+  feature adds only 324 and 164 compiler text bytes.  Five interleaved frozen
+  `-O0` comparisons have pre-C13/current wall medians of 4.64/4.62 seconds
+  for GCC and 4.87/4.83 seconds for Clang; aggregate CPU medians also improve.
+  Thus the new target-selection check does not regress the best-case path.
+
+  Against the immutable pre-plan O3 producers, the five-lane GCC medians are
+  4.53/4.58 seconds and the three-lane Clang medians are 4.76/4.77 seconds.
+  The small cumulative GCC difference is bounded to 50 ms (1.1%) and is not
+  caused by C13, as the immediate-source control improves by 20 ms.  Candidate
+  objects are deterministic per producer at `59c178ba...` GCC and
+  `8b735b26...` Clang, each 32 bytes smaller than its established baseline.
+- **C13 CUMULATIVE CHECKPOINT AND INCEPTION.** Root 32-way report-through-PA38
+  passes 5,471/5,471.  The LowIR contract audit passes with 124 ledger rows
+  and 99 retained rows; the PA38 file audit is zero-fatal with the established
+  33 warnings; `git diff --check` is clean.  Fresh explicit-O1 inception under
+  `/dev/shm/v3codex-c13-inception`, with outer, inner, and object parallelism
+  all at 32, matched all 215 objects and the final compiler in
+  49.70/1311.71/95.37 seconds wall/user/system.  Self and inception compilers
+  are byte-identical at SHA-256 `bc37312c...` and 8,627,271 text bytes.
+  Completed timing roots, frozen objects, and detached source worktrees were
+  removed; no Cachegrind, Valgrind, profiler, compiler, or build process is
+  left active.
+- **C12/C13 FINAL CLOSURE.** The execution ledger gives every P0/P1 family a
+  retained owner or a recorded policy boundary.  Both actionable production
+  duplicate warnings are gone; the two remaining duplicate advisories are the
+  deliberate staged macro/preprocessor wrappers and include/namespace preamble
+  noise.  Final line counts are 2,994 for `pa10_syntax.cpp`, 2,993 for
+  `macro_processor.cpp`, 2,982 for `lowir_native_elf.cpp`, and 2,664 for
+  `cppgm++.cpp`.  No public LowIR/MIR bypass was introduced, and every added
+  behavior has earliest-owned student-facing coverage.  The final cumulative
+  gates, best-case host guard, 1.472x binding ratio, and 32-way inception above
+  satisfy the completion criteria.  The C13 coverage, implementation, and
+  ledger commits are pushed together to `origin/v3opt`, keeping the checkpoint
+  at three retained commits since the preceding push.
