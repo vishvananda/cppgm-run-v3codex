@@ -1155,3 +1155,14 @@ not reuse measurements from a different source tree.
   semantics, lowering, and object emission.  The PA34 README now names those
   two component operators explicitly.  No test inspects parser source or helper
   names, and no new fixture is needed before the construction-only extraction.
+- **C11-2 (UNARY NODE CONSTRUCTION).** `ParseUnaryExpression` now classifies
+  GNU complex-component spelling locally, then shares recursive operand
+  parsing, token-backed unary-node construction, operand attachment, and return
+  with the ordinary prefix operators.  The special missing-component-operand
+  diagnostic remains selected only for `__real__`/`__imag__`.  The two focused
+  controls pass 2/2, PA10 passes 164/164, PA34 passes 375/375, report-through-
+  PA34 passes 5,003/5,003, and the audit remains zero-fatal/33.
+  `pa10_syntax.cpp` falls from 2,999 to 2,994 lines.  Isolated O1-self,
+  GCC-O3, and Clang-O3 object text changes by +20/-3/-128 bytes, respectively,
+  all below a meaningful runtime threshold; cumulative C11 timing follows
+  after this third retained commit.
