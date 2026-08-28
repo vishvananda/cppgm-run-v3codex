@@ -92,7 +92,8 @@ cppgm++ --emit-lowir -gline-tables-only -O3 -o <outfile> <srcfile>...
 
 The ordinary `cppgm++ -c` and link-driver paths must also accept `-O0`, `-O1`,
 `-O2`, and `-O3` and use the same LowIR optimization level before object
-generation. With no `-O` option, the ordinary driver selects `-O3`.
+generation. As with GCC and Clang, omitting `-O` selects `-O0`; optimization
+must be requested explicitly.
 Compile mode must also accept serialized LowIR text as an input:
 
 ```sh
@@ -543,8 +544,8 @@ source-language clauses.
   no-debug objects at `-O0`, `-O1`, `-O2`, and `-O3`. A
   GNU-section reducer additionally checks the global-section and relocation
   relationships in both objects rather than relying only on byte equality. A
-  `default-maximum-optimization` case also checks that omitting `-O` matches
-  explicit `-O3`.
+  `default-no-optimization` case also checks that omitting `-O` matches
+  explicit `-O0`.
 
 Run the debug metadata preservation lanes with:
 

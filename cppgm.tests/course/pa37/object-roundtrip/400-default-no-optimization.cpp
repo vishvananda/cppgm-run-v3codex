@@ -10,7 +10,7 @@ inline int twice_after_add_one(int value)
 
 volatile int default_observed;
 
-extern "C" int default_optimization_entry(int value)
+extern "C" int default_level_entry(int value)
 {
 	int result = twice_after_add_one(value);
 	for (int i = 0; i < 4; ++i) {
@@ -22,6 +22,5 @@ extern "C" int default_optimization_entry(int value)
 
 int main()
 {
-	return default_optimization_entry(20) == 48 && default_observed == 48
-		? 0 : 1;
+	return default_level_entry(20) == 48 && default_observed == 48 ? 0 : 1;
 }

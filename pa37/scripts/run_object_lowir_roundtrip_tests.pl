@@ -173,7 +173,7 @@ sub modes_for {
        ["-gline-tables-only", "-O3", "O3"])
     : ([undef, "-O0", "O0"], [undef, "-O1", "O1"],
        [undef, "-O2", "O2"], [undef, "-O3", "O3"]);
-  if(!$debuginfo && $test =~ /default-maximum-optimization/) {
+  if(!$debuginfo && $test =~ /default-no-optimization/) {
     push @modes, [undef, undef, "default"];
   }
   return @modes;
@@ -210,8 +210,8 @@ sub check_mode {
   my @direct_cmd = ($app, "-c", @debug_flags, @optimization_flags);
   my $direct_error = run_command(@direct_cmd, "-o", $direct, $source);
   return $direct_error if defined $direct_error;
-  # The O0 emission must preprocess exactly like the direct optimized
-  # compile, whose hosted configuration publishes __OPTIMIZE__.
+  # The O0 emission must preprocess exactly like the direct compile. An
+  # explicit O1+ invocation publishes __OPTIMIZE__; O0 and the default do not.
   my @preprocess_flags =
     (defined($opt) && $opt ne "-O0") ? ("-D__OPTIMIZE__=1") : ();
   my $emit_error = run_command($app,
@@ -307,9 +307,9 @@ for my $ti (0 .. $#selected) {
   }
 }
 
-sub maximum_optimization_error {
+sub default_optimization_error {
   my ($test, $unit_indices) = @_;
-  return undef if $debuginfo || $test !~ /default-maximum-optimization/;
+  return undef if $debuginfo || $test !~ /default-no-optimization/;
 
   my %unit_by_source_level;
   my @sources;
@@ -326,13 +326,13 @@ sub maximum_optimization_error {
     my $default_path = unit_base($source, $units[$default_u]{mode},
                                  $temp, $default_u) . ".direct.o";
     my $default_bytes = read_bytes($default_path);
-    for my $level_name ("O3") {
+    for my $level_name ("O0") {
       my $level_u = $unit_by_source_level{$source}{$level_name};
       my $level_path = unit_base($source, $units[$level_u]{mode},
                                  $temp, $level_u) . ".direct.o";
       my $level_bytes = read_bytes($level_path);
       next if $default_bytes eq $level_bytes;
-      return "default object differs from maximum optimization: $source default/$level_name\n"
+      return "default object differs from no optimization: $source default/$level_name\n"
         . "default bytes: " . length($default_bytes) . "\n"
         . "$level_name bytes: " . length($level_bytes) . "\n";
     }
@@ -384,7 +384,7 @@ for my $ti (0 .. $#selected) {
     last;
   }
   if(!defined($test_errors[$ti])) {
-    $test_errors[$ti] = maximum_optimization_error(
+    $test_errors[$ti] = default_optimization_error(
       $selected[$ti], $test_units[$ti]);
   }
 }

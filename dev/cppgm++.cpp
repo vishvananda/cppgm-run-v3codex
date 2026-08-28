@@ -88,7 +88,7 @@ struct DriverInvocation
   lowir_opt::InlinePolicyOverrides inline_limits;
 
   DriverInvocation()
-      : mode(DriverMode::Link), optimization_level(3), line_tables(false),
+      : mode(DriverMode::Link), optimization_level(0), line_tables(false),
         collect_stats(false), hosted_system_includes(true)
   {
   }
