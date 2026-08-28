@@ -660,7 +660,9 @@ not reuse measurements from a different source tree.
   the PA38 file audit remains zero-fatal with 34 warnings.  The first broad
   run had one isolated PA30 `runtime-to-float80` execution failure; its
   immediate focused rerun passed, and a second complete through-PA38 run was
-  clean.  No source or fixture was changed in response to the transient.
+  clean.  No source or fixture was changed in response.  C3 later reproduced
+  this only under cross-assignment report concurrency, so it is no longer
+  classified as an isolated transient; see the C3-A1 cumulative record.
   `git diff --check` is clean.
 - **C2-A2 COVERAGE AUDIT (TRIVIAL LIFECYCLE FACT).** The two private predicates
   at the top of `pa15_lowering_abi.cpp` have the same invalid-binding,
@@ -708,3 +710,40 @@ not reuse measurements from a different source tree.
   most recent C2-A1 O3/O0 guard, so the new queue call boundary shows no
   incremental regression; wall/system samples were still cooling from the
   competing rebuild and receive no retention credit.
+- **C3-A1 COVERAGE AUDIT (LIFETIME SCOPE PREPARATION).** Automatic-object and
+  temporary obligations perform the same indexed growth of `scope_lifetimes_`
+  and `nearest_lifetime_scopes_`, then make the scope its own nearest lifetime
+  owner.  Destructor selection, accessibility, demand/elision, ordinary versus
+  temporary obligation construction, and initializer-list scope marking remain
+  distinct.  PA16 README owns local object lifetime and reverse destruction;
+  PA26 owns control-dependent temporary and initializer-list cleanup.  Existing
+  automatic controls include member-object and local class-array lifetime;
+  temporary controls include the temporary functor and nested logical cleanup;
+  initializer-list backing-array lifetime covers the required post-append
+  marking.  Fast gates are the focused PA16 automatic/temporary tests and PA26
+  initializer-list/cleanup tests, then PA16, PA26, report-through-PA26, and the
+  audit.
+- **C3-A1 (LIFETIME SCOPE PREPARATION).** `PrepareLifetimeScope` now owns the
+  identical indexed-vector growth and nearest-scope publication; both callers
+  still construct and append their own obligation, and only the temporary path
+  marks initializer-list lifetime.  Five focused automatic/temporary/list
+  controls pass, PA16 passes 300/300, PA26 114/114, report-through-PA26
+  3,813/3,813, and the audit remains zero-fatal/34.  GCC-O3 compiler text grows
+  616 bytes (7,065,729 to 7,066,345), so no size credit is claimed.  Two
+  interleaved frozen O0 pairs have candidate-minus-baseline wall differences
+  of +0.13 and -0.11 seconds and user differences of +0.12 and -0.13 seconds;
+  all objects are exact at `b0d3d8d3...`.  The call boundary is neutral and
+  retained for single lifecycle ownership.
+- **C3-A1 CUMULATIVE GATE AND HARNESS FINDING.** The PA38 audit remains
+  zero-fatal/34.  The default cross-assignment report repeatedly records only
+  PA30 `200-runtime-to-float80` as an implementation failure; raising its
+  request timeout to 120 seconds and forcing batch `exec` do not change that
+  result.  The identical PA30 four-worker batch passes 100/100, and the full
+  root target with assignments serialized but 32 subtest workers passes
+  5,465/5,465:
+  `make -j32 test-report-through-pa38 TEST_REPORT_ASSIGNMENT_JOBS=1
+  TEST_REPORT_SUBTEST_JOBS=32`.  This isolates a cross-assignment harness or
+  resource/path interaction rather than a source fixture or compiler-output
+  change.  No test source, reference, or production behavior was changed to
+  cover it.  The ordinary default-concurrency exit criterion remains open for
+  final closure.

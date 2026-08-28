@@ -2271,8 +2271,7 @@ private:
 	std::vector<ExceptionControlContextFact> exception_control_contexts_;
 	std::uint32_t current_exception_control_context_;
 	std::unordered_map<NameId, LabelControlFact> control_flow_labels_;
-	std::unordered_multimap<NameId, PendingGotoControlFact>
-		pending_control_flow_gotos_;
+	std::unordered_multimap<NameId, PendingGotoControlFact> pending_control_flow_gotos_;
 	std::size_t unevaluated_depth_;
 	std::size_t decltype_operand_depth_;
 	std::size_t conditionally_evaluated_operand_depth_;

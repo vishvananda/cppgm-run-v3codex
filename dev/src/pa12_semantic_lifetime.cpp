@@ -7,6 +7,23 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+namespace
+{
+
+void PrepareLifetimeScope(ScopeId scope,
+	std::vector<std::vector<LifetimeObligation> >* lifetimes,
+	std::vector<ScopeId>* nearest)
+{
+	if (lifetimes->size() <= scope)
+		lifetimes->resize(static_cast<std::size_t>(scope) + 1);
+	if (nearest->size() <= scope)
+		nearest->resize(
+			static_cast<std::size_t>(scope) + 1, kNoScope);
+	(*nearest)[scope] = scope;
+}
+
+}
+
 void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 	BindingId object, TypeId type, bool allow_elision)
 {
@@ -40,12 +57,7 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 			MarkFunctionObjectOutputRoot(destructor);
 		return;
 	}
-	if (scope_lifetimes_.size() <= scope)
-		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
-	if (nearest_lifetime_scopes_.size() <= scope)
-		nearest_lifetime_scopes_.resize(
-			static_cast<std::size_t>(scope) + 1, kNoScope);
-	nearest_lifetime_scopes_[scope] = scope;
+	PrepareLifetimeScope(scope, &scope_lifetimes_, &nearest_lifetime_scopes_);
 	scope_lifetimes_[scope].push_back(
 		LifetimeObligation(object, destructor, type));
 }
@@ -56,12 +68,7 @@ void SemanticAnalyzer::AddTemporaryLifetimeObligation(ScopeId scope,
 	const std::uint32_t action = MakeTemporaryDestructorAction(temporary);
 	if (action == kNoDumpEdge) return;
 	const DumpNode& cleanup = dump_.nodes[action];
-	if (scope_lifetimes_.size() <= scope)
-		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
-	if (nearest_lifetime_scopes_.size() <= scope)
-		nearest_lifetime_scopes_.resize(
-			static_cast<std::size_t>(scope) + 1, kNoScope);
-	nearest_lifetime_scopes_[scope] = scope;
+	PrepareLifetimeScope(scope, &scope_lifetimes_, &nearest_lifetime_scopes_);
 	scope_lifetimes_[scope].push_back(LifetimeObligation(kNoBinding,
 		cleanup.binding, cleanup.operand_type, temporary));
 	MarkInitializerListLifetimeScope(scope, temporary);
