@@ -15,7 +15,7 @@ namespace pa17_lowering_detail
 
 using namespace semantic;
 using namespace semantic;
-using namespace pa15_lowering_support;
+using namespace lowering::support;
 using namespace lowering::ir;
 
 const std::size_t kSpecialMemberArrayInlineLimit = 8;

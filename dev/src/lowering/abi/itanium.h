@@ -16,7 +16,9 @@ namespace ir
 struct TypedProgram;
 }
 }
-namespace pa15_lowering_abi
+namespace lowering
+{
+namespace abi
 {
 
 std::string MangleType(const semantic::Program& program, semantic::TypeId type,
@@ -60,5 +62,6 @@ void ApplyLifecycleSymbolMetadata(const semantic::Program& program,
 	abi_mangle::AbiMangleContext* context = 0,
 	abi_mangle::AbiMangleStats* stats = 0);
 
-}
-}
+}  // namespace abi
+}  // namespace lowering
+}  // namespace cppgm

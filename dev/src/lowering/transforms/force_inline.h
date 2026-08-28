@@ -7,7 +7,9 @@ namespace cppgm
 
 struct LowIRLoweringStats;
 
-namespace pa15_force_inline
+namespace lowering
+{
+namespace inline_policy
 {
 
 // Expand force-inline definitions while symbols, operands, blocks, and
@@ -17,5 +19,6 @@ void RewriteProgram(lowering::ir::TypedProgram* program,
 	LowIRLoweringStats* stats = 0,
 	bool prune_unreachable_weak_functions = false);
 
-}
-}
+}  // namespace inline_policy
+}  // namespace lowering
+}  // namespace cppgm

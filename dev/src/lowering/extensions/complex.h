@@ -20,7 +20,7 @@ protected:
 	lowering::ir::Operand LowerComplexConstruction(
 		std::uint32_t node,
 		const semantic::DumpNode& record,
-		const pa15_lowering_support::NodeChildren& children)
+		const lowering::support::NodeChildren& children)
 	{
 		using namespace semantic;
 		using namespace lowering::ir;
@@ -51,7 +51,7 @@ protected:
 
 	lowering::ir::Operand LowerComplexComponentStorage(
 		const semantic::DumpNode& record,
-		const pa15_lowering_support::NodeChildren& children)
+		const lowering::support::NodeChildren& children)
 	{
 		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
@@ -73,7 +73,7 @@ protected:
 
 	bool TryLowerComplexStorage(std::uint32_t node,
 		const semantic::DumpNode& record,
-		const pa15_lowering_support::NodeChildren& children,
+		const lowering::support::NodeChildren& children,
 		lowering::ir::Operand* result)
 	{
 		if (record.kind == semantic::DUMP_COMPLEX_CONSTRUCTION)
@@ -86,7 +86,7 @@ protected:
 
 	bool TryLowerComplexValue(std::uint32_t node,
 		const semantic::DumpNode& record,
-		const pa15_lowering_support::NodeChildren& children,
+		const lowering::support::NodeChildren& children,
 		lowering::ir::Operand* result)
 	{
 		using namespace lowering::ir;
@@ -108,7 +108,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		const semantic::DumpNode& record = derived.arena_.nodes[node];
 		if (!derived.IsComplexObjectType(record.type)) return false;
-		const pa15_lowering_support::NodeChildren children = derived.Children(node);
+		const lowering::support::NodeChildren children = derived.Children(node);
 		Operand source;
 		if (!TryLowerComplexStorage(node, record, children, &source))
 			source = derived.LowerStorage(node);
@@ -122,7 +122,7 @@ protected:
 
 	bool TryLowerComplexVariableInitialization(
 		const semantic::DumpNode& record,
-		const pa15_lowering_support::NodeChildren& children,
+		const lowering::support::NodeChildren& children,
 		const lowering::ir::Operand& retained_destination)
 	{
 		using namespace lowering::ir;

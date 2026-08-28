@@ -10,7 +10,9 @@
 
 namespace cppgm
 {
-namespace pa15_function_reachability
+namespace lowering
+{
+namespace reachability
 {
 namespace
 {
@@ -328,5 +330,6 @@ Summary PruneUnreachableWeakFunctions(TypedProgram* program)
 	return result;
 }
 
-}
-}
+}  // namespace reachability
+}  // namespace lowering
+}  // namespace cppgm

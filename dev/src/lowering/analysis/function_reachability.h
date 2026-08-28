@@ -8,7 +8,9 @@
 
 namespace cppgm
 {
-namespace pa15_function_reachability
+namespace lowering
+{
+namespace reachability
 {
 
 struct Summary
@@ -48,5 +50,6 @@ Summary AuditWithoutInternalRoots(
 Summary PruneUnreachableWeakFunctions(
 	lowering::ir::TypedProgram* program);
 
-}
-}
+}  // namespace reachability
+}  // namespace lowering
+}  // namespace cppgm

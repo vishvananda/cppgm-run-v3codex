@@ -42,9 +42,9 @@ public:
 		const std::string& spelling);
 
 private:
-	pa15_lowering_support::NodeChildren Children(std::uint32_t node) const;
+	lowering::support::NodeChildren Children(std::uint32_t node) const;
 	bool IsTrivialConstructorAction(semantic::TypeId type,
-		const pa15_lowering_support::NodeChildren& children) const;
+		const lowering::support::NodeChildren& children) const;
 	bool IsEmptyConstructionTransferRecipe(std::uint32_t node) const;
 	bool SymbolForBinding(semantic::BindingId binding,
 		lowering::ir::SymbolId* symbol);

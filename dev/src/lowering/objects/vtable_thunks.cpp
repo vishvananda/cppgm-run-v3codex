@@ -38,7 +38,7 @@ private:
 		const LowType& type, bool reference)
 	{
 		Parameter parameter;
-		parameter.name = pa15_local_presentation::InternOrdinalName(
+		parameter.name = lowering::presentation::InternOrdinalName(
 			output_, "arg", 3, ordinal);
 		parameter.type = type;
 		parameter.reference = reference;
@@ -83,9 +83,9 @@ private:
 			AddParameter(&function, static_cast<std::uint32_t>(i + 1),
 				source_types_.Lower(parameters[i]),
 				source_types_.IsReference(parameters[i]));
-		function.blocks.push_back(pa15_local_presentation::MakePresentedBlock(
+		function.blocks.push_back(lowering::presentation::MakePresentedBlock(
 			output_, &function,
-			pa15_local_presentation::ExactBlockPresentation(output_, "entry")));
+			lowering::presentation::ExactBlockPresentation(output_, "entry")));
 		function.blocks[0].selected = true;
 		function.block_order.push_back(BlockId(0));
 		const Operand adjusted(TempId(1), LowPtr());
@@ -130,9 +130,9 @@ private:
 			function.blocks[0].instructions.push_back(branch);
 			function.blocks[0].terminated = true;
 
-			function.blocks.push_back(pa15_local_presentation::MakePresentedBlock(
+			function.blocks.push_back(lowering::presentation::MakePresentedBlock(
 				output_, &function,
-				pa15_local_presentation::ExactBlockPresentation(
+				lowering::presentation::ExactBlockPresentation(
 					output_, "return_null")));
 			function.blocks[1].selected = true;
 			function.block_order.push_back(BlockId(1));
@@ -142,9 +142,9 @@ private:
 			function.blocks[1].instructions.push_back(null_result);
 			function.blocks[1].terminated = true;
 
-			function.blocks.push_back(pa15_local_presentation::MakePresentedBlock(
+			function.blocks.push_back(lowering::presentation::MakePresentedBlock(
 				output_, &function,
-				pa15_local_presentation::ExactBlockPresentation(
+				lowering::presentation::ExactBlockPresentation(
 					output_, "adjust_return")));
 			function.blocks[2].selected = true;
 			function.block_order.push_back(BlockId(2));

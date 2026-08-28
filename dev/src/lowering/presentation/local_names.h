@@ -12,7 +12,9 @@ namespace semantic
 {
 class DumpArena;
 }
-namespace pa15_local_presentation
+namespace lowering
+{
+namespace presentation
 {
 
 lowir_model::StringId InternOrdinalName(lowering::ir::TypedProgram& program,
@@ -81,5 +83,6 @@ private:
 	std::vector<std::uint32_t> temporaries_;
 };
 
-}
-}
+}  // namespace presentation
+}  // namespace lowering
+}  // namespace cppgm

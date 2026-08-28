@@ -16,7 +16,9 @@ namespace semantic
 struct Stats;
 struct DumpNode;
 }
-namespace pa15_lowering_support
+namespace lowering
+{
+namespace support
 {
 
 
@@ -161,5 +163,6 @@ private:
 	std::size_t bytes_;
 };
 
-}
-}
+}  // namespace support
+}  // namespace lowering
+}  // namespace cppgm

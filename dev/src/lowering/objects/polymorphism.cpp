@@ -18,7 +18,7 @@ namespace pa18_lowering_detail
 using namespace semantic;
 using namespace semantic;
 using namespace lowering::ir;
-using namespace pa15_lowering_support;
+using namespace lowering::support;
 
 PolymorphismLoweringState::PolymorphismLoweringState()
 	: pure_virtual_symbol(kNoLowId), rtti_class_symbol(kNoLowId),
@@ -639,7 +639,7 @@ private:
 
 	std::string TypeInfoEncoding(EntityId entity) const
 	{
-		return pa15_lowering_abi::MangleType(
+		return lowering::abi::MangleType(
 			program_, program_.entities[entity].type);
 	}
 
@@ -767,7 +767,7 @@ private:
 		for (std::size_t i = 0; i < parameters.size(); ++i)
 		{
 			Parameter parameter;
-			parameter.name = pa15_local_presentation::InternOrdinalName(
+			parameter.name = lowering::presentation::InternOrdinalName(
 				output_, "arg", 3, static_cast<std::uint32_t>(i));
 			parameter.type = parameters[i];
 			declaration.parameters.push_back(parameter);
@@ -791,7 +791,7 @@ private:
 		const TypeRecord& record = program_.types.Get(type);
 		if (record.kind == TYPE_FUNDAMENTAL)
 			return SanitizeSymbol(program_.RenderType(type));
-		return "type_" + pa15_lowering_abi::MangleType(program_, type);
+		return "type_" + lowering::abi::MangleType(program_, type);
 	}
 
 	std::string ExceptionObjectPresentationStem(TypeId type) const
@@ -842,7 +842,7 @@ private:
 		for (std::size_t i = 0; i < type.parameter_count; ++i)
 		{
 			Parameter parameter;
-			parameter.name = pa15_local_presentation::InternOrdinalName(
+			parameter.name = lowering::presentation::InternOrdinalName(
 				output_, "arg", 3, static_cast<std::uint32_t>(i + 1));
 			parameter.type = source_types_.Lower(parameters[i]);
 			parameter.reference = source_types_.IsReference(parameters[i]);
@@ -1398,7 +1398,7 @@ private:
 				!(record.kind == TYPE_NAMED && !IsClassRttiType(type)))
 				throw std::logic_error("demanded RTTI type has no ABI category");
 			const std::string encoding =
-				pa15_lowering_abi::MangleType(program_, type);
+				lowering::abi::MangleType(program_, type);
 			const std::string stem = RttiPresentationStem(type);
 			state_.type_name_symbols[type] = AddPolymorphicGlobal(
 				std::string("__typeinfo_name_") +
@@ -1454,7 +1454,7 @@ private:
 				state_.exception_rtti_symbols[type] = AddExternalRtti(
 					"__external_rtti__" +
 						SanitizeSymbol(program_.RenderType(type)),
-					"_ZTI" + pa15_lowering_abi::MangleType(program_, type));
+					"_ZTI" + lowering::abi::MangleType(program_, type));
 			if (!state_.thrown_type_demanded[type]) continue;
 			const std::string name =
 				"__ehobj_" + ExceptionObjectPresentationStem(type);
@@ -1816,7 +1816,7 @@ private:
 			name.symbol = state_.type_name_symbols[type];
 			name.initializer_kind = Global::STRUCTURED_VALUE;
 			const std::string encoding =
-				pa15_lowering_abi::MangleType(program_, type);
+				lowering::abi::MangleType(program_, type);
 			for (std::size_t i = 0; i < encoding.size(); ++i)
 				AddIntegerItem(&name, LowI8(),
 					static_cast<unsigned char>(encoding[i]));
@@ -1978,7 +1978,7 @@ public:
 private:
 	BlockId AddBlock(const std::string& label)
 	{
-		return AddBlock(pa15_local_presentation::ExactBlockPresentation(
+		return AddBlock(lowering::presentation::ExactBlockPresentation(
 			output_, label));
 	}
 
@@ -1987,7 +1987,7 @@ private:
 		const BlockId block =
 			static_cast<BlockId>(function_->blocks.size());
 		function_->blocks.push_back(
-			pa15_local_presentation::MakePresentedBlock(
+			lowering::presentation::MakePresentedBlock(
 				output_, function_, presentation));
 		return block;
 	}
@@ -2005,7 +2005,7 @@ private:
 
 	BlockPresentationName NewLabel(const std::string& prefix)
 	{
-		return pa15_local_presentation::GeneratedBlockPresentation(
+		return lowering::presentation::GeneratedBlockPresentation(
 			output_, prefix, static_cast<std::uint32_t>(++block_counter_));
 	}
 

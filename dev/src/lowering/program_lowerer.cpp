@@ -50,7 +50,7 @@
 #include <vector>
 namespace cppgm { namespace {
 using namespace semantic; using namespace semantic;
-using namespace lowering::ir; using namespace pa15_lowering_support;
+using namespace lowering::ir; using namespace lowering::support;
 using pa16_lowering_detail::AggregatePath;
 class GraphLowerer :
 	private pa28_lowering_detail::VirtualBaseLowering<GraphLowerer>,
@@ -438,7 +438,7 @@ private:
 				program_.entities[entity].lambda_closure)
 				lambda_identity_owner = entity;
 		}
-		const bool weak_linkage = pa15_lowering_abi::HasWeakLinkage(
+		const bool weak_linkage = lowering::abi::HasWeakLinkage(
 			program_, node.binding, kind == Symbol::FUNCTION_SYMBOL);
 		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
 			program_, binding.member_owner);
@@ -514,10 +514,10 @@ private:
 			symbol.inline_hint |= binding.inline_function ||
 				canonical_binding.inline_function;
 			symbol.no_inline |= binding.no_inline || canonical_binding.no_inline;
-			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
+			lowering::abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function,
 				binding.hosted_memory_intrinsic);
-			pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(output_, &symbol);
+			lowering::abi::ApplyNativeRuntimeSymbolMetadata(output_, &symbol);
 			const FunctionMemoryEffects effects =
 				std::max(binding.function_effects,
 					canonical_binding.function_effects);
@@ -538,9 +538,9 @@ private:
 			internal, binding.nonthrowing));
 		output_.symbols.back().noreturn = binding.noreturn_function ||
 			canonical_binding.noreturn_function;
-		pa15_lowering_abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
+		lowering::abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
 			binding.builtin_function, binding.hosted_memory_intrinsic);
-		pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(
+		lowering::abi::ApplyNativeRuntimeSymbolMetadata(
 			output_, &output_.symbols.back());
 		output_.symbols.back().source_type = source_type;
 		output_.symbols.back().weak_linkage =
@@ -584,9 +584,9 @@ private:
 				name + "__base_entry" : binding.destructor_base_entry ?
 				name + "__base_entry" : name;
 			function_symbols_[record.binding] = InternSymbol(record, Symbol::FUNCTION_SYMBOL, entry_name,
-				pa15_lowering_abi::MangleFunction(program_, record, false,
+				lowering::abi::MangleFunction(program_, record, false,
 					stats_ ? &stats_->abi : 0, &abi_context_));
-			pa15_lowering_abi::ApplyLifecycleSymbolMetadata(program_, record,
+			lowering::abi::ApplyLifecycleSymbolMetadata(program_, record,
 				&output_, function_symbols_[record.binding], &abi_context_,
 				stats_ ? &stats_->abi : 0);
 		}
@@ -610,7 +610,7 @@ private:
 			if (record.kind == DUMP_FUNCTION_DEFINITION ||
 				record.kind == DUMP_FUNCTION_DECLARATION)
 			{
-				if (pa15_lowering_abi::IsFunctionEmissionDemanded(
+				if (lowering::abi::IsFunctionEmissionDemanded(
 					program_, record, output_.host_object_emission))
 					RegisterFunction(current);
 				continue;
@@ -620,7 +620,7 @@ private:
 				const BindingId canonical =
 					program_.bindings[record.binding].canonical;
 				(void)RegisterGlobalVariable(record);
-				const bool declaration_only = pa15_lowering_abi::IsVariableDeclarationOnly(
+				const bool declaration_only = lowering::abi::IsVariableDeclarationOnly(
 						program_, record, !Children(current).empty());
 				if (!declaration_only || global_node_[canonical] == kNoDumpEdge)
 					global_node_[canonical] = current;
@@ -645,14 +645,14 @@ private:
 			if (record.kind == DUMP_FUNCTION_DECLARATION)
 			{
 				if (!emit_callables) continue;
-				if (!pa15_lowering_abi::IsFunctionEmissionDemanded(
+				if (!lowering::abi::IsFunctionEmissionDemanded(
 					program_, record, output_.host_object_emission)) continue;
 				if (record.binding != kNoBinding &&
 					function_definition_[record.binding] == kNoDumpEdge &&
 					function_declaration_[record.binding] == current)
 				{
 					const SymbolId symbol = function_symbols_[record.binding];
-					if (!output_.symbols[symbol].declaration_emitted && pa15_lowering_abi::IsFunctionDeclarationBoundaryComplete(program_, record))
+					if (!output_.symbols[symbol].declaration_emitted && lowering::abi::IsFunctionDeclarationBoundaryComplete(program_, record))
 						{
 							output_.declarations.push_back(LowerDeclaration(current));
 							output_.symbols[symbol].declaration_emitted = true;
@@ -663,7 +663,7 @@ private:
 			if (record.kind == DUMP_FUNCTION_DEFINITION)
 			{
 				if (!emit_callables) continue;
-				if (!pa15_lowering_abi::IsFunctionEmissionDemanded(
+				if (!lowering::abi::IsFunctionEmissionDemanded(
 					program_, record, output_.host_object_emission)) continue;
 				if (record.binding != kNoBinding &&
 					function_definition_[record.binding] == current)
@@ -686,7 +686,7 @@ private:
 						program_.bindings[record.binding].canonical;
 					if (global_node_[canonical] == current)
 					{
-						const bool declaration_only = pa15_lowering_abi::IsVariableDeclarationOnly(
+						const bool declaration_only = lowering::abi::IsVariableDeclarationOnly(
 								program_, record, !Children(current).empty());
 						if (declaration_only)
 						{
@@ -702,7 +702,7 @@ private:
 										thread_local_storage)
 										thread_local_declarations_.push_back(
 											std::make_pair(symbol,
-											pa15_lowering_abi::MangleThreadLocalWrapper(
+											lowering::abi::MangleThreadLocalWrapper(
 												program_, record.binding, record.text,
 												stats_ ? &stats_->abi : 0,
 												&abi_context_)));
@@ -771,7 +771,7 @@ private:
 		if (thread_local_object)
 			thread_local_objects_.push_back(
 				std::make_pair(action_index,
-					pa15_lowering_abi::MangleThreadLocalWrapper(
+					lowering::abi::MangleThreadLocalWrapper(
 						program_, record.binding, record.text,
 						stats_ ? &stats_->abi : 0, &abi_context_)));
 		bool keep_global_class_address = false;
@@ -2681,7 +2681,7 @@ private:
 	std::vector<SlotId> binding_slots_;
 	std::vector<ParameterId> binding_indirect_parameters_; std::vector<BindingId> function_slot_bindings_;
 	std::vector<SlotId> generated_slots_; std::vector<std::uint32_t> generated_slot_nodes_;
-	pa15_local_presentation::LocalPresentationState local_presentation_;
+	lowering::presentation::LocalPresentationState local_presentation_;
 	FlatIdMap temporary_lifetime_slots_;
 	std::vector<BlockId> switch_case_blocks_;
 	std::vector<std::uint32_t> block_incoming_;

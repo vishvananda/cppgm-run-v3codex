@@ -23,7 +23,7 @@ namespace pa28_lowering_detail
 using namespace semantic;
 using namespace semantic;
 using namespace lowering::ir;
-using namespace pa15_lowering_support;
+using namespace lowering::support;
 
 struct VirtualBaseBoundaryFact
 {
@@ -320,9 +320,9 @@ protected:
 						function.binding, ordinal, base)) continue;
 					Parameter parameter;
 					parameter.name = implicit ?
-						pa15_local_presentation::InternOrdinalName(derived.output_,
+						lowering::presentation::InternOrdinalName(derived.output_,
 							"__vbptr", 7, static_cast<std::uint32_t>(member_index++)) :
-						pa15_local_presentation::InternOrdinalName(derived.output_,
+						lowering::presentation::InternOrdinalName(derived.output_,
 							"__pvbptr", 8, static_cast<std::uint32_t>(parameter_index++));
 					parameter.type = LowPtr();
 					parameters->push_back(parameter);
@@ -348,9 +348,9 @@ protected:
 				if (!CarriesVirtualBase(function.binding, i, base)) continue;
 				Parameter parameter;
 				parameter.name = implicit ?
-					pa15_local_presentation::InternOrdinalName(derived.output_,
+					lowering::presentation::InternOrdinalName(derived.output_,
 						"__vbptr", 7, static_cast<std::uint32_t>(member_index++)) :
-					pa15_local_presentation::InternOrdinalName(derived.output_,
+					lowering::presentation::InternOrdinalName(derived.output_,
 						"__pvbptr", 8, static_cast<std::uint32_t>(parameter_index++));
 				parameter.type = LowPtr();
 				parameters->push_back(parameter);

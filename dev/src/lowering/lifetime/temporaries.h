@@ -18,7 +18,7 @@ namespace pa17_lowering_detail
 
 using namespace semantic;
 using namespace lowering::ir;
-using namespace pa15_lowering_support;
+using namespace lowering::support;
 
 template <class Derived>
 class TemporaryLifetimeLowering

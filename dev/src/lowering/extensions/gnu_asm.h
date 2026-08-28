@@ -16,7 +16,7 @@ class GnuAsmLowering
 {
 protected:
 	bool TryLowerGnuAsmStatement(const semantic::DumpNode& record,
-		const pa15_lowering_support::NodeChildren& children)
+		const lowering::support::NodeChildren& children)
 	{
 		using namespace semantic;
 		using namespace lowering::ir;

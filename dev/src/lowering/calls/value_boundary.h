@@ -55,7 +55,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.arena_.nodes[node].kind !=
 			semantic::DUMP_CALL_EXPRESSION) return false;
-		const pa15_lowering_support::NodeChildren children =
+		const lowering::support::NodeChildren children =
 			derived.Children(node);
 		return !children.empty() &&
 			derived.arena_.nodes[children[0]].kind ==
@@ -178,7 +178,7 @@ protected:
 					source_object.entity == binding.member_owner;
 			}
 		}
-		const pa15_lowering_support::NodeChildren children =
+		const lowering::support::NodeChildren children =
 			derived.Children(node);
 		std::size_t parameter_index = 0;
 		for (std::size_t i = 0; i < children.size(); ++i)
@@ -205,7 +205,7 @@ protected:
 			parameter.reference = parameter_index < function_type.parameter_count &&
 				derived.IsReferenceType(source_parameters[parameter_index]);
 			parameter.by_address = by_address;
-			pa15_lowering_abi::ApplyBuiltinParameterAliasMetadata(
+			lowering::abi::ApplyBuiltinParameterAliasMetadata(
 				&parameter, builtin, memory_builtin, parameter_index);
 			if (copy_or_move_constructor && parameter_index < 2)
 				parameter.alias = lowering::ir::Parameter::ALIAS_NOALIAS;
@@ -231,7 +231,7 @@ protected:
 			parameter.reference =
 				derived.IsReferenceType(source_parameters[parameter_index]);
 			parameter.by_address = by_address;
-			pa15_lowering_abi::ApplyBuiltinParameterAliasMetadata(
+			lowering::abi::ApplyBuiltinParameterAliasMetadata(
 				&parameter, builtin, memory_builtin, parameter_index);
 			if (copy_or_move_constructor && parameter_index < 2)
 				parameter.alias = lowering::ir::Parameter::ALIAS_NOALIAS;

@@ -48,7 +48,7 @@ protected:
 					binding.member_owner] = 1;
 				return;
 			}
-			const pa15_lowering_support::NodeChildren children =
+			const lowering::support::NodeChildren children =
 				derived.Children(current);
 			for (std::size_t i = children.size(); i != 0; --i)
 				pending.push_back(children[i - 1]);

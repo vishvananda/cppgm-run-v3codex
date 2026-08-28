@@ -14,7 +14,9 @@
 
 namespace cppgm
 {
-namespace pa15_force_inline
+namespace lowering
+{
+namespace inline_policy
 {
 namespace
 {
@@ -102,7 +104,7 @@ public:
 	{
 		const std::uint32_t ordinal = Reserve(
 			lowir_model::GNR_TYPED_FORCE_BLOCK);
-		return pa15_local_presentation::GeneratedBlockPresentation(
+		return lowering::presentation::GeneratedBlockPresentation(
 			program_, "__force_inline_block", ordinal);
 	}
 
@@ -444,7 +446,7 @@ private:
 		SlotId result_slot, Function* caller,
 		const BlockPresentationName& name)
 	{
-		Block result = pa15_local_presentation::MakePresentedBlock(
+		Block result = lowering::presentation::MakePresentedBlock(
 			program_, caller, name);
 		result.selected = source.selected;
 		for (std::size_t i = 0; i < source.instructions.size(); ++i)
@@ -568,7 +570,7 @@ private:
 		call_block.instructions.push_back(JumpTo(prologue));
 		call_block.terminated = true;
 
-		Block prologue_block = pa15_local_presentation::MakePresentedBlock(
+		Block prologue_block = lowering::presentation::MakePresentedBlock(
 			program_, caller, names->BlockName());
 		for (std::size_t i = 0; i < parameters.size(); ++i)
 		{
@@ -591,7 +593,7 @@ private:
 				continuation, result_slot, caller, names->BlockName()));
 		}
 
-		Block continuation_block = pa15_local_presentation::MakePresentedBlock(
+		Block continuation_block = lowering::presentation::MakePresentedBlock(
 			program_, caller, names->BlockName());
 		if (callee.result.kind != LOW_VOID)
 		{
@@ -671,16 +673,16 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
 {
 	if (!program) throw std::logic_error("force-inline program is null");
 	ClassifyPresentationReservations(program);
-	const pa15_function_reachability::Summary reachability =
+	const lowering::reachability::Summary reachability =
 		prune_unreachable_weak_functions ?
-		pa15_function_reachability::PruneUnreachableWeakFunctions(program) :
-		pa15_function_reachability::Analyze(program);
-	pa15_local_presentation::FinalizeBlockPresentation(program,
+		lowering::reachability::PruneUnreachableWeakFunctions(program) :
+		lowering::reachability::Analyze(program);
+	lowering::presentation::FinalizeBlockPresentation(program,
 		stats ? &stats->local_presentation : 0);
 	if (stats)
 	{
-		const pa15_function_reachability::Summary internal_audit =
-			pa15_function_reachability::AuditWithoutInternalRoots(*program);
+		const lowering::reachability::Summary internal_audit =
+			lowering::reachability::AuditWithoutInternalRoots(*program);
 		stats->post_inline_reachable_functions =
 			reachability.reachable_functions;
 		stats->post_inline_unreachable_weak_functions =
@@ -726,5 +728,6 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
 	}
 }
 
-}
-}
+}  // namespace inline_policy
+}  // namespace lowering
+}  // namespace cppgm

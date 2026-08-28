@@ -26,7 +26,7 @@ protected:
 	BlockId AddBlock(const std::string& label)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		return AddBlock(pa15_local_presentation::ExactBlockPresentation(
+		return AddBlock(lowering::presentation::ExactBlockPresentation(
 			derived.output_, label));
 	}
 
@@ -38,7 +38,7 @@ protected:
 		const BlockId block = static_cast<BlockId>(
 			derived.function_->blocks.size());
 		derived.function_->blocks.push_back(
-			pa15_local_presentation::MakePresentedBlock(
+			lowering::presentation::MakePresentedBlock(
 				derived.output_, derived.function_, presentation));
 		derived.block_incoming_.push_back(0);
 		return block;

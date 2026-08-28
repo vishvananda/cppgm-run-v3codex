@@ -15,7 +15,7 @@ namespace pa15_lowering_detail
 using namespace semantic;
 using namespace semantic;
 using namespace lowering::ir;
-using namespace pa15_lowering_support;
+using namespace lowering::support;
 
 template <class Derived>
 class StaticMemberSymbolLowering
@@ -40,7 +40,7 @@ protected:
 				presentation_name;
 			derived.global_symbols_[canonical] = derived.InternSymbol(record,
 				Symbol::GLOBAL_SYMBOL, SanitizeSymbol(source_name),
-				pa15_lowering_abi::MangleVariable(
+				lowering::abi::MangleVariable(
 					derived.program_, record,
 					derived.stats_ ? &derived.stats_->abi : 0,
 					&derived.abi_context_));

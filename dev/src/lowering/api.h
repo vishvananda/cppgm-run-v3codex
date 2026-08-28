@@ -25,7 +25,7 @@ struct LowIRSource
 
 struct LowIRLoweringStats
 {
-	pa15_local_presentation::LocalPresentationCounters local_presentation;
+	lowering::presentation::LocalPresentationCounters local_presentation;
 	std::size_t source_bytes;
 	semantic::Stats semantic;
 	std::size_t lowered_nodes;

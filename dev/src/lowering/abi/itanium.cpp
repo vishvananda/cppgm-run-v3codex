@@ -14,7 +14,9 @@
 
 namespace cppgm
 {
-namespace pa15_lowering_abi
+namespace lowering
+{
+namespace abi
 {
 
 namespace
@@ -2859,5 +2861,6 @@ std::string MangleThreadLocalWrapper(const semantic::Program& program,
 	return MangleProductionCase(fact_case, stats, context);
 }
 
-}
-}
+}  // namespace abi
+}  // namespace lowering
+}  // namespace cppgm

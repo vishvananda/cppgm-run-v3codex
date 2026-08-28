@@ -29,7 +29,7 @@ protected:
 
 	lowering::ir::Operand LowerDiscardedConditional(
 		std::uint32_t node,
-		const pa15_lowering_support::NodeChildren& children)
+		const lowering::support::NodeChildren& children)
 	{
 		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
@@ -75,7 +75,7 @@ protected:
 
 	lowering::ir::Operand LowerConditionalAddress(
 		std::uint32_t node,
-		const pa15_lowering_support::NodeChildren& children)
+		const lowering::support::NodeChildren& children)
 	{
 		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);

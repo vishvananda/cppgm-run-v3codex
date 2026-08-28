@@ -8,7 +8,9 @@
 
 namespace cppgm
 {
-namespace pa15_local_presentation
+namespace lowering
+{
+namespace presentation
 {
 
 using namespace lowering::ir;
@@ -321,5 +323,6 @@ bool LocalPresentationState::ReservesTemporary(std::uint32_t ordinal)
 	return reserved;
 }
 
-}
-}
+}  // namespace presentation
+}  // namespace lowering
+}  // namespace cppgm

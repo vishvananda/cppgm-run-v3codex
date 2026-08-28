@@ -11,7 +11,9 @@
 
 namespace cppgm
 {
-namespace pa15_lowering_support
+namespace lowering
+{
+namespace support
 {
 
 std::string NormalizeFloatingLiteral(const std::string& spelling,
@@ -486,5 +488,6 @@ int CountingStreamBuffer::sync()
 	return destination_->pubsync();
 }
 
-}
-}
+}  // namespace support
+}  // namespace lowering
+}  // namespace cppgm

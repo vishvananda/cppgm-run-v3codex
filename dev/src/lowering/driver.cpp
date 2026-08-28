@@ -21,7 +21,7 @@ namespace cppgm
 using namespace semantic;
 using namespace lowering::ir;
 using namespace pa15_lowering_detail;
-using namespace pa15_lowering_support;
+using namespace lowering::support;
 
 namespace
 {
@@ -95,8 +95,8 @@ void CoalesceLifecycleRole(TypedProgram* program, LowIRLoweringStats* stats,
 	aggregate.result = LowVoid();
 	aggregate.initializer = initializer;
 	aggregate.finalizer = !initializer;
-	Block entry = pa15_local_presentation::MakePresentedBlock(*program,
-		&aggregate, pa15_local_presentation::ExactBlockPresentation(
+	Block entry = lowering::presentation::MakePresentedBlock(*program,
+		&aggregate, lowering::presentation::ExactBlockPresentation(
 			*program, "entry"));
 	entry.selected = true;
 	for (std::size_t i = 0; i < helpers.size(); ++i)
@@ -574,7 +574,7 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 	std::chrono::steady_clock::time_point coalesce_started;
 	if (stats) coalesce_started = std::chrono::steady_clock::now();
 	CoalesceLifecycleFunctions(&program, stats);
-	pa15_force_inline::RewriteProgram(
+	lowering::inline_policy::RewriteProgram(
 		&program, stats, prune_unreachable_weak_functions);
 	if (stats)
 		stats->lowering_nanoseconds += static_cast<std::uint64_t>(
