@@ -1,5 +1,6 @@
 #include "abi_mangle_substitution.h"
 
+#include "abi_mangle_hash.h"
 #include "abi_mangle_presentation.h"
 
 #include <utility>
@@ -7,12 +8,6 @@
 namespace abi_mangle {
 namespace detail {
 namespace {
-
-std::size_t mix_hash(std::size_t seed, std::size_t value)
-{
-  return seed ^ (value + static_cast<std::size_t>(0x9e3779b9U) +
-                 (seed << 6) + (seed >> 2));
-}
 
 struct CompositeSubstitutionKey
 {

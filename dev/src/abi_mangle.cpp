@@ -1,6 +1,7 @@
 #include "abi_mangle.h"
 #include "abi_mangle_graph_argument.h"
 #include "abi_mangle_graph_type.h"
+#include "abi_mangle_hash.h"
 #include "abi_mangle_presentation.h"
 #include "abi_mangle_substitution.h"
 
@@ -41,6 +42,7 @@ using detail::ArgumentNode;
 using detail::TypeNode;
 using detail::argument_node_hash;
 using detail::has_resolved_type_substitution;
+using detail::mix_hash;
 using detail::type_node_hash;
 
 const size_t NO_ID = std::numeric_limits<size_t>::max();
@@ -48,11 +50,6 @@ const size_t NO_ID = std::numeric_limits<size_t>::max();
 void require(bool condition, const string & message)
 {
   if(!condition) throw std::logic_error(message);
-}
-
-size_t mix_hash(size_t seed, size_t value)
-{
-  return seed ^ (value + static_cast<size_t>(0x9e3779b9U) + (seed << 6) + (seed >> 2));
 }
 
 template<class T>

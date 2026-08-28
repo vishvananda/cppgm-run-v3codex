@@ -1,16 +1,11 @@
 #include "abi_mangle_graph_argument.h"
+#include "abi_mangle_hash.h"
 
 #include <functional>
 
 namespace abi_mangle {
 namespace detail {
 namespace {
-
-std::size_t mix_hash(std::size_t seed, std::size_t value)
-{
-  return seed ^ (value + static_cast<std::size_t>(0x9e3779b9U) +
-                 (seed << 6) + (seed >> 2));
-}
 
 std::size_t vector_hash(
   std::size_t seed, const std::vector<std::size_t> & values)

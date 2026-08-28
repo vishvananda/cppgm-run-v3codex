@@ -1202,3 +1202,18 @@ not reuse measurements from a different source tree.
   from 2,996 to 2,993 lines.  Isolated O1-self/GCC-O3/Clang-O3 object text
   changes by +42/+18/0 bytes; this cold, exact extraction is retained as
   performance-neutral, with cumulative timing deferred to the next checkpoint.
+- **C11-4 COVERAGE AUDIT (ABI HASH MIXING).** PA14's public contract requires
+  structural comparison and deterministic substitution ordering, and its
+  existing equivalent-value, equivalent-named-type, distinct-array-bound,
+  equivalent-expression, distinct-type-trait, and qualified-member-template
+  fixtures exercise argument, type, expression, path, and substitution keys.
+  Those behavioral checks are the appropriate coverage for an implementation-
+  private hash primitive; no fixture inspects source text or helper placement.
+- **C11-4 (ABI HASH MIXING).** The four byte-for-byte copies of the ABI graph's
+  two-word hash mixer now use one small ABI-detail header primitive.  Path,
+  expression, argument, type, resolved-type, and substitution owners retain
+  their own field selection and ordering, and the distinct vector traversal
+  shapes remain local.  PA14 passes 117/117, report-through-PA14 passes
+  1,080/1,080, both audits pass, and the file audit remains zero-fatal/33.
+  The four affected objects are text-size exact before/after under O1 self
+  (298,553 bytes), GCC O3 (196,486 bytes), and Clang O3 (174,075 bytes).
