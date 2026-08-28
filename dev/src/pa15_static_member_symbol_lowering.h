@@ -2,7 +2,7 @@
 #define CPPGM_PA15_STATIC_MEMBER_SYMBOL_LOWERING_H
 
 #include "pa15_lowering_abi.h"
-#include "pa15_lowering_support.h"
+#include "lowering/support/utilities.h"
 
 #include <stdexcept>
 #include <string>

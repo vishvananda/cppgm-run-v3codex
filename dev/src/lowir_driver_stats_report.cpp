@@ -6,7 +6,7 @@
 #include "lowir_opt.h"
 #include "lowir_prepare.h"
 #include "mir_model.h"
-#include "pa15_lowering.h"
+#include "lowering/api.h"
 
 #include <ostream>
 

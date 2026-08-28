@@ -1,7 +1,7 @@
 #ifndef CPPGM_PA25_RANGE_FOR_LOWERING_H
 #define CPPGM_PA25_RANGE_FOR_LOWERING_H
 
-#include "pa15_lowering_support.h"
+#include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 

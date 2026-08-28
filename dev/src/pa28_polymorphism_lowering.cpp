@@ -1,7 +1,7 @@
 #include "pa18_polymorphism_lowering.h"
 
 #include "pa15_local_presentation.h"
-#include "pa15_source_type_lowering.h"
+#include "lowering/types/source_type.h"
 
 #include <stdexcept>
 

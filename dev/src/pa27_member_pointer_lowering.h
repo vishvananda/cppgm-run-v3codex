@@ -3,7 +3,7 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
-#include "pa15_lowering_support.h"
+#include "lowering/support/utilities.h"
 #include "lowering/ir/model.h"
 #include "pa27_member_function_pointer_lowering.h"
 

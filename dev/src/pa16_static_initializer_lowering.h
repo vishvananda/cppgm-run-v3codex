@@ -1,9 +1,9 @@
 #pragma once
 
 #include "semantic/model/graph.h"
-#include "pa15_lowering.h"
-#include "pa15_lowering_support.h"
-#include "pa15_source_type_lowering.h"
+#include "lowering/api.h"
+#include "lowering/support/utilities.h"
+#include "lowering/types/source_type.h"
 
 #include <cstdint>
 #include <string>

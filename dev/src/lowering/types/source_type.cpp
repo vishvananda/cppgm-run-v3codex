@@ -1,4 +1,4 @@
-#include "pa15_source_type_lowering.h"
+#include "lowering/types/source_type.h"
 
 #include <stdexcept>
 

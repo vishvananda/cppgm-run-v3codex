@@ -2,7 +2,7 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
-#include "pa15_lowering.h"
+#include "lowering/api.h"
 #include "lowering/ir/model.h"
 
 #include <cstddef>

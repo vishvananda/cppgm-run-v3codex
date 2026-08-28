@@ -2,7 +2,7 @@
 
 #include "pa15_function_reachability.h"
 #include "pa15_local_presentation.h"
-#include "pa15_lowering.h"
+#include "lowering/api.h"
 
 #include <algorithm>
 #include <cstddef>

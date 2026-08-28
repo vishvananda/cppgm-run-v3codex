@@ -1,12 +1,12 @@
-#include "pa15_lowering.h"
+#include "lowering/api.h"
 
 #include "semantic/semantic.h"
 #include "pa15_force_inline.h"
-#include "pa15_graph_lowering.h"
+#include "lowering/graph_lowering.h"
 #include "pa15_local_presentation.h"
 #include "lowering/ir/model.h"
 #include "lowering/ir/render.h"
-#include "pa15_lowering_support.h"
+#include "lowering/support/utilities.h"
 
 #include <algorithm>
 #include <chrono>

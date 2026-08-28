@@ -2,7 +2,7 @@
 #define CPPGM_PA16_SLOT_PLANNING_H
 
 #include "semantic/model/graph.h"
-#include "pa15_lowering_support.h"
+#include "lowering/support/utilities.h"
 
 #include <cstdint>
 #include <limits>

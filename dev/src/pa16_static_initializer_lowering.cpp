@@ -1,6 +1,6 @@
 #include "pa16_static_initializer_lowering.h"
 
-#include "pa15_lowering_support.h"
+#include "lowering/support/utilities.h"
 #include "preprocess/tokens/post_tokenizer.h"
 
 #include <algorithm>
