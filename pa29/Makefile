@@ -79,7 +79,7 @@ else
 			"$$mode" ref my "$$root"; \
 	done
 endif
-	@if [ -d "$(COURSE_CONTROL_TEST_ROOT)" ]; then \
+	@set -e; if [ -d "$(COURSE_CONTROL_TEST_ROOT)" ]; then \
 		perl ../scripts/check_pa29_native_contracts.pl \
 			$(CPPGM_TEST_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
 		perl ../scripts/check_pa29_native_contracts.pl \
