@@ -1,5 +1,5 @@
 #include "native/eh/lowir_native_host_eh.h"
-#include "native/mir/lowir_native_mir_control_flow.h"
+#include "native/mir/control_flow.h"
 
 #include <stdexcept>
 #include <unordered_map>

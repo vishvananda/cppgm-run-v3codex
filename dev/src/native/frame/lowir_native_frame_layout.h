@@ -1,7 +1,7 @@
 #pragma once
 
 #include "native/lowering/lowir_native_abi.h"
-#include "native/analysis/lowir_native_analysis.h"
+#include "native/analysis/function.h"
 #include "native/lowering/lowir_native_selection.h"
 
 namespace lowir_native {

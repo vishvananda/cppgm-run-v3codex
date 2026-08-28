@@ -2,7 +2,7 @@
 #define CPPGM_LOWIR_NATIVE_FRAME_FORWARDING_H
 
 #include "native/object/lowir_native_code_buffer.h"
-#include "native/mir/mir_model.h"
+#include "native/mir/model.h"
 
 #include <cstddef>
 #include <cstdint>

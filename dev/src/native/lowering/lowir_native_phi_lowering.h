@@ -1,9 +1,9 @@
 #pragma once
 
 #include "lowir/model/program.h"
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 #include "native/lowering/lowir_native_selection.h"
-#include "native/mir/mir_model.h"
+#include "native/mir/model.h"
 
 #include <vector>
 

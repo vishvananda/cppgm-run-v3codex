@@ -1,4 +1,4 @@
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 
 namespace lowir_native {
 namespace build {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 #include "native/lowering/lowir_native_value.h"
 
 #include <vector>

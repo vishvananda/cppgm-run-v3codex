@@ -1,9 +1,9 @@
 #pragma once
 
 #include "lowir/model/program.h"
-#include "native/analysis/lowir_native_analysis.h"
+#include "native/analysis/function.h"
 #include "native/allocation/lowir_native_registers.h"
-#include "native/mir/mir_model.h"
+#include "native/mir/model.h"
 
 #include <algorithm>
 #include <cstdint>

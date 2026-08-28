@@ -1,4 +1,4 @@
-#include "native/mir/mir_model.h"
+#include "native/mir/model.h"
 
 #include <fstream>
 #include <iomanip>

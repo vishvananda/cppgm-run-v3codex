@@ -2,7 +2,7 @@
 #define CPPGM_LOWIR_NATIVE_ADDRESS_LOWERING_H
 
 #include "lowir/model/program.h"
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 #include "native/allocation/lowir_native_registers.h"
 #include "native/lowering/lowir_native_selection.h"
 

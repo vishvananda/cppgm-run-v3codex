@@ -2,7 +2,7 @@
 
 #include "native/lowering/lowir_native_abi.h"
 #include "native/frame/lowir_native_frame_layout.h"
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 
 #include <algorithm>
 #include <limits>

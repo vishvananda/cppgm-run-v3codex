@@ -1,6 +1,6 @@
 #include "native/lowering/lowir_native_wide.h"
 
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 
 #include <cstdint>
 #include <stdexcept>

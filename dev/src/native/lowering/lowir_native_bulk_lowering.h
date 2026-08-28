@@ -1,7 +1,7 @@
 #ifndef CPPGM_LOWIR_NATIVE_BULK_LOWERING_H
 #define CPPGM_LOWIR_NATIVE_BULK_LOWERING_H
 
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 #include "lowir/model/program.h"
 
 #include <vector>

@@ -2,12 +2,12 @@
 
 #include "lowir/model/program.h"
 #include "native/lowering/lowir_native.h"
-#include "native/analysis/lowir_native_analysis.h"
+#include "native/analysis/function.h"
 #include "native/lowering/lowir_native_control_flow.h"
 #include "native/allocation/lowir_native_location_planning.h"
-#include "native/mir/lowir_native_mir.h"
-#include "native/mir/mir_model.h"
-#include "native/mir/x86_register_model.h"
+#include "native/mir/construction.h"
+#include "native/mir/model.h"
+#include "native/mir/registers.h"
 
 #include <stdexcept>
 #include <vector>

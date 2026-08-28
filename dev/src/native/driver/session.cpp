@@ -2,12 +2,12 @@
 
 #include "lowir/optimize/force_inline.h"
 #include "native/eh/lowir_native_eh.h"
-#include "native/mir/lowir_native_mir_control_flow.h"
-#include "native/mir/lowir_native_opt.h"
+#include "native/mir/control_flow.h"
+#include "native/mir/optimize.h"
 #include "lowir/analysis/phi_edges.h"
-#include "native/driver/lowir_native_program.h"
+#include "native/driver/program.h"
 #include "native/allocation/lowir_native_registers.h"
-#include "native/driver/lowir_native_session.h"
+#include "native/driver/session.h"
 
 #include <algorithm>
 #include <chrono>

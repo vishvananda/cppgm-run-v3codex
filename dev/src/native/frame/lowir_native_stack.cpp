@@ -1,6 +1,6 @@
 #include "native/frame/lowir_native_stack.h"
 
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 
 namespace lowir_native {
 namespace stack {

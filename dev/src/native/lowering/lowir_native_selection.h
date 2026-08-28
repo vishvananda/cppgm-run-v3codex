@@ -4,10 +4,10 @@
 #include <string>
 
 #include "native/lowering/lowir_native_abi.h"
-#include "native/analysis/lowir_native_analysis.h"
+#include "native/analysis/function.h"
 #include "lowir/model/program.h"
-#include "native/mir/mir_model.h"
-#include "native/mir/x86_register_model.h"
+#include "native/mir/model.h"
+#include "native/mir/registers.h"
 
 namespace lowir_native {
 namespace selection {

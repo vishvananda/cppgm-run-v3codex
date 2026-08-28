@@ -1,7 +1,7 @@
 #pragma once
 
 #include "native/lowering/lowir_native.h"
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 #include "native/allocation/lowir_native_registers.h"
 
 #include <cstddef>

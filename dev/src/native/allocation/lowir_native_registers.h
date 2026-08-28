@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "native/mir/x86_register_model.h"
+#include "native/mir/registers.h"
 
 namespace lowir_native {
 namespace allocation {

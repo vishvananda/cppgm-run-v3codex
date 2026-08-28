@@ -1,4 +1,4 @@
-#include "native/analysis/lowir_native_forward_edge_analysis.h"
+#include "native/analysis/forward_edges.h"
 
 #include "native/lowering/lowir_native.h"
 

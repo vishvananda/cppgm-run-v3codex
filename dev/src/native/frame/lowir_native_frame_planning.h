@@ -1,6 +1,6 @@
 #pragma once
 
-#include "native/analysis/lowir_native_analysis.h"
+#include "native/analysis/function.h"
 #include "native/frame/lowir_native_frame_layout.h"
 #include "native/eh/lowir_native_host_eh.h"
 #include "native/lowering/lowir_native_varargs.h"

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "native/lowering/lowir_native_abi.h"
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 #include "native/lowering/lowir_native_selection.h"
 #include "native/lowering/lowir_native_wide.h"
 

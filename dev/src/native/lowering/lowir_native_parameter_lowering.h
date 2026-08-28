@@ -1,8 +1,8 @@
 #pragma once
 
-#include "native/analysis/lowir_native_analysis.h"
-#include "native/mir/lowir_native_mir.h"
-#include "native/mir/lowir_native_opt.h"
+#include "native/analysis/function.h"
+#include "native/mir/construction.h"
+#include "native/mir/optimize.h"
 #include "native/lowering/lowir_native_value.h"
 
 #include <algorithm>

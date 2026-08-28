@@ -1,6 +1,6 @@
-#include "native/driver/lowir_native_program.h"
+#include "native/driver/program.h"
 
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 #include "native/lowering/lowir_native_selection.h"
 
 #include <stdexcept>

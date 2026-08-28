@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "lowir/model/program.h"
-#include "native/mir/x86_register_model.h"
+#include "native/mir/registers.h"
 
 namespace mir_model {
 

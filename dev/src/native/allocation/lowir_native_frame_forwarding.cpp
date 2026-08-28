@@ -1,8 +1,8 @@
 #include "native/allocation/lowir_native_frame_forwarding.h"
 
 #include "native/lowering/lowir_native.h"
-#include "native/analysis/lowir_native_data_layout.h"
-#include "native/mir/lowir_native_opt.h"
+#include "native/analysis/data_layout.h"
+#include "native/mir/optimize.h"
 #include "native/encoding/lowir_native_scalar_memory.h"
 
 #include <algorithm>

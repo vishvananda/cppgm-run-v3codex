@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <string>
 
-#include "native/mir/mir_model.h"
+#include "native/mir/model.h"
 
 namespace lowir_native {
 namespace data_layout {

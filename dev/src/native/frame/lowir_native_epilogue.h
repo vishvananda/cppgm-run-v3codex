@@ -1,6 +1,6 @@
 #pragma once
 
-#include "native/mir/mir_model.h"
+#include "native/mir/model.h"
 
 #include <cstddef>
 

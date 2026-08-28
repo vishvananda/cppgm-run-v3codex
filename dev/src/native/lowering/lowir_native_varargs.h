@@ -4,7 +4,7 @@
 
 #include "lowir/model/program.h"
 #include "native/lowering/lowir_native_abi.h"
-#include "native/mir/mir_model.h"
+#include "native/mir/model.h"
 
 namespace lowir_native {
 namespace varargs {

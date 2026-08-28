@@ -1,4 +1,4 @@
-#include "native/mir/lowir_native_opt.h"
+#include "native/mir/optimize.h"
 
 #include <algorithm>
 #include <array>

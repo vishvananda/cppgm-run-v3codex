@@ -13,7 +13,7 @@
 #include "lowir/driver/stats_report.h"
 #include "lowir/io/prepare.h"
 #include "native/lowering/lowir_native.h"
-#include "native/driver/lowir_native_stats_report.h"
+#include "native/driver/stats_report.h"
 #include "lowir/optimize/pipeline.h"
 #include "preprocess/preprocessor.h"
 #include "lowir/io/line_table_debug.h"

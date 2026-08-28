@@ -1,6 +1,6 @@
 #pragma once
 
-#include "native/analysis/lowir_native_analysis.h"
+#include "native/analysis/function.h"
 
 #include <cstddef>
 #include <utility>

@@ -3,8 +3,8 @@
 #include "support/exceptions.h"
 #include "lowir/model/program.h"
 #include "native/lowering/lowir_native.h"
-#include "native/driver/lowir_native_stats_report.h"
-#include "native/mir/mir_model.h"
+#include "native/driver/stats_report.h"
+#include "native/mir/model.h"
 #include "support/tool_help_text.h"
 
 #include <chrono>

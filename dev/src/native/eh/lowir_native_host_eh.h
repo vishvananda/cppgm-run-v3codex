@@ -1,7 +1,7 @@
 #pragma once
 
 #include "lowir/model/program.h"
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/construction.h"
 
 #include <cstddef>
 #include <vector>

@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "native/mir/mir_model.h"
+#include "native/mir/model.h"
 
 namespace lowir_native {
 namespace machine_opt {

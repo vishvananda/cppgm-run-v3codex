@@ -1,6 +1,6 @@
 #include "native/eh/lowir_native_eh.h"
-#include "native/mir/lowir_native_block_labels.h"
-#include "native/mir/lowir_native_mir.h"
+#include "native/mir/block_labels.h"
+#include "native/mir/construction.h"
 
 namespace lowir_native {
 namespace eh {

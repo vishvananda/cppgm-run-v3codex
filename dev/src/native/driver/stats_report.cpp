@@ -1,4 +1,4 @@
-#include "native/driver/lowir_native_stats_report.h"
+#include "native/driver/stats_report.h"
 
 #include <ostream>
 
