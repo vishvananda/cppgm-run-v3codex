@@ -999,3 +999,34 @@ checkpoint where applicable, commit, and push state.
   absolute wall regression.  The move and its manifest changes were reverted
   exactly; R6 must preserve this declaration cluster or use a layout-preserving
   organization instead.
+- `b89dfc02` — R6 semantic presentation owner.  Moved the intact
+  `semantic/render.cpp` translation unit to `semantic/presentation/render.cpp`
+  at the same source-set position and closed its two rendering methods in the
+  owner manifest.  PA12 passed 184/184, all 18 output surfaces were exact, and
+  the old/new render objects were byte-identical.
+- `32745c32` — R6 declared-entity ownership.  Moved the intact late-linked
+  `semantic/model/entity_ownership.cpp` translation unit to
+  `semantic/declarations/entity_ownership.cpp`, retaining its link position
+  and all five mutually coupled identity/injected-storage methods.  PA12
+  passed 184/184, all 18 output surfaces were exact, and the old/new objects
+  were byte-identical.
+- `8b197d98` — R6 declaration-analysis owner.  Renamed the intact mixed owner
+  from redundant `semantic/declarations/declarations.cpp` to
+  `semantic/declarations/analysis.cpp` and recorded all 33 declaration,
+  declarator, class, function, using, and demand methods as one deliberately
+  retained private dependency cluster.  PA12 passed 184/184, all 18 output
+  surfaces were exact, and stripped old/new objects were byte-identical; the
+  full object delta is only the source basename in its symbol table.
+
+  A second layout-preserving attempt extracted the seven declarator methods
+  into a responsibility-named implementation fragment included at their
+  original token position.  It produced a byte-identical object, but the file
+  audit correctly rejected the inline include-after-code pattern as a fatal
+  artificial split.  The fragment and proposed audit changes were reverted
+  exactly rather than weakening the guard.  After the earlier cross-TU timing
+  rejection and this structural rejection, the honest final owner is the
+  intact declaration-analysis translation unit.  The semantic audit is now
+  850 definitions with 107 queued for the remaining R6 families.  The
+  three-increment cumulative gate passed 5471/5471; LowIR remained 124/99,
+  and the compiler-layout and zero-fatal/33-warning file audits retained their
+  baselines.  Push: with this ledger checkpoint.
