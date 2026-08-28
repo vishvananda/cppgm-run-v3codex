@@ -1077,3 +1077,33 @@ checkpoint where applicable, commit, and push state.
   Therefore the R5 corrected performance checkpoint remains the retained code
   baseline and the global `<= 1.50x` wall gate stays open for R12.  R6 is
   complete.  Push: with this ledger checkpoint.
+- `dc96c3e4` — R7 typed lowering-IR paths.  Moved the internal typed `types`,
+  `model`, and `render` files from five `pa15_lowir_*` paths into
+  `lowering/ir/` without changing symbols, source count, or link order.
+  PA15 passed 121/121, all 18 output surfaces were exact, GCC-O3 compiler
+  text/data were unchanged, and stripped old/new model and render objects were
+  byte-identical.  The layout census fell from 70/172 to 65/123 paths/includes;
+  file audit remained zero-fatal/33-warning.
+- `7aba34e7` — R7 typed lowering-IR namespace.  Atomically migrated
+  `cppgm::pa15_lowir_detail` to `cppgm::lowering::ir` across the representation
+  and every lowering/object consumer, with no compatibility alias.  PA15 and
+  PA18 passed 158/158, all 18 outputs were exact, GCC-O3 text/data remained
+  unchanged, and the namespace census fell from 154 to 98.
+
+  The first explicit-O1 inception exposed one C++11 issue hidden by GCC's
+  extension acceptance: a forward declaration had become the C++17 spelling
+  `namespace lowering::ir`.  It was corrected to explicit nested namespace
+  blocks; no test or source contract was changed.  The fresh 32/32/32 rerun
+  then matched all 216 objects and the final compiler in 50.13 seconds wall.
+  Six identical-current-source lanes per producer measured old/new wall
+  medians 31.925/31.895 seconds (-0.09%) and aggregate CPU 912.03/910.14
+  seconds (-0.21%).  Exact optimized-host frozen medians were GCC-O3
+  4.65/4.61 seconds and Clang-O3 4.87/4.88 seconds.
+
+  The corrected same-revision candidate matrix measured self/GCC/Clang wall
+  medians of 31.895/21.57/21.57 seconds, or 1.479x in both comparisons;
+  aggregate CPU medians were 910.14/592.90/609.09 seconds, or 1.535x/1.494x.
+  Thus the wall target is below 1.50x in this retained window, while R12 still
+  must reconfirm the final tree.  The cumulative report passed 5471/5471,
+  LowIR remained 124/99, semantic ownership remained 850/0, and layout/file
+  audits retained their baselines.  Pushed with this ledger checkpoint.
