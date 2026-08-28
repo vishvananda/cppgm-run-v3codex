@@ -19,6 +19,7 @@
 #include "lowering/objects/aggregate_lifetime.h"
 #include "lowering/expressions/assignment.h"
 #include "lowering/calls/arguments.h"
+#include "lowering/calls/function_calls.h"
 #include "lowering/calls/constructors.h"
 #include "lowering/calls/destructors.h"
 #include "lowering/objects/initialization.h"
@@ -71,6 +72,7 @@ class ProgramLowerer :
 	private lowering::ArrayLifetimeLowering<ProgramLowerer>,
 	private lowering::DestructorActionLowering<ProgramLowerer>,
 	private lowering::CallArgumentLowering<ProgramLowerer>,
+	private lowering::FunctionCallLowering<ProgramLowerer>,
 	private lowering::InitializationLowering<ProgramLowerer>,
 	private lowering::LifetimeActionLowering<ProgramLowerer>,
 	private lowering::MemberAddressLowering<ProgramLowerer>,
@@ -249,6 +251,7 @@ private:
 	friend class lowering::ArrayLifetimeLowering<ProgramLowerer>;
 	friend class lowering::DestructorActionLowering<ProgramLowerer>;
 	friend class lowering::CallArgumentLowering<ProgramLowerer>;
+	friend class lowering::FunctionCallLowering<ProgramLowerer>;
 	friend class lowering::InitializationLowering<ProgramLowerer>;
 	friend class lowering::LifetimeActionLowering<ProgramLowerer>;
 	friend class lowering::MemberAddressLowering<ProgramLowerer>;
@@ -1853,176 +1856,6 @@ private:
 		}
 		if (return_storage) return storage;
 		return record.kind == DUMP_POSTFIX_EXPRESSION ? old_value : new_value;
-	}
-	Operand LowerCall(std::uint32_t node, const DumpNode& record,
-		const NodeChildren& children, const Operand& supplied_result = Operand())
-	{
-		if (children.empty()) throw std::runtime_error("semantic call has no callee");
-		const DumpNode& callee = arena_.nodes[children[0]];
-		Operand builtin_result;
-		if (TryLowerCompilerBuiltinCall(record, children, &builtin_result)) return builtin_result;
-		if (TryLowerNumericBuiltinCall(record, children, &builtin_result))
-			return builtin_result;
-		if (stats_) ++stats_->binding_index_probes;
-		const bool direct = !record.virtual_call &&
-			callee.kind == DUMP_CALLEE &&
-			callee.binding != kNoBinding &&
-			callee.binding < function_symbols_.size() &&
-			function_symbols_[callee.binding] != kNoLowId;
-		if (full_expression_cleanup_active_ &&
-			((!direct || !program_.bindings[callee.binding].nonthrowing) ||
-			 (full_expression_deferred_cleanup_ && full_expression_cleanup_ready_ &&
-			  record.eager_full_expression_cleanup)))
-			EnsureFullExpressionCleanupSegment();
-		TypeId function_type_id = callee.type;
-		bool block_pointer_call = false;
-		if (!direct)
-		{
-			function_type_id = ExpressionObjectType(function_type_id);
-			const TypeRecord& callable = program_.types.Get(function_type_id);
-			block_pointer_call = callable.kind == TYPE_BLOCK_POINTER;
-			if (callable.kind == TYPE_POINTER || block_pointer_call)
-				function_type_id = callable.child;
-		}
-		const TypeRecord& function_type = program_.types.Get(function_type_id);
-		if (function_type.kind != TYPE_FUNCTION)
-			throw std::runtime_error("invalid PA15 indirect callee type");
-		const TypeId* parameters = program_.types.Parameters(function_type_id);
-		CallArguments arguments;
-		CallArgumentFlags argument_references;
-		const bool indirect_result = UsesIndirectClassResult(function_type.child, callee.binding);
-		const LowType call_type = indirect_result ?
-			LowVoid() : LowerType(record.type);
-		Instruction call = direct ? DirectCallInstruction(
-			function_symbols_[callee.binding], call_type) :
-			Instruction(Instruction::CALL);
-		if (!direct)
-		{
-			call.type = call_type;
-			call.indirect = true;
-		}
-		Operand result_storage;
-		Operand virtual_object;
-		if (indirect_result)
-		{
-			if (supplied_result.kind != Operand::NONE)
-				result_storage = supplied_result;
-			else
-			{
-				const LowType type = LowerStorageType(function_type.child);
-				const char* purpose = record.reference_call_materialization ? "refcall" : "call";
-				const Operand slot(EnsureGeneratedSlot(node, purpose, type), type);
-				result_storage = AddressOfStorage(slot);
-			}
-			arguments.Push(result_storage);
-			argument_references.Push(Instruction::CALL_PASS_INDIRECT_RESULT);
-		}
-		Operand block_object;
-		if (block_pointer_call)
-		{
-			block_object = LowerValue(children[0], LowPtr());
-			arguments.Push(block_object);
-			argument_references.Push(Instruction::CALL_PASS_VALUE);
-		}
-		const bool member_pointer_call =
-			IsMemberPointerApplication(callee);
-		Operand member_pointer_callee;
-		std::size_t member_pointer_argument =
-			std::numeric_limits<std::size_t>::max();
-		if (member_pointer_call)
-		{
-			const NodeChildren application_children = Children(children[0]);
-			member_pointer_argument = arguments.size();
-			arguments.Push(MemberPointerObject(
-				callee, application_children));
-			argument_references.Push(Instruction::CALL_PASS_VALUE);
-		}
-		const std::size_t lowered_argument_begin = arguments.size();
-		for (std::size_t i = 1; i < children.size(); ++i)
-		{
-			const bool reference = i - 1 < function_type.parameter_count && IsReferenceType(parameters[i - 1]);
-			argument_references.Push(i - 1 < function_type.parameter_count ?
-				BoundaryCallPassing(parameters[i - 1]) : Instruction::CALL_PASS_VALUE);
-			if (arena_.nodes[children[i]].variadic_class_argument)
-				arguments.Push(LowerStorage(children[i]));
-			else if (!reference && i - 1 < function_type.parameter_count &&
-				IsComplexObjectType(parameters[i - 1]) &&
-				UsesIndirectClassParameter(parameters[i - 1]))
-				arguments.Push(AddressOfStorage(LowerStorage(children[i])));
-			else if (!reference &&
-				arena_.nodes[children[i]].class_argument_staging)
-				arguments.Push(LowerClassArgumentStaging(
-					children[i], parameters[i - 1]));
-			else if (reference)
-				arguments.Push(LowerReferenceCallArgument(
-					children[i], parameters[i - 1]));
-			else
-			{
-				LowType expected = i - 1 < function_type.parameter_count ?
-					LowerType(parameters[i - 1]) :
-					LowerExpressionType(arena_.nodes[children[i]].type);
-				if (i - 1 >= function_type.parameter_count)
-				{
-					if (expected.kind == LOW_F32) expected = LowF64();
-					else if (IsInteger(expected) && expected.width < 32)
-						expected = LowI32();
-				}
-				arguments.Push(LowerConvertedValue(children[i], expected,
-					CanonicalizeInitializerImmediate(children[i], expected) ||
-					CanonicalizeImmediateConversion(children[i]) ||
-					CanonicalizeOperatorLiteral(children[i], callee)));
-			}
-			if (record.virtual_call && i == 1)
-				virtual_object = arguments[arguments.size() - 1];
-		}
-		CallArguments lowered_boundary_arguments;
-		for (std::size_t i = lowered_argument_begin;
-			i < arguments.size(); ++i)
-			lowered_boundary_arguments.Push(arguments[i]);
-		const std::size_t boundary_argument_begin = arguments.size();
-		AppendCallVirtualBaseArguments(callee, function_type_id, children,
-			lowered_boundary_arguments, &arguments, &argument_references);
-		call.virtual_base_argument_count = static_cast<std::uint32_t>(
-			arguments.size() - boundary_argument_begin);
-		if (member_pointer_call)
-		{
-			const MemberPointerCallOperands lowered = LowerMemberPointerCall(
-				children[0], callee, Children(children[0]),
-				arguments[member_pointer_argument]);
-			arguments[member_pointer_argument] = lowered.object;
-			member_pointer_callee = lowered.callee;
-		}
-		if (full_expression_cleanup_active_ && full_expression_deferred_cleanup_) EnsureFullExpressionCleanupSegment();
-		if (record.virtual_call)
-		{
-			if (virtual_object.kind == Operand::NONE || record.virtual_slot == kNoDumpEdge)
-				throw std::logic_error("virtual call has no object or slot");
-			call.first = LowerVirtualCallee(record, virtual_object,
-				ResolveHostVirtualSlot(program_, output_.host_object_emission,
-					polymorphism_, record, BaseEntityForType(arena_.nodes[children[1]].type)));
-		}
-		else if (!direct) call.first = member_pointer_call ?
-			member_pointer_callee : block_pointer_call ?
-			LoadBlockInvoke(block_object) : LowerValue(children[0], LowPtr());
-		AttachCallArguments(&call, arguments, argument_references);
-		if (call.type.kind == LOW_VOID)
-		{
-			Emit(call);
-			return indirect_result ? result_storage : Operand(0, LowVoid());
-		}
-		const Operand result = Temp(call.type);
-		call.dest = result.id;
-		Emit(call);
-		if (supplied_result.kind != Operand::NONE)
-		{
-			if (call.type.kind != LOW_OBJECT)
-				throw std::logic_error(
-					"direct class call destination has a scalar result");
-			EmitClassObjectCopy(record.type, result, supplied_result);
-			if (stats_) ++stats_->direct_class_call_destination_placements;
-			return supplied_result;
-		}
-		return RetainFullExpressionCallResult(node, record, result);
 	}
 	void PushStatementNode(std::uint32_t node)
 	{
