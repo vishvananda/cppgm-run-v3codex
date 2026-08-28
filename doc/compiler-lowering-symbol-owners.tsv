@@ -72,7 +72,6 @@ method	dev/src/lowering/core/program_lowerer.cpp	EnsureGeneratedSlot	1	dev/src/l
 method	dev/src/lowering/core/program_lowerer.cpp	ExpressionObjectType	1	dev/src/lowering/core/program_lowerer.cpp	keep
 method	dev/src/lowering/core/program_lowerer.cpp	FindChildKind	1	R8:dev/src/lowering/control/statements.h	review
 method	dev/src/lowering/core/program_lowerer.cpp	FindLoopBody	1	R8:dev/src/lowering/control/statements.h	review
-method	dev/src/lowering/core/program_lowerer.cpp	FloatingOperand	1	R8:dev/src/lowering/expressions/core.h	review
 method	dev/src/lowering/core/program_lowerer.cpp	GeneratedSlotName	1	dev/src/lowering/core/program_lowerer.cpp	keep
 method	dev/src/lowering/core/program_lowerer.cpp	IndexAddress	1	R8:dev/src/lowering/objects/storage_access.h	review
 method	dev/src/lowering/core/program_lowerer.cpp	InternSymbol	1	dev/src/lowering/core/program_lowerer.cpp	keep

@@ -1338,3 +1338,17 @@ checkpoint where applicable, commit, and push state.
   zero-fatal/32-warning file audit.  Source IDs did not change; fresh inception
   remains scheduled for the completed lowering tier.  Push: with this ledger
   checkpoint.
+- `bd5f619b`, `41e8bf06`, and this commit — R8 small method-owner repairs.
+  Moved the direct-call instruction factory into `FunctionCallLowering`, and
+  moved constant-array template copying plus floating-literal operand creation
+  into `ConstantLowering`.  The first two moves rebuilt the compiler exactly.
+  The floating helper retained its code address and all allocated sizes; only
+  its private symbol-table name changed from the central class to its CRTP
+  owner.  The lowering manifest queue fell from 47 to 44 methods.
+
+  Focused PA15, PA18, PA21, and PA34 gates passed and all 18 frozen output
+  surfaces remained exact.  The already-benchmarked call-owner layout remains
+  the only allocated compiler delta, so no new timing delta is possible from
+  this batch.  The three-commit checkpoint passed 5471/5471, LowIR 124/99,
+  semantic ownership 850/0, lowering ownership 185/44, layout 6/6/4/18, and
+  zero-fatal/32-warning file audit.  Push: with this ledger checkpoint.

@@ -825,16 +825,6 @@ private:
 			false, internal, false));
 		return symbol;
 	}
-	Operand FloatingOperand(const std::string& spelling, const LowType& type)
-	{
-		const std::string normalized = NormalizeFloatingLiteral(spelling, type);
-		std::uint64_t low = 0, high = 0;
-		if (!DecodeFloatingLiteral(normalized, type, &low, &high))
-			throw std::logic_error("invalid typed floating literal");
-		return Operand::Floating(output_.retain_local_names ?
-			output_.strings.intern(normalized) : lowir_model::StringId(),
-			type, low, high);
-	}
 	void ResetCommonFunctionLoweringState(Function* function)
 	{
 		function_ = function;

@@ -1,11 +1,13 @@
 #ifndef CPPGM_LOWERING_CONSTANTS_VALUES_H
 #define CPPGM_LOWERING_CONSTANTS_VALUES_H
 
+#include "lowering/core/source_types.h"
 #include "lowering/ir/model.h"
 #include "lowering/support/sequences.h"
 #include "semantic/model/graph.h"
 
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -57,6 +59,18 @@ protected:
 			Operand(0, value.type) : Operand(0, LowI64());
 		derived.Emit(compare);
 		return truth;
+	}
+
+	Operand FloatingOperand(const std::string& spelling, const LowType& type)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const std::string normalized = NormalizeFloatingLiteral(spelling, type);
+		std::uint64_t low = 0, high = 0;
+		if (!DecodeFloatingLiteral(normalized, type, &low, &high))
+			throw std::logic_error("invalid typed floating literal");
+		return Operand::Floating(derived.output_.retain_local_names ?
+			derived.output_.strings.intern(normalized) :
+			lowir_model::StringId(), type, low, high);
 	}
 
 	bool TryLowerConstantArrayTemplate(const DumpNode& record,
