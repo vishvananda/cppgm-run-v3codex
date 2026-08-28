@@ -880,6 +880,16 @@ This plan is complete only when:
   replaced after available memory recovered.  Retain: this is the
   responsibility-aligned, low-overhead boundary that the D3-S1/S2 evidence
   called for.
+- **D-C3 (PIPELINE-OWNERSHIP CUMULATIVE CHECKPOINT).** The retained D3 stack
+  session and coarse cleanup-ownership increments pass root
+  `make -j32 test-report-through-pa38` at 5,465/5,465, `git diff --check`,
+  and the default audit at zero fatal findings/36 established warnings.  A
+  fresh isolated explicit-O1 inception used outer, inner, and object
+  parallelism all at 32 under
+  `/dev/shm/v3codex-optdup-d3-cumulative-inception.56FuP4`; every object and
+  the final compiler match.  Self and inception binaries both hash to
+  `29460ef3...` with 8,647,027 text and 334,888 data bytes.  No stale
+  compiler, profiler, Valgrind, or Cachegrind process preceded the checkpoint.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
