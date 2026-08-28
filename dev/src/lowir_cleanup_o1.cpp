@@ -717,6 +717,85 @@ bool share_exact_cleanup_tails(Function * function, Stats * stats)
 }
 
 
+enum ColdSuccessorPolicy
+{
+  CSP_LAYOUT,
+  CSP_RAISING_PATH
+};
+
+template<ColdSuccessorPolicy Policy>
+static bool has_cold_successors(Instruction::Kind kind)
+{
+  if(kind == Instruction::IK_JUMP || kind == Instruction::IK_BRANCH)
+    return true;
+  if(Policy == CSP_LAYOUT)
+    return kind == Instruction::IK_EH_TRY ||
+      kind == Instruction::IK_EH_CLEANUP;
+  return kind == Instruction::IK_SWITCH;
+}
+
+static std::vector<std::size_t> block_position_index(
+    const Function & function)
+{
+  const std::size_t count = function.blocks.size();
+  std::vector<std::size_t> position(count, count);
+  for(std::size_t block = 0; block < count; ++block) {
+    const std::uint32_t id = function.blocks[block].id;
+    if(id < position.size()) position[id] = block;
+    else {
+      position.resize(static_cast<std::size_t>(id) + 1, count);
+      position[id] = block;
+    }
+  }
+  return position;
+}
+
+// Propagate coldness only through the successor vocabulary owned by the
+// caller.  Layout deliberately ignores switch cases and includes EH region
+// labels; raising-path sinking includes switch arguments and excludes EH
+// markers.  The reverse sweeps are bounded by the block count.
+template<ColdSuccessorPolicy Policy>
+static void propagate_cold_successors(
+    const Function & function,
+    const std::vector<std::size_t> & position,
+    std::vector<unsigned char> * cold)
+{
+  const std::size_t count = function.blocks.size();
+  for(std::size_t sweep = 0; sweep < count; ++sweep) {
+    bool grew = false;
+    for(std::size_t block = count; block != 0; --block) {
+      if((*cold)[block - 1]) continue;
+      std::size_t successors = 0;
+      bool all_cold = true;
+      for(std::size_t index = 0;
+          index < function.blocks[block - 1].instructions.size(); ++index) {
+        const Instruction & ins =
+          function.blocks[block - 1].instructions[index];
+        if(!has_cold_successors<Policy>(ins.kind)) continue;
+        const Operand * fixed[] = {&ins.first, &ins.second, &ins.third};
+        const std::size_t fixed_count = sizeof(fixed) / sizeof(fixed[0]);
+        const std::size_t operand_count = fixed_count +
+          (Policy == CSP_RAISING_PATH ? ins.args.size() : 0);
+        for(std::size_t operand = 0; operand < operand_count; ++operand) {
+          const Operand & label = operand < fixed_count ?
+            *fixed[operand] : ins.args[operand - fixed_count];
+          if(label.kind != Operand::OP_LABEL) continue;
+          ++successors;
+          const std::uint32_t id = label.block;
+          const std::size_t target =
+            id < position.size() ? position[id] : count;
+          all_cold = all_cold && target < count && (*cold)[target];
+        }
+      }
+      if(successors != 0 && all_cold) {
+        (*cold)[block - 1] = 1;
+        grew = true;
+      }
+    }
+    if(!grew) break;
+  }
+}
+
 static std::vector<unsigned char> cold_block_mask(
     const Function & function,
     const std::vector<unsigned char> & noreturn_symbols)
@@ -751,52 +830,8 @@ static std::vector<unsigned char> cold_block_mask(
     // successor-free raising blocks sink directly.
     cold[block] = raises && !ordinary_successor;
   }
-  // A block whose every successor is cold is itself cold.  The sweeps run
-  // to a fixed point: a partial classification could place a hot-labeled
-  // block ahead of a cold block whose values it consumes.  Each sweep
-  // marks at least one block or stops, so the walk is bounded by the
-  // block count.
-  std::vector<std::size_t> position(count, count);
-  for(std::size_t block = 0; block < count; ++block) {
-    const std::uint32_t id = function.blocks[block].id;
-    if(id < position.size()) position[id] = block;
-    else {
-      position.resize(static_cast<std::size_t>(id) + 1, count);
-      position[id] = block;
-    }
-  }
-  for(std::size_t sweep = 0; sweep < count; ++sweep) {
-    bool grew = false;
-    for(std::size_t block = count; block != 0; --block) {
-      if(cold[block - 1]) continue;
-      std::size_t successors = 0;
-      bool all_cold = true;
-      for(std::size_t index = 0;
-          index < function.blocks[block - 1].instructions.size(); ++index) {
-        const Instruction & ins =
-          function.blocks[block - 1].instructions[index];
-        if(ins.kind != Instruction::IK_JUMP &&
-           ins.kind != Instruction::IK_BRANCH &&
-           ins.kind != Instruction::IK_EH_TRY &&
-           ins.kind != Instruction::IK_EH_CLEANUP) continue;
-        const Operand * fixed[] = {&ins.first, &ins.second, &ins.third};
-        for(std::size_t operand = 0;
-            operand < sizeof(fixed) / sizeof(fixed[0]); ++operand) {
-          if(fixed[operand]->kind != Operand::OP_LABEL) continue;
-          ++successors;
-          const std::uint32_t id = fixed[operand]->block;
-          const std::size_t target =
-            id < position.size() ? position[id] : count;
-          all_cold = all_cold && target < count && cold[target];
-        }
-      }
-      if(successors != 0 && all_cold) {
-        cold[block - 1] = 1;
-        grew = true;
-      }
-    }
-    if(!grew) break;
-  }
+  const std::vector<std::size_t> position = block_position_index(function);
+  propagate_cold_successors<CSP_LAYOUT>(function, position, &cold);
   return cold;
 }
 
@@ -828,51 +863,8 @@ static std::vector<unsigned char> raising_path_mask(
       }
     }
   }
-  std::vector<std::size_t> position(count, count);
-  for(std::size_t block = 0; block < count; ++block) {
-    const std::uint32_t id = function.blocks[block].id;
-    if(id < position.size()) position[id] = block;
-    else {
-      position.resize(static_cast<std::size_t>(id) + 1, count);
-      position[id] = block;
-    }
-  }
-  for(std::size_t sweep = 0; sweep < count; ++sweep) {
-    bool grew = false;
-    for(std::size_t block = count; block != 0; --block) {
-      if(cold[block - 1]) continue;
-      std::size_t successors = 0;
-      bool all_cold = true;
-      for(std::size_t index = 0;
-          index < function.blocks[block - 1].instructions.size(); ++index) {
-        const Instruction & ins =
-          function.blocks[block - 1].instructions[index];
-        if(ins.kind != Instruction::IK_JUMP &&
-           ins.kind != Instruction::IK_BRANCH &&
-           ins.kind != Instruction::IK_SWITCH) continue;
-        const Operand * fixed[] = {&ins.first, &ins.second, &ins.third};
-        for(std::size_t operand = 0;
-            operand < sizeof(fixed) / sizeof(fixed[0]) + ins.args.size();
-            ++operand) {
-          const Operand & label =
-            operand < sizeof(fixed) / sizeof(fixed[0]) ?
-            *fixed[operand] :
-            ins.args[operand - sizeof(fixed) / sizeof(fixed[0])];
-          if(label.kind != Operand::OP_LABEL) continue;
-          ++successors;
-          const std::uint32_t id = label.block;
-          const std::size_t target =
-            id < position.size() ? position[id] : count;
-          all_cold = all_cold && target < count && cold[target];
-        }
-      }
-      if(successors != 0 && all_cold) {
-        cold[block - 1] = 1;
-        grew = true;
-      }
-    }
-    if(!grew) break;
-  }
+  const std::vector<std::size_t> position = block_position_index(function);
+  propagate_cold_successors<CSP_RAISING_PATH>(function, position, &cold);
   // Landing pads are excluded even when they only raise: their entry state
   // is the unwinder's, and the exception-region rematerializer already owns
   // value placement for them.

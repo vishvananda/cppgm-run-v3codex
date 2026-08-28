@@ -915,6 +915,46 @@ This plan is complete only when:
   samples.  Retain: the helper removes four exact terminal-rebuild bodies,
   preserves the whole instruction-reset contract, and is performance-neutral
   within the retention protocol.
+- **D4-S1 (RUNTIME COLD-SUCCESSOR POLICY, REJECTED).** A first implementation
+  moved the shared block-ID index and bounded reverse fixed point behind a
+  runtime `ColdSuccessorPolicy`.  It preserved the exact layout versus
+  raising-path successor vocabularies, passed PA37/PA38 and the default audit,
+  matched all 215 non-timing optimizer-stat records and objects, and shrank
+  compiler text from 8,646,687 to 8,646,067 bytes.  Nevertheless, two clean
+  paired candidate lanes were 32.51/32.11 seconds wall and 904.83/907.27
+  aggregate CPU, versus old 31.11/31.46 wall and 899.77/903.42 CPU.  Mean wall
+  regressed 3.276%.  Reject: branching on policy inside the instruction and
+  operand walk is measurable hot-loop indirection; a smaller compiler is not
+  sufficient justification.
+- **D4-P2 (TYPED COLD-SUCCESSOR FIXED POINT, RETAINED).** On the tree based on
+  `920827cc`, one block-ID index builder and one compile-time-policy fixed
+  point now own cold-successor propagation.  `CSP_LAYOUT` admits jump, branch,
+  and EH fixed labels while deliberately ignoring switch cases;
+  `CSP_RAISING_PATH` admits jump, branch, and switch labels including switch
+  arguments while deliberately excluding EH markers.  Seed classification
+  and raising-path landing-pad exclusion remain separate.  The template is a
+  bounded two-policy specialization, not a generic graph facade, and removes
+  the runtime dispatch rejected by D4-S1.  `lowir_cleanup_o1.cpp` falls from
+  1,219 to 1,211 lines.  PA37 is 188/188, PA38 is 45/45, `git diff --check` is
+  clean, the default audit remains zero-fatal/36-warning, and the tight audit
+  remains at its 14-warning checkpoint while no longer reporting this fixed
+  point as the actionable duplicate.  Fresh exact-candidate-source private
+  logs cover all 215 translation units: every non-timing optimizer counter
+  and all 215 objects match, and old/candidate compilers link the same
+  `2e084ad5...` output.  The benchmark compiler grows from
+  `e43baa4d...`/8,646,687 to `2e084ad5...`/8,647,335 text bytes, with data
+  unchanged at 334,888 bytes.  Three clean paired self lanes are candidate
+  32.10/32.25/31.48 seconds wall and 904.77/900.48/902.04 aggregate CPU,
+  versus old 32.02/31.57/32.11 wall and 901.37/900.44/903.71 CPU.  Means are
+  31.943/902.430 versus 31.900/901.840: wall regresses only 0.136%, aggregate
+  CPU regresses 0.065%, and mean peak RSS is 229,639 versus 229,223 KiB.  A
+  32.27/929.94 candidate lane was excluded for objectively elevated aggregate
+  CPU and replaced.  Exact-source GCC lanes are 29.91/29.22 wall and
+  570.14/567.97 CPU; Clang lanes are 30.19/30.44 wall and 642.90/645.06 CPU.
+  Candidate ratios are 1.080x GCC and 1.054x Clang.  GCC/Clang hashes and text
+  are `229e05d7...`/5,788,736 and `ea5e215c...`/5,026,165.  Retain: this shares
+  the mechanics and makes the semantic policies explicit without runtime
+  indirection or a confirmed performance regression.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
