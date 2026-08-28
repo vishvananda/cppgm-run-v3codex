@@ -7,7 +7,7 @@
 
 namespace cppgm
 {
-namespace pa30
+namespace compiler_object
 {
 
 lowir_native::RelocatableObject ReadElfRelocatableObject(

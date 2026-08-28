@@ -929,7 +929,7 @@ void report_source_compile_stats(
 	const lowir_model::LowirPreparationStats & preparation_stats,
 	const SourceCompileTimings & timings);
 
-cppgm::pa30::CompilerObject compile_source_object(
+cppgm::compiler_object::CompilerObject compile_source_object(
     const string & path,
     const DriverInvocation & invocation,
 	const string & target,
@@ -940,7 +940,7 @@ cppgm::pa30::CompilerObject compile_source_object(
   const string source = read_source_file(path);
 	cppgm::lowering::Stats stats;
 	SourceCompileTimings timings;
-  cppgm::pa30::CompilerObject object;
+  cppgm::compiler_object::CompilerObject object;
   object.target = target;
 	lowir_model::LowirPreparationStats preparation_stats;
 	object.lowir = build_source_lowir(path, source, invocation,
@@ -1414,19 +1414,19 @@ int run_compile_driver(const DriverInvocation & invocation,
   if(invocation.inputs.size() != 1 || invocation.output.empty())
     throw logic_error("compile mode requires one input and -o");
 	const bool private_object =
-      cppgm::pa30::UsesPrivateCompilerObjectFormat(invocation.output);
+      cppgm::compiler_object::UsesPrivateCompilerObjectFormat(invocation.output);
 	const lowir_model::PresentationPolicy presentation_policy =
 		private_object || invocation.line_tables ?
 		lowir_model::PRESENTATION_SERIALIZABLE :
 		lowir_model::PRESENTATION_OBJECT_ONLY;
-  const cppgm::pa30::CompilerObject object =
+  const cppgm::compiler_object::CompilerObject object =
 	  compile_source_object(invocation.inputs[0], invocation, target,
 		  !private_object, presentation_policy);
-	cppgm::pa30::ObjectSerializationStats serialization_stats;
+	cppgm::compiler_object::ObjectSerializationStats serialization_stats;
   lowir_native::Stats native_stats;
   native_stats.function_census = invocation.collect_function_census;
   if(private_object) {
-    cppgm::pa30::WriteCompilerObject(
+    cppgm::compiler_object::WriteCompilerObject(
       invocation.output, object,
       invocation.collect_stats ? &serialization_stats : 0);
   } else {
@@ -1627,14 +1627,14 @@ int run_link_driver(const DriverInvocation & invocation,
 {
   if(invocation.output.empty()) throw logic_error("link mode requires -o");
   const bool collect_stats = invocation.collect_stats;
-  vector<cppgm::pa30::CompilerObject> objects;
+  vector<cppgm::compiler_object::CompilerObject> objects;
   vector<lowir_native::RelocatableObject> foreign_objects;
 	chrono::steady_clock::time_point input_started;
 	if(collect_stats) input_started = chrono::steady_clock::now();
   for(size_t i = 0; i < invocation.inputs.size(); ++i) {
-    if(cppgm::pa30::IsCompilerObject(invocation.inputs[i]))
-      objects.push_back(cppgm::pa30::ReadCompilerObject(invocation.inputs[i]));
-    else if(cppgm::pa30::UsesPrivateCompilerObjectFormat(
+    if(cppgm::compiler_object::IsCompilerObject(invocation.inputs[i]))
+      objects.push_back(cppgm::compiler_object::ReadCompilerObject(invocation.inputs[i]));
+    else if(cppgm::compiler_object::UsesPrivateCompilerObjectFormat(
               invocation.inputs[i]) ||
             (invocation.inputs[i].size() >= 2 &&
              invocation.inputs[i].compare(
@@ -1651,18 +1651,18 @@ int run_link_driver(const DriverInvocation & invocation,
   }
   for(size_t i = 0; i < invocation.libraries.size(); ++i) {
     const string path = find_library_object(invocation, invocation.libraries[i]);
-    if(cppgm::pa30::IsCompilerObject(path))
-      objects.push_back(cppgm::pa30::ReadCompilerObject(path));
+    if(cppgm::compiler_object::IsCompilerObject(path))
+      objects.push_back(cppgm::compiler_object::ReadCompilerObject(path));
     else
-      foreign_objects.push_back(cppgm::pa30::ReadElfRelocatableObject(
+      foreign_objects.push_back(cppgm::compiler_object::ReadElfRelocatableObject(
           path, foreign_objects.size()));
   }
 	uint64_t input_nanoseconds = 0;
 	if(collect_stats) input_nanoseconds = static_cast<uint64_t>(
 		chrono::duration_cast<chrono::nanoseconds>(
 			chrono::steady_clock::now() - input_started).count());
-  cppgm::pa30::LinkStats link_stats;
-  const lowir_model::LowirProgram lowir = cppgm::pa30::LinkCompilerObjects(
+  cppgm::compiler_object::LinkStats link_stats;
+  const lowir_model::LowirProgram lowir = cppgm::compiler_object::LinkCompilerObjects(
       std::move(objects), target,
 	  invocation.line_tables ? lowir_model::PRESENTATION_SERIALIZABLE :
 		lowir_model::PRESENTATION_OBJECT_ONLY,

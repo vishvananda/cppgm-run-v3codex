@@ -16,7 +16,7 @@
 
 namespace cppgm
 {
-namespace pa30
+namespace compiler_object
 {
 namespace
 {
