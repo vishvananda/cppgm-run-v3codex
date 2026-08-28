@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "pa6_recognizer.h"
+#include "recognition/recognizer.h"
 
 namespace
 {

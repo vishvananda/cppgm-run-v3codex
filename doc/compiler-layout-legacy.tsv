@@ -1,5 +1,4 @@
 kind	pattern	destination
-path	^dev/src/pa6_	recognition/
 path	^dev/src/pa7_	namespace_semantics/
 path	^dev/src/pa8_	namespace_initialization/
 path	^dev/src/pa10_	syntax/
@@ -23,7 +22,6 @@ path	^dev/src/pa30_	compiler_object/, syntax/, semantic/, lowering/
 path	^dev/src/pa32_	syntax/, semantic/
 path	^dev/src/pa33_	semantic/, lowering/
 path	^dev/src/pa34_	syntax/, semantic/, lowering/
-include	^pa6_	recognition/
 include	^pa7_	namespace_semantics/
 include	^pa8_	namespace_initialization/
 include	^pa10_	syntax/

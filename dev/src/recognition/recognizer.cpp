@@ -1,4 +1,4 @@
-#include "pa6_recognizer.h"
+#include "recognition/recognizer.h"
 
 #include <algorithm>
 #include <chrono>
@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "pa6_grammar_data.h"
+#include "recognition/grammar_definition.h"
 
 namespace cppgm
 {
