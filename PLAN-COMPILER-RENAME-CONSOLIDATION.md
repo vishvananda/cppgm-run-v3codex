@@ -1133,3 +1133,29 @@ checkpoint where applicable, commit, and push state.
   850/0, and file audit stayed zero-fatal/33-warning.  Performance: not
   applicable because all moved implementation code and aggregate compiler
   text/data are exact.  Push: with this ledger checkpoint.
+- `93be5a4e` — R7 control and expression paths.  Moved the control-flow,
+  conditional, control-expression, scalar-unary, assignment, member-address,
+  and bit-field CRTP mixins into `lowering/control/` and
+  `lowering/expressions/`.  Their include order, namespaces, bodies, and inline
+  boundaries were unchanged.  PA15 passed 121/121, all 18 output surfaces
+  were exact, and the compiler executable was byte-identical.
+- `9791ae4b` — R7 call-boundary paths.  Moved argument marshaling,
+  constructor-call handling, and value-boundary handling into
+  `lowering/calls/` without changing the central lowerer's composition.  PA17
+  passed 247/247, all 18 output surfaces were exact, and the compiler
+  executable was byte-identical.
+- `75dad567` — R7 lifetime, initialization, and storage paths.  Grouped the
+  aggregate, array, destructor, general lifetime, special-member, temporary,
+  local-static, and static-storage CRTP mixins under `lowering/lifetime/`, with
+  initialization actions and slot planning in their explicit domains.  PA33
+  passed 97/97, all 18 output surfaces were exact, and the compiler executable
+  was byte-identical.  Removing the last PA17 and PA33 paths made four legacy
+  layout allowlist rows stale; only those obsolete path/include rows were
+  removed.
+
+  The scheduled cumulative report passed 5471/5471; LowIR remained 124/99,
+  semantic ownership remained 850/0, and the file audit remained
+  zero-fatal/33-warning.  Legacy path/include counts fell from 49/51 to 29/31,
+  while namespace/identifier counts remained 98/68.  Performance testing is
+  not applicable to these path-only increments because every rebuilt compiler
+  was byte-identical to its predecessor.  Push: with this ledger checkpoint.
