@@ -972,3 +972,30 @@ checkpoint where applicable, commit, and push state.
   explicit R6 routing; unrecorded or stale cross-file moves now fail
   `make audit-semantic-owners`.  Compiler mutation: none.  Push: with this
   ledger checkpoint.
+- `6baafb5f` — R6 semantic name-resolution ownership.  Renamed the remaining
+  generic `semantic/model/names.cpp` owner to
+  `semantic/analysis/name_resolution.cpp` at the same source-set and link
+  position, and closed all nine methods in the ownership manifest.  PA12
+  passed 184/184, all 18 output surfaces were exact, and every meaningful
+  allocated GCC-O3 compiler section was byte-identical.  The semantic audit
+  now reports 147 methods still queued for explicit R6 disposition.
+- **Rejected R6 declarator body transfer.**  A textually exact 650-line family
+  (`BuildSpecifiers`, `BuildTypeId`, declarator-name access, parameter
+  construction, and `BuildDeclarator`) was moved from `declarations.cpp` into
+  the existing `declarator_types.cpp` owner without a source-count change.
+  PA12, all 18 output surfaces, LowIR 124/99, the layout/file audits, and fresh
+  explicit-O1 32/32/32 inception all passed; every inception object and the
+  final compiler matched.  Fully optimized frozen `-O0` objects were exact,
+  with GCC-O3 medians 4.60/4.57 seconds and Clang-O3 4.87/4.83 seconds.
+
+  The required extended identical-current-source A/B nevertheless rejected
+  the layout.  Across six lanes per producer, old/new wall medians were
+  31.445/31.995 seconds (+1.75%); five of six adjacent comparisons favored
+  the old layout.  Aggregate-CPU medians were nearly flat at 903.32/904.51
+  seconds (+0.13%), confirming a layout/scaling penalty rather than extra
+  semantic work.  The same-revision candidate oracle improved relative to the
+  R5 checkpoint (self/GCC 1.516x wall and 1.529x aggregate CPU; self/Clang
+  1.452x/1.482x), but a favorable denominator does not excuse the repeatable
+  absolute wall regression.  The move and its manifest changes were reverted
+  exactly; R6 must preserve this declaration cluster or use a layout-preserving
+  organization instead.
