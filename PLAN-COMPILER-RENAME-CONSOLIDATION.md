@@ -1159,3 +1159,29 @@ checkpoint where applicable, commit, and push state.
   while namespace/identifier counts remained 98/68.  Performance testing is
   not applicable to these path-only increments because every rebuilt compiler
   was byte-identical to its predecessor.  Push: with this ledger checkpoint.
+- `c46ef022` — R7 lifetime-support implementation paths.  Moved cleanup
+  continuations, static-storage initialization, and zero filling into their
+  lifetime/initialization owners while preserving source count and link order.
+  PA16 passed 300/300, all 18 output surfaces were exact, and every allocated
+  section in all three moved implementation objects was byte-identical.
+- `6a936f5c` — R7 object-model lowering paths.  Grouped static members,
+  polymorphism, RTTI, member pointers, and virtual bases under
+  `lowering/objects/`; named the retained smaller polymorphism translation unit
+  `vtable_thunks.cpp` for its actual owner.  PA28 passed 45/45, all 18 output
+  surfaces were exact, and the polymorphism and thunk objects' allocated
+  sections were byte-identical.
+- `4da083eb` — R7 constant and extension paths.  Moved constant values and
+  templates into `lowering/constants/`, and range-for, exceptions, initializer
+  lists, regions, GNU asm, and complex lowering into `lowering/extensions/`.
+  PA34 passed 375/375, all 18 output surfaces were exact, and the moved
+  constant-template object's allocated sections were byte-identical.
+
+  The scheduled cumulative report passed 5471/5471; LowIR remained 124/99,
+  semantic ownership remained 850/0, and file audit remained
+  zero-fatal/33-warning.  Legacy path/include counts fell from 29/31 to 6/6;
+  the only remaining paths are the three PA30 compiler-object modules reserved
+  for R9.  Namespace/identifier counts remained 98/68.  Fresh explicit-O1
+  inception with a new 32/32/32 object root matched all 216 current objects and
+  the final compiler.  Performance is unchanged because every moved
+  implementation object's allocated sections are exact.  Push: with this
+  ledger checkpoint.
