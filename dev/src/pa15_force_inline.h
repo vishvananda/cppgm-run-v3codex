@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pa15_lowir_model.h"
+#include "lowering/ir/model.h"
 
 namespace cppgm
 {

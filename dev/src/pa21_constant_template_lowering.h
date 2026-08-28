@@ -1,7 +1,7 @@
 #pragma once
 
 #include "pa15_lowering.h"
-#include "pa15_lowir_model.h"
+#include "lowering/ir/model.h"
 
 #include <cstddef>
 #include <cstdint>

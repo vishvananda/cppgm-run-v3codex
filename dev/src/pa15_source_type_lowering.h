@@ -1,7 +1,7 @@
 #pragma once
 
 #include "semantic/model/graph.h"
-#include "pa15_lowir_types.h"
+#include "lowering/ir/types.h"
 
 namespace cppgm
 {

@@ -1,5 +1,5 @@
-#include "pa15_lowir_render.h"
-#include "pa15_lowir_model.h"
+#include "lowering/ir/render.h"
+#include "lowering/ir/model.h"
 
 #include <ostream>
 #include <stdexcept>

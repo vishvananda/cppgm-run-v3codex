@@ -2,7 +2,7 @@
 #define CPPGM_PA33_STATIC_LIFECYCLE_LOWERING_H
 
 #include "semantic/model/graph.h"
-#include "pa15_lowir_model.h"
+#include "lowering/ir/model.h"
 #include "pa15_lowering_support.h"
 
 #include <stdexcept>

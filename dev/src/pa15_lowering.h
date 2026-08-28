@@ -2,7 +2,7 @@
 
 #include "abi/itanium/abi_mangle.h"
 #include "semantic/semantic.h"
-#include "pa15_lowir_model.h"
+#include "lowering/ir/model.h"
 #include "pa15_local_presentation.h"
 
 #include <cstddef>

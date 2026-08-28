@@ -2,7 +2,7 @@
 #define CPPGM_PA16_INITIALIZATION_LOWERING_H
 
 #include "pa15_lowering_support.h"
-#include "pa15_lowir_model.h"
+#include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 #include "pa16_zero_initialization.h"
 

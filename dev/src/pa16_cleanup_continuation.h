@@ -1,7 +1,7 @@
 #ifndef CPPGM_PA16_CLEANUP_CONTINUATION_H
 #define CPPGM_PA16_CLEANUP_CONTINUATION_H
 
-#include "pa15_lowir_model.h"
+#include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 
 #include <cstddef>

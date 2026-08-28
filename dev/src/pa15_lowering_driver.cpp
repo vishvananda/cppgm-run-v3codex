@@ -4,8 +4,8 @@
 #include "pa15_force_inline.h"
 #include "pa15_graph_lowering.h"
 #include "pa15_local_presentation.h"
-#include "pa15_lowir_model.h"
-#include "pa15_lowir_render.h"
+#include "lowering/ir/model.h"
+#include "lowering/ir/render.h"
 #include "pa15_lowering_support.h"
 
 #include <algorithm>

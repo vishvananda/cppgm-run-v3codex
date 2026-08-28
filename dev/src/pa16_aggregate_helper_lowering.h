@@ -2,7 +2,7 @@
 #define CPPGM_PA16_AGGREGATE_HELPER_LOWERING_H
 
 #include "pa15_lowering_support.h"
-#include "pa15_lowir_model.h"
+#include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 
 #include <stdexcept>

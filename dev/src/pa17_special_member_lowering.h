@@ -2,7 +2,7 @@
 
 #include "semantic/model/graph.h"
 #include "pa15_lowering_support.h"
-#include "pa15_lowir_model.h"
+#include "lowering/ir/model.h"
 
 #include <cstdint>
 #include <limits>

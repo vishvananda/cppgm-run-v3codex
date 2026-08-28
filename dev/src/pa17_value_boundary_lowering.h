@@ -4,7 +4,7 @@
 #include "semantic/model/graph.h"
 #include "pa15_lowering_abi.h"
 #include "pa15_lowering_support.h"
-#include "pa15_lowir_types.h"
+#include "lowering/ir/types.h"
 
 #include <cstddef>
 #include <cstdint>
