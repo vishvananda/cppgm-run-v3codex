@@ -135,7 +135,6 @@ method	dev/src/lowering/core/program_lowerer.cpp	StartForLoop	1	R8:dev/src/lower
 method	dev/src/lowering/core/program_lowerer.cpp	StorageFor	1	R8:dev/src/lowering/objects/storage_access.h	review
 method	dev/src/lowering/core/program_lowerer.cpp	Temp	1	dev/src/lowering/core/program_lowerer.cpp	keep
 method	dev/src/lowering/core/program_lowerer.cpp	TerminateAfterNoreturnCall	1	R8:dev/src/lowering/expressions/core.h	review
-method	dev/src/lowering/core/program_lowerer.cpp	TryLowerConstantArrayTemplate	1	R8:dev/src/lowering/constants/values.h	review
 method	dev/src/lowering/core/program_lowerer.cpp	TypeIsVolatile	1	R8:dev/src/lowering/objects/storage_access.h	review
 method	dev/src/lowering/core/program_lowerer.cpp	UniqueSlotName	1	dev/src/lowering/core/program_lowerer.cpp	keep
 struct	dev/src/lowering/api.h	Source	1	dev/src/lowering/api.h	keep

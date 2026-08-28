@@ -814,44 +814,6 @@ private:
 		if (stats_) ++stats_->globals;
 		return global;
 	}
-	bool TryLowerConstantArrayTemplate(const DumpNode& record,
-		const NodeChildren& children)
-	{
-		if (lowering_namespace_object_ || record.binding == kNoBinding ||
-			record.binding >= program_.bindings.size() || children.size() != 1 ||
-			!program_.bindings[record.binding].constant)
-			return false;
-		const TypeRecord& top = program_.types.Get(record.type);
-		if ((top.cv & (CV_VOLATILE | CV_ATOMIC)) != 0) return false;
-		const TypeRecord& array = program_.types.Get(
-			ExpressionObjectType(record.type));
-		if (array.kind != TYPE_ARRAY || array.IsIncompleteArray()) return false;
-		const TypeRecord& element_top = program_.types.Get(array.child);
-		if ((element_top.cv & (CV_VOLATILE | CV_ATOMIC)) != 0) return false;
-		const TypeRecord& element = program_.types.Get(
-			RemoveTopQualifiers(array.child));
-		const bool enum_element = element.kind == TYPE_NAMED &&
-			(element.entity < program_.entities.size()) &&
-			(program_.entities[element.entity].flavor == NAMED_ENUM ||
-			 program_.entities[element.entity].flavor == NAMED_ENUM_CLASS);
-		if (element.kind != TYPE_FUNDAMENTAL && !enum_element &&
-			element.kind != TYPE_POINTER)
-			return false;
-		Global candidate;
-		candidate.type = LowerVariableStorage(record);
-		if (!static_initializers_.LowerConstantObject(
-			record.type, children[0], &candidate))
-			return false;
-		const SymbolId source = constant_templates_.Intern(std::move(candidate));
-		const LowType storage = LowerVariableStorage(record);
-		Instruction copy(Instruction::COPY_OBJECT);
-		copy.type = storage;
-		copy.first = Operand(Operand::GLOBAL, source, LowPtr());
-		copy.second = AddressOfStorage(StorageFor(record.binding, storage));
-		Emit(copy);
-		if (stats_) ++stats_->constant_template_copies;
-		return true;
-	}
 	SymbolId AddSyntheticSymbol(Symbol::Kind kind, const std::string& proposed,
 		const std::string& object_name, bool internal)
 	{
