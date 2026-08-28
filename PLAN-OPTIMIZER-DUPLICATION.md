@@ -1,6 +1,6 @@
 # Plan: Audit and Reduce Optimizer Duplication
 
-Status: executing; D0-D6 complete, D7 final checkpoint next
+Status: complete; D0-D7 verified and pushed
 
 Date: 2026-08-27
 
@@ -1144,6 +1144,52 @@ This plan is complete only when:
   policy distinctions look like defects; no stable semantic family remains
   that would justify a new normalized scoped gate without forbidden
   function-name or source-snippet matching.
+- **D7 (FINAL CUMULATIVE CHECKPOINT).** The production head is `59c11bd5`.
+  Root `make -j32 test-report-through-pa38` passes 5,465/5,465; PA37 is
+  188/188, PA38 is 45/45, the LowIR contract audit retains 124 ledger rows and
+  99 retained rows, `git diff --check` is clean, and the default file audit
+  passes with zero fatal findings and 35 warnings (one fewer than D0).  The
+  tight report falls from 14 to 11: all remaining matches are the six
+  preambles and five policy distinctions classified in D6-A1.  Structural
+  headroom is restored without dense formatting: `lowir_opt.cpp` is 2,593
+  lines versus 2,995 at D0 and `optimize` is 87 lines versus the former
+  240-line limit; final related sizes are cleanup 1,201, inliner 1,693, native
+  optimization 1,313, native address folding 392, and native location
+  planning 970 lines.
+
+  The final private exact-source capture covers 215 translation units.  Its
+  aggregate O1 facts are 124,704 functions, 2,808,864 input and 1,522,112
+  output instructions, 47,029,756 instruction visits, 2,936,641 block visits,
+  9,502,232 CFG-edge visits, 94,097 CFG builds / 164,312 reuses / 4,714
+  invalidations, 79,433 dominator builds / 144,326 reuses, 68,623 loop builds /
+  3,048 reuses, 333,283 simplify runs, 425,032 DCE runs, 458,474 CFG runs,
+  702,906 slot runs, 77,475 each forward/local-slot runs, 164,451 remove-slot
+  runs, 134,097 promotion runs, and 124,704 each small-object/dead-store runs.
+  Maximum per-TU promotion transient storage remains 10,229,916 bytes.  Every
+  non-timing counter and all 215 objects match between the pre-change and
+  final compiler on this exact source.
+
+  Final reverse-order self lanes are 31.35/31.25 seconds wall and
+  897.18/896.15 aggregate CPU; clean exact-source GCC lanes are 29.22/29.45
+  wall and 567.68/569.24 CPU, and Clang lanes are 30.80/30.00 wall and
+  644.37/644.68 CPU.  Mean self/GCC is 1.067x and mean self/Clang is 1.030x;
+  the maximum is well below 1.50x and improves on the 1.486x D0 checkpoint.
+  Final self, GCC, and Clang compiler hashes/text are
+  `beef91a2...`/8,647,263, `8864af1c...`/5,788,632, and
+  `122b0dc0...`/5,026,313, with self data at 334,936 bytes.
+
+  A fresh isolated explicit-O1 inception used outer, inner, and object
+  parallelism all at 32 under
+  `/dev/shm/v3codex-optdup-d7-final-inception.EIZZYR`; all 215 objects and the
+  final compiler match, and both self/inception binaries hash to
+  `beef91a2...`.  No stale compiler, profiler, Valgrind, Cachegrind, or
+  perf-recording process preceded the final correctness, performance, or
+  inception runs.  Retained production commits are `3f7745df`, `47df740f`,
+  `15770b5e`, `9b318336`, `69ed83e9`, `1ee06c85`, `1447ff9d`, `08cf648b`,
+  `920827cc`, `fdf1576a`, `9e69aad0`, `35c36923`, `35ca7ed7`, `b5da1483`, and
+  `59c11bd5`; rejected experiments and cumulative checkpoints are recorded in
+  the intervening plan commits.  The final evidence and every retained commit
+  are pushed on `v3opt`.
 
 Append one entry for every retained consolidation, rejected abstraction,
 re-baseline, cumulative gate, and push checkpoint.
