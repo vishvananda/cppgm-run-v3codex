@@ -1,6 +1,6 @@
 # Plan: Deduplicate the Compiler Core Outside `lowir_opt`
 
-Status: complete
+Status: execution in progress
 
 Date: 2026-08-28
 
@@ -1367,3 +1367,31 @@ not reuse measurements from a different source tree.
   satisfy the completion criteria.  The C13 coverage, implementation, and
   ledger commits are pushed together to `origin/v3opt`, keeping the checkpoint
   at three retained commits since the preceding push.
+- **C12 CLOSURE AUDIT REOPENED.** A requirement-by-requirement review did not
+  accept the preceding closure assertion as evidence.  The final report-only
+  six-line/100-character scan had not been recorded or classified.  A fresh
+  scan reports 135 duplicate windows; together with the 31 existing division
+  advisories this is 166 tight-scan warnings.  Two windows violate ownership
+  already promised by this plan: compile and link modes still duplicate the
+  native result-stat suffix after the shared codegen prefix, and loop-census
+  construction still spells out C8's unconditional MIR control-flow set.
+  Closure is reopened until both missed migrations, the complete tight-match
+  classification, and the final gates are recorded.
+- **C12-F1 COVERAGE AUDIT (NATIVE RESULT-STATS SUFFIX).** Compile-only object
+  stats and link stats already exercise both driver records, while PA30 and
+  PA31 cover their object/link behavior.  Before the ownership move, a focused
+  explicit-O1 source compile froze object and executable SHA-256 values and
+  the ordered diagnostic record/key schemas.  The helper may own only the
+  four narrow-result counters, code-shape and edge-staging reporters, shared
+  storage lifetime, and reclaim counters; planned-register prefixes, EH,
+  output, serialization, link, timing, newlines, and function census stay in
+  their mode owners.  This is diagnostic-preserving implementation coverage,
+  so no source-specific fixture or README change is justified.
+- **C12-F2 COVERAGE AUDIT (LOOP-CENSUS TERMINATOR CLASSIFICATION).** C8's
+  neutral MIR helper already owns the exact JMP, indirect-JMP, RET, FRET,
+  RESUME, THROW, and EXIT set used by ordinary emission and host-EH analysis.
+  PA38 function/loop census controls exercise the missed loop-census caller;
+  PA29 ordinary termination and PA31 host-EH termination exercise the shared
+  predicate's other users.  Replacing the local copy with that existing
+  predicate changes no student-visible MIR or diagnostic structure, so the
+  existing structural and behavioral controls are sufficient.
