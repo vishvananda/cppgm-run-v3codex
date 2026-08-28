@@ -27,6 +27,7 @@
 #include "lowering/expressions/member_address.h"
 #include "lowering/objects/static_initialization.h"
 #include "lowering/objects/storage_slots.h"
+#include "lowering/objects/storage_access.h"
 #include "lowering/expressions/bit_fields.h"
 #include "lowering/expressions/logical.h"
 #include "lowering/calls/value_boundary.h"
@@ -77,6 +78,7 @@ class ProgramLowerer :
 	private lowering::LifetimeActionLowering<ProgramLowerer>,
 	private lowering::MemberAddressLowering<ProgramLowerer>,
 	private lowering::SlotPlanning<ProgramLowerer>,
+	private lowering::StorageAccessLowering<ProgramLowerer>,
 	private lowering::TemporaryLifetimeLowering<ProgramLowerer>,
 	private lowering::ConstantLowering<ProgramLowerer>,
 	private lowering::LocalStaticLowering<ProgramLowerer>,
@@ -256,6 +258,7 @@ private:
 	friend class lowering::LifetimeActionLowering<ProgramLowerer>;
 	friend class lowering::MemberAddressLowering<ProgramLowerer>;
 	friend class lowering::SlotPlanning<ProgramLowerer>;
+	friend class lowering::StorageAccessLowering<ProgramLowerer>;
 	friend class lowering::TemporaryLifetimeLowering<ProgramLowerer>;
 	friend class lowering::ConstantLowering<ProgramLowerer>;
 	friend class lowering::LocalStaticLowering<ProgramLowerer>;
@@ -1033,233 +1036,6 @@ private:
 		if (stats_) ++stats_->instructions;
 	}
 
-	Operand StorageFor(BindingId binding, const LowType& type,
-		NameId expression_name = 0)
-	{
-		if (stats_) ++stats_->binding_index_probes;
-		if (binding < binding_indirect_parameters_.size() &&
-			binding_indirect_parameters_[binding] != kNoLowId)
-			return Operand(binding_indirect_parameters_[binding], LowPtr());
-		if (binding < binding_slots_.size() && binding_slots_[binding] != kNoLowId)
-			return Operand(binding_slots_[binding], type);
-		if (binding < program_.bindings.size())
-		{
-			RegisterAddressableStaticDataMember(binding, expression_name);
-			binding = program_.bindings[binding].canonical;
-		}
-		if (binding < global_symbols_.size() && global_symbols_[binding] != kNoLowId)
-		{
-			const SymbolId global = global_symbols_[binding];
-			output_.symbols[global].referenced = true;
-			if (output_.host_object_emission &&
-				output_.symbols[global].thread_local_storage &&
-				global != lowering_thread_local_initializer_object_)
-			{
-				if (global >= tls_access_wrapper_symbols_.size() ||
-					tls_access_wrapper_symbols_[global] == kNoLowId)
-					throw std::logic_error(
-						"thread-local storage has no access wrapper");
-				const SymbolId wrapper = tls_access_wrapper_symbols_[global];
-				Instruction call = DirectCallInstruction(wrapper, LowPtr());
-				const Operand address = Temp(LowPtr());
-				call.dest = address.id;
-				Emit(call);
-				return address;
-			}
-			return Operand(Operand::GLOBAL, global, type);
-		}
-		throw std::runtime_error("PA15 binding has no lowered storage: " +
-			MissingStorageBindingDetail(program_, binding));
-	}
-
-	bool BindingIsReference(BindingId binding) const
-	{
-		return binding < program_.bindings.size() &&
-			IsReferenceType(program_.bindings[binding].type);
-	}
-
-	bool TypeIsVolatile(TypeId type) const
-	{
-		return type != kNoType &&
-			(program_.types.Get(type).cv & CV_VOLATILE) != 0;
-	}
-	Operand LoadStorage(const Operand& storage, const LowType& type,
-		bool volatile_access = false)
-	{
-		const Operand result = Temp(type);
-		Instruction load(Instruction::LOAD);
-		load.dest = result.id;
-		load.type = type;
-		load.first = storage;
-		load.volatile_access = volatile_access;
-		Emit(load);
-		return result;
-	}
-	Operand AddressOfStorage(const Operand& storage)
-	{
-		if (storage.kind == Operand::INTEGER && storage.type.kind == LOW_PTR) return storage;
-		if (storage.kind == Operand::TEMP ||
-			(storage.kind == Operand::PARAMETER && storage.type.kind == LOW_PTR))
-		{
-			if (storage.type.kind != LOW_PTR)
-				throw std::logic_error("PA15 indirect storage is not a pointer");
-			return storage;
-		}
-		if (storage.kind == Operand::GLOBAL || storage.kind == Operand::FUNCTION)
-			output_.symbols[storage.id].referenced = true;
-		const Operand result = Temp(LowPtr());
-		Instruction address(Instruction::ADDR);
-		address.dest = result.id;
-		address.first = storage;
-		Emit(address);
-		return result;
-	}
-	Operand DecayAddress(const Operand& address)
-	{
-		return address;
-	}
-
-	Operand IndexAddress(const LowType& element, const Operand& base,
-		const Operand& offset, bool array_projection)
-	{
-		const Operand result = Temp(LowPtr());
-		Instruction index(Instruction::INDEX);
-		index.dest = result.id;
-		index.type = element;
-		index.first = base;
-		index.second = offset;
-		index.projection = array_projection ? INDEX_PROJECTION_ARRAY_ELEMENT :
-			INDEX_PROJECTION_NONE;
-		Emit(index);
-		return result;
-	}
-	Operand LoadBlockInvoke(const Operand& block)
-	{
-		return LoadStorage(IndexAddress(LowI8(), block,
-			Operand(16, LowI64()), false), LowPtr());
-	}
-
-	Operand LowerArrayPointer(std::uint32_t node)
-	{
-		const DumpNode& record = arena_.nodes[node];
-		if (IsArrayType(record.type))
-		{
-			if (record.kind == DUMP_LITERAL)
-				return AddressOfStorage(LowerStorage(node));
-			return record.kind == DUMP_CONDITIONAL_EXPRESSION || record.kind ==
-				DUMP_SUBSCRIPT_EXPRESSION || record.kind == DUMP_CALL_EXPRESSION ?
-				LowerStorage(node) : AddressOfStorage(LowerStorage(node));
-		}
-		return LowerValue(node, LowPtr());
-	}
-
-	Operand LowerStorage(std::uint32_t node)
-	{
-		const DumpNode& record = arena_.nodes[node];
-		const NodeChildren children = Children(node);
-		Operand complex_storage;
-		if (TryLowerComplexStorage(node, record, children, &complex_storage))
-			return complex_storage;
-		if (record.kind == DUMP_TYPEID_EXPRESSION)
-			return LowerTypeid(record, children);
-		if (record.kind == DUMP_DYNAMIC_CAST_EXPRESSION)
-			return LowerDynamicCast(node, record, children);
-		if (record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION)
-			return LowerSpecialMemberConstruction(node);
-		if (record.kind == DUMP_SPECIAL_MEMBER_ASSIGNMENT_ACTION)
-			return LowerSpecialMemberAssignment(node);
-		if (record.kind == DUMP_STATEMENT_EXPRESSION)
-			return LowerStatementExpressionStorage(node, record);
-		if (record.kind == DUMP_ID_EXPRESSION && record.binding != kNoBinding)
-		{
-			if (record.binding < function_symbols_.size() &&
-				function_symbols_[record.binding] != kNoLowId)
-				return Operand(Operand::FUNCTION,
-					function_symbols_[record.binding], LowPtr());
-			if (record.binding < binding_indirect_parameters_.size() &&
-				binding_indirect_parameters_[record.binding] != kNoLowId)
-				return Operand(
-					binding_indirect_parameters_[record.binding], LowPtr());
-			const Operand storage = StorageFor(record.binding,
-				LowerStorageType(program_.bindings[record.binding].type),
-				record.text);
-			return BindingIsReference(record.binding) ?
-				LoadStorage(storage, LowPtr()) : storage;
-		}
-		if (record.kind == DUMP_LITERAL && IsArrayType(record.type))
-			return Operand(Operand::GLOBAL,
-				static_initializers_.EnsureStringLiteral(node), LowPtr());
-		if (record.kind == DUMP_TEMPORARY_OBJECT)
-		{
-			AggregatePath path;
-			return LowerTemporaryObjectStorage(node, children, &path);
-		}
-		if (record.kind == DUMP_UNARY_EXPRESSION && children.size() == 1 &&
-			record.OperationIs(OP_STAR))
-			return LowerValue(children[0], LowPtr());
-		if (record.kind == DUMP_UNARY_EXPRESSION && children.size() == 1 &&
-			(record.OperationIs(OP_INC) || record.OperationIs(OP_DEC)))
-			return LowerIncrement(record, children[0], true);
-		if (record.kind == DUMP_SUBSCRIPT_EXPRESSION && children.size() == 2)
-		{
-			const Operand base = LowerArrayPointer(children[0]);
-			Operand offset = LowerValue(children[1]);
-			if (IsClassObjectType(record.type) || IsArrayType(record.type))
-			{
-				const std::size_t element_size = program_.SizeOf(record.type);
-				if (element_size != 1)
-				{
-					const Operand scaled = Temp(LowI64());
-					Instruction multiply(Instruction::BINARY);
-					multiply.dest = scaled.id;
-					multiply.op = LOW_OP_MUL;
-					multiply.type = LowI64();
-					multiply.first = offset;
-					multiply.second = Operand(
-						static_cast<std::int64_t>(element_size), LowI64());
-					Emit(multiply);
-					offset = scaled;
-				}
-				return IndexAddress(LowI8(), base, offset, true);
-			}
-			return IndexAddress(LowerExpressionType(record.type), base, offset, true);
-		}
-		if (record.kind == DUMP_MEMBER_EXPRESSION)
-			return MemberAddress(record, children);
-		if (record.kind == DUMP_BINARY_EXPRESSION && children.size() == 2 &&
-			record.OperationIs(OP_COMMA))
-		{
-			LowerDiscardedValue(children[0]);
-			return LowerStorage(children[1]);
-		}
-		if (IsMemberPointerApplication(record))
-			return LowerMemberPointerStorage(record, children);
-		if (record.kind == DUMP_CONDITIONAL_EXPRESSION &&
-			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE))
-			return LowerConditionalAddress(node, children);
-		if (record.kind == DUMP_ASSIGNMENT_EXPRESSION)
-			return LowerAssignmentCore(record, children, true);
-		if (record.kind == DUMP_CALL_EXPRESSION && (IsReferenceType(record.type) || UsesIndirectClassResult(record.type, record.binding)))
-			return LowerCall(node, record, children);
-		if (record.kind == DUMP_CALL_EXPRESSION && IsClassObjectType(record.type)) return MaterializeDirectClassCallStorage(node, record, children);
-		if (record.kind == DUMP_CAST_EXPRESSION && children.size() == 1 &&
-			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE ||
-			 arena_.nodes[children[0]].kind == DUMP_TEMPORARY_OBJECT))
-		{
-			if (record.base_projection_count != 0)
-				return LowerProjectedClassPointer(children[0],
-					record.base_projection_count, record.base_projection_offset,
-					record.has_base_projection_offset,
-					BaseEntityForType(record.type),
-					record.inverse_base_projection);
-			const Operand source = AddressOfStorage(LowerStorage(children[0]));
-			return ProjectBaseSubobjects(source, 0,
-				arena_.nodes[children[0]].type);
-		}
-		throw std::runtime_error("expression kind " +
-			std::to_string(static_cast<unsigned>(record.kind)) +
-			" does not designate scalar storage");
-	}
 	Operand Convert(Operand value, const LowType& target,
 		bool canonicalize_immediate = true)
 	{
@@ -2410,10 +2186,6 @@ private:
 	std::vector<ExceptionControlTarget> continue_targets_;
 	std::vector<StatementTask> statement_tasks_;
 	FlatIdMap label_blocks_;
-	void ResetInitializedBitFieldUnit() {
-		initialized_bit_field_unit_valid_ = false;
-		initialized_bit_field_owner_ = kNoEntity;
-		initialized_bit_field_offset_ = 0; }
 	EntityId initialized_bit_field_owner_;
 	std::uint64_t initialized_bit_field_offset_;
 	bool initialized_bit_field_unit_valid_;

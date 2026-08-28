@@ -101,6 +101,14 @@ protected:
 		derived.EmitBitFieldStore(type, stored,
 			ConstructorBitFieldStorage(binding));
 	}
+
+	void ResetInitializedBitFieldUnit()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		derived.initialized_bit_field_unit_valid_ = false;
+		derived.initialized_bit_field_owner_ = semantic::kNoEntity;
+		derived.initialized_bit_field_offset_ = 0;
+	}
 };
 
 }
