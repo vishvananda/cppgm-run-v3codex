@@ -2,6 +2,7 @@
 
 #include "lowir_force_inline.h"
 #include "lowir_native_eh.h"
+#include "lowir_native_mir_control_flow.h"
 #include "lowir_native_opt.h"
 #include "lowir_phi_edges.h"
 #include "lowir_native_program.h"
@@ -322,18 +323,6 @@ struct ProgramLoweringSession::Impl
       successors->push_back(target);
   }
 
-  static bool LoopCensusExit(
-      mir_model::MirInstruction::Opcode opcode)
-  {
-    return opcode == mir_model::MirInstruction::MI_JMP ||
-      opcode == mir_model::MirInstruction::MI_JMP_INDIRECT ||
-      opcode == mir_model::MirInstruction::MI_RET ||
-      opcode == mir_model::MirInstruction::MI_FRET ||
-      opcode == mir_model::MirInstruction::MI_RESUME ||
-      opcode == mir_model::MirInstruction::MI_THROW ||
-      opcode == mir_model::MirInstruction::MI_EXIT;
-  }
-
   static bool ReachesWithoutBlock(
       const std::vector<std::vector<std::size_t> > & successors,
       std::size_t target, std::size_t omitted)
@@ -395,7 +384,8 @@ struct ProgramLoweringSession::Impl
               AppendLoopSuccessor(&successors[block], target);
           }
         }
-        if(LoopCensusExit(instruction.opcode)) falls_through = false;
+        if(mir_control_flow::ends_unconditional_control_flow(
+             instruction.opcode)) falls_through = false;
       }
       if(falls_through && block + 1 < function.blocks.size())
         AppendLoopSuccessor(&successors[block], block + 1);
