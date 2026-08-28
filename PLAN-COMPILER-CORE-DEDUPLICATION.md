@@ -761,3 +761,14 @@ not reuse measurements from a different source tree.
   jumping to its reconstruction block.  It does not compare a complete LowIR
   program or production source text.  This coverage commit precedes the helper
   change.
+- **C3-A2 (GOTO CLEANUP RANGES).** `ResolveControlFlowGoto` now has one local,
+  allocation-free range appender for ordinary and temporary destructor actions;
+  the exited-scope and backward-common-scope paths retain their distinct
+  validated bounds, while lexical and unwind cleanup remain separate policy.
+  The focused PA16 property passes 1/1, PA16 passes 300/300, PA26 114/114, and
+  PA32 151/151 including the existing runtime goto-out-of-try control.  The
+  audit remains zero-fatal/34.  GCC-O3 compiler text is unchanged at 7,066,345
+  bytes.  Three interleaved frozen O0 pairs have candidate-minus-baseline wall
+  differences of +0.04, -0.03, and 0.00 seconds; all output objects are exact
+  at `b0d3d8d3...`.  The range ownership is therefore retained without size or
+  performance credit.

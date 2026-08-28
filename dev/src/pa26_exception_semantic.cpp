@@ -138,6 +138,22 @@ void SemanticAnalyzer::ResolveControlFlowGoto(
 			throw std::runtime_error("goto bypasses object initialization");
 		entered_scope = scope_parents_[entered_scope];
 	}
+	const auto append_lifetime_range = [this, &source](
+		const std::vector<LifetimeObligation>& obligations,
+		std::size_t begin, std::size_t end)
+	{
+		for (std::size_t i = begin; i != end; --i)
+		{
+			const LifetimeObligation& obligation = obligations[i - 1];
+			const std::uint32_t action = obligation.temporary == kNoDumpEdge ?
+				MakeDestructorAction(obligation.type, obligation.destructor,
+					obligation.object) :
+				MakeTemporaryDestructorAction(obligation.temporary,
+					obligation.destructor);
+			if (action != kNoDumpEdge) dump_.Add(source.node, action);
+			++lexical_cleanup_action_visits_;
+		}
+	};
 	ScopeId scope = source.scope;
 	std::size_t lifetime = 0;
 	while (scope != common_scope && scope != kNoScope)
@@ -151,17 +167,7 @@ void SemanticAnalyzer::ResolveControlFlowGoto(
 				throw std::logic_error("goto lifetime snapshot is invalid");
 			const std::vector<LifetimeObligation>& obligations =
 				scope_lifetimes_[snapshot.scope];
-			for (std::size_t i = snapshot.count; i != 0; --i)
-			{
-				const LifetimeObligation& obligation = obligations[i - 1];
-				const std::uint32_t action = obligation.temporary == kNoDumpEdge ?
-					MakeDestructorAction(obligation.type, obligation.destructor,
-						obligation.object) :
-					MakeTemporaryDestructorAction(obligation.temporary,
-						obligation.destructor);
-				if (action != kNoDumpEdge) dump_.Add(source.node, action);
-				++lexical_cleanup_action_visits_;
-			}
+			append_lifetime_range(obligations, snapshot.count, 0);
 		}
 		if (scope >= scope_parents_.size())
 			throw std::logic_error("goto source scope is invalid");
@@ -176,18 +182,8 @@ void SemanticAnalyzer::ResolveControlFlowGoto(
 			throw std::logic_error("goto common lifetime snapshot is invalid");
 		const std::vector<LifetimeObligation>& obligations =
 			scope_lifetimes_[common_scope];
-		for (std::size_t i = source_common_count;
-			i != target_common_count; --i)
-		{
-			const LifetimeObligation& obligation = obligations[i - 1];
-			const std::uint32_t action = obligation.temporary == kNoDumpEdge ?
-				MakeDestructorAction(obligation.type, obligation.destructor,
-					obligation.object) :
-				MakeTemporaryDestructorAction(obligation.temporary,
-					obligation.destructor);
-			if (action != kNoDumpEdge) dump_.Add(source.node, action);
-			++lexical_cleanup_action_visits_;
-		}
+		append_lifetime_range(obligations, source_common_count,
+			target_common_count);
 	}
 
 	if (source.exception_context >= exception_control_contexts_.size() ||
