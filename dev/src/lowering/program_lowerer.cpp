@@ -110,7 +110,7 @@ public:
 		  full_expression_linked_action_cursor_(0),
 		  runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
 		  full_expression_cleanup_state_(
-			  pa16_cleanup_continuation::kNoCleanupState),
+			  lowering::cleanup::kNoCleanupState),
 		  presentation_names_(program_, stats ? &stats->semantic : 0),
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
@@ -2716,7 +2716,7 @@ private:
 	std::size_t full_expression_linked_action_cursor_;
 	BlockId runtime_lifetime_cleanup_dispatch_, conditional_cleanup_resume_;
 	std::vector<std::uint32_t> full_expression_cleanup_actions_, full_expression_segment_actions_;
-	pa16_cleanup_continuation::Interner cleanup_continuations_;
+	lowering::cleanup::Interner cleanup_continuations_;
 	std::uint32_t full_expression_cleanup_state_;
 	std::vector<std::uint32_t> pending_cleanup_states_;
 	FlatIdMap runtime_lifetime_temporaries_;
@@ -2727,7 +2727,7 @@ private:
 	PresentationNameMap presentation_names_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	pa16_lowering_detail::StaticInitializerLowering static_initializers_;
-	pa21_constant_template_lowering::Pool constant_templates_;
+	lowering::constant_pool::Pool constant_templates_;
 };
 }
 namespace pa15_lowering_detail

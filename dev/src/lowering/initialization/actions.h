@@ -226,7 +226,7 @@ protected:
 		}
 		const LowType storage_type = derived.LowerStorageType(type);
 		if (storage_type.kind == LOW_OBJECT &&
-			pa16_zero_initialization::ContiguousSpanEligible(
+			lowering::zero_initialization::ContiguousSpanEligible(
 				derived.program_, type))
 		{
 			Instruction zero(Instruction::ZERO_OBJECT);

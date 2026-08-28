@@ -4,7 +4,9 @@
 
 namespace cppgm
 {
-namespace pa16_cleanup_continuation
+namespace lowering
+{
+namespace cleanup
 {
 
 ActionKey::ActionKey()
@@ -255,5 +257,6 @@ void Interner::RehashActions(std::size_t capacity)
 	occupied_action_slots_.swap(replacement_occupied);
 }
 
-}  // namespace pa16_cleanup_continuation
+}  // namespace cleanup
+}  // namespace lowering
 }  // namespace cppgm

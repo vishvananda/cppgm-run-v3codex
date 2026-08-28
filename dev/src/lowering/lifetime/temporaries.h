@@ -59,7 +59,7 @@ protected:
 		derived.cleanup_continuations_.Clear();
 		derived.pending_cleanup_states_.clear();
 		derived.full_expression_cleanup_state_ =
-			pa16_cleanup_continuation::kNoCleanupState;
+			lowering::cleanup::kNoCleanupState;
 		derived.temporary_lifetime_slots_.Clear();
 		derived.runtime_lifetime_temporaries_.Clear();
 		derived.full_expression_branch_cleanup_heads_.Clear();
@@ -72,7 +72,7 @@ protected:
 	}
 
 	std::uint32_t InternContinuation(
-		const pa16_cleanup_continuation::Key& key, const char* label,
+		const lowering::cleanup::Key& key, const char* label,
 		bool* inserted)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -98,7 +98,7 @@ protected:
 	BlockId ContinuationBlock(std::uint32_t state) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
-		const pa16_cleanup_continuation::State& record =
+		const lowering::cleanup::State& record =
 			derived.cleanup_continuations_.Get(state);
 		if (!record.block_bound)
 			throw std::logic_error("cleanup continuation has no block");
@@ -110,8 +110,8 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (node >= derived.arena_.nodes.size())
 			throw std::logic_error("invalid cleanup action node");
-		const pa16_cleanup_continuation::ActionKey key =
-			pa16_cleanup_continuation::MakeActionKey(derived.arena_.nodes[node]);
+		const lowering::cleanup::ActionKey key =
+			lowering::cleanup::MakeActionKey(derived.arena_.nodes[node]);
 		bool inserted = false;
 		return derived.cleanup_continuations_.InternAction(key, node, &inserted);
 	}
@@ -119,7 +119,7 @@ protected:
 	bool BuildFullExpressionCleanupDispatch(std::uint32_t context)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		using namespace pa16_cleanup_continuation;
+		using namespace lowering::cleanup;
 		derived.pending_cleanup_states_.clear();
 		bool inserted = false;
 		std::uint32_t tail = InternContinuation(Key(kNoCleanupState,
@@ -141,7 +141,7 @@ protected:
 	void MaterializePendingCleanupStates()
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		using namespace pa16_cleanup_continuation;
+		using namespace lowering::cleanup;
 		const BlockId original = derived.current_block_;
 		for (std::size_t i = 0; i < derived.pending_cleanup_states_.size(); ++i)
 		{
@@ -181,7 +181,7 @@ protected:
 	BlockId InternCleanupAction(std::uint32_t action, BlockId tail)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		using namespace pa16_cleanup_continuation;
+		using namespace lowering::cleanup;
 		const BlockId original = derived.current_block_;
 		const BlockId previous_dispatch =
 			derived.full_expression_cleanup_dispatch_;

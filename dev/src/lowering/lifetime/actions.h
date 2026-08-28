@@ -65,7 +65,7 @@ protected:
 		const NodeChildren& children, std::uint32_t syntax_context)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		using namespace pa16_cleanup_continuation;
+		using namespace lowering::cleanup;
 		const bool has_value = !children.empty() &&
 			derived.arena_.nodes[children[0]].kind != DUMP_DESTRUCTOR_ACTION;
 		const std::size_t first = ReturnLexicalCleanupStart(children, has_value);
@@ -168,7 +168,7 @@ protected:
 	}
 
 	std::uint32_t InternLexicalCleanupState(
-		const pa16_cleanup_continuation::Key& key, const char* label,
+		const lowering::cleanup::Key& key, const char* label,
 		std::vector<std::uint32_t>* pending, bool* inserted)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -194,7 +194,7 @@ protected:
 	BlockId LexicalCleanupBlock(std::uint32_t state) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
-		const pa16_cleanup_continuation::State& record =
+		const lowering::cleanup::State& record =
 			derived.cleanup_continuations_.Get(state);
 		if (!record.block_bound)
 			throw std::logic_error("lexical cleanup continuation has no block");
@@ -206,7 +206,7 @@ protected:
 		std::vector<std::uint32_t>* pending)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		using namespace pa16_cleanup_continuation;
+		using namespace lowering::cleanup;
 		const std::uint32_t context = derived.ExceptionCleanupContext();
 		const std::uint32_t terminal = returns_value ?
 			static_cast<std::uint32_t>(shared_return_slot_) + 1 : 0;
@@ -236,7 +236,7 @@ protected:
 		std::size_t exception_regions, bool returns_value)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		using namespace pa16_cleanup_continuation;
+		using namespace lowering::cleanup;
 		const BlockId original = derived.current_block_;
 		for (std::size_t i = 0; i < pending.size(); ++i)
 		{

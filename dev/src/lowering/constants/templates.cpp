@@ -6,7 +6,9 @@
 
 namespace cppgm
 {
-namespace pa21_constant_template_lowering
+namespace lowering
+{
+namespace constant_pool
 {
 namespace
 {
@@ -181,5 +183,6 @@ SymbolId Pool::Intern(Global candidate)
 	return symbol;
 }
 
-}
-}
+}  // namespace constant_pool
+}  // namespace lowering
+}  // namespace cppgm

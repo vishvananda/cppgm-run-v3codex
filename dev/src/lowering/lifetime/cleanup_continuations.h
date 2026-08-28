@@ -10,7 +10,9 @@
 
 namespace cppgm
 {
-namespace pa16_cleanup_continuation
+namespace lowering
+{
+namespace cleanup
 {
 
 const std::uint32_t kNoCleanupState = UINT32_MAX;
@@ -119,7 +121,8 @@ private:
 	std::vector<Action> actions_;
 };
 
-}  // namespace pa16_cleanup_continuation
+}  // namespace cleanup
+}  // namespace lowering
 }  // namespace cppgm
 
 #endif

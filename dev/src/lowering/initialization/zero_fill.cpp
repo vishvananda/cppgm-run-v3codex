@@ -2,7 +2,9 @@
 
 namespace cppgm
 {
-namespace pa16_zero_initialization
+namespace lowering
+{
+namespace zero_initialization
 {
 
 using namespace semantic;
@@ -25,5 +27,6 @@ bool ContiguousSpanEligible(const Program& program, TypeId type)
 		!entity.has_volatile_subobject && !entity.has_union_subobject;
 }
 
-}
-}
+}  // namespace zero_initialization
+}  // namespace lowering
+}  // namespace cppgm

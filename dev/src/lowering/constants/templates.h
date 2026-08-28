@@ -9,7 +9,9 @@
 
 namespace cppgm
 {
-namespace pa21_constant_template_lowering
+namespace lowering
+{
+namespace constant_pool
 {
 
 class Pool
@@ -43,5 +45,6 @@ private:
 	std::vector<std::uint32_t> slots_;
 };
 
-}
-}
+}  // namespace constant_pool
+}  // namespace lowering
+}  // namespace cppgm
