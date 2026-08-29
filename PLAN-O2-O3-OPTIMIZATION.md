@@ -753,6 +753,26 @@ and `ef6ecdebb5a2ca83242b4f54763b70a15622d16fb2757c73ef6a9973809d5456`.
 Those correctness results do not override the measured throughput regression,
 so the implementation, student-facing text, and test were removed together.
 
+An O2/O3-only Boolean-phi dose then threaded constant acyclic choices and
+narrow loop-local choices while leaving the existing O1 `i64` loop rule
+byte-exact.  It removed the materialized Boolean and reload from hot string
+and token move paths, reduced the O3-produced compiler by 5,036 text bytes,
+and improved the exact macro-processor screen by about 0.3%.  The complete
+32-way screen did not generalize: candidate wall improved from 32.40 to 32.08
+seconds, but aggregate CPU regressed from 906.59 to 913.11 seconds (0.72%).
+Both final outputs hashed
+`91b5b94ba7379e7176aba9e8e038d9618c0c6ded3e244c2524d1b6b6b18b3495`.
+The dose was restored before adding a student-facing contract.
+
+The documented `hint-late-cap=96` inlining dose was also rechecked against the
+current O3 producer rather than carrying forward the older O1 result.  It cut
+the remaining `Peek` call sites from 100 to 44, but expanded `.text` from
+8,625,444 to 9,453,438 bytes.  An exact 32-way ABBA macro-processor screen
+regressed from 1.220/1.175 seconds median wall/user to 1.280/1.240 seconds,
+or 5.35% wall and 5.53% user.  This rejects indiscriminate late inlining even
+under the newer O3-native pipeline; the next inlining attempt must address the
+merged region's location pressure rather than merely raising the size cap.
+
 The post-inline call-graph rebuild cross was also tested and rejected.  It
 changed no workload object except `pipeline.o` itself, whose extra analysis
 call added 56 text bytes.  Specialization rescans current calls and uses the
@@ -773,6 +793,8 @@ Fill one row for every retained or rejected dose.
 | B3.1 | prevent trace layout from displacing conditional fallthrough | PA38 README plus positive/negative structural control | O2 text -73,012 bytes; O3-workload result -73,316 text bytes | O1-workload CPU -0.92%; O3-workload CPU -1.59%; normalized floor still open | 5,471/5,471; debug 11/11; zero-fatal audit | retained in this checkpoint |
 | C.peek0 | specialize the dominant repeated `Peek(0)` call family | provisional property removed | 57 calls redirected; combined `Peek` profile 8.56% to 8.37% | one exact pair -0.28% wall/-0.08% CPU, below useful signal | candidate restored | rejected |
 | C.copy61 | replace weak small-object `rep movsb` with direct chunks | provisional PA38 README/property removed | hot move share about 3.6% to 3.0% | six-pair median +3.05% wall/+0.38% CPU | 5,471/5,471; debug clean; O2/O3 inception exact | rejected and restored |
+| C.boolphi | thread O2/O3 narrow and acyclic constant Boolean phis | none; rejected at screen | O3 producer -5,036 text bytes; O1 workload byte-exact | hot TU about -0.3%; full CPU +0.72% | focused shape and exact-output checks | rejected and restored |
+| D.hint96 | recheck broad hinted late inlining under O3 native optimization | none; rejected at screen | `Peek` calls 100 to 44; O3 producer +827,994 text bytes | hot TU +5.35% wall/+5.53% user | exact-output ABBA screen | rejected; no source change |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
