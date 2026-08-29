@@ -1150,6 +1150,27 @@ The candidate is therefore rejected and fully removed again: the local MIR
 win remains real, but 16-byte entry alignment is not a sufficiently strong
 layout oracle to make it a throughput win.
 
+### D.hint-clone loop forwarding re-evaluation rejected
+
+The retained grouped-specialization pass creates its O3 clones after the main
+loop pipeline. The dominant `Peek(0)` clone consequently did not receive the
+loop-carried store/load forwarding already applied to its inline-hinted
+generic source. A narrow prototype let that O3 clone inherit the source
+function's optimization hint and ordered final predecessor-edge cleanup before
+loop forwarding. In the hot clone this replaced the queue-size reload on the
+second loop test with the value just stored on the backedge. The number of
+preserved registers remained three; the complete producer grew by only 32 text
+bytes.
+
+The extra carried live range cost more than the eliminated load. In a twelve-
+lane position-balanced hot-TU screen, deterministic baseline and candidate
+objects hashed `a8dda7edde98adfb744adec02a56c0abd8b4137b47643efe77af670921d3f4cd`
+and `164d315acfe7e6e87e3c42095891adaeae3c3eb0bdcdc34daea4d84c0e827ef8`.
+Mean wall time moved from 1.210 to 1.237 seconds (+2.2%), and user time from
+1.157 to 1.183 seconds (+2.3%). The implementation and pass-order change were
+removed before contract or test movement. This is another direct example of
+an instruction-count improvement losing to register-lifetime and layout cost.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1178,6 +1199,7 @@ Fill one row for every retained or rejected dose.
 | D.copy-pair | fuse staged adjacent 64-bit predecessor loads/successor stores into one vector copy | none; rejected before contract movement | clone -3 MIR/-8 bytes; generic -8 bytes; tokenizer -22 text bytes; producer +8,744 text bytes | twelve-lane hot TU +4.1% wall/user, every candidate lane slower | exact hot outputs; candidate removed | rejected; exposed entry-address sensitivity |
 | D.align64 | align large final O3 MIR functions and preserve the request through object text partitioning | PA38 README plus dynamic MIR-count, level-isolation, behavior, driver-replay, and ELF-symbol property | 3,772/4,043 >=256-byte functions aligned; O3 producer +25,248 text bytes (+0.29%) | O1 workload -2.31% wall/-0.86% CPU; GCC CPU +0.09%; normalized CPU -0.95%; O3 workload -0.30% wall/-1.05% CPU; GCC CPU +0.06%; normalized CPU -1.11% | PA38 45/45; 5,471/5,471; PA37/38 debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.copy-pair-align | re-evaluate staged scalar-copy fusion on the aligned baseline with a stronger alias guard | none; rejected at screen | generic and clone each -3 MIR; producer +8,940 text bytes; hot entries remain aligned | twelve-lane hot wall +1.1%, user +1.6% | deterministic output; candidate removed | rejected; 16-byte alignment reduces but does not eliminate layout sensitivity |
+| D.hint-clone | apply existing loop-carried store/load forwarding to late O3 grouped clones | none; rejected at screen | specialized `Peek(0)` backedge reload removed; preserved-register count unchanged; producer +32 text bytes | twelve-lane hot wall +2.2%, user +2.3% | deterministic baseline/candidate objects; candidate removed | rejected; carried live range costs more than the reload |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
