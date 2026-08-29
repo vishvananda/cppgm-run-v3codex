@@ -94,6 +94,51 @@ BindingId LocalTypeContext(const Program& program, ScopeId owner,
 	}
 	return kNoBinding;
 }
+void Analyzer::BuildClassDeclarationNamePath(NodeId node,
+	const std::string& hint, const std::string& specialization_name,
+	std::string* spelling, NamePath* path, bool* generated_identity)
+{
+	*generated_identity = false;
+	*spelling = specialization_name.empty() ?
+		arena_->Payload(node) : specialization_name;
+	if (spelling->empty() && !hint.empty())
+	{
+		++local_type_count_;
+		*spelling = "__local_type" + std::to_string(local_type_count_);
+		*generated_identity = true;
+		if (stats_)
+			RecordGeneratedIdentityRender(SEMANTIC_GENERATED_LOCAL_TYPE,
+				*spelling, 1);
+	}
+	if (spelling->empty())
+	{
+		std::ostringstream generated;
+		generated << "__anonymous_union_type__" << arena_->TokenFirst(node)
+			<< '_' << arena_->TokenLast(node);
+		*spelling = generated.str();
+		*generated_identity = true;
+		if (stats_)
+			RecordGeneratedIdentityRender(
+				SEMANTIC_GENERATED_ANONYMOUS_UNION_TYPE, *spelling, 2);
+	}
+
+	if (specialization_name.empty())
+	{
+		const NodeId structure = FindChild(
+			node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
+		if (structure != kNoNode)
+		{
+			*path = StructuredNamePath(structure);
+			return;
+		}
+		if (!arena_->Payload(node).empty())
+		{
+			path->Push(program_->names.UseInterned(arena_->PayloadId(node)));
+			return;
+		}
+	}
+	path->Push(program_->names.Intern(*spelling));
+}
 TypeId Analyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const std::string& hint, bool elaborated,
 	const std::string& specialization_name, ScopeId specialization_owner,

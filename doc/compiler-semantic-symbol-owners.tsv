@@ -35,6 +35,8 @@ dev/src/semantic/analysis/analyzer.cpp	IsPointer	1	dev/src/semantic/analysis/ana
 dev/src/semantic/analysis/analyzer.cpp	IsVoid	1	dev/src/semantic/analysis/analyzer.cpp	keep
 dev/src/semantic/analysis/analyzer.cpp	MakeDump	1	dev/src/semantic/analysis/analyzer.cpp	keep
 dev/src/semantic/analysis/analyzer.cpp	PayloadSource	1	dev/src/semantic/analysis/analyzer.cpp	keep
+dev/src/semantic/analysis/vocabulary.cpp	OperationKindForName	1	dev/src/semantic/analysis/vocabulary.cpp	keep
+dev/src/semantic/analysis/vocabulary.cpp	PayloadTokenKind	1	dev/src/semantic/analysis/vocabulary.cpp	keep
 dev/src/semantic/analysis/analyzer.cpp	QualificationConversion	1	dev/src/semantic/analysis/analyzer.cpp	keep
 dev/src/semantic/analysis/analyzer.cpp	Render	1	dev/src/semantic/analysis/analyzer.cpp	keep
 dev/src/semantic/analysis/analyzer.cpp	RenderNode	1	dev/src/semantic/analysis/analyzer.cpp	keep
@@ -214,13 +216,13 @@ dev/src/semantic/declarations/declarator_types.cpp	BuildIdentityOnlyTypeId	1	dev
 dev/src/semantic/declarations/declarator_types.cpp	EntityOf	1	dev/src/semantic/declarations/declarator_types.cpp	keep
 dev/src/semantic/declarations/declarator_types.cpp	HasDeclSpecifier	1	dev/src/semantic/declarations/declarator_types.cpp	keep
 dev/src/semantic/declarations/declarator_types.cpp	IsCallableDeclaration	1	dev/src/semantic/declarations/declarator_types.cpp	keep
+dev/src/semantic/declarations/analysis.cpp	BuildClassDeclarationNamePath	1	dev/src/semantic/declarations/analysis.cpp	keep
 dev/src/semantic/declarations/enums.cpp	AnalyzeEnum	1	dev/src/semantic/declarations/enums.cpp	keep
+dev/src/semantic/declarations/enums.cpp	BuildEnumDeclarationNamePath	1	dev/src/semantic/declarations/enums.cpp	keep
 dev/src/semantic/declarations/friends.cpp	AnalyzeFriendClass	1	dev/src/semantic/declarations/friends.cpp	keep
 dev/src/semantic/declarations/friends.cpp	AnalyzeFriendFunction	1	dev/src/semantic/declarations/friends.cpp	keep
 dev/src/semantic/declarations/functions.cpp	AnalyzeSimpleFunctionDeclaration	1	dev/src/semantic/declarations/functions.cpp	keep
 dev/src/semantic/declarations/functions.cpp	QueueFunctionDefinitionValidation	1	dev/src/semantic/declarations/functions.cpp	keep
-dev/src/semantic/declarations/names.cpp	BuildClassDeclarationNamePath	1	dev/src/semantic/declarations/names.cpp	keep
-dev/src/semantic/declarations/names.cpp	BuildEnumDeclarationNamePath	1	dev/src/semantic/declarations/names.cpp	keep
 dev/src/semantic/expressions/calls.cpp	AnalyzeAtomicOrderArgument	1	dev/src/semantic/expressions/calls.cpp	keep
 dev/src/semantic/expressions/calls.cpp	AnalyzeBuiltinCall	1	dev/src/semantic/expressions/calls.cpp	keep
 dev/src/semantic/expressions/calls.cpp	AnalyzeBuiltinInvoke	1	dev/src/semantic/expressions/calls.cpp	keep
@@ -635,8 +637,6 @@ dev/src/semantic/object_model/zero_offset_layout.cpp	ZeroOffsetClassEntity	1	dev
 dev/src/semantic/presentation/type_projection.cpp	ApplySourceTypeOverrides	1	dev/src/semantic/presentation/type_projection.cpp	keep
 dev/src/semantic/presentation/type_projection.cpp	ProjectSourceClassTemplate	1	dev/src/semantic/presentation/type_projection.cpp	keep
 dev/src/semantic/presentation/type_projection.cpp	RecordSourceTypeOverride	1	dev/src/semantic/presentation/type_projection.cpp	keep
-dev/src/semantic/presentation/vocabulary.cpp	OperationKindForName	1	dev/src/semantic/presentation/vocabulary.cpp	keep
-dev/src/semantic/presentation/vocabulary.cpp	PayloadTokenKind	1	dev/src/semantic/presentation/vocabulary.cpp	keep
 dev/src/semantic/presentation/render.cpp	DumpFunctionText	1	dev/src/semantic/presentation/render.cpp	keep
 dev/src/semantic/presentation/render.cpp	RenderLine	1	dev/src/semantic/presentation/render.cpp	keep
 dev/src/semantic/templates/aliases_and_lambdas.cpp	AnalyzeExplicitFunctionInstantiation	1	dev/src/semantic/templates/aliases_and_lambdas.cpp	keep

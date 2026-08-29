@@ -10,6 +10,32 @@ namespace cppgm { namespace semantic {
 BindingId LocalTypeContext(const Program& program, ScopeId owner,
 	BindingId current_function);
 
+void Analyzer::BuildEnumDeclarationNamePath(NodeId node,
+	const std::string& hint, std::string* spelling, NamePath* path,
+	bool* generated_identity)
+{
+	*generated_identity = false;
+	*spelling = arena_->Payload(node);
+	if (spelling->empty()) *spelling = hint;
+	if (spelling->empty())
+	{
+		++anonymous_enum_count_;
+		*spelling = "__anonymous_enum" +
+			std::to_string(anonymous_enum_count_);
+		*generated_identity = true;
+		if (stats_)
+			RecordGeneratedIdentityRender(SEMANTIC_GENERATED_ANONYMOUS_ENUM,
+				*spelling, 1);
+	}
+	if (!arena_->Payload(node).empty() &&
+		spelling->find("::") == std::string::npos)
+		path->Push(program_->names.UseInterned(arena_->PayloadId(node)));
+	else if (spelling->find("::") == std::string::npos)
+		path->Push(program_->names.Intern(*spelling));
+	else *path = ParseNamePath(
+		*spelling, NAME_PATH_PARSE_DECLARATION_ENUM);
+}
+
 TypeId Analyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint, bool elaborated)
 {
 	std::string spelling;
