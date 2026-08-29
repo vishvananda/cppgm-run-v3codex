@@ -923,6 +923,35 @@ passed, and the PA39 file audit had zero fatal findings.  Fresh 32-way O3
 inception matched every object; self and inception both hash
 `76e2cc0c198eb0f3d7521ad27c9f569ada72124dd5122f8d55b688173a8bba0e`.
 
+### D.loop-shared late shared-loop inlining rejected
+
+The GCC O1-to-O3 Cachegrind delta made the tokenizer's range search look like
+the next large opportunity: GCC removes the generic helper, while self retains
+an 82-byte `IsInRanges` body with three callee-save pairs and attributes about
+100 million hot-TU instructions to it.  The existing inliner rejects that
+22-instruction call-free body solely because it is a shared ordinary loop.
+
+A source-independent O3-only probe gave otherwise-qualified shared loops a
+separate late wave after every ordinary inline, pruning, and specialization
+wave.  The separate budget preserved the already-profitable acyclic inlines.
+On the tokenizer it removed the generic range helper and its five remaining
+calls, but duplicated the search into three callers.  Tokenizer text grew
+29,982 -> 30,676 bytes; `IsIdentifierBody` grew 185 -> 251 bytes,
+`ScanIdentifierSuffix` 443 -> 605 bytes, and `Lexer::Run` 11,418 -> 11,993
+bytes.
+
+The first six-position full O1-workload window was discarded because its
+opening baseline lane suffered an extreme scheduler tail.  Every output in
+that window was nevertheless exact.  A fresh reverse-order three-pair window
+also produced one identical final hash,
+`cdbe8f335f683f833197aa9ee09e9ad835e25a5ad9b51d76dc3c53c27cbccb76`.
+Its medians moved baseline/candidate wall from 31.48 to 32.37 seconds
+(+2.83%) and aggregate CPU from 899.40 to 909.02 seconds (+1.07%).  Removing
+the call boundary therefore does not pay for the duplicated loop state under
+the current allocator.  The implementation was removed before student-facing
+documentation or tests; this closes small shared-loop inlining unless a later
+region-allocation change materially changes the premise.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -944,6 +973,7 @@ Fill one row for every retained or rejected dose.
 | D.literal-supp | put literal-call inlining in a separate post-prune budget | none; rejected at screen | dose 288: hot Ir -0.50%; dose 768: Ir -1.26%, tokenizer text +39%, `Run` MIR 2,686 to 3,890 | dose 288 +1.54%/+1.62% wall/user; dose 768 +1.79%/+1.34% | exact output; both candidates removed | rejected; merged-region pressure despite fewer instructions |
 | D.group-census | find source-diverse constant groups that can delete control flow without broad inlining | none; diagnostic only | 217 TUs; populations in parser, semantic, lowering, serialization, and native paths | no timing claim | immutable O3 LowIR census | supports one bounded O3 prototype |
 | D.group-late | clone one profitable repeated integer-constant group after all inline waves and consume its edge equality | PA37 README plus level-isolation, structural, replay, and behavior property | hot Ir -2.019%; 69 calls redirected; clone 43 vs generic 57 LowIR instructions; O3 producer +28,416 text bytes | self -0.44% wall/-0.58% CPU; same-source GCC paired CPU +0.19%; normalized CPU -0.79%; wall normalization inconclusive | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; O3 inception exact | retained in this checkpoint |
+| D.loop-shared | revisit qualified shared loop bodies in a separate final O3 inline wave | none; rejected before contract movement | range helper and five calls removed; tokenizer +694 text bytes; three hot callers enlarged | clean repeat +2.83% wall/+1.07% CPU | exact six-lane output; candidate removed | rejected; call removal did not pay for duplicated loop state |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
