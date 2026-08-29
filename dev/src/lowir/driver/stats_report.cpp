@@ -174,6 +174,15 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.o3_unroll_instruction_visits
 		 << " o3_unroll_peak_scratch_bytes="
 		 << stats.o3_unroll_peak_scratch_bytes
+		 << " o3_loop_inline_pairs_considered="
+		 << stats.o3_loop_inline_pairs_considered
+		 << " o3_loop_inline_candidates="
+		 << stats.o3_loop_inline_candidates
+		 << " o3_loop_inline_calls=" << stats.o3_loop_inline_calls
+		 << " o3_loop_inline_cloned_instructions="
+		 << stats.o3_loop_inline_cloned_instructions
+		 << " o3_loop_inline_peak_analysis_bytes="
+		 << stats.o3_loop_inline_peak_analysis_bytes
 		 << " late_inline_direct_edges="
 		 << stats.late_inline_direct_edges
 		 << " late_inline_call_visits="
@@ -525,6 +534,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " unreachable_ns=" << stats.unreachable_nanoseconds
 		 << " loop_ns=" << stats.loop_nanoseconds
 		 << " o3_unroll_ns=" << stats.o3_unroll_nanoseconds
+		 << " o3_loop_inline_ns=" << stats.o3_loop_inline_nanoseconds
 		 << " late_inline_ns=" << stats.late_inline_nanoseconds
 		 << " post_prune_inline_ns="
 		 << stats.post_prune_inline_nanoseconds

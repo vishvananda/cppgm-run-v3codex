@@ -1397,6 +1397,85 @@ but a follow-up must attribute which calls are separated by genuine mutation,
 by conservatively classified read-only calls, or by unrelated stores.  It
 must not broaden availability based on the `Peek` name or source layout.
 
+### D.loop-priority-inline bounded loop-call inlining retained
+
+The post-query profile exposed a different interprocedural gap.  The
+self-built tokenizer spent about 685 million Cachegrind instructions in
+`TranslationCursor::Next` plus `PhysicalCursor::Next`, while same-source GCC
+spent about 445 million in its combined translation path.  GCC had expanded
+the hot physical-cursor call inside the translation loop while retaining the
+callable physical body for a second cold site.  Broad hinted inlining and the
+earlier shared-loop policy were already measured losses; this opportunity was
+instead one large, repeated body with distinguishable loop and non-loop uses.
+
+The retained O3-only rule is source-independent.  It considers an internal or
+weak, fixed-arity, nonrecursive `inline_hint` body with no EH instructions and
+an optimized size from 256 through 512 LowIR instructions.  A caller must
+have no EH region and exactly two direct calls to that body, with matching
+argument counts, exactly one call in a natural loop, and exactly one outside
+all natural loops.  Eligible pairs are ordered by decreasing body size and
+then stable function order.  At most one pair per translation unit is
+selected, and only its unique loop call is expanded.  The ordinary full
+inliner, cleanup, and post-inline slot promotion do the rewrite; the non-loop
+call and shared definition remain.  This excludes the arbitrary two-hot-site
+case and bounds growth to one clone of at most 512 instructions.
+
+Productionizing the prototype also removed avoidable analysis.  The selector
+sorts compact candidate pairs, constructs a loop forest only until it finds
+the first valid pair, records the selected caller's loop-block bitmap once,
+and makes the generic inliner visit only that caller.  Dedicated statistics
+report pairs considered, candidates selected, calls expanded, cloned
+instructions, owned scratch, and elapsed time.  On the tokenizer it considers
+and selects one pair, clones one 396-instruction placement-time body, reduces
+the two direct physical-cursor calls in the translation caller to one, and
+produces byte-identical optimized LowIR to the screened prototype.  The
+tokenizer object grows 2,800 text bytes; after the cheaper selector and final
+stats support, the complete O3 producer grows 30,320 text bytes from
+8,672,128 to 8,702,448 bytes, substantially less than the prototype's
+59,020-byte growth.
+
+The final hot object is exact at SHA-256
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`.
+Callgrind falls from 4,781,920,534 to 4,662,903,717 instructions, a 2.49%
+reduction.  On the fixed O1 full-compiler workload, three position-balanced
+pairs are exact at manifest
+`d11de18177221bf591045e1ac7ea7e02ded58501b10c869c4d164a1658c799ab`
+and final hash
+`2d4483245bd508e0f6242bf9717e2a6ede53bb2b7bbcf1b7f6fdf7cb1017583f`.
+Mean self wall falls from 30.820 to 30.080 seconds (-2.40%) and aggregate CPU
+from 873.453 to 857.043 seconds (-1.88%); paired medians improve 2.87% and
+1.93%, respectively.  The matching final-source GCC control changes only
+-0.33% wall and -0.24% CPU by means.  Mean normalization is therefore
+0.9792x wall and 0.9835x CPU, while position-by-position paired normalization
+has medians 0.9868x and 0.9843x.
+
+The requested-O3 workload was extended to twelve lanes because the first
+wall window was close.  Across six pairs, old and new producers each reproduce
+their own manifest and final hash.  Mean wall is 30.900 versus 31.012 seconds
+(+0.36%) and paired-median wall is +0.52%, both inside the 1% no-regression
+allowance.  Mean aggregate CPU falls from 876.883 to 862.517 seconds (-1.64%)
+and every pair favors the new producer.  The corresponding GCC requested-O3
+control gets 0.48% slower in mean CPU and about 1.48% slower in paired-median
+wall.  The mean-normalized self/GCC result is consequently about 0.9834x wall
+and 0.9789x CPU; the ratio of paired medians is about 0.9905x and 0.9784x.
+This is a relative code-quality win even though raw O3 wall is nearly flat.
+
+PA37 documents the bounded structural rule and owns a property control with
+two eligible loop/non-loop pairs, a no-loop pair, and a two-loop-call pair.
+The checker verifies O1/O2 isolation, exactly one complete O3 expansion,
+retention of the shared call and body, bounded stats, LowIR replay, and native
+behavior without exact whole-program matching.  No PA38 contract is added:
+the change is entirely serialized LowIR, and the PA37 property compiles and
+runs that output through the native path.  PA37 passes 188/188, PA38 passes
+45/45, and report-through-PA38 passes 5,471/5,471.  PA37/PA38 debug and
+round-trip lanes pass; the LowIR audit remains 124/99; and the PA38 file audit
+has zero fatal findings and the same 32 warnings.  Frozen O2 is exact at its
+prior hash, frozen O3 is internally exact at
+`bd835d64eca1f2b874b84326b9c3f64af3fd3beba6991e2acad3c023ed2aaaaa`,
+and explicit all-32 O3 inception matches every object and the final compiler
+in 47.82 seconds.  The final self O3 producer and inception hash is
+`e4670c488cd40ceec44dcffbbc0a2a115db1c427360ff341175e234e78b84975`.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1434,6 +1513,7 @@ Fill one row for every retained or rejected dose.
 | D.final-slots | revisit zero-load scalar slots after final inline/load/edge cleanup | none; rejected before contract movement | tokenizer -34 LowIR instructions, but `AppendUTF8` remains 495 MIR/1,965 bytes and tokenizer remains 28,741 text bytes | static rejection; added scan has no generated-code benefit | focused LowIR/MIR/object census; prototype removed | rejected; native lowering already omits the residue |
 | D.const-ref | recover exact loads through addresses of constant scalar locals before promotion | none; rejected before contract movement | `AppendUTF8` 495 to 465 MIR, 80 to 70 scalar loads, 1,965 to 1,846 bytes, no spills; tokenizer -128 text bytes; O3 producer -2,368 bytes | all-level form CPU +1.56%; O3-only form with exact O1 output CPU +1.73%, wall +1.80% | two deterministic 24-lane screens; both forms removed | rejected; real local win produces a slower compiler even without runtime scan cost |
 | D.repeat-stable-query | reuse a structurally proven repeat-stable internal query result for the same SSA argument tuple | PA37 README plus positive/negative structural, level-isolation, stats, replay, and behavior property | 31 calls removed; `Run` 2,451 to 2,139 MIR; tokenizer -1,664 text bytes; hot Ir -4.51%; O1/O2 exact | hot wall/user -3.36%/-3.52%; O1 workload CPU -2.06%; O3 workload CPU -1.92%; GCC-normalized CPU -1.75% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; frozen exact; all-32 O3 inception exact | retained in this checkpoint |
+| D.loop-priority-inline | expand one bounded inline-preferred body at its unique loop call while retaining its paired non-loop call | PA37 README plus structural, level-isolation, bounded-stats, replay, and behavior property | one 396-instruction body cloned; hot cursor call 2 to 1; tokenizer +2,800 text bytes; producer +30,320; hot Ir -2.49%; O1/O2 isolated | O1 workload -2.40% wall/-1.88% CPU, normalized -2.08%/-1.65%; O3 workload +0.36% wall/-1.64% CPU within wall allowance, normalized -1.66%/-2.11% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; LowIR/file audits clean; frozen deterministic; all-32 O3 inception exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

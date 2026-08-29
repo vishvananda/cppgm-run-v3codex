@@ -1,5 +1,6 @@
 #include "lowir/optimize/inline_o1.h"
 #include "lowir/optimize/unreachable.h"
+#include "lowir/analysis/function.h"
 #include "lowir/analysis/inline.h"
 #include "lowir/optimize/pipeline.h"
 #include "lowir/analysis/phi_edges.h"
@@ -66,6 +67,8 @@ const std::size_t kLateNonleafInstructionLimit = 6;
 const std::size_t kLateHintNonleafInstructionLimit = 48;
 const std::size_t kOrdinarySizeCap = 40;
 const std::size_t kTrivialLeafInstructionLimit = 4;
+const std::size_t kO3LoopPriorityMinimumInstructions = 256;
+const std::size_t kO3LoopPriorityInstructionLimit = 512;
 
 // The active policy limits: the shipped defaults with any nonzero fields of
 // the driver's --inline-limit overrides applied on top.
@@ -199,6 +202,116 @@ std::size_t instruction_count(const Function & function)
   std::size_t result = 0;
   for(std::size_t i = 0; i < function.blocks.size(); ++i)
     result += function.blocks[i].instructions.size();
+  return result;
+}
+
+struct O3LoopPriorityCandidate
+{
+  std::size_t target;
+  std::size_t caller;
+  std::size_t instructions;
+};
+
+struct O3LoopPrioritySelection
+{
+  std::size_t target = kNoFunction;
+  std::size_t caller = kNoFunction;
+  std::vector<unsigned char> loop_blocks;
+};
+
+bool larger_o3_loop_priority_candidate(
+  const O3LoopPriorityCandidate & left,
+  const O3LoopPriorityCandidate & right)
+{
+  if(left.instructions != right.instructions)
+    return left.instructions > right.instructions;
+  if(left.target != right.target) return left.target < right.target;
+  return left.caller < right.caller;
+}
+
+std::size_t graph_callee(const InlineCallGraph & graph,
+                         const Instruction & instruction)
+{
+  lowir_model::SymbolId symbol;
+  if(!direct_call(instruction, &symbol) ||
+     symbol >= graph.definition_by_symbol.size())
+    return kNoFunction;
+  return graph.definition_by_symbol[symbol];
+}
+
+O3LoopPrioritySelection select_o3_loop_priority_call(
+  const LowirProgram & program, const InlineCallGraph & graph, Stats * stats)
+{
+  std::vector<O3LoopPriorityCandidate> candidates;
+  for(std::size_t target = 0; target < program.functions.size(); ++target) {
+    const Function & callee_function = program.functions[target];
+    const std::size_t instructions = instruction_count(callee_function);
+    if(graph.recursive[target] || contains_eh(callee_function) ||
+       instructions < kO3LoopPriorityMinimumInstructions ||
+       instructions > kO3LoopPriorityInstructionLimit ||
+       !callee_function.metadata.inline_hint ||
+       callee_function.metadata.no_inline ||
+       callee_function.boundary.arity == lowir_model::CAM_VARIADIC ||
+       (callee_function.metadata.binding != lowir_model::SBM_INTERNAL &&
+        callee_function.metadata.binding != lowir_model::SBM_WEAK))
+      continue;
+    const std::size_t first = graph.reverse_offsets[target];
+    const std::size_t last = graph.reverse_offsets[target + 1];
+    for(std::size_t edge = first; edge < last;) {
+      const std::size_t caller = graph.reverse_edges[edge];
+      std::size_t next = edge + 1;
+      while(next < last && graph.reverse_edges[next] == caller) ++next;
+      if(next - edge == 2 && caller != target &&
+         !contains_eh(program.functions[caller]))
+        candidates.push_back(O3LoopPriorityCandidate{
+          target, caller, instructions});
+      edge = next;
+    }
+  }
+  std::sort(candidates.begin(), candidates.end(),
+    larger_o3_loop_priority_candidate);
+
+  O3LoopPrioritySelection result;
+  for(std::size_t candidate = 0; candidate < candidates.size(); ++candidate) {
+    if(stats) ++stats->o3_loop_inline_pairs_considered;
+    const O3LoopPriorityCandidate & pair = candidates[candidate];
+    const Function & caller = program.functions[pair.caller];
+    lowir_analysis::FunctionAnalysis analysis(caller, stats);
+    const lowir_analysis::LoopForest & loops = analysis.loop_forest();
+    std::vector<unsigned char> loop_blocks(caller.next_block_id, 0);
+    for(std::size_t block = 0; block < caller.blocks.size(); ++block)
+      if(loops.innermost_loop[block] != kNoFunction)
+        loop_blocks[caller.blocks[block].id] = 1;
+
+    std::size_t calls = 0;
+    std::size_t loop_calls = 0;
+    bool arguments_match = true;
+    for(std::size_t block = 0; block < caller.blocks.size(); ++block)
+      for(std::size_t instruction = 0;
+          instruction < caller.blocks[block].instructions.size();
+          ++instruction) {
+        const Instruction & call = caller.blocks[block].instructions[instruction];
+        if(graph_callee(graph, call) != pair.target) continue;
+        ++calls;
+        if(call.args.size() != program.functions[pair.target].params.size())
+          arguments_match = false;
+        if(loop_blocks[caller.blocks[block].id]) ++loop_calls;
+      }
+    if(calls != 2 || loop_calls != 1 || !arguments_match) continue;
+
+    result.target = pair.target;
+    result.caller = pair.caller;
+    result.loop_blocks.swap(loop_blocks);
+    if(stats) {
+      ++stats->o3_loop_inline_candidates;
+      const std::size_t scratch =
+        candidates.capacity() * sizeof(candidates[0]) +
+        result.loop_blocks.capacity() * sizeof(result.loop_blocks[0]);
+      stats->o3_loop_inline_peak_analysis_bytes = std::max(
+        stats->o3_loop_inline_peak_analysis_bytes, scratch);
+    }
+    break;
+  }
   return result;
 }
 
@@ -504,7 +617,8 @@ public:
           Stats * stats, bool optimized_late_wave = false,
           bool definition_removing_only = false,
           const InlineCleanup * cleanup = 0,
-          const InlinePolicyOverrides * limit_overrides = 0)
+          const InlinePolicyOverrides * limit_overrides = 0,
+          const O3LoopPrioritySelection * loop_priority = 0)
     : program_(*program), rewritten_symbols_(rewritten_symbols),
       stats_(stats),
       call_graph_(call_graph),
@@ -515,7 +629,13 @@ public:
         kMinimumSingleCallTranslationUnitBudget),
       limits_(resolve_inline_policy_limits(limit_overrides)),
       optimized_late_wave_(optimized_late_wave),
-      definition_removing_only_(definition_removing_only), cleanup_(cleanup),
+      definition_removing_only_(definition_removing_only),
+      loop_priority_only_(loop_priority != 0), cleanup_(cleanup),
+      loop_priority_target_(loop_priority ? loop_priority->target : kNoFunction),
+      loop_priority_caller_(loop_priority ? loop_priority->caller : kNoFunction),
+      loop_priority_blocks_(
+        loop_priority ? loop_priority->loop_blocks : std::vector<unsigned char>()),
+      loop_priority_done_(false),
       rewrites_(0)
   {
     if(original_instruction_counts_.size() != program_.functions.size())
@@ -585,6 +705,7 @@ public:
     for(std::size_t cursor = 0;
         cursor < call_graph_.callee_first_order.size(); ++cursor) {
       const std::size_t function = call_graph_.callee_first_order[cursor];
+      if(loop_priority_only_ && function != loop_priority_caller_) continue;
       if(definition_removing_only_ && !candidate_callers_[function]) continue;
       if(expand(function) && has_eh_blocked_callers(function) &&
          instruction_counts_[function] <= 4 &&
@@ -667,7 +788,12 @@ private:
   InlinePolicyLimits limits_;
   bool optimized_late_wave_;
   bool definition_removing_only_;
+  bool loop_priority_only_;
   const InlineCleanup * cleanup_;
+  std::size_t loop_priority_target_;
+  std::size_t loop_priority_caller_;
+  std::vector<unsigned char> loop_priority_blocks_;
+  bool loop_priority_done_;
   std::unordered_map<std::size_t, std::vector<std::size_t> >
     eh_blocked_callers_;
   std::size_t rewrites_;
@@ -750,9 +876,15 @@ private:
 
   bool candidate(std::size_t caller, std::size_t target,
                  const Instruction & call,
-                 bool landing, bool record_stats = false)
+                 bool landing, bool record_stats = false,
+                 bool caller_loop = false)
   {
     if(target == kNoFunction) return false;
+    const bool loop_priority = loop_priority_only_ &&
+      target == loop_priority_target_ && caller == loop_priority_caller_ &&
+      !loop_priority_done_;
+    if(loop_priority_only_ && (!loop_priority || !caller_loop))
+      return false;
     if(record_stats && stats_ && definition_removing_only_ &&
        single_call_discardable_[target])
       ++stats_->post_prune_inline_considered_single_calls;
@@ -813,7 +945,7 @@ private:
     if(cold_discounted_counts_[target] > size_cap &&
        (optimized_late_wave_ ||
         !callee_function.metadata.prefer_local_object_binding) &&
-       !bounded_single_call) {
+       !bounded_single_call && !loop_priority) {
       if(record_stats && stats_) ++stats_->inline_reject_callee_size;
       return false;
     }
@@ -823,7 +955,8 @@ private:
        instruction_counts_[target] > late_nonleaf_limit &&
        !leaf_inline_shapes_[target] &&
        !(effective_leaf_shapes_[target] &&
-         cold_discounted_counts_[target] <= size_cap)) {
+         cold_discounted_counts_[target] <= size_cap) &&
+       !loop_priority) {
       if(record_stats && stats_ && callee_function.metadata.inline_hint)
         ++stats_->inline_hint_size_rejects;
       if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
@@ -872,6 +1005,11 @@ private:
       instruction_counts_[target] :
       std::max(instruction_counts_[target],
         original_instruction_counts_[target]), 1);
+    if(loop_priority_only_ && target == loop_priority_target_) {
+      if(loop_priority_done_) return false;
+      loop_priority_done_ = true;
+      return true;
+    }
     if(!optimized_late_wave_ && single_call_discardable_[target] &&
        cost <= limits_.single_call_limit) {
       if(cost <= *single_call_remaining &&
@@ -958,6 +1096,10 @@ private:
     if(optimized_late_wave_) {
       ++stats_->late_inline_calls;
       stats_->late_inline_cloned_instructions += cloned_instructions;
+    }
+    if(loop_priority_only_) {
+      ++stats_->o3_loop_inline_calls;
+      stats_->o3_loop_inline_cloned_instructions += cloned_instructions;
     }
   }
 
@@ -1494,7 +1636,8 @@ private:
                                std::size_t block_index,
                                const EhContext & eh,
                                Names * names, ValueMap * replacements,
-                               std::size_t * inline_budget)
+                               std::size_t * inline_budget,
+                               bool caller_loop)
   {
     Function & function = program_.functions[function_index];
     std::vector<Instruction> source;
@@ -1506,7 +1649,8 @@ private:
     for(std::size_t i = 0; batch_safe && i < source.size(); ++i) {
       const std::size_t target = callee(source[i]);
       if(target != kNoFunction &&
-         candidate(function_index, target, source[i], landing) &&
+         candidate(function_index, target, source[i], landing, false,
+           caller_loop) &&
          !leaf_inline_shapes_[target])
         batch_safe = false;
     }
@@ -1527,7 +1671,7 @@ private:
         if(stats_ && optimized_late_wave_)
           ++stats_->late_inline_call_visits;
         eligible = candidate(
-          function_index, target, ins, landing, true);
+          function_index, target, ins, landing, true, caller_loop);
       }
       if(eligible &&
          leaf_inline_shapes_[target]) {
@@ -1558,7 +1702,10 @@ private:
       for(std::size_t j = 0; j < original.blocks[b].instructions.size(); ++j) {
         const std::size_t target = callee(original.blocks[b].instructions[j]);
         if(candidate(function_index, target, original.blocks[b].instructions[j],
-             false)) {
+             false, false,
+             function_index == loop_priority_caller_ &&
+               original.blocks[b].id < loop_priority_blocks_.size() &&
+               loop_priority_blocks_[original.blocks[b].id])) {
           has_candidate = true;
           break;
         }
@@ -1585,8 +1732,13 @@ private:
     std::size_t & inline_budget = remaining_inline_budget_[function_index];
     for(std::size_t b = 0;
         b < program_.functions[function_index].blocks.size(); ++b) {
+      const lowir_model::BlockId block_id =
+        program_.functions[function_index].blocks[b].id;
+      const bool caller_loop = function_index == loop_priority_caller_ &&
+        block_id < loop_priority_blocks_.size() &&
+        loop_priority_blocks_[block_id];
       changed |= batch_inline_leaf_calls(function_index, b, eh,
-        &names, &replacements, &inline_budget);
+        &names, &replacements, &inline_budget, caller_loop);
       bool active = block_eh[
         program_.functions[function_index].blocks[b].id] != 0;
       std::size_t j = 0;
@@ -1602,9 +1754,9 @@ private:
                static_cast<std::uint32_t>(
                  program_.functions[function_index].blocks[b].id) <
                  eh.landing_blocks.size() &&
-               eh.landing_blocks[
+                 eh.landing_blocks[
                  program_.functions[function_index].blocks[b].id] != 0,
-               true)) {
+               true, caller_loop)) {
             bool used_single_call = false;
             if(!consume_inline_budget(target, &inline_budget,
                  &remaining_single_call_budget_[function_index],
@@ -1687,6 +1839,28 @@ std::size_t inline_post_prune_single_calls(
   Inliner inliner(&program, call_graph, no_prepared_oversized,
     optimized_instruction_counts, rewritten_symbols, stats, false, true, 0,
     limit_overrides);
+  return inliner.run();
+}
+
+std::size_t inline_o3_loop_priority_call(
+  LowirProgram & program,
+  const InlineCallGraph & call_graph,
+  std::vector<unsigned char> * rewritten_symbols,
+  Stats * stats,
+  const InlineCleanup * cleanup)
+{
+  const O3LoopPrioritySelection selection =
+    select_o3_loop_priority_call(program, call_graph, stats);
+  if(selection.target == kNoFunction) return 0;
+  std::vector<unsigned char> no_prepared_oversized(
+    program.symbol_names.size(), 0);
+  std::vector<std::size_t> optimized_instruction_counts(
+    program.functions.size(), 0);
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    optimized_instruction_counts[i] = instruction_count(program.functions[i]);
+  Inliner inliner(&program, call_graph, no_prepared_oversized,
+    optimized_instruction_counts, rewritten_symbols, stats, true, false,
+    cleanup, 0, &selection);
   return inliner.run();
 }
 

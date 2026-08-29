@@ -498,6 +498,23 @@ ordinary escape, type, definition, exceptional-handler, and phi-budget guards
 still apply; this cleanup does not make an otherwise ineligible slot
 promotable, and `-O0` performs neither the inlining nor the promotion.
 
+After reachability pruning, `-O3` may give one natural-loop call priority over
+one non-loop call to the same inline-preferred body.  The body must be an
+internal or weak, fixed-arity, nonrecursive definition with `inline_hint=yes`,
+without `no_inline=yes` or exception-handling instructions, and its optimized
+size must be from 256 through 512 LowIR instructions.  An eligible caller has
+no exception region and contains exactly two direct calls to that body:
+exactly one call is in a natural loop and exactly one is outside every natural
+loop.  Argument counts must match the definition at both sites.
+
+At most one such caller/body pair is selected per translation unit.  Prefer
+the largest eligible body and use function order to break ties.  Inline the
+loop call completely, then apply the ordinary typed inlining cleanup and slot
+promotion.  Leave the non-loop call and the shared callable definition in
+place.  This bounds growth to one clone of at most 512 instructions and avoids
+duplicating the body when both calls are loop-local.  `-O1` and `-O2` do not
+perform this loop-priority inlining.
+
 After the post-reachability inlining wave, `-O3` may split one repeated
 integer-constant call group from an otherwise mixed internal target.  The
 target must be fixed-arity, nonrecursive, `no_inline`-free, no larger than 128

@@ -54,4 +54,14 @@ std::size_t inline_post_prune_single_calls(
   Stats * stats = 0,
   const InlinePolicyOverrides * limit_overrides = 0);
 
+// Revisit one bounded, inline-preferred body/caller pair with exactly two
+// calls.  Only the pair's unique natural-loop call is expanded; the callable
+// body remains available for the non-loop call site.
+std::size_t inline_o3_loop_priority_call(
+  lowir_model::LowirProgram & program,
+  const InlineCallGraph & call_graph,
+  std::vector<unsigned char> * rewritten_symbols = 0,
+  Stats * stats = 0,
+  const InlineCleanup * cleanup = 0);
+
 }  // namespace lowir_opt

@@ -2433,6 +2433,35 @@ void finish_optimizer_pipeline(
           std::chrono::steady_clock::now() - post_prune_inline_started).count());
   }
   if(level >= 3) {
+    const std::chrono::steady_clock::time_point loop_inline_started = stats ?
+      std::chrono::steady_clock::now() :
+      std::chrono::steady_clock::time_point();
+    const InlineCallGraph loop_inline_graph =
+      analyze_inline_call_graph(program, stats);
+    std::vector<unsigned char> loop_inline_rewritten(
+      program.symbol_names.size(), 0);
+    LateInlineCleanupContext loop_inline_context = {
+      &boundaries, &program, &simplify_arena, &dce_scratch, &cfg_scratch};
+    InlineCleanup loop_inline_cleanup;
+    loop_inline_cleanup.run = cleanup_late_inline_body;
+    loop_inline_cleanup.context = &loop_inline_context;
+    const std::size_t loop_inline_rewrites = inline_o3_loop_priority_call(
+      program, loop_inline_graph, &loop_inline_rewritten, stats,
+      &loop_inline_cleanup);
+    if(stats) {
+      stats->rewrites += loop_inline_rewrites;
+      stats->o3_loop_inline_nanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - loop_inline_started).count());
+    }
+    for(std::size_t i = 0; i < program.functions.size(); ++i)
+      if(loop_inline_rewritten[program.functions[i].symbol]) {
+        inlined_symbols[program.functions[i].symbol] = 1;
+        promote_after_late_inlining(
+          &program.functions[i], boundaries, stats, &simplify_arena,
+          &dce_scratch, &cfg_scratch);
+      }
+
     const std::chrono::steady_clock::time_point grouped_started = stats ?
       std::chrono::steady_clock::now() :
       std::chrono::steady_clock::time_point();

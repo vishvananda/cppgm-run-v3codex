@@ -77,6 +77,11 @@ struct Stats
   std::size_t o3_unroll_budget_skips = 0;
   std::size_t o3_unroll_instruction_visits = 0;
   std::size_t o3_unroll_peak_scratch_bytes = 0;
+  std::size_t o3_loop_inline_pairs_considered = 0;
+  std::size_t o3_loop_inline_candidates = 0;
+  std::size_t o3_loop_inline_calls = 0;
+  std::size_t o3_loop_inline_cloned_instructions = 0;
+  std::size_t o3_loop_inline_peak_analysis_bytes = 0;
   std::size_t late_inline_direct_edges = 0;
   std::size_t late_inline_call_visits = 0;
   std::size_t late_inline_calls = 0;
@@ -333,6 +338,7 @@ struct Stats
   std::uint64_t unreachable_nanoseconds = 0;
   std::uint64_t loop_nanoseconds = 0;
   std::uint64_t o3_unroll_nanoseconds = 0;
+  std::uint64_t o3_loop_inline_nanoseconds = 0;
   std::uint64_t late_inline_nanoseconds = 0;
   std::uint64_t post_prune_inline_nanoseconds = 0;
   std::uint64_t partial_inline_census_nanoseconds = 0;
