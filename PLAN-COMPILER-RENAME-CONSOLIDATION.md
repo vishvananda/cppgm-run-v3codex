@@ -1673,3 +1673,25 @@ checkpoint where applicable, commit, and push state.
   pre-existing `/tmp/v3codex-*` worktrees were deliberately preserved.  R12
   and the complete rename consolidation plan exit with every retained commit
   pushed.  Push: with this closure ledger.
+- Post-closure O3 inception comparison — this commit.  Measured the complete
+  current 219-object `cppgm++` workload at `-O3` with 32-way object builds,
+  comparing the O3 self-hosted compiler against the same-revision GCC-O3-built
+  `cppgm++`.  Six scored lanes gave each producer three first and three second
+  positions.  Self/GCC medians were 32.425/18.575 seconds wall
+  (1.745626x), 924.400/511.530 seconds aggregate CPU (1.807128x), and
+  232222/230486 KiB RSS (1.007532x).  Median paired ratios were 1.769392x wall
+  and 1.826101x aggregate CPU.  The first pair was a retained host outlier at
+  70.24/23.62 seconds; the other five lanes were stable at 32.12-33.10 seconds
+  self and 17.86-19.61 seconds GCC.
+
+  Every lane produced all 219 expected objects.  All twelve object manifests
+  were identical, and every resulting compiler was byte-identical at SHA-256
+  `f9aedfb6c438a2252f474632fd4000de4f135494f8c0f4906860b9a4eb8e60f2`.
+  The self-hosted and GCC-built producer hashes were respectively that hash
+  and
+  `2ed30e75190dfdb28a9571a27300780cb10314248e710b95d4b9a42ca0ff2800`.
+  Relative to the final O1 matrix, O3 self wall time increased 2.8%, while the
+  GCC-built compiler improved 12.9%; consequently the wall ratio widened from
+  1.479944x to 1.745626x.  This is a real best-case performance gap, not an
+  output or object-census mismatch.  The 460 MiB measurement roots were
+  removed after recording the results.  Push: with this measurement entry.
