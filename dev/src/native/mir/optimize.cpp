@@ -1400,6 +1400,26 @@ void make_scalar_float_returns_explicit(MirFunction & function, Stats * stats)
     }
 }
 
+void select_medium_copy_chunks(MirFunction & function, Stats * stats)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function.blocks[block].instructions.size(); ++index) {
+      MirInstruction & instruction =
+        function.blocks[block].instructions[index];
+      if(instruction.opcode != MirInstruction::MI_COPY_BYTES ||
+         instruction.byte_count <= 32 || instruction.byte_count > 64 ||
+         instruction.byte_alignment >= 8 ||
+         instruction.copy_encoding != MirInstruction::MBC_DEFAULT)
+        continue;
+      instruction.copy_encoding = MirInstruction::MBC_DIRECT_CHUNKS;
+      if(stats) {
+        ++stats->medium_copy_chunks;
+        ++stats->rewrites;
+      }
+    }
+}
+
 }  // namespace
 
 std::uint64_t instruction_definition_mask(
@@ -1426,6 +1446,7 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
   // and native encoding all consume the same return fact.  O0 remains the
   // preserved PA29 representation.
   make_scalar_float_returns_explicit(function, stats);
+  if(level >= 2) select_medium_copy_chunks(function, stats);
   if(level >= 2) trace_layout(function, stats);
   forward_adjacent_single_use_frame_compares(function, stats);
   std::vector<std::vector<bool> > preserve(function.blocks.size());

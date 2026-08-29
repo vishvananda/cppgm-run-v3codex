@@ -189,6 +189,12 @@ struct InstructionDebugLocation
 
 struct Instruction
 {
+  enum CopyEncoding
+  {
+    MBC_DEFAULT,
+    MBC_DIRECT_CHUNKS
+  };
+
   enum CallEncoding
   {
     MCE_DEFAULT,
@@ -347,6 +353,11 @@ struct Instruction
   X86Condition condition = XC_E;
   std::size_t byte_count = 0;
   std::size_t byte_alignment = 1;
+  // Fixed bulk copies keep their semantic span and alignment in MIR.  An
+  // optimized medium copy may additionally select direct scalar/vector
+  // chunks; serializing that choice keeps object emission reproducible from
+  // the same machine operation.  O0 and O1 retain the compact default.
+  CopyEncoding copy_encoding = MBC_DEFAULT;
   lowir_model::SymbolId tls_storage_symbol;
   // A volatile access must survive machine-level forwarding and elision.
   bool volatile_access = false;

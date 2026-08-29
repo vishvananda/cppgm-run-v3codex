@@ -277,6 +277,12 @@ semantic-preserving rewrites where safe:
 `-O2` is the whole-function machine-improvement level. It must include all
 `-O1` work and additionally:
 
+- select direct scalar and unaligned-vector chunks for fixed object copies
+  larger than 32 and no larger than 64 bytes, even when the source type has
+  weak alignment. Serialize that encoding choice in MIR so dump and object
+  paths agree. The PA29 O0 and PA38 O1 paths keep their compact
+  string-operation encoding, and copies larger than 64 bytes retain the
+  compact fallback
 - in a function with no conditional branch, improve block layout by following
   unconditional jump traces so likely successors become natural fallthrough
   blocks; preserve the established order in functions with conditional
@@ -420,7 +426,11 @@ N3485 source-language clauses.
   It also checks that an independently large final MIR body
   receives O3-only 16-byte entry alignment, that a small body does not, and
   that the compile-only driver preserves the request in its relocatable text
-  layout. It then runs the generated programs, permits equivalent physical-
+  layout. A weakly aligned medium-copy control checks O0/O1 isolation, the
+  serialized O2/O3 encoding choice, bounded statistics, direct native chunks,
+  compact oversized fallback, and generated behavior without fixing scratch
+  registers or complete instruction sequences. It then runs the
+  generated programs, permits equivalent physical-
   register choices, and does not compare a complete MIR dump or executable
   image.
 - A survivor-property pass also reuses selected small `course/pa38/o1`

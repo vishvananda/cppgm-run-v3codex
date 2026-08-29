@@ -87,7 +87,7 @@ if (scalar(@ARGV) != 3)
 
 my ($app, $driver, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -118,6 +118,122 @@ for my $test (@tests)
 	die "$test: generated program failed with status $run_status\n" if $run_status != 0;
 
 	my $mir = read_file($mir_path);
+	if ($test =~ /medium-copy-direct-chunks/) {
+		my %level_mir;
+		my %level_stats;
+		for my $request (['O0', '-O0'], ['O1', '-O1'],
+			['O2', '-O2'], ['O3', '-O3']) {
+			my ($name, $requested_level) = @$request;
+			my $level_mir = "$directory/$name.mir";
+			my $level_program = "$directory/$name.program";
+			my $level_stderr = "$directory/$name.compile.stderr";
+			$status = run_command_capture(
+				cmd => [$app, $requested_level, '--stats',
+					'--dump-machine-ir', $level_mir,
+					'-o', $level_program, $test],
+				stdout => "$directory/$name.compile.stdout",
+				stderr => $level_stderr,
+				timeout => 30,
+			);
+			die "$test: $requested_level native compile failed\n" .
+				read_file($level_stderr) if $status != 0;
+			$run_status = run_command_capture(
+				cmd => [$level_program],
+				stdout => "$directory/$name.program.stdout",
+				stderr => "$directory/$name.program.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level generated program failed with status " .
+				"$run_status\n" if $run_status != 0;
+			$level_mir{$name} = read_file($level_mir);
+			$level_stats{$name} = read_file($level_stderr);
+		}
+
+		for my $name (qw(O0 O1 O2 O3)) {
+			my $medium = function_body(
+				$test, $level_mir{$name}, 'medium_copy');
+			my $small = function_body(
+				$test, $level_mir{$name}, 'small_copy_control');
+			my $large = function_body(
+				$test, $level_mir{$name}, 'large_copy_control');
+			die "$test: $name medium reducer lost its weak 61-byte copy\n"
+				if $medium !~ /^\s+copy_bytes 61x1, /m;
+			die "$test: $name small control lost its 32-byte copy\n"
+				if $small !~ /^\s+copy_bytes 32x1, /m;
+			die "$test: $name large control lost its 65-byte copy\n"
+				if $large !~ /^\s+copy_bytes 65x1, /m;
+			my $selected =
+				$medium =~ /\[encoding=direct_chunks\]/ ? 1 : 0;
+			die "$test: $name changed the compact medium-copy baseline\n"
+				if ($name eq 'O0' || $name eq 'O1') && $selected;
+			die "$test: $name did not serialize the optimized medium-copy encoding\n"
+				if ($name eq 'O2' || $name eq 'O3') && !$selected;
+			die "$test: $name marked the already-small control as medium\n"
+				if $small =~ /\[encoding=direct_chunks\]/;
+			die "$test: $name marked the oversized control as medium\n"
+				if $large =~ /\[encoding=direct_chunks\]/;
+			my $count = stat_value($test, $level_stats{$name},
+				'machine_opt_medium_copy_chunks');
+			die "$test: $name reported optimized medium-copy work\n"
+				if ($name eq 'O0' || $name eq 'O1') && $count != 0;
+			die "$test: $name did not report its one selected medium copy\n"
+				if ($name eq 'O2' || $name eq 'O3') && $count != 1;
+		}
+
+		my $driver_input = "$directory/test.lowir";
+		copy($test, $driver_input) or
+			die "$test: unable to prepare driver replay: $!\n";
+		my %driver_medium_rep_moves;
+		my %driver_medium_vector_moves;
+		my %driver_large_rep_moves;
+		for my $name (qw(O0 O1 O2 O3)) {
+			my $object = "$directory/driver-$name.o";
+			$status = run_command_capture(
+				cmd => [$driver, '-c', "-$name", '-o', $object,
+					$driver_input],
+				stdout => "$object.compile.stdout",
+				stderr => "$object.compile.stderr",
+				timeout => 30,
+			);
+			die "$test: $name driver replay failed\n" .
+				read_file("$object.compile.stderr") if $status != 0;
+			for my $symbol (qw(medium_copy large_copy_control)) {
+				my $disassembly = "$object.$symbol.disassembly";
+				$status = run_command_capture(
+					cmd => ['objdump', '-d', '-Mintel',
+						"--disassemble=$symbol", $object],
+					stdout => $disassembly,
+					stderr => "$disassembly.stderr",
+					timeout => 30,
+				);
+				die "$test: $name driver $symbol disassembly failed\n"
+					if $status != 0;
+				my $code = read_file($disassembly);
+				if($symbol eq 'medium_copy') {
+					$driver_medium_rep_moves{$name} =
+						scalar(() = $code =~ /\brep\s+movs/g);
+					$driver_medium_vector_moves{$name} =
+						scalar(() = $code =~ /\bmovdqu\b/g);
+				} else {
+					$driver_large_rep_moves{$name} =
+						scalar(() = $code =~ /\brep\s+movs/g);
+				}
+			}
+		}
+		for my $name (qw(O0 O1)) {
+			die "$test: driver $name medium copy lost compact string encoding\n"
+				if $driver_medium_rep_moves{$name} != 1;
+		}
+		for my $name (qw(O2 O3)) {
+			die "$test: driver $name medium copy retained string encoding\n"
+				if $driver_medium_rep_moves{$name} != 0;
+			die "$test: driver $name medium copy used no vector chunks\n"
+				if $driver_medium_vector_moves{$name} == 0;
+			die "$test: driver $name oversized control lost compact fallback\n"
+				if $driver_large_rep_moves{$name} != 1;
+		}
+		next;
+	}
 	if ($test =~ /o3-large-function-alignment/) {
 		my $large = function_body(
 			$test, $mir, 'large_alignment_candidate');

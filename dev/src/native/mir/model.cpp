@@ -288,6 +288,8 @@ std::string instruction_text(const Instruction & instruction,
           << instruction.byte_alignment;
     else out << "copy_bytes_dynamic";
     render_operands(out, instruction, program, function, true);
+    if(instruction.copy_encoding == Instruction::MBC_DIRECT_CHUNKS)
+      out << " [encoding=direct_chunks]";
     return out.str();
   }
   if(instruction.opcode == Instruction::MI_ZERO_BYTES) {

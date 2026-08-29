@@ -1647,6 +1647,73 @@ at
 O3 is exact at
 `2e39c2458ba0b8ed3afbbaca028bf64c653c8897eb4119fa1009d763c96df643`.
 
+### D.medium-copy-chunks O2+ medium fixed-copy selection retained
+
+The accepted profile still attributed 310,429,155 exclusive Callgrind
+instructions to the hot preprocessing-token move constructor.  Its final
+61-byte fixed tail used `rep movsb`, while the same-source GCC producer used
+explicit vector and scalar transfers.  The earlier `C.copy61` prototype had
+already proved that replacing this operation could make a representative
+workload slower, so the rule was re-evaluated rather than inferred from that
+one function.  The intervening accepted native layout, placement, and
+recoloring changes materially changed the result: the old screen had five of
+six CPU pairs regress, whereas the final screen below has all fixed-O1 pairs
+and eleven of twelve requested-O3 pairs improve.
+
+The retained rule is O2 and above rather than the prototype's broader O1+
+policy.  One linear MIR scan selects direct chunks only for a fixed
+`copy_bytes` larger than 32 and no larger than 64 bytes whose proven alignment
+is below eight.  The selection is an explicit serialized MIR encoding fact,
+so MIR dumping and object emission use the same decision.  Existing small or
+naturally aligned direct copies are unchanged; O0, O1, dynamic copies, and
+copies above 64 bytes retain their compact policy.  The scan visits every MIR
+instruction at most once, owns no proportional scratch state, and reports one
+bounded rewrite statistic per selected operation.  Restricting the rule to
+O2+ both preserves the O1 reference producer and avoids an otherwise useless
+scan when an O3-produced compiler is asked to emit O1 code.
+
+The final O3 producer grows from 8,699,524 to 8,706,232 text bytes.  The hot
+move constructor grows from 215 to 258 bytes but replaces the fixed 61-byte
+`rep movsb` with three unaligned vector pairs and scalar tail chunks.  The O1
+hot object remains exact at
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`,
+while Callgrind falls from 4,582,516,636 to 4,447,750,256 instructions, a
+2.9409% reduction.
+
+On the complete fixed-O1 producer workload, all six position-matched CPU
+pairs favor the candidate and both producers emit the same 219-object
+manifest and final compiler.  Mean wall falls from 30.108 to 29.652 seconds
+(-1.52%) and aggregate CPU from 850.067 to 843.138 seconds (-0.82%);
+paired-median wall and CPU improve 0.85% and 0.72%.  The matching GCC control
+moves +0.38% wall and +0.02% CPU by mean.  Mean normalization is therefore
+0.9811x wall and 0.9916x CPU; the ratio of paired medians is approximately
+0.9915x and 0.9924x.
+
+Requested O3 required twelve self pairs after the first six had favorable CPU
+but an ambiguous wall median.  The full window has eleven of twelve CPU pairs
+favor the candidate.  Mean wall falls from 30.316 to 30.155 seconds (-0.53%)
+and aggregate CPU from 854.383 to 848.730 seconds (-0.66%); paired medians
+improve 0.35% and 0.61%.  Six same-source GCC pairs move -0.12% wall and
++0.08% CPU by mean, giving mean-normalized ratios of 0.9959x wall and 0.9925x
+CPU.  Paired-median normalization is approximately 0.9984x and 0.9934x.  The
+candidate's same-window O3 self/GCC wall ratio is still about 1.648x, so this
+is a retained incremental improvement rather than completion of the 1.5x
+goal.
+
+PA38 documents the O2+ selection and owns a student-buildable property with a
+weakly aligned medium positive case plus small and oversized controls.  It
+checks O0/O1 isolation, O2/O3 serialized structure, bounded statistics,
+per-function native encoding through the compile-only driver, and behavior
+without fixing scratch registers or complete output.  The earlier PA29 O0
+weak-medium-copy property remains clean.  PA38 passes 45/45 and the through-
+PA38 report passes 5,471/5,471.  PA37/PA38 debug and object-round-trip lanes
+pass; the PA39 file audit has zero fatal findings and the unchanged 32
+warnings.  Explicit all-32 inception comparisons match every object and final
+compiler: O2 is exact at
+`e33c5bdfcd895b1cf94c6a8035d335771f51c69bfef5f9ee5514e8a625cbf2af`,
+and O3 is exact at
+`bd2fa645d3ca089f7cab634d37c5287cd34af5d8173e25d918717ffb74db3e95`.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1689,6 +1756,7 @@ Fill one row for every retained or rejected dose.
 | D.group-fast-sibling | split one grouped clone into a bounded fast wrapper plus complete slow clone, then tail-transfer eligible scalar call/return pairs | provisional PA37/PA38 structural, level-isolation, replay, encoding, stats, and behavior properties removed | combined hot Ir -1.058%; split-only full O3 CPU +0.614%; final sibling-only producer +3,288 text bytes | combined O1 +1.035% wall/+0.169% CPU and normalized +0.621%/+0.292%; combined O3 normalized -1.093%/-0.300%; final sibling-only O3 screen +1.641%/+0.370% | provisional PA37 188/188, PA38 45/45, 5,471/5,471, and audits clean; all implementation and contract movement removed | rejected; hot-only synergy and final layout sensitivity fail representative gates |
 | D.repeat-readonly-call | preserve repeat-stable query availability across direct internal call-free read-only helpers | none; rejected before contract movement | four more query reuses; tokenizer -48 text bytes; producer +1,348; hot Ir -0.273% | self O1 paired median +0.033% wall/+0.050% CPU; GCC +0.668%/+0.102%; normalized -0.631%/-0.052% | exact 219-object manifest and final output in all valid self/GCC lanes; two contaminated GCC blocks rejected whole and replaced | rejected; raw throughput is not in the intended direction and normalized CPU gain is negligible |
 | D.block-local-save | eliminate a callee-saved color whose disjoint ranges are all confined to individual blocks | PA38 README plus O2/O3 level-isolation, structural, bounded-stats, and behavioral properties; PA37 unchanged | hot clone 219 to 203 bytes and three to two saves; producer -2,924 text bytes; hot Ir -1.7247%; frozen O2 exact and O3 -55 text bytes | O1 workload CPU -0.57%, normalized -0.69%, wall within +0.60%; O3 workload -1.44% wall/-0.74% CPU, normalized -1.65%/-0.93% | 45/45; 5,471/5,471 full report; debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
+| D.medium-copy-chunks | select direct chunks for weakly aligned fixed 33--64-byte copies at O2+ | PA38 README plus O0/O1 isolation, O2/O3 structure/stats/encoding/replay/behavior property; PA29 O0 guard retained | hot constructor 215 to 258 bytes and loses fixed-tail `rep movsb`; producer +6,708 text; hot Ir -2.9409%; O1 requested output exact | O1 workload -1.52% wall/-0.82% CPU, normalized -1.89%/-0.84%; O3 workload -0.53%/-0.66%, normalized -0.41%/-0.75% | 45/45; 5,471/5,471 full report; debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

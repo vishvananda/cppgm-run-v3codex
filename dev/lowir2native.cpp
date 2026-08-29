@@ -215,6 +215,8 @@ int run_lowir2native_mode(const vector<string> & args)
          << " machine_opt_rewrites=" << stats.machine_opt_rewrites
          << " machine_opt_identity_moves="
          << stats.machine_opt_identity_moves
+         << " machine_opt_medium_copy_chunks="
+         << stats.machine_opt_medium_copy_chunks
          << " machine_opt_block_recolor_candidates="
          << stats.machine_opt_block_recolor_candidates
          << " machine_opt_block_recolor_registers="

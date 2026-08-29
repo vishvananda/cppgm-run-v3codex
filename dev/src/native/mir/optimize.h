@@ -20,6 +20,7 @@ struct Stats
   std::size_t operand_rewrites = 0;
   std::size_t dead_definitions = 0;
   std::size_t identity_moves = 0;
+  std::size_t medium_copy_chunks = 0;
   std::size_t block_recolor_candidates = 0;
   std::size_t block_recolor_registers = 0;
   std::size_t block_recolor_blocks = 0;
