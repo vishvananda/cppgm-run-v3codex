@@ -65,7 +65,7 @@ SUBMAKE_OBJ_ARG = $(if $(strip $(OBJ)),OBJ=$(OBJ))
 SUBMAKE_GENERATED_ARG = $(if $(strip $(GENERATED)),GENERATED=$(GENERATED))
 SUBMAKE_CC_FLAGS_ARG = $(if $(strip $(CC_FLAGS)),CC_FLAGS="$(CC_FLAGS)")
 
-.PHONY: all build test audit-lowir-contract audit-compiler-layout audit-frontend-source-sets audit-semantic-owners audit-lowering-owners audit-native-owners ref-test ref-test-strict ref-test-debuginfo \
+.PHONY: all build test audit-lowir-contract audit-compiler-layout audit-compiler-rename-manifest audit-frontend-source-sets audit-semantic-owners audit-lowering-owners audit-native-owners ref-test ref-test-strict ref-test-debuginfo \
 	test-strict test-strict-nobuild test-debuginfo test-debuginfo-nobuild \
 	test-report inception clean run-cppgm run-cppgm-nobuild \
 	test-report-nobuild test-report-through-% test-report-through-%-nobuild \
@@ -81,6 +81,9 @@ audit-lowir-contract:
 
 audit-compiler-layout:
 	@perl scripts/audit_compiler_layout.pl
+
+audit-compiler-rename-manifest:
+	@perl scripts/audit_compiler_rename_manifest.pl
 
 audit-frontend-source-sets:
 	@perl scripts/audit_frontend_source_sets.pl
