@@ -978,6 +978,68 @@ implementation was removed before adding a student-facing contract or test.
 Do not retry readonly-address grouping without a substantially cheaper reuse
 of existing scalar and CFG analyses.
 
+### D.call-plan planned call-result grants retained
+
+The next native census found that the cyclic-region planner had proved five
+profitable spans in the tokenizer's `Lexer::Run`, but only two survived to
+MIR.  Two independent reactive policies defeated the other grants.  An
+ordinary earlier call result selected a call-preserved register without
+consulting future whole-function plan spans, and the six-argument pressure
+path assigned a frame home to a cyclic call result before the completed
+arguments were retired.  The missed results then remained in the frame across
+later calls and repeated branch comparisons.
+
+At O2 and above, initial scalar call-result allocation preserves the existing
+caller-/callee-saved order and plan-hold fallback, except that it rejects a
+register whose future cyclic-region span overlaps the result lifetime.  A
+proven cyclic result is not sent through eager six-argument frame homing;
+after the call, its completed arguments are consumed before the ordinary
+planned allocator runs.  Failure still takes the established frame fallback.
+O1 uses the original allocation path and its tokenizer object is byte-identical
+before and after this dose.  A broader prototype was narrowed after it added
+callee-saved traffic to an unrelated EH fixture; both affected legacy fixtures
+are byte-compatible under the retained policy.
+
+On the tokenizer, planned cyclic grants rise from zero to five and busy-plan
+misses fall from three to zero.  `Lexer::Run` falls from 2,632 to 2,451 MIR
+instructions, scalar loads/stores from 408/388 to 319/311, and frame homes
+from 14 to 11.  The tokenizer loses 234 `.text` bytes.  The retained helper
+cost leaves the complete O3 producer effectively flat at +292 text bytes
+(8,619,172 to 8,619,464).  The helper remains with the function-lowering
+state it queries; adjacent formatting was compacted to keep `function.cpp` at
+the 3,000-line audit limit.  Rebuilding recovered the exact accepted self and
+GCC producer hashes, so that formatting change is code-generation inert.
+
+Six position-balanced 32-way O1-workload pairs are binary-exact and all six
+favor the candidate in aggregate CPU.  Mean CPU moves from 899.990 to 896.422
+seconds (0.40% faster); wall is effectively flat at 31.477 versus 31.510
+seconds (+0.11%).  The matching GCC-O3 source control moves CPU from 498.745
+to 497.685 seconds (0.21% faster), so the normalized CPU ratio is 0.998157x, a
+0.18% relative improvement.  On the O3 workload, five of six pairs favor the
+candidate: mean CPU falls from 902.297 to 899.572 seconds (0.30%) and wall
+from 31.852 to 31.398 seconds (1.42%).  Each side is deterministic within its
+expected O3 binary hash.
+
+PA38 documents the source-independent rule and owns a behavioral structural
+control with two cases: an earlier call result live across a future cyclic
+span, and a cyclic result from a six-register-argument call.  It checks only
+the presence or absence of the result frame home and the relevant call
+relationships, permits every physical-register choice, runs the program, and
+uses O1 as a negative level-isolation control.  A temporary pre-change build
+retained both frame homes; the candidate removes both.
+
+The checkpoint gates are clean.  PA37 passes 188/188, PA38 passes 45/45, and
+the report through PA38 passes 5,471/5,471.  The PA37/PA38 debug and object
+round-trip lanes pass, and the PA39 file audit has zero fatal findings.  Two
+fresh compiles of frozen `semantic_overload.cpp` at each of O2 and O3 produce
+the same object at SHA-256 `9030c008ceec078ad5083a662d7eefbe4a5745656d45530d51a6d641e3f18796`;
+O2 and O3 are also mutually exact on this source.  Independent all-32 O2 and
+O3 inception lanes match every object and the final compiler.  Their final
+hashes are `86d0f8a00f53cc31ed1e08b62d3b330dd355cc464ccbdb1ef2f162946793a30e`
+at O2 and `4faa64e562aee329b12475a506240169f4cf1170274dd3e3139012ee127c2f4c`
+at O3.  The full two-generation gates take 51.29 and 49.93 seconds wall,
+respectively, with explicit 32-way outer, build, and object concurrency.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1001,6 +1063,7 @@ Fill one row for every retained or rejected dose.
 | D.group-late | clone one profitable repeated integer-constant group after all inline waves and consume its edge equality | PA37 README plus level-isolation, structural, replay, and behavior property | hot Ir -2.019%; 69 calls redirected; clone 43 vs generic 57 LowIR instructions; O3 producer +28,416 text bytes | self -0.44% wall/-0.58% CPU; same-source GCC paired CPU +0.19%; normalized CPU -0.79%; wall normalization inconclusive | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; O3 inception exact | retained in this checkpoint |
 | D.loop-shared | revisit qualified shared loop bodies in a separate final O3 inline wave | none; rejected before contract movement | range helper and five calls removed; tokenizer +694 text bytes; three hot callers enlarged | clean repeat +2.83% wall/+1.07% CPU | exact six-lane output; candidate removed | rejected; call removal did not pay for duplicated loop state |
 | D.address-group | specialize repeated direct readonly byte-string addresses and fold clone-local byte control | none; rejected before contract movement | 12 calls redirected; clone 73/393 vs generic 150/893 LowIR instructions/native bytes; O3 producer +18,544 text bytes; hot Ir -0.143% | hot CPU +0.15%; full 32-way CPU +0.033%, wall +1.56% | exact hot and six-lane full output; candidate removed | rejected; local saving did not pay for machinery/footprint |
+| D.call-plan | keep reactive call results out of future cyclic spans and grant a cyclic call result after its completed arguments retire | PA38 README plus O2/O1 register-agnostic structural/behavioral control | `Run` -181 MIR, scalar loads/stores -89/-77, frame homes -3; tokenizer -234 `.text`; O3 producer +292 text bytes; O1 object exact; unrelated EH/branch fixtures exact | O1 workload +0.11% wall/-0.40% CPU; GCC CPU -0.21%; normalized CPU -0.18%; O3 workload -1.42% wall/-0.30% CPU, five of six pairs favorable | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; frozen O2/O3 exact; all-32 O2/O3 inception exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

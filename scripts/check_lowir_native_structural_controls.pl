@@ -55,7 +55,7 @@ if (scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -65,7 +65,7 @@ for my $test (@tests)
 	my $mir_path = "$directory/test.mir";
 	my $program = "$directory/test.program";
 	my $level = $test =~
-		/(?:conditional-fallthrough-layout|deferred-carrier-lifetime-reset)/
+		/(?:conditional-fallthrough-layout|deferred-carrier-lifetime-reset|call-result-plan-reservation)/
 		? '-O2' : '-O1';
 	my $status = run_command_capture(
 		cmd => [$app, $level, '--dump-machine-ir', $mir_path,
@@ -85,6 +85,54 @@ for my $test (@tests)
 	die "$test: generated program failed with status $run_status\n" if $run_status != 0;
 
 	my $mir = read_file($mir_path);
+	if ($test =~ /call-result-plan-reservation/) {
+		my $future = function_body($test, $mir, 'future_claimed_region');
+		die "$test: an earlier call result blocked a future cyclic result plan\n"
+			if defined(frame_offset($future, 'choice'));
+		my $future_later = block_body($future, 'check_one');
+		die "$test: future-plan control lost its intervening call\n"
+			if !defined($future_later) ||
+			   $future_later !~ /^\s+call \@touch\b/m;
+
+		my $six = function_body($test, $mir, 'six_argument_region');
+		die "$test: completed call arguments forced a planned result home\n"
+			if defined(frame_offset($six, 'choice'));
+		my $six_choose = block_body($six, 'choose');
+		die "$test: pressure control lost its six-register call\n"
+			if !defined($six_choose) ||
+			   $six_choose !~
+				/^\s+call \@read_choice_six \[args=\([^,]+,[^,]+,[^,]+,[^,]+,[^,]+,[^)]+\)/m;
+
+		my $baseline_mir = "$directory/baseline.mir";
+		my $baseline_program = "$directory/baseline.program";
+		$status = run_command_capture(
+			cmd => [$app, '-O1', '--dump-machine-ir', $baseline_mir,
+				'-o', $baseline_program, $test],
+			stdout => "$directory/baseline-compile.stdout",
+			stderr => "$directory/baseline-compile.stderr",
+			timeout => 30,
+		);
+		die "$test: O1 native compile failed\n" .
+			read_file("$directory/baseline-compile.stderr") if $status != 0;
+		$run_status = run_command_capture(
+			cmd => [$baseline_program],
+			stdout => "$directory/baseline-program.stdout",
+			stderr => "$directory/baseline-program.stderr",
+			timeout => 30,
+		);
+		die "$test: O1 generated program failed with status $run_status\n"
+			if $run_status != 0;
+		my $baseline = read_file($baseline_mir);
+		my $baseline_future = function_body(
+			$test, $baseline, 'future_claimed_region');
+		my $baseline_six = function_body(
+			$test, $baseline, 'six_argument_region');
+		die "$test: O1 control no longer distinguishes future plan reservation\n"
+			if !defined(frame_offset($baseline_future, 'choice'));
+		die "$test: O1 control no longer distinguishes call-pressure fallback\n"
+			if !defined(frame_offset($baseline_six, 'choice'));
+		next;
+	}
 	if ($test =~ /deferred-carrier-lifetime-reset/) {
 		my $positive = function_body($test, $mir, 'carrier_lifetimes');
 		my @choices = $positive =~

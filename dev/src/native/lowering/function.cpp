@@ -1134,29 +1134,39 @@ private:
     plan_staged_use_tail(instruction.dest);
   }
   bool try_reserve_result_register(lowir_model::ValueId value,
-                                   bool needs_callee_saved,
-                                   X64Register * result)
-  {
+      bool needs_callee_saved, X64Register * result) {
     if(try_planned_grant(value, result)) return true;
-    static const X64Register caller_saved[] = {
-      XR_R8, XR_R9, XR_RDI, XR_RSI
-    };
+    static const X64Register caller_saved[] = {XR_R8, XR_R9, XR_RDI, XR_RSI};
     if(!needs_callee_saved)
-      for(std::size_t i = 0;
-          i < sizeof(caller_saved) / sizeof(caller_saved[0]); ++i)
+      for(std::size_t i = 0; i < sizeof(caller_saved) / sizeof(caller_saved[0]); ++i)
         if(!crosses_register_clobber(value, caller_saved[i]) &&
            registers_.try_reserve(caller_saved[i])) {
-          *result = caller_saved[i];
-          return true;
+          *result = caller_saved[i]; return true;
         }
-    return try_allocate_preserved_avoiding_plans(
-      position_, reactive_lifetime_end(value), result);
+    return try_allocate_preserved_avoiding_plans(position_, reactive_lifetime_end(value), result);
+  }
+  bool try_reserve_initial_call_result(lowir_model::ValueId value,
+      bool needs_callee_saved, X64Register * result) {
+    if(optimization_level_ < 2)
+      return registers_.try_allocate(needs_callee_saved, *result);
+    // Preserve reactive order unless it overlaps a future cyclic-result span.
+    static const X64Register ordinary[] = {XR_R8, XR_R9, XR_RBX, XR_R12, XR_R13, XR_R14, XR_R15};
+    static const X64Register preserved[] = {XR_RBX, XR_R12, XR_R13, XR_R14, XR_R15};
+    const X64Register * choices = needs_callee_saved ? preserved : ordinary;
+    const std::size_t count = needs_callee_saved ?
+      sizeof(preserved) / sizeof(preserved[0]) :
+      sizeof(ordinary) / sizeof(ordinary[0]);
+    const std::size_t end = reactive_lifetime_end(value);
+    for(std::size_t pass = 0; pass < 2; ++pass) for(std::size_t i = 0; i < count; ++i) {
+        if(cyclic_region_span_conflicts(choices[i], position_, end) ||
+           (pass == 0 && registers_.plan_held(choices[i]))) continue;
+        if(registers_.try_reserve(choices[i])) { *result = choices[i]; return true; }
+    }
+    return false;
   }
   bool try_allocate_result(lowir_model::ValueId value,
-                           std::vector<MirInstruction> & out,
-                           X64Register * result,
-                           bool force_preserved = false)
-  {
+      std::vector<MirInstruction> & out, X64Register * result,
+      bool force_preserved = false) {
     const bool across = force_preserved || result_crosses_call(value);
     if(try_reserve_result_register(value, across, result)) return true;
     if(reclaim_dead_parameter_register(across) &&
@@ -1166,34 +1176,23 @@ private:
     return false;
   }
   X64Register allocate_result(lowir_model::ValueId value,
-                              std::vector<MirInstruction> & out,
-                              bool force_preserved = false)
-  {
+      std::vector<MirInstruction> & out, bool force_preserved = false) {
     X64Register result = XR_RSP;
     if(try_allocate_result(value, out, &result, force_preserved)) return result;
     throw std::runtime_error("reactive GPR allocation exhausted in " +
       lowir_model::lowir_symbol_name(program_, source_.symbol) + " for " +
       location_planning::diagnostic_value_name(program_, source_, value) +
-      " at LowIR position " +
-	  std::to_string(position_));
+      " at LowIR position " + std::to_string(position_));
   }
   MirOperand allocate_temp_home(lowir_model::ValueId value,
-                                const LowType & type,
-                                TemporaryHomeReason reason = THR_COUNT)
-  {
+      const LowType & type, TemporaryHomeReason reason = THR_COUNT) {
     return allocate_temp_frame_binding(value, type, reason);
   }
-  MirOperand allocate_named_temp_home(lowir_model::FixedPresentationName name,
-                                      const LowType & type)
-  {
-    const long long offset = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP, name, type);
-    return frame_operand(offset,
-      static_cast<std::uint32_t>(target_.frame_bindings.size()));
+  MirOperand allocate_named_temp_home(lowir_model::FixedPresentationName name, const LowType & type) {
+    const long long offset = allocate_frame_binding(mir_model::MirFrameBinding::FB_TEMP, name, type);
+    return frame_operand(offset, static_cast<std::uint32_t>(target_.frame_bindings.size()));
   }
-  MirOperand allocate_float_result(lowir_model::ValueId value,
-                                   const LowType & type)
-  {
+  MirOperand allocate_float_result(lowir_model::ValueId value, const LowType & type) {
     uses_scalar_float_ = true;
     if(is_extended_float(type)) return allocate_temp_home(value, type);
     if(result_crosses_call(value)) return allocate_temp_home(value, type);
@@ -1201,9 +1200,7 @@ private:
     if(xmms_.try_allocate(result)) return xmm_operand(result);
     return allocate_temp_home(value, type);
   }
-  void define(lowir_model::ValueId id, const LowType & type,
-              const MirOperand & location)
-  {
+  void define(lowir_model::ValueId id, const LowType & type, const MirOperand & location) {
     record_planned_definition(id, location);
     remember_selected_register_definition(location, position_);
     ValueFact value;
@@ -1216,9 +1213,7 @@ private:
     set_value(id, value);
     if(facts_.uses[id] != 0) return;
     if(location.kind == MirOperand::OP_REG && registers_.is_used(location.reg) &&
-       !has_live_location_alias(id, location)) {
-      registers_.release(location.reg);
-    }
+       !has_live_location_alias(id, location)) registers_.release(location.reg);
     else if(location.kind == MirOperand::OP_XMM && xmms_.is_used(location.xmm) &&
             !has_live_location_alias(id, location))
       xmms_.release(location.xmm);
@@ -1229,10 +1224,8 @@ private:
     if(home.kind == MirOperand::OP_FRAME) append_store(out, home, destination, type);
     define(value, type, home.kind == MirOperand::OP_FRAME ? home : destination);
   }
-  void emit_operand_address(std::vector<MirInstruction> & out,
-                            X64Register destination,
-                            const Operand & operand)
-  {
+  void emit_operand_address(std::vector<MirInstruction> & out, X64Register destination,
+      const Operand & operand) {
     if(operand.kind == Operand::OP_SLOT) {
       append_address(out, destination, storage(operand));
       return;
@@ -1280,22 +1273,15 @@ private:
     move_value_to_register(out, destination, location,
                            lowir_model::builtin_lowir_type(lowir_model::LTK_PTR));
   }
-  MirOperand make_addressable(const Operand & operand,
-                              std::vector<MirInstruction> & out)
-  {
+  MirOperand make_addressable(const Operand & operand, std::vector<MirInstruction> & out) {
     if(operand.kind == Operand::OP_SLOT) return storage(operand);
-    if(operand.kind == Operand::OP_GLOBAL)
-      return build::global_operand(MirOperand::OP_SYMBOL, operand);
-    if(operand.kind != Operand::OP_TEMP)
-      throw std::runtime_error("call argument cannot be passed by address");
-    if(!value_known_[operand.value])
-      throw std::runtime_error("missing addressable temporary");
+    if(operand.kind == Operand::OP_GLOBAL) return build::global_operand(MirOperand::OP_SYMBOL, operand);
+    if(operand.kind != Operand::OP_TEMP) throw std::runtime_error("call argument cannot be passed by address");
+    if(!value_known_[operand.value]) throw std::runtime_error("missing addressable temporary");
     ValueFact & found = values_[operand.value];
-    if(found.frame_address || found.location.kind == MirOperand::OP_FRAME)
-      return found.location;
+    if(found.frame_address || found.location.kind == MirOperand::OP_FRAME) return found.location;
     const MirOperand selected = selected_value_location(operand.value);
-    const MirOperand home = allocate_temp_home(
-      operand.value, found.type, THR_ADDRESS_ESCAPE);
+    const MirOperand home = allocate_temp_home(operand.value, found.type, THR_ADDRESS_ESCAPE);
     if(selected.kind == MirOperand::OP_XMM)
       append_float_move(out, home, selected, found.type);
     else
@@ -2557,6 +2543,7 @@ private:
     const bool pressure_result = !instruction.call_returns_void &&
       instruction.args.size() >= 6 && !source_.metadata.keep_internal_alias &&
       facts_.uses[instruction.dest] && !is_scalar_float(instruction.type) &&
+      !(optimization_level_ >= 2 && value_has_cyclic_region_plan(instruction.dest)) &&
       !result_is_immediate_return(block, instruction_index, instruction.dest);
     const MirOperand pressure_home = pressure_result ?
       allocate_temp_home(
@@ -2707,8 +2694,21 @@ private:
                                                  instruction.dest)) {
           const bool across = result_crosses_call(instruction.dest);
           X64Register result = XR_RSP;
-          if(!registers_.try_allocate(across, result) &&
-             !(spill_one(across, out) && registers_.try_allocate(across, result))) {
+          const bool cyclic_plan = optimization_level_ >= 2 &&
+            value_has_cyclic_region_plan(instruction.dest);
+          if(cyclic_plan) {
+            // Call arguments are dead here and must retire before the grant.
+            for(std::size_t i = 0; i < instruction.args.size(); ++i)
+              consume(instruction.args[i]);
+            arguments_consumed = true;
+            active_instruction_ = 0;
+            if(!try_allocate_result(instruction.dest, out, &result))
+              fallback_home = allocate_temp_home(
+                instruction.dest, instruction.type, THR_CALL_RESULT);
+          } else if(!try_reserve_initial_call_result(
+                       instruction.dest, across, &result) &&
+             !(spill_one(across, out) &&
+               try_reserve_initial_call_result(instruction.dest, across, &result))) {
             for(std::size_t i = 0; i < instruction.args.size(); ++i)
               consume(instruction.args[i]);
             arguments_consumed = true;

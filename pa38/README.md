@@ -216,6 +216,14 @@ semantic-preserving rewrites where safe:
   bounded region and keep overlapping cyclic allocations from consuming it.
   If the proof or capacity is unavailable, retain the ordinary frame-home
   path; no particular physical register is required
+- at O2 and above, honor that proven cyclic-result placement when the defining
+  call has enough arguments to create ordinary call-result pressure.  Call
+  arguments are no longer live once the call has completed, so retire their
+  allocation state before placing the result.  Earlier reactive call results
+  whose lifetimes overlap the region must avoid registers claimed by a future
+  whole-function plan.  An unproved result, unavailable capacity, or O1 keeps
+  the established frame-home fallback; no particular physical register is
+  required
 - permit loop-carried integer or pointer `phi` values in a guarded fast arm
   to reuse call-preserved register capacity when the fast arm cannot reach a
   call, the values die before the function's first call, and the sibling
@@ -378,11 +386,13 @@ N3485 source-language clauses.
   oracle.
 - `course/pa38/controls` checks only documented focused relationships: selected
   frame homes and edge movement, residency of a repeatedly compared
-  iteration-local call result across an intervening call, guarded fast-loop
-  `phi` residency without extra preserved-register capacity, and reuse after
-  a completed cached-address carrier lifetime.  It then runs the generated
-  program, permits equivalent physical-register choices, and does not compare
-  a complete MIR dump or executable image.
+  iteration-local call result across an intervening call, reservation of a
+  future cyclic result span against earlier reactive results and completed
+  call-argument pressure, guarded fast-loop `phi` residency without extra
+  preserved-register capacity, and reuse after a completed cached-address
+  carrier lifetime.  It then runs the generated program, permits equivalent
+  physical-register choices, and does not compare a complete MIR dump or
+  executable image.
 - A survivor-property pass also reuses selected small `course/pa38/o1`
   reducers at `-O0` and `-O1`. It checks only local relationships such as a
   frame home disappearing while its guarded twin remains, a call result being
