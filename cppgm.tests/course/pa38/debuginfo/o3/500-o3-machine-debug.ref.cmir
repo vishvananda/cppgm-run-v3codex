@@ -11,11 +11,13 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
 
   block ^entry
-    mov r8, 40 !dbg(test.cpp, 3, 3)
-    add r8, 2 !dbg(test.cpp, 3, 3)
-    cmp.i64 r8, 42 !dbg(test.cpp, 5, 3)
+    mov r9, 40 !dbg(test.cpp, 3, 3)
+    add r9, 2 !dbg(test.cpp, 3, 3)
+    cmp.i64 r9, 42 !dbg(test.cpp, 5, 3)
     setne rax !dbg(test.cpp, 5, 3)
     movzx rax, rax !dbg(test.cpp, 5, 3)
     ret rax !dbg(test.cpp, 6, 3)

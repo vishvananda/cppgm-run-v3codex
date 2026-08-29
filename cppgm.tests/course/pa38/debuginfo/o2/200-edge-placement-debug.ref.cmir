@@ -12,6 +12,8 @@ function @identity
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
 
   block ^entry
     ret rdi !dbg(test.cpp, 2, 3)
@@ -22,13 +24,13 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
     preserve <gpr0>
-    temp %stable -> [rbp-<off0>] : i64
 
   block ^entry
     mov <gpr0>, 40 !dbg(test.cpp, 7, 5)
     add <gpr0>, 2 !dbg(test.cpp, 7, 5)
-    store.i64 [rbp-<off0>], <gpr0> !dbg(test.cpp, 7, 5)
 
   block ^loop
     mov rdi, <gpr0> !dbg(test.cpp, 11, 5)

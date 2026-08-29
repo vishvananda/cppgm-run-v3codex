@@ -11,6 +11,8 @@ function @main
   frame
     stack_size 0
     scratch_bytes 0
+    frame_pointer omit
+    epilogues direct
 
   block ^entry
     mov r8, 1 !dbg(test.cpp, 3, 1)
