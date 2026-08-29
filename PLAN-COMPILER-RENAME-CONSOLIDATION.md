@@ -1690,8 +1690,45 @@ checkpoint where applicable, commit, and push state.
   The self-hosted and GCC-built producer hashes were respectively that hash
   and
   `2ed30e75190dfdb28a9571a27300780cb10314248e710b95d4b9a42ca0ff2800`.
-  Relative to the final O1 matrix, O3 self wall time increased 2.8%, while the
-  GCC-built compiler improved 12.9%; consequently the wall ratio widened from
-  1.479944x to 1.745626x.  This is a real best-case performance gap, not an
-  output or object-census mismatch.  The 460 MiB measurement roots were
-  removed after recording the results.  Push: with this measurement entry.
+  The raw diagonal comparison against the earlier O1 matrix showed O3 self
+  wall time 2.8% higher while the GCC-built compiler improved 12.9%, widening
+  the wall ratio from 1.479944x to 1.745626x.  Because that diagonal changes
+  both producer build level and workload level, it establishes the best-case
+  gap but does not by itself attribute the gap to either variable; the 2x2
+  follow-up below supersedes that causal interpretation.  The 460 MiB
+  measurement roots were removed after recording the results.  Push: with
+  this measurement entry.
+- Post-closure O1/O3 producer-by-workload matrix — this commit.  Built four
+  same-source producer compilers, then crossed each producer build level with
+  full 219-object O1 and O3 workloads.  Every cell used 32-way builds and three
+  order-rotated lanes; the close self-produced O3-workload comparison was
+  extended to six position-balanced lanes.  Wall/aggregate-CPU medians were:
+
+  | Producer origin and build level | O1 workload | O3 workload |
+  | --- | ---: | ---: |
+  | self O1 | 31.250 / 905.400 s | 32.365 / 910.690 s |
+  | self O3 | 33.080 / 926.500 s | 32.525 / 924.710 s |
+  | GCC O1 | 20.960 / 589.670 s | 20.960 / 590.460 s |
+  | GCC O3 | 18.430 / 502.220 s | 19.640 / 547.370 s |
+
+  Holding workload level fixed isolates producer-code quality.  On the O1
+  workload, the self O3 producer regresses 5.856% wall and 2.330% aggregate
+  CPU relative to self O1.  On the O3 workload, self O3 regresses 0.494% wall
+  and 1.539% aggregate CPU; paired medians are +0.409% wall and +1.404% CPU.
+  Thus the current post-O1 pipeline's combined net effect on compiler
+  throughput is detrimental, substantially so for the O1 workload and mildly
+  so for O3.  This does not establish that every O2/O3 pass is harmful; an O2
+  producer row followed by individual pass dosing is required to locate the
+  first harmful increment.
+
+  The GCC control moves in the opposite direction.  A GCC-O3-built producer
+  improves over GCC-O1 by 12.071% wall/14.830% CPU on the O1 workload and by
+  6.298% wall/7.298% CPU on the O3 workload.  Workload-level changes alone are
+  much smaller than these producer effects.  All 219 objects and the final
+  compiler were byte-exact across every producer at a fixed workload level:
+  O1 SHA-256
+  `a836d867d7adaaa7679ff8ad5e8fd0546a526dc5e7c62ed122310ac6cfb7fba4`
+  and O3 SHA-256
+  `f9aedfb6c438a2252f474632fd4000de4f135494f8c0f4906860b9a4eb8e60f2`.
+  Removed all 1,021 MiB of matrix scratch data after recording the results.
+  Push: with this measurement entry.
