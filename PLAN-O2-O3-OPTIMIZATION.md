@@ -682,6 +682,55 @@ hashed `ca0363112686d9577c4847886fbc34a9897f6eb0875e6143a5aea390e7b2c3e3`,
 and the O3 pair both hashed
 `5b6b32fe586fbe1059ffcdbb7c25ace1c0fdb5f79ea255d1ff47320877f3e65f`.
 
+### B1.1 bound weak-target specialization by clone payoff
+
+The specialization ablation exposed a link-time amplification that per-object
+sizes concealed.  Broad O2 weak-target specialization turns each translation
+unit's coalescible weak definition into a uniquely named internal clone.  The
+ordinary weak definitions can be coalesced by the linker, but every surviving
+private clone is retained.  The pre-change O2 compiler contained 162 such
+symbols totaling 82,891 symbol bytes; disabling all specialization reduced
+final text by 44,629 bytes even though many individual objects grew.
+
+Internal-target argument propagation is useful and remains unchanged.  Weak
+specialization is now restricted to the generally profitable class where a
+uniform scalar parameter directly controls a branch or switch.  That gives
+subsequent cleanup an entire control-flow region to discard and makes the
+private clone small enough to inline away.  A uniform value used only as data
+does not justify a clone that may survive cross-translation-unit weak-symbol
+coalescing.
+
+The retained O2 compiler has no surviving `__o2spec` symbol and is 46,397 text
+bytes smaller than the preceding checkpoint.  Three balanced old/new
+O1-workload pairs produced identical final hashes and improved median wall
+time from 32.76 to 31.91 seconds (2.59%) and aggregate CPU from 916.50 to
+912.03 seconds (0.49%).  Two same-source GCC-O2 control pairs moved from
+19.375 / 523.285 to 18.98 / 521.965 seconds in mean wall/CPU, so the
+source-normalized direction remains favorable by about 0.56% wall and 0.24%
+CPU.  The O3 compiler is likewise 46,365 text bytes smaller and has no
+surviving private clone.  Its first timing window was discarded in full after
+two contiguous baseline lanes suffered abnormal host load; no O3 timing claim
+is made from that window.
+
+PA37 now describes both the positive control-flow proof and the negative
+data-only boundary.  A new structural and behavioral control proves that the
+control-flow case specializes, that two data-only weak calls retain their
+observable two-argument ABI, and that execution is unchanged.  Restoring the
+broad pre-change policy makes the negative guard fail.  The PA37 suite passed
+188/188 including the property, its complete debug and object-round-trip lane
+passed, the through-PA38 report passed 5,471/5,471, and the PA39 file audit
+remained at zero fatal findings.  Fresh 32-way inception comparisons matched
+every object and the final compilers: O2 self/inception both hashed
+`5c1403afd2413ea646d100ff972832aaa78917cd9962a6ab2bd1817386326982`,
+and O3 self/inception both hashed
+`b59f30c02cb640220a953d4f506781b6636246b9f340f2fddc406c4af30c3044`.
+
+The post-inline call-graph rebuild cross was also tested and rejected.  It
+changed no workload object except `pipeline.o` itself, whose extra analysis
+call added 56 text bytes.  Specialization rescans current calls and uses the
+pre-inline graph only for the still-valid symbol/function map and conservative
+recursion flag, so rebuilding has no present compiler-workload benefit.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -691,6 +740,8 @@ Fill one row for every retained or rejected dose.
 | A2 | split LowIR/native and named pass doses | experiment-only harness removed | O1/O2 endpoints byte-exact | native O2 is first harmful layer | focused builds exact | complete |
 | B1 | locate first harmful LowIR increment | existing contracts plus needed negative guard | pending | pending | pending | pending |
 | B2.1 | move O2/O3 memory GVN after all inline/prune waves | PA37 README plus positive ordering and store-barrier property control | O2 producer -33,646 text bytes; emitted O3 compiler -33,186 text bytes | O1-workload producer quality -3.61% wall/-0.43% CPU; O3 producer quality -2.31%/-0.46%; O3 requested cost +1.54%/+0.64% | 5,471/5,471; PA37/38 debug clean; zero-fatal audit; O2/O3 inception exact | retained in this checkpoint |
+| B1.1 | prevent weak specialization clones from defeating link coalescing | PA37 README plus positive control-flow and negative data-only property control | O2 -46,397 text bytes and 162/82,891 surviving clone symbols/bytes removed; O3 -46,365 text bytes | O1-workload -2.59% wall/-0.49% CPU; normalized direction about -0.56%/-0.24%; invalid O3 window discarded | 5,471/5,471; PA37 debug/round-trip clean; zero-fatal audit; O2/O3 inception exact | retained in this checkpoint |
+| B2.graph | rebuild specialization graph after ordinary inline | none | no workload object changes; `pipeline.o` +56 text bytes | static rejection | experiment removed | rejected |
 | B3.1 | prevent trace layout from displacing conditional fallthrough | PA38 README plus positive/negative structural control | O2 text -73,012 bytes; O3-workload result -73,316 text bytes | O1-workload CPU -0.92%; O3-workload CPU -1.59%; normalized floor still open | 5,471/5,471; debug 11/11; zero-fatal audit | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |

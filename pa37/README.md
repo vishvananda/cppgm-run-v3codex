@@ -445,7 +445,11 @@ conservative memory, loop, and interprocedural transforms:
   target and all of its direct calls; computations that produced a removed
   argument remain subject to ordinary effect-aware dead-code elimination
 - specializing a discardable weak target through one internal clone instead
-  of changing the weak target's externally observable ABI; rooted,
+  of changing the weak target's externally observable ABI, but only when a
+  uniform scalar parameter directly controls a branch or switch so that
+  specialization can discard a control-flow region; a uniform parameter used
+  only as data does not justify a private clone that could survive weak-symbol
+  coalescing and be duplicated across translation units; rooted,
   address-observable, recursive, `no_inline`, and mismatched-signature weak
   targets must remain unchanged
 

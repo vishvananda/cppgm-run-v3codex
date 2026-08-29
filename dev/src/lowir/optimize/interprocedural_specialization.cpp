@@ -136,6 +136,29 @@ std::size_t instruction_count(const Function & function)
   return result;
 }
 
+bool uniform_parameter_controls_cfg(
+    const Function & function,
+    const ArgumentAgreement * agreements,
+    std::size_t agreement_count)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function.blocks[block].instructions.size(); ++index) {
+      const Instruction & instruction =
+        function.blocks[block].instructions[index];
+      if(instruction.kind != Instruction::IK_BRANCH &&
+         instruction.kind != Instruction::IK_SWITCH)
+        continue;
+      if(instruction.first.kind != Operand::OP_TEMP) continue;
+      for(std::size_t parameter = 0; parameter < agreement_count;
+          ++parameter)
+        if(agreements[parameter].state == AS_UNIFORM &&
+           function.params[parameter].value == instruction.first.value)
+          return true;
+    }
+  return false;
+}
+
 lowir_model::SymbolId allocate_clone_symbol(
     LowirProgram * program,
     std::vector<unsigned char> * used_names,
@@ -386,9 +409,16 @@ std::size_t specialize_interprocedural_arguments(
   for(std::size_t function = 0; function < function_count; ++function) {
     Function & target = program.functions[function];
     const bool internal = target.metadata.binding == lowir_model::SBM_INTERNAL;
+    const std::size_t first = parameter_offsets[function];
+    const std::size_t parameter_count =
+      parameter_offsets[function + 1] - first;
+    const ArgumentAgreement * function_agreements = parameter_count ?
+      &agreements[first] : 0;
     const bool discardable_weak =
       target.metadata.binding == lowir_model::SBM_WEAK &&
-      !call_graph.recursive[function] && !target.metadata.no_inline;
+      !call_graph.recursive[function] && !target.metadata.no_inline &&
+      uniform_parameter_controls_cfg(
+        target, function_agreements, parameter_count);
     const bool observable = escaped[function] ||
       target.metadata.object_output_root || target.metadata.keep_internal_alias ||
       target.metadata.role != lowir_model::SR_NONE ||
@@ -405,10 +435,6 @@ std::size_t specialize_interprocedural_arguments(
     }
     eligible[function] = 1;
     if(stats) ++stats->ipa_candidate_functions;
-    const std::size_t first = parameter_offsets[function];
-    const std::size_t parameter_count =
-      parameter_offsets[function + 1] - first;
-    const ArgumentAgreement * function_agreements = &agreements[first];
     if(stats)
       for(std::size_t parameter = 0;
           parameter < parameter_count; ++parameter) {
