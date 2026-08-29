@@ -1195,6 +1195,37 @@ was exactly flat at 1.154 seconds. The LowIR and MIR additions were removed
 before student-facing contract or test movement; this does not materially
 advance the 20% O3 objective.
 
+### D.reuse-plan destructive-reuse reservation guard rejected
+
+The post-alignment profile and function census localized the remaining cursor
+gap more precisely. `PhysicalCursor::Next` has no frame homes or spills, and
+`TranslationCursor::Next` has only six frame homes; their excess is primarily
+copies, calls, and missed interprocedural collapse rather than classical spill
+traffic. A current `hint-late-cap=96` dose still made `Lexer::Run` lose its one
+remaining cyclic-region grant: destructive result reuse can inherit a
+preserved register without passing through the allocator's future-span check.
+
+A narrow O2/O3 prototype rejected destructive reuse only when the new result's
+lifetime overlapped a future cyclic-result plan. It was byte-inert for the
+tokenizer under the shipped policy and restored the cyclic grant under the
+hinted dose. In that dose, `Run` fell from 2,627 to 2,403 MIR instructions;
+scalar loads/stores fell from 616/516 to 513/383. The result was nevertheless
+still 4.5--5% slower than the accepted compiler on a 36-lane balanced hot-TU
+screen, so broad hinted inlining remains rejected after the new allocation
+cross.
+
+The guard alone changed 15 generated compiler objects and reduced complete O3
+compiler text by 3,872 bytes. Three position-balanced all-32 O1-workload pairs
+were output-exact at
+`89de66702dec1fb2bee0a0a4aab9f54be3e43dc59ac6ef37e859d0048cec9a11`.
+Baseline/guard mean wall was 31.330/30.993 seconds, but that apparent gain came
+from one baseline scheduler tail. Mean aggregate CPU was 894.120/893.000
+seconds and the paired median CPU ratio was about 1.0001x, effectively flat in
+the wrong direction. The implementation was removed before contract or test
+movement. This closes destructive-reuse reservation as an independent change
+and confirms that preserving one cyclic grant is insufficient to make broad
+merged-body inlining profitable.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1225,6 +1256,7 @@ Fill one row for every retained or rejected dose.
 | D.copy-pair-align | re-evaluate staged scalar-copy fusion on the aligned baseline with a stronger alias guard | none; rejected at screen | generic and clone each -3 MIR; producer +8,940 text bytes; hot entries remain aligned | twelve-lane hot wall +1.1%, user +1.6% | deterministic output; candidate removed | rejected; 16-byte alignment reduces but does not eliminate layout sensitivity |
 | D.hint-clone | apply existing loop-carried store/load forwarding to late O3 grouped clones | none; rejected at screen | specialized `Peek(0)` backedge reload removed; preserved-register count unchanged; producer +32 text bytes | twelve-lane hot wall +2.2%, user +2.3% | deterministic baseline/candidate objects; candidate removed | rejected; carried live range costs more than the reload |
 | D.loop-thread | thread a private loop-carried compare onto incoming edges and reuse `add 1` flags across latch stores | none; rejected at screen | latch reload/jump/test removed; clone remains 219 bytes and preserves three registers; producer +10,416 text bytes | 24-lane hot wall -0.21%, user exactly flat | deterministic baseline/candidate objects; candidate removed | rejected; real dynamic saving is too small for the implementation |
+| D.reuse-plan | keep destructive result reuse out of a future cyclic-result reservation, then recheck broad hinted inlining | none; rejected before contract movement | shipped tokenizer exact; guard-only O3 producer -3,872 text bytes; guarded hint96 `Run` 2,627 to 2,403 MIR and scalar loads/stores 616/516 to 513/383 | guarded hint96 hot +4.5--5%; guard-only three-pair mean CPU -0.13% but paired median 1.0001x, wall confounded by one baseline tail | exact 36-lane hot output and six full-workload outputs; candidate removed | rejected; restored grant does not overcome merged-body cost and guard alone is flat |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
