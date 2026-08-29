@@ -2144,7 +2144,6 @@ void optimize_function_bodies(
     SimplifyScratch & simplify_arena, DceScratch & dce_scratch,
     CleanupCfgScratch & cfg_scratch)
 {
-  MemoryGVNSession memory_gvn(program);
   O3UnrollBudget o3_unroll_budget;
   ReadonlyGlobalIndex readonly(program, level >= 1);
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
@@ -2287,13 +2286,6 @@ void optimize_function_bodies(
     hoist_loop_invariants(&program, &function, &analysis, level, stats);
     if(level >= 1)
       forward_loop_carried_store_loads(&function, &analysis, stats);
-    if(level >= 2 &&
-       memory_gvn.eliminate_redundant_loads(&function, &analysis, stats)) {
-      timed_function_pass(simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
-        &simplify_arena);
-      timed_dce(&function, boundaries, stats, &dce_scratch);
-    }
     if(level >= 2 &&
        eliminate_partial_redundancies(&function, &analysis, stats)) {
       timed_function_pass(simplify_values, &function, stats,
@@ -2440,18 +2432,18 @@ void finish_optimizer_pipeline(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - post_prune_inline_started).count());
   }
-  // At O1, defer cross-block load reuse until
+  // Defer cross-block load reuse until
   // every inlining wave has finished.  Running it earlier changes the size
   // model used by the late inliners and can turn a local load reduction into
-  // substantial caller growth.  The O2/O3 pipeline already ran this pass in
-  // its ordinary body-optimization position.
-  if(level == 1) {
+  // substantial caller growth.
+  if(level >= 1) {
     MemoryGVNSession late_memory_gvn(program);
     for(std::size_t i = 0; i < program.functions.size(); ++i) {
       Function & function = program.functions[i];
       lowir_analysis::FunctionAnalysis analysis(function, stats);
       if(late_memory_gvn.eliminate_redundant_loads(
-           &function, &analysis, stats, !function.metadata.inline_hint)) {
+           &function, &analysis, stats,
+           level == 1 && !function.metadata.inline_hint)) {
         timed_function_pass(simplify_values, &function, stats,
           &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
           &simplify_arena);

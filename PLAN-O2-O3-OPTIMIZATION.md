@@ -642,6 +642,46 @@ frame-policy and residency improvements; after checking that debug locations
 were unchanged, the canonical compatibility fixtures were refreshed and the
 complete PA38 debug lane passed 11/11 in corrective commit `bf0da1a9`.
 
+### B2.1 defer O2/O3 memory GVN until after inlining
+
+The first pass-order cross confirmed the O1 pipeline's warning: running memory
+GVN before the inlining waves made an initially oversized shared callee look
+cheap enough to duplicate into both callers.  The retained ordering runs O2
+and O3 whole-program load reuse after all inline and reachability-pruning
+waves, then optimizes the retained body.  O1 keeps its existing additional
+restriction for inline-hinted functions.
+
+PA37 now documents the ordering property.  Its new structural and behavioral
+control begins with 19 cross-block loads in a shared callee, proves that O2
+retains both calls before reducing the retained callee to one load, and proves
+that an intervening store still blocks reuse.  Restoring the old ordering
+causes this control to fail because the two calls disappear, so the test
+distinguishes the documented property rather than merely accepting both
+pipelines.
+
+The corrected O2 producer is 33,646 text bytes smaller.  Three balanced
+old/new O1-workload pairs improved median wall time from 33.00 to 31.81
+seconds (3.61%) and aggregate CPU from 912.35 to 908.44 seconds (0.43%).
+Same-source GCC-O2 controls moved much less; the corresponding two-lane means
+improved about 1.75% in wall time and 0.13% in CPU, so the normalized direction
+also favors the change.
+
+Requested-level cost and generated-code quality moved differently at O3.
+Building the O3 result became 1.54% slower in median wall time and 0.64% slower
+in CPU across six balanced pairs, but the emitted compiler lost 33,186 text
+bytes.  When those immutable old/new O3 compilers ran the fixed O1 workload,
+the three-pair medians improved from 32.50 / 915.35 to 31.75 / 911.14 seconds
+wall/CPU, a 2.31% / 0.46% producer-quality gain.  This is retained because the
+plan's objective is generated-compiler throughput; the one-time optimizer
+cost remains recorded rather than being conflated with that result.
+
+The through-PA38 report passed 5,471/5,471, the complete PA37 debug lane and
+PA38 debug lane passed, and the PA39 file audit had zero fatal findings.  Fresh
+32-way O2 and O3 inception builds were exact: the O2 self/inception pair both
+hashed `ca0363112686d9577c4847886fbc34a9897f6eb0875e6143a5aea390e7b2c3e3`,
+and the O3 pair both hashed
+`5b6b32fe586fbe1059ffcdbb7c25ace1c0fdb5f79ea255d1ff47320877f3e65f`.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -650,7 +690,7 @@ Fill one row for every retained or rejected dose.
 | A1 | verify every retained O2/O3 contract has property coverage | backfill only where absent | pending | output-neutral | pending | pending |
 | A2 | split LowIR/native and named pass doses | experiment-only harness removed | O1/O2 endpoints byte-exact | native O2 is first harmful layer | focused builds exact | complete |
 | B1 | locate first harmful LowIR increment | existing contracts plus needed negative guard | pending | pending | pending | pending |
-| B2 | repair pass-order interference | property tests, not full-text definitions | pending | pending | pending | pending |
+| B2.1 | move O2/O3 memory GVN after all inline/prune waves | PA37 README plus positive ordering and store-barrier property control | O2 producer -33,646 text bytes; emitted O3 compiler -33,186 text bytes | O1-workload producer quality -3.61% wall/-0.43% CPU; O3 producer quality -2.31%/-0.46%; O3 requested cost +1.54%/+0.64% | 5,471/5,471; PA37/38 debug clean; zero-fatal audit; O2/O3 inception exact | retained in this checkpoint |
 | B3.1 | prevent trace layout from displacing conditional fallthrough | PA38 README plus positive/negative structural control | O2 text -73,012 bytes; O3-workload result -73,316 text bytes | O1-workload CPU -0.92%; O3-workload CPU -1.59%; normalized floor still open | 5,471/5,471; debug 11/11; zero-fatal audit | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |

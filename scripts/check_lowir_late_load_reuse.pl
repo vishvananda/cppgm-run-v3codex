@@ -80,13 +80,37 @@ if (scalar(@ARGV) != 3)
 
 my ($app, $driver, $root) = @ARGV;
 my @tests = collect_tests(
-	$root, qr/late-inline-hint-load-reuse.*\.t$/);
+	$root, qr/(?:late-inline-hint-load-reuse|post-inline-memory-gvn).*\.t$/);
 die "No late load-reuse tests found under $root\n" if !@tests;
 
 for my $test (@tests)
 {
 	my $directory = tempdir('cppgm-late-load-reuse-XXXXXX',
 		TMPDIR => 1, CLEANUP => 1);
+	if ($test =~ /post-inline-memory-gvn/) {
+		my ($o0_path, $o0) = run_optimizer(
+			$app, $test, $directory, 'O0');
+		my ($o2_path, $o2) = run_optimizer(
+			$app, $test, $directory, 'O2');
+		my $baseline = function_body(
+			$test, $o0, 'shared_load_heavy');
+		die "$test: O0 lost the oversized repeated-load baseline\n"
+			if cell_load_count($baseline) != 19;
+		my $retained = function_body(
+			$test, $o2, 'shared_load_heavy');
+		my @shared_calls = $o2 =~
+			/^\s+%[A-Za-z0-9_]+ = call i64 \@shared_load_heavy\([01], %[A-Za-z0-9_]+\)$/mg;
+		die "$test: O2 duplicated an initially oversized shared callee\n"
+			if scalar(@shared_calls) != 2;
+		die "$test: post-inline O2 load reuse did not optimize the retained body\n"
+			if cell_load_count($retained) != 1;
+		my $guard = function_body($test, $o2, 'store_barrier_guard');
+		die "$test: post-inline O2 load reuse crossed a writing store\n"
+			if cell_load_count($guard) != 2 ||
+			   $guard !~ /^\s+store i64 7, \@cell$/m;
+		compile_and_run($driver, $test, $directory, $o2_path);
+		next;
+	}
 	my ($o0_path, $o0) = run_optimizer(
 		$app, $test, $directory, 'O0');
 	my ($o1_path, $o1) = run_optimizer(
@@ -133,5 +157,5 @@ for my $test (@tests)
 	compile_and_run($driver, $test, $directory, $o1_path);
 }
 
-print "late inline-hint load reuse: PASS (" . scalar(@tests) . "/" .
+print "late memory/load reuse: PASS (" . scalar(@tests) . "/" .
 	scalar(@tests) . ")\n";

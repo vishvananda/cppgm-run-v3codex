@@ -412,7 +412,10 @@ conservative memory, loop, and interprocedural transforms:
   can change that location on any intervening path; direct locations,
   nonescaping slot addresses, pointer copies and phis whose inputs are all the
   same pointer value, and proven disjoint constant projections must use the
-  same conservative alias rules
+  same conservative alias rules; perform this whole-program O2 load reuse only
+  after the inlining and pruning waves, so shrinking an initially oversized
+  shared callee cannot make it appear cheap enough to duplicate into each
+  caller, then apply the ordinary O2 reuse rule to the retained body
 - preserving load invalidation across control-flow joins, unknown pointers,
   ordinary read/write calls, atomic operations, exceptional-handler entries,
   EH region transitions, and calls that may unwind; within one equal,
