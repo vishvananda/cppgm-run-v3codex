@@ -1533,6 +1533,42 @@ were clean before removal.  The final-source reversal demonstrates entry and
 link-layout sensitivity rather than a robust improvement.  Both transforms,
 their statistics, and their provisional student contracts were removed.
 
+### D.repeat-readonly-call read-only call-barrier relaxation rejected
+
+The retained repeat-stable-query pass still had 18,094,496 dynamic calls to
+the specialized query.  A source-independent follow-up classified an internal
+function as call-free and read-only only when every instruction was already
+accepted by the repeat-path structural proof.  Direct calls to such functions
+then preserved the caller's available query results.  Stores, atomics, object
+copies, zeroing, volatile operations, indirect calls, and direct calls with
+any nested call or other unclassified instruction remained barriers.
+
+On the tokenizer this recovered four additional query results, reducing the
+remaining static specialized calls from 38 to 34.  Optimized LowIR lost eight
+lines and tokenizer text fell 48 bytes.  The complete candidate O3 producer
+grew 1,348 text bytes from the summary and lookup machinery.  An output-exact
+Callgrind run fell from 4,662,903,717 to 4,650,176,064 instructions, a real
+0.273% reduction.
+
+The complete fixed-O1 producer screen did not support retaining the rule.
+Three valid self ABBA blocks had paired median candidate/baseline ratios of
+1.000331x wall and 1.000497x aggregate CPU.  Three same-source GCC ABBA blocks
+had paired medians of 1.006683x and 1.001020x, respectively, making the
+median-ratio normalization about 0.99369x wall but only 0.99948x CPU.  Thus
+raw self throughput moved slightly in the wrong direction and the normalized
+CPU benefit was only about 0.05%.  Two additional GCC blocks were discarded
+in full: one opened with an isolated extreme scheduler tail, and the other's
+final lane coincided with an independently observed one-core repository scan.
+Both were replaced rather than partially sampled.  Every valid lane reproduced
+the same 219-object manifest and final compiler.
+
+The primary raw screen therefore fails the plan's intended-direction rule,
+and the deterministic saving is too small to justify a new analysis contract.
+The implementation was removed without changing PA37 documentation or tests.
+Do not retry call-barrier relaxation without a substantially larger dynamic
+population or a proof that reuses an already-retained summary at near-zero
+producer cost.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1573,6 +1609,7 @@ Fill one row for every retained or rejected dose.
 | D.loop-priority-inline | expand one bounded inline-preferred body at its unique loop call while retaining its paired non-loop call | PA37 README plus structural, level-isolation, bounded-stats, replay, and behavior property | one 396-instruction body cloned; hot cursor call 2 to 1; tokenizer +2,800 text bytes; producer +30,320; hot Ir -2.49%; O1/O2 isolated | O1 workload -2.40% wall/-1.88% CPU, normalized -2.08%/-1.65%; O3 workload +0.36% wall/-1.64% CPU within wall allowance, normalized -1.66%/-2.11% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; LowIR/file audits clean; frozen deterministic; all-32 O3 inception exact | retained in this checkpoint |
 | D.group-header-inline | inline the one outer-loop-header call to a late grouped clone after repeat-stable-call reuse has consumed the original call equivalences | none; rejected before contract movement | moving the dose before repeat-stable reuse destroyed that reuse and did not reduce retained calls; the correctly ordered dose reduced `Lexer::Run` grouped-clone calls 28 to 27, grew the tokenizer object 48 text bytes, and grew the complete O3 producer 6,372 text bytes | three balanced hot-TU ABBA blocks were exact but candidate/baseline was +0.89% wall and +0.92% user | valid serializable LowIR and exact native output in the ordered screen; prototype and its transient invalid pre-reuse ordering removed | rejected; a real hot call removal lost to duplicated body/layout cost |
 | D.group-fast-sibling | split one grouped clone into a bounded fast wrapper plus complete slow clone, then tail-transfer eligible scalar call/return pairs | provisional PA37/PA38 structural, level-isolation, replay, encoding, stats, and behavior properties removed | combined hot Ir -1.058%; split-only full O3 CPU +0.614%; final sibling-only producer +3,288 text bytes | combined O1 +1.035% wall/+0.169% CPU and normalized +0.621%/+0.292%; combined O3 normalized -1.093%/-0.300%; final sibling-only O3 screen +1.641%/+0.370% | provisional PA37 188/188, PA38 45/45, 5,471/5,471, and audits clean; all implementation and contract movement removed | rejected; hot-only synergy and final layout sensitivity fail representative gates |
+| D.repeat-readonly-call | preserve repeat-stable query availability across direct internal call-free read-only helpers | none; rejected before contract movement | four more query reuses; tokenizer -48 text bytes; producer +1,348; hot Ir -0.273% | self O1 paired median +0.033% wall/+0.050% CPU; GCC +0.668%/+0.102%; normalized -0.631%/-0.052% | exact 219-object manifest and final output in all valid self/GCC lanes; two contaminated GCC blocks rejected whole and replaced | rejected; raw throughput is not in the intended direction and normalized CPU gain is negligible |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
