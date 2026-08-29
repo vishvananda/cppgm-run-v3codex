@@ -1171,6 +1171,30 @@ Mean wall time moved from 1.210 to 1.237 seconds (+2.2%), and user time from
 removed before contract or test movement. This is another direct example of
 an instruction-count improvement losing to register-lifetime and layout cost.
 
+### D.loop-thread backedge-condition threading rejected
+
+A stronger follow-up matched GCC's specialized `Peek(0)` control shape without
+carrying the queue size around the loop. After ordinary final edge cleanup, a
+general O3 rule distributed a private loop-header `phi`/compare/branch onto
+each unconditional incoming edge when the targets had no phis and every CFG,
+dominance, use-count, and EH guard held. The entry kept its initial load and
+test, while the latch tested the value it had just stored. A paired native
+rule then reused the flags from an immediately preceding `add 1` across scalar
+stores for zero/equality branches. Together they removed the latch reload,
+header jump, and repeated test without adding a live range or changing the
+clone's three preserved registers and 219-byte native size.
+
+The dynamic saving is real but too small for the implementation. The combined
+optimizer grew the complete O3 producer by 10,416 text bytes. Twenty-four
+position-balanced hot-TU lanes were deterministic at baseline object hash
+`a8dda7edde98adfb744adec02a56c0abd8b4137b47643efe77af670921d3f4cd`
+and candidate hash
+`c01dff2344d86a105a4e1cdadf4f03bee9243b12b41a3f450dc7ccd4a0b9028e`.
+Mean wall time moved only from 1.204 to 1.202 seconds (-0.21%), while user time
+was exactly flat at 1.154 seconds. The LowIR and MIR additions were removed
+before student-facing contract or test movement; this does not materially
+advance the 20% O3 objective.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1200,6 +1224,7 @@ Fill one row for every retained or rejected dose.
 | D.align64 | align large final O3 MIR functions and preserve the request through object text partitioning | PA38 README plus dynamic MIR-count, level-isolation, behavior, driver-replay, and ELF-symbol property | 3,772/4,043 >=256-byte functions aligned; O3 producer +25,248 text bytes (+0.29%) | O1 workload -2.31% wall/-0.86% CPU; GCC CPU +0.09%; normalized CPU -0.95%; O3 workload -0.30% wall/-1.05% CPU; GCC CPU +0.06%; normalized CPU -1.11% | PA38 45/45; 5,471/5,471; PA37/38 debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.copy-pair-align | re-evaluate staged scalar-copy fusion on the aligned baseline with a stronger alias guard | none; rejected at screen | generic and clone each -3 MIR; producer +8,940 text bytes; hot entries remain aligned | twelve-lane hot wall +1.1%, user +1.6% | deterministic output; candidate removed | rejected; 16-byte alignment reduces but does not eliminate layout sensitivity |
 | D.hint-clone | apply existing loop-carried store/load forwarding to late O3 grouped clones | none; rejected at screen | specialized `Peek(0)` backedge reload removed; preserved-register count unchanged; producer +32 text bytes | twelve-lane hot wall +2.2%, user +2.3% | deterministic baseline/candidate objects; candidate removed | rejected; carried live range costs more than the reload |
+| D.loop-thread | thread a private loop-carried compare onto incoming edges and reuse `add 1` flags across latch stores | none; rejected at screen | latch reload/jump/test removed; clone remains 219 bytes and preserves three registers; producer +10,416 text bytes | 24-lane hot wall -0.21%, user exactly flat | deterministic baseline/candidate objects; candidate removed | rejected; real dynamic saving is too small for the implementation |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
