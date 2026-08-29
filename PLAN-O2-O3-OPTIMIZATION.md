@@ -1246,6 +1246,28 @@ both windows, while 64 bytes swung from 0.6% faster to 2.7% slower and paid a
 oracle. The shipped 16-byte policy was restored before documentation or test
 movement.
 
+### D.hint49 move-constructor attribution dose rejected
+
+The post-alignment flat profile attributed 310,430,637 instructions to the
+preprocessor's `Token(Token&&)`, versus 53,554,903 in the same-source GCC
+compiler. The optimized constructor contains 48 LowIR instructions, exactly
+at the shipped late hinted nonleaf cap. Raising only `hint-late-cap` from 48
+to 49 inlined 36 of its 37 retained calls in `macro_processor.cpp`; optimized
+LowIR grew from 54,338 to 55,810 lines and the complete O3 producer added
+11,600 text bytes. Static direct calls in the linked compiler likewise fell
+from 37 to one.
+
+The apparent flat-profile gap was attribution rather than avoidable work. An
+output-exact candidate Cachegrind run retired 5,033,575,400 instructions,
+only 3,219,302 (0.064%) fewer than the existing 5,036,794,702-instruction
+baseline. The former constructor cost moved chiefly into `AddSourceToken`,
+`vector<Token>::push_back`, and `Lexer::Run`. Native 24-lane hot screens were
+also contradictory: candidate CPU was 1.1% faster in the first balanced
+window and 4.2% slower in its reversed repeat. The dose was removed without
+contract or test movement. Future profile work must use inclusive call paths
+or whole-program deltas before treating an out-of-line C++ helper as a large
+target.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1278,6 +1300,7 @@ Fill one row for every retained or rejected dose.
 | D.loop-thread | thread a private loop-carried compare onto incoming edges and reuse `add 1` flags across latch stores | none; rejected at screen | latch reload/jump/test removed; clone remains 219 bytes and preserves three registers; producer +10,416 text bytes | 24-lane hot wall -0.21%, user exactly flat | deterministic baseline/candidate objects; candidate removed | rejected; real dynamic saving is too small for the implementation |
 | D.reuse-plan | keep destructive result reuse out of a future cyclic-result reservation, then recheck broad hinted inlining | none; rejected before contract movement | shipped tokenizer exact; guard-only O3 producer -3,872 text bytes; guarded hint96 `Run` 2,627 to 2,403 MIR and scalar loads/stores 616/516 to 513/383 | guarded hint96 hot +4.5--5%; guard-only three-pair mean CPU -0.13% but paired median 1.0001x, wall confounded by one baseline tail | exact 36-lane hot output and six full-workload outputs; candidate removed | rejected; restored grant does not overcome merged-body cost and guard alone is flat |
 | D.align-sweep | test 32/64-byte entry alignment as a stronger layout oracle for local O3 rewrites | none; rejected before contract movement | 32-byte producer +28,320 text bytes; 64-byte producer +84,192; hot object exact | 32-byte CPU +1.1% then +7.3%; 64-byte CPU -0.6% then +2.7% | 36-lane and reversed 24-lane output-exact screens; shipped 16-byte policy restored | rejected; stronger padding is unstable and not worth its text cost |
+| D.hint49 | inline the 48-instruction token move constructor whose flat profile appeared 256.9M instructions behind GCC | none; rejected before contract movement | direct calls 37 to 1; producer +11,600 text bytes; hot object exact | Cachegrind Ir -0.064%; native CPU -1.1% then +4.2% | exact static, Cachegrind, and 48 native outputs; override-only dose removed | rejected; flat constructor cost merely moved into callers |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
