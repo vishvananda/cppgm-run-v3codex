@@ -1095,6 +1095,15 @@ void form_zero_tests(MirFunction & function, Stats * stats)
 void trace_layout(MirFunction & function, Stats * stats)
 {
   if(function.blocks.size() < 2) return;
+  // An unconditional trace can move a successor that is already the natural
+  // fallthrough of a conditional block.  The later branch cleanup then has no
+  // adjacent successor and must retain both its conditional and unconditional
+  // jumps.  Until layout accounts for both successors together, keep the
+  // established order for every function containing a conditional branch.
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
+      if(function.blocks[i].instructions[j].opcode ==
+         MirInstruction::MI_JCC) return;
   const std::size_t missing = static_cast<std::size_t>(-1);
   std::vector<std::size_t> labels(function.block_labels.size(), missing);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {

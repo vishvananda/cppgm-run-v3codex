@@ -1,6 +1,6 @@
 # Plan: O2/O3 Generated-Compiler Optimization
 
-Status: ready to execute
+Status: executing
 
 Date: 2026-08-29
 
@@ -583,16 +583,75 @@ against GCC.
 
 ## Execution ledger
 
+### A0/A2 baseline and first native attribution
+
+The fresh O2 row used the complete 219-object source set and three rotated
+32-way lanes per cell.  `S_21` measured 32.67 seconds wall / 925.83 aggregate
+CPU and `G_21` measured 19.59 / 525.39.  On the O3 workload, `S_23` measured
+32.31 / 924.43 and `G_23` measured 19.02 / 523.17.  Every fixed-level final
+compiler matched its peer.  Relative to the recorded O1 row, most of the raw
+regression begins at O2, and the normalized loss is larger because GCC gains
+substantially at O2.
+
+An experiment-only split-level driver reproduced the ordinary O1 and O2
+endpoints byte-for-byte, then produced these O1-workload medians:
+
+| LowIR/native dose | Wall | Aggregate CPU |
+| --- | ---: | ---: |
+| O1/O1 | 31.96 s | 908.00 s |
+| O2/O1 | 32.48 s | 913.25 s |
+| O1/O2 | 33.12 s | 931.36 s |
+| O2/O2 | 33.06 s | 930.38 s |
+
+The first harmful layer was therefore native O2.  The experiment-only flags
+were removed after the endpoint and dose builds; no private public interface
+was retained.
+
+### B3.1 conditional-fallthrough interference
+
+The native O2 delta reduced to `trace_layout`; the placement policy itself is
+common at O1 and O2.  An ELF census of the O1/O2-native cross found that trace
+layout added 69,621 decoded instruction bytes and 17,824 unconditional jumps,
+while paired conditional counts merely inverted.  Layout followed an
+unconditional predecessor into a block that was already the natural successor
+of a conditional block.  When both conditional successors had been placed,
+the later `clean_branches` pass could no longer remove the conditional block's
+trailing jump.
+
+The retained repair limits unconditional trace following to functions with no
+conditional branch.  PA38 now states that boundary and a focused structural
+control proves both the positive unconditional-only reorder and the negative
+conditional-fallthrough guard.  The one placement-pinned compatibility fixture
+was updated only for the intended order.  The corrected O2 producer is 73,012
+text bytes smaller than the pre-change O2 producer.
+
+Three direct old/new O1-workload pairs had medians of 32.25 / 928.19 seconds
+and 32.46 / 919.66 seconds wall/aggregate CPU: wall remained inside the 1%
+close-result band while CPU improved 0.92%.  On the O3 workload, three pairs
+improved the medians from 31.94 / 925.51 to 31.91 / 910.76 seconds, with
+deterministic old and new outputs and 73,316 fewer text bytes in the corrected
+result.  Exact-source O1 controls show that the raw O2 floor is now close but
+not yet closed; the current two-lane O1/O2 means are 31.44 / 906.04 versus
+31.90 / 909.55.  Exact-source GCC O1/O2 controls confirm the larger remaining
+normalized deficit because GCC improves from 21.47 / 592.39 to a median
+18.65 / 520.66.  Further O2 generated-code work is therefore still required.
+
+The through-PA38 report passed 5,471/5,471 and the PA39 file audit had zero
+fatal findings.  A periodic debug gate exposed stale fixtures from earlier
+frame-policy and residency improvements; after checking that debug locations
+were unchanged, the canonical compatibility fixtures were refreshed and the
+complete PA38 debug lane passed 11/11 in corrective commit `bf0da1a9`.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
 | --- | --- | --- | --- | --- | --- | --- |
-| A0 | fill O2 row and refresh controls | none | pending | pending | diagnostic | pending |
+| A0 | fill O2 row and refresh controls | none | O2 final hashes exact per fixed workload | O2 regression begins before O3; normalized loss larger | process/storage checks clean | diagnostic complete |
 | A1 | verify every retained O2/O3 contract has property coverage | backfill only where absent | pending | output-neutral | pending | pending |
-| A2 | split LowIR/native and named pass doses | experiment-only harness | endpoint exactness required | pending | focused routing | pending |
+| A2 | split LowIR/native and named pass doses | experiment-only harness removed | O1/O2 endpoints byte-exact | native O2 is first harmful layer | focused builds exact | complete |
 | B1 | locate first harmful LowIR increment | existing contracts plus needed negative guard | pending | pending | pending | pending |
 | B2 | repair pass-order interference | property tests, not full-text definitions | pending | pending | pending | pending |
-| B3 | locate framed/frameless native interference | PA38 plus earliest PA2X encoding owner | pending | pending | pending | pending |
+| B3.1 | prevent trace layout from displacing conditional fallthrough | PA38 README plus positive/negative structural control | O2 text -73,012 bytes; O3-workload result -73,316 text bytes | O1-workload CPU -0.92%; O3-workload CPU -1.59%; normalized floor still open | 5,471/5,471; debug 11/11; zero-fatal audit | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

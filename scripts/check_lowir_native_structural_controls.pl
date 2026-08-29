@@ -55,7 +55,7 @@ if (scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -64,8 +64,9 @@ for my $test (@tests)
 		CLEANUP => 1);
 	my $mir_path = "$directory/test.mir";
 	my $program = "$directory/test.program";
+	my $level = $test =~ /conditional-fallthrough-layout/ ? '-O2' : '-O1';
 	my $status = run_command_capture(
-		cmd => [$app, '-O1', '--dump-machine-ir', $mir_path,
+		cmd => [$app, $level, '--dump-machine-ir', $mir_path,
 			'-o', $program, $test],
 		stdout => "$directory/compile.stdout",
 		stderr => "$directory/compile.stderr",
@@ -82,6 +83,27 @@ for my $test (@tests)
 	die "$test: generated program failed with status $run_status\n" if $run_status != 0;
 
 	my $mir = read_file($mir_path);
+	if ($test =~ /conditional-fallthrough-layout/) {
+		my $trace = function_body($test, $mir, 'pure_trace');
+		die "$test: O2 did not place the unconditional trace successor next\n"
+			if $trace !~
+				/^\s+block \^entry\s*\n.*?^\s+block \^done\s*\n.*?^\s+block \^cold\s*$/ms;
+		my $trace_entry = block_body($trace, 'entry');
+		die "$test: O2 retained the unconditional trace jump\n"
+			if !defined($trace_entry) || $trace_entry =~ /^\s+jmp\b/m;
+
+		my $guarded = function_body(
+			$test, $mir, 'conditional_fallthrough');
+		die "$test: O2 moved the established conditional fallthrough\n"
+			if $guarded !~
+				/^\s+block \^guard\s*\n.*?^\s+block \^hot\s*\n/ms;
+		my $guard = block_body($guarded, 'guard');
+		die "$test: guarded block lost its conditional transfer\n"
+			if !defined($guard) || $guard !~ /^\s+j[a-z]+ \^other$/m;
+		die "$test: guarded block retained an avoidable unconditional jump\n"
+			if $guard =~ /^\s+jmp\b/m;
+		next;
+	}
 	if ($test =~ /local-loop-phi-activation/) {
 		my $positive = function_body($test, $mir, 'late_local_loop');
 		die "$test: reducer lost its call-bearing prefix\n"

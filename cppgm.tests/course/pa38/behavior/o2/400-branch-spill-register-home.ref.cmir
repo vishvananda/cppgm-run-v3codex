@@ -35,6 +35,10 @@ function @accumulate
   block ^call
     call @fallback [args=(), unwind=no]
     store.i8 [rbp-<off0>], rax
+    jmp ^join
+
+  block ^direct
+    store.i8 [rbp-<off0>], 3
 
   block ^join
     load.i8 r9, [rbp-<off0>]
@@ -42,10 +46,6 @@ function @accumulate
     sext.i8 r8
     lea r9, [<gpr0>+r8]
     ret r9
-
-  block ^direct
-    store.i8 [rbp-<off0>], 3
-    jmp ^join
 
 function @main
   abi

@@ -269,8 +269,10 @@ semantic-preserving rewrites where safe:
 `-O2` is the whole-function machine-improvement level. It must include all
 `-O1` work and additionally:
 
-- improve block layout by following unconditional jump traces so likely
-  successors become natural fallthrough blocks
+- in a function with no conditional branch, improve block layout by following
+  unconditional jump traces so likely successors become natural fallthrough
+  blocks; preserve the established order in functions with conditional
+  branches so an existing conditional fallthrough is not displaced
 - retain a LowIR value in one physical register through joins or backedges
   when its complete interval conflicts with no fixed-register use; a value
   that crosses a call may remain in a callee-saved GPR, while an XMM value may
