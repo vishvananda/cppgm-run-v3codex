@@ -11,13 +11,13 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] !dbg(course
     branch %t2, ^for_body_2, ^for_end_4
 
   block ^for_body_2:
-    store i32 %t0, @observed
+    store volatile i32 %t0, @observed
     %t5 = binary add i32 %t0, 1 !dbg(course/pa37/debuginfo/driver/o3/500-source-full-unroll-debug.t, 5, 16)
     %dbg_i__2 = copy i32 %t5 !dbg(course/pa37/debuginfo/driver/o3/500-source-full-unroll-debug.t, 5, 3)
     jump ^for_cond_1
 
   block ^for_end_4:
-    %t6 = load i32 @observed
+    %t6 = load volatile i32 @observed
     %t7 = cmp eq i32 %t6, 2
     branch %t7, ^cond_then_5, ^cond_else_6
 
