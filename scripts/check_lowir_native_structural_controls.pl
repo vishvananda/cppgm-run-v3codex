@@ -3,6 +3,7 @@
 use strict;
 use warnings;
 
+use File::Copy qw(copy);
 use File::Temp qw(tempdir);
 use FindBin;
 use lib $FindBin::Bin;
@@ -48,14 +49,31 @@ sub preserve_count
 	return 0;
 }
 
-if (scalar(@ARGV) != 2)
+sub code_alignment
 {
-	die "Usage: check_lowir_native_structural_controls.pl <lowir2native> <test-or-directory>\n";
+	my ($body) = @_;
+	return 0 + $1 if $body =~ /^\s+code_alignment\s+(\d+)$/m;
+	return 2;
 }
 
-my ($app, $root) = @ARGV;
+sub object_symbol_value
+{
+	my ($test, $symbols, $name) = @_;
+	for my $line (split(/\n/, $symbols)) {
+		return hex($1) if $line =~
+			/^\s*\d+:\s+([0-9a-fA-F]+)\s+\d+\s+FUNC\b.*\s\@?\Q$name\E$/;
+	}
+	die "$test: object has no $name function symbol\n";
+}
+
+if (scalar(@ARGV) != 3)
+{
+	die "Usage: check_lowir_native_structural_controls.pl <lowir2native> <cppgm++> <test-or-directory>\n";
+}
+
+my ($app, $driver, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -65,6 +83,7 @@ for my $test (@tests)
 	my $mir_path = "$directory/test.mir";
 	my $program = "$directory/test.program";
 	my $level = $test =~
+		/o3-large-function-alignment/ ? '-O3' : $test =~
 		/(?:conditional-fallthrough-layout|deferred-carrier-lifetime-reset|call-result-plan-reservation)/
 		? '-O2' : '-O1';
 	my $status = run_command_capture(
@@ -85,6 +104,91 @@ for my $test (@tests)
 	die "$test: generated program failed with status $run_status\n" if $run_status != 0;
 
 	my $mir = read_file($mir_path);
+	if ($test =~ /o3-large-function-alignment/) {
+		my $large = function_body(
+			$test, $mir, 'large_alignment_candidate');
+		my $small = function_body(
+			$test, $mir, 'small_alignment_control');
+		my $large_block = block_body($large, 'entry');
+		my $small_block = block_body($small, 'entry');
+		my $large_count = scalar(() =
+			(defined($large_block) ? $large_block : '') =~ /^\s{4}\S/mg);
+		my $small_count = scalar(() =
+			(defined($small_block) ? $small_block : '') =~ /^\s{4}\S/mg);
+		die "$test: large-function reducer no longer reaches the documented threshold\n"
+			if $large_count < 64;
+		die "$test: small-function control unexpectedly reaches the threshold\n"
+			if $small_count >= 64;
+		die "$test: O3 did not request 16-byte large-function alignment\n"
+			if code_alignment($large) != 16;
+		die "$test: O3 over-aligned the small function\n"
+			if code_alignment($small) != 2;
+
+		my $baseline_mir = "$directory/baseline.mir";
+		my $baseline_program = "$directory/baseline.program";
+		$status = run_command_capture(
+			cmd => [$app, '-O2', '--dump-machine-ir', $baseline_mir,
+				'-o', $baseline_program, $test],
+			stdout => "$directory/baseline-compile.stdout",
+			stderr => "$directory/baseline-compile.stderr",
+			timeout => 30,
+		);
+		die "$test: O2 native compile failed\n" .
+			read_file("$directory/baseline-compile.stderr") if $status != 0;
+		$run_status = run_command_capture(
+			cmd => [$baseline_program],
+			stdout => "$directory/baseline-program.stdout",
+			stderr => "$directory/baseline-program.stderr",
+			timeout => 30,
+		);
+		die "$test: O2 generated program failed with status $run_status\n"
+			if $run_status != 0;
+		my $baseline = read_file($baseline_mir);
+		my $baseline_large = function_body(
+			$test, $baseline, 'large_alignment_candidate');
+		die "$test: O2 unexpectedly requested strong function alignment\n"
+			if code_alignment($baseline_large) != 2;
+
+		my $driver_input = "$directory/test.lowir";
+		copy($test, $driver_input) or
+			die "$test: unable to prepare driver replay: $!\n";
+		my $o2_object = "$directory/o2.o";
+		my $o3_object = "$directory/o3.o";
+		for my $request (['-O2', $o2_object], ['-O3', $o3_object]) {
+			my ($driver_level, $object) = @$request;
+			$status = run_command_capture(
+				cmd => [$driver, '-c', $driver_level, '-o', $object,
+					$driver_input],
+				stdout => "$directory/driver-$driver_level.stdout",
+				stderr => "$directory/driver-$driver_level.stderr",
+				timeout => 30,
+			);
+			die "$test: $driver_level driver replay failed\n" .
+				read_file("$directory/driver-$driver_level.stderr")
+				if $status != 0;
+		}
+		my @symbol_tables;
+		for my $object ($o2_object, $o3_object) {
+			my $symbols_path = "$object.symbols";
+			$status = run_command_capture(
+				cmd => ['readelf', '-Ws', $object],
+				stdout => $symbols_path,
+				stderr => "$symbols_path.stderr",
+				timeout => 30,
+			);
+			die "$test: object symbol inspection failed\n" if $status != 0;
+			push @symbol_tables, read_file($symbols_path);
+		}
+		my $o2_value = object_symbol_value(
+			$test, $symbol_tables[0], 'large_alignment_candidate');
+		my $o3_value = object_symbol_value(
+			$test, $symbol_tables[1], 'large_alignment_candidate');
+		die "$test: O2 layout control accidentally aligned the large function\n"
+			if $o2_value % 16 == 0;
+		die "$test: relocatable writer lost O3 large-function alignment\n"
+			if $o3_value % 16 != 0;
+		next;
+	}
 	if ($test =~ /call-result-plan-reservation/) {
 		my $future = function_body($test, $mir, 'future_claimed_region');
 		die "$test: an earlier call result blocked a future cyclic result plan\n"

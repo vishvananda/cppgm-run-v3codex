@@ -441,6 +441,8 @@ void render_function(std::ostringstream & out, const Program & program,
       << (function.omit_frame_pointer ? "omit" : "keep")
       << "\n    epilogues "
       << (function.share_epilogues ? "shared" : "direct") << '\n';
+  if(function.code_alignment != 2)
+    out << "    code_alignment " << function.code_alignment << '\n';
   if(!function.callee_saved_regs.empty()) {
     out << "    preserve";
     for(std::size_t i = 0; i < function.callee_saved_regs.size(); ++i)

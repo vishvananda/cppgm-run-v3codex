@@ -161,6 +161,9 @@ sub canonicalize_machine_ir
 	my ($data) = @_;
 	return undef if !defined($data);
 	$data = normalize_machine_ir($data);
+	# Focused PA38 properties validate non-default entry alignment.  Keep the
+	# legacy structural MIR oracle concerned with instruction and frame shape.
+	$data =~ s/^\s+code_alignment\s+\d+\n//mg;
 	my %state = (
 		disp_map => {},
 		next_disp => {},

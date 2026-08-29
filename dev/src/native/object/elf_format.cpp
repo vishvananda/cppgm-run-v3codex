@@ -336,7 +336,8 @@ std::vector<EncodedSection> partition_weak_text(
     slice.old_end = function.offset + function.size;
     if(!signature.valid()) {
       EncodedSection & ordinary = result[0];
-      while(ordinary.bytes.size() % 2) ordinary.bytes.push_back(0);
+      while(ordinary.bytes.size() % function.alignment)
+        ordinary.bytes.push_back(0);
       slice.new_start = ordinary.bytes.size();
       slice.section = 0;
       ordinary.bytes.insert(ordinary.bytes.end(),
@@ -350,7 +351,7 @@ std::vector<EncodedSection> partition_weak_text(
       grouped.name = SectionIdentity(SK_TEXT_COMDAT, signature);
       grouped.comdat_signature = signature;
       grouped.flags = source.flags | 0x200;
-      grouped.alignment = 2;
+      grouped.alignment = function.alignment;
       if(emitted_weak_objects[object])
         throw std::logic_error("duplicate function COMDAT section name");
       emitted_weak_objects[object] = 1;

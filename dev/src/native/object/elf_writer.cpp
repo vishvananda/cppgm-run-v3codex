@@ -1877,8 +1877,7 @@ private:
 void emit_prepared_function(
     CodeBuffer & out, const mir_model::MirFunction & function, Stats * stats)
 {
-  // Two-byte alignment keeps the member-pointer virtual-slot tag free.
-  out.align(2);
+  out.align(function.code_alignment);
   const std::size_t function_start = out.size();
   out.label(function.symbol);
   if(function.object_symbol.valid()) out.label_object(function.object_symbol);
@@ -2504,12 +2503,13 @@ HostFunctionLayout emit_prepared_host_function(
     stats->eh_region_edges += region_plan.edge_count;
     stats->eh_call_sites += region_plan.protected_call_count;
   }
-  out.align(2);
+  out.align(function.code_alignment);
   HostFunctionLayout layout;
   layout.program_symbol = function.symbol;
   if(function.object_symbol.valid())
     layout.object_symbol = function.object_symbol;
   layout.offset = out.size();
+  layout.alignment = function.code_alignment;
   layout.omit_frame_pointer = function.omit_frame_pointer;
   layout.stack_adjustment =
     epilogue_detail::function_stack_adjustment(function);

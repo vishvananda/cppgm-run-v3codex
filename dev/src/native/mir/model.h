@@ -438,6 +438,9 @@ struct Function
   // O0 favors compact native layout; optimized code favors direct returns
   // over a size-only shared-epilogue branch.
   bool share_epilogues = true;
+  // Large O3 functions may request a stronger entry alignment.  Keep this
+  // explicit in MIR so every native emission path applies the same policy.
+  std::size_t code_alignment = 2;
   bool host_eh_enabled = false;
   long long host_eh_exception_offset = 0;
   long long host_eh_selector_offset = 0;

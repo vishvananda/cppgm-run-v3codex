@@ -324,9 +324,19 @@ backward-EH spans, cached address carriers, aliases, parameters, and fixed
 register effects.
 
 `-O3` must accept the LowIR produced by PA37's maximum optimization level and
-apply all `-O2` machine improvements. PA38 does not require an additional
-O3-only MIR rewrite; the distinct O3 transformation is the PA37 LowIR full
-unroller, and its result must lower through the ordinary serialized MIR path.
+apply all `-O2` machine improvements. It does not require an additional
+O3-only instruction rewrite; the distinct PA37 transformation remains the
+LowIR full unroller, and its result must lower through the ordinary serialized
+MIR path.
+
+After final O3 machine cleanup, a function containing at least 64 MIR
+instructions requests 16-byte native entry alignment. Smaller functions and
+all functions at O2 and below retain the two-byte minimum needed by the
+existing native layout. Record the requested alignment in serialized MIR and
+honor it in executable emission and relocatable-object text partitioning,
+including separate weak/COMDAT text sections. The policy is based only on the
+final machine-function size; it must not recognize source names or particular
+programs.
 
 All levels must preserve valid debug metadata. Optimizations may choose to be
 more conservative when a rewrite would make source locations misleading.
@@ -390,9 +400,12 @@ N3485 source-language clauses.
   future cyclic result span against earlier reactive results and completed
   call-argument pressure, guarded fast-loop `phi` residency without extra
   preserved-register capacity, and reuse after a completed cached-address
-  carrier lifetime.  It then runs the generated program, permits equivalent
-  physical-register choices, and does not compare a complete MIR dump or
-  executable image.
+  carrier lifetime. It also checks that an independently large final MIR body
+  receives O3-only 16-byte entry alignment, that a small body does not, and
+  that the compile-only driver preserves the request in its relocatable text
+  layout. It then runs the generated programs, permits equivalent physical-
+  register choices, and does not compare a complete MIR dump or executable
+  image.
 - A survivor-property pass also reuses selected small `course/pa38/o1`
   reducers at `-O0` and `-O1`. It checks only local relationships such as a
   frame home disappearing while its guarded twin remains, a call result being

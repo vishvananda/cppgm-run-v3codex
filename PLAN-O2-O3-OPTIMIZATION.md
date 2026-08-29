@@ -1040,6 +1040,97 @@ at O2 and `4faa64e562aee329b12475a506240169f4cf1170274dd3e3139012ee127c2f4c`
 at O3.  The full two-generation gates take 51.29 and 49.93 seconds wall,
 respectively, with explicit 32-way outer, build, and object concurrency.
 
+### D.epilogue shared-return layout rejected
+
+The current tokenizer profile exposed 24 complete copies of `Lexer::Run`'s
+six-pop epilogue, while GCC and Clang use one shared return sequence. The
+existing native epilogue planner already supports exact byte-costed sharing,
+but every optimized level had disabled it. Re-enabling that policy at O2/O3
+reduced `Run` from 2,418 to 2,257 native instructions, its physical epilogues
+from 24 to one, tokenizer text by 1,006 bytes, and complete O3-producer text by
+94,192 bytes.
+
+That static saving did not improve throughput. The broad form raised the two-
+lane O1-workload user time about 1.5%. Sharing only functions with at least 16
+returns reduced producer text by 17,928 bytes but raised user time about
+0.26%. Excluding the exceptionally return-heavy instruction encoder and
+limiting the policy to 16--64 returns was nearly flat on O1 (+0.11% user), but
+the O3 workload regressed about 0.36% user, 0.32% aggregate CPU, and 1.5% wall.
+The duplicate return bytes are cheaper than the extra taken branches in this
+workload. Every form was removed before contract or test movement.
+
+### D.copy-pair staged adjacent scalar-copy fusion rejected
+
+The next MIR prototype recognized two adjacent 64-bit loads staged in a
+unique predecessor and their two adjacent stores in the successor. With
+conservative CFG, liveness, register, debug-range, and intervening-operation
+guards, it replaced them by one exact 16-byte vector `copy_bytes` before the
+first store, preserving the original load-before-store semantics. It reduced
+the specialized `Peek(0)` clone by three MIR instructions and eight native
+bytes, reduced the generic `Peek` by eight bytes, and reduced tokenizer text
+by 22 bytes.
+
+Despite the local improvement, the generated O3 compiler grew 8,744 text
+bytes from the new analysis. More importantly, twelve position-balanced hot-
+TU lanes were exact but the candidate was slower in every position: mean wall
+moved 0.9733 to 1.0133 seconds and user time 0.9283 to 0.9667 seconds, about a
+4.1% loss. Inspection showed that shrinking several early functions shifted
+the much hotter translation and physical cursors onto less favorable entry
+addresses. The rewrite was removed. This result motivated testing layout
+stability directly rather than rejecting every locally useful shrink.
+
+### D.align64 bounded O3 function-entry alignment retained
+
+The native object path previously aligned every function to only two bytes.
+The relocatable writer then repacked ordinary and weak text at that same
+minimum, so even an encoder-side alignment attempt would have been discarded.
+The retained O3 policy records a 16-byte entry-alignment request when the
+final optimized function contains at least 64 MIR instructions. Smaller O3
+functions and every function at O2 and below retain two-byte alignment. Both
+executable emission and relocatable ordinary/COMDAT partitioning consume the
+same MIR fact.
+
+In the compiler workload, 3,772 of 4,043 native functions at least 256 bytes
+long become 16-byte aligned, versus 628 incidentally aligned before the dose.
+Complete O3-producer text grows 8,619,464 to 8,644,712 bytes (+25,248, 0.29%).
+The O1-workload three-pair all-32 screen is exact in every lane: mean wall
+falls 32.02 to 31.28 seconds (2.31%) and aggregate CPU 852.56 to 845.26
+seconds (0.86%). A four-pair same-source GCC control is effectively flat in
+CPU (+0.09%), making the normalized self CPU result about 0.9905x, a 0.95%
+relative improvement.
+
+The O3 workload required a four-pair extension because one baseline lane had
+a scheduler tail. The position-balanced medians fall 31.89 to 31.80 seconds
+wall (0.30%) and 862.80 to 853.78 seconds CPU (1.05%). A first GCC O3 window
+was rejected in full after one 588-CPU-second host event; the fresh balanced
+window is flat in CPU (+0.06%), so normalized self CPU improves about 1.11%.
+Baseline and the timed candidate O3 outputs are each deterministic at hashes
+`1e22afd0783bb22065dc8dedf28255946a4389b9296447b2a1840b61fad55851`
+and `dfcd0aad2dcd0e1314f06715c9909048f7ff0f3653c4212595864c06ee01c871`.
+The final sparse MIR serialization cleanup adds only 32 text bytes to the
+producer and produces hash
+`c8ca94b36224b126c0dd163f670ee5da3cd327898af4253821788b97d36a572b`.
+
+PA38 documents the size-only rule. Its focused property dynamically counts
+the final MIR rather than matching fixture text, checks O3/O2 isolation and a
+small-function guard, executes both native programs, and replays the LowIR
+through the compile-only driver to verify the ELF function address after text
+partitioning. The PA38 suite passes 45/45 and the report through PA38 passes
+5,471/5,471. The PA37/PA38 debug and native object-roundtrip gates pass, and
+the PA39 file audit reports zero fatal errors. Two fresh frozen
+`semantic_overload.cpp` compiles are deterministic within each level at
+`a56db05037d0fd27d1597f6c1775b723b17e9b447b34b908c09de622cde4a985`
+for O2 and
+`88665587f98a62da5017e1098681a3871d9807f0c5e117603c19cabd889d7aff`
+for O3; their intentional difference is the O3-only layout policy. Explicit
+all-32 O2 and O3 inception pass every object comparison and the final
+executable comparison in 49.63 and 50.68 seconds. The self/inception hashes
+are exact at
+`83eb0b6e2e19b00a5faa883d7d556ef403fcf7621acc2cec3d3a339708793762`
+for O2 and
+`c8ca94b36224b126c0dd163f670ee5da3cd327898af4253821788b97d36a572b`
+for O3.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1064,6 +1155,9 @@ Fill one row for every retained or rejected dose.
 | D.loop-shared | revisit qualified shared loop bodies in a separate final O3 inline wave | none; rejected before contract movement | range helper and five calls removed; tokenizer +694 text bytes; three hot callers enlarged | clean repeat +2.83% wall/+1.07% CPU | exact six-lane output; candidate removed | rejected; call removal did not pay for duplicated loop state |
 | D.address-group | specialize repeated direct readonly byte-string addresses and fold clone-local byte control | none; rejected before contract movement | 12 calls redirected; clone 73/393 vs generic 150/893 LowIR instructions/native bytes; O3 producer +18,544 text bytes; hot Ir -0.143% | hot CPU +0.15%; full 32-way CPU +0.033%, wall +1.56% | exact hot and six-lane full output; candidate removed | rejected; local saving did not pay for machinery/footprint |
 | D.call-plan | keep reactive call results out of future cyclic spans and grant a cyclic call result after its completed arguments retire | PA38 README plus O2/O1 register-agnostic structural/behavioral control | `Run` -181 MIR, scalar loads/stores -89/-77, frame homes -3; tokenizer -234 `.text`; O3 producer +292 text bytes; O1 object exact; unrelated EH/branch fixtures exact | O1 workload +0.11% wall/-0.40% CPU; GCC CPU -0.21%; normalized CPU -0.18%; O3 workload -1.42% wall/-0.30% CPU, five of six pairs favorable | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; frozen O2/O3 exact; all-32 O2/O3 inception exact | retained in this checkpoint |
+| D.epilogue | share repeated optimized return sequences, with broad and bounded variants | none; rejected before contract movement | broad: `Run` -161 native instructions and -23 physical epilogues; O3 producer -94,192 text bytes; bounded variants -17,928/-16,120 bytes | broad O1 user +1.5%; return-bounded +0.26%; bounded/excluded O3 CPU +0.32% and wall +1.5% | exact-output all-32 screens; all variants removed | rejected; taken return branches cost more than duplicate bytes |
+| D.copy-pair | fuse staged adjacent 64-bit predecessor loads/successor stores into one vector copy | none; rejected before contract movement | clone -3 MIR/-8 bytes; generic -8 bytes; tokenizer -22 text bytes; producer +8,744 text bytes | twelve-lane hot TU +4.1% wall/user, every candidate lane slower | exact hot outputs; candidate removed | rejected; exposed entry-address sensitivity |
+| D.align64 | align large final O3 MIR functions and preserve the request through object text partitioning | PA38 README plus dynamic MIR-count, level-isolation, behavior, driver-replay, and ELF-symbol property | 3,772/4,043 >=256-byte functions aligned; O3 producer +25,248 text bytes (+0.29%) | O1 workload -2.31% wall/-0.86% CPU; GCC CPU +0.09%; normalized CPU -0.95%; O3 workload -0.30% wall/-1.05% CPU; GCC CPU +0.06%; normalized CPU -1.11% | PA38 45/45; 5,471/5,471; PA37/38 debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

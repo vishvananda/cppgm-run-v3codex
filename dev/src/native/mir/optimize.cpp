@@ -1304,6 +1304,8 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
     recolor_call_free_callee_saved(function, liveness, stats);
   if(level >= 2 || recolored) finalize_frame(function, stats);
   select_frame_pointer_policy(function, stats);
+  if(level >= 3 && instruction_count(function) >= 64)
+    function.code_alignment = 16;
   if(stats) {
     stats->output_instructions += instruction_count(function);
     stats->elapsed_nanoseconds += static_cast<std::uint64_t>(
