@@ -952,6 +952,32 @@ the current allocator.  The implementation was removed before student-facing
 documentation or tests; this closes small shared-loop inlining unless a later
 region-allocation change materially changes the premise.
 
+### D.address-group readonly-address specialization rejected
+
+The next GCC comparison showed four constant-propagated `IsOperator` variants,
+while self retained 48 calls to one 150-instruction generic body.  A bounded
+O3-only extension of grouped specialization therefore canonicalized direct
+addresses of readonly structured byte globals, specialized the largest
+repeated address group, folded byte loads from its initializer, and pruned
+constant control while repairing surviving phi inputs.  It redirected 12
+calls to a 73-instruction / 393-byte clone while preserving the 150-instruction
+/ 893-byte generic body for unlike calls.  The macro-processor object grew 350
+text bytes and the complete O3 producer grew 18,544 text bytes, primarily from
+the additional analysis and cleanup machinery.
+
+Both the native screen and full workload were output-exact.  Cachegrind on the
+macro-processor compile fell from 15,012,364,660 to 14,990,891,458
+instructions, a real but small 0.143% reduction.  Native single-TU CPU was
+effectively flat at 3.3775 versus 3.3825 seconds.  Three position-balanced
+32-way full-workload samples per producer then moved aggregate CPU from
+898.48 to 898.77 seconds (+0.033%) and mean wall time from 31.23 to 31.72
+seconds (+1.56%).  Every full result had the same final hash,
+`c86a99d244de27e8b0c4fbda19471093f0accdbbed612513e1f91e88fd82e356`.
+The local instruction saving does not pay for the producer footprint, so the
+implementation was removed before adding a student-facing contract or test.
+Do not retry readonly-address grouping without a substantially cheaper reuse
+of existing scalar and CFG analyses.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -974,6 +1000,7 @@ Fill one row for every retained or rejected dose.
 | D.group-census | find source-diverse constant groups that can delete control flow without broad inlining | none; diagnostic only | 217 TUs; populations in parser, semantic, lowering, serialization, and native paths | no timing claim | immutable O3 LowIR census | supports one bounded O3 prototype |
 | D.group-late | clone one profitable repeated integer-constant group after all inline waves and consume its edge equality | PA37 README plus level-isolation, structural, replay, and behavior property | hot Ir -2.019%; 69 calls redirected; clone 43 vs generic 57 LowIR instructions; O3 producer +28,416 text bytes | self -0.44% wall/-0.58% CPU; same-source GCC paired CPU +0.19%; normalized CPU -0.79%; wall normalization inconclusive | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; O3 inception exact | retained in this checkpoint |
 | D.loop-shared | revisit qualified shared loop bodies in a separate final O3 inline wave | none; rejected before contract movement | range helper and five calls removed; tokenizer +694 text bytes; three hot callers enlarged | clean repeat +2.83% wall/+1.07% CPU | exact six-lane output; candidate removed | rejected; call removal did not pay for duplicated loop state |
+| D.address-group | specialize repeated direct readonly byte-string addresses and fold clone-local byte control | none; rejected before contract movement | 12 calls redirected; clone 73/393 vs generic 150/893 LowIR instructions/native bytes; O3 producer +18,544 text bytes; hot Ir -0.143% | hot CPU +0.15%; full 32-way CPU +0.033%, wall +1.56% | exact hot and six-lane full output; candidate removed | rejected; local saving did not pay for machinery/footprint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
