@@ -1226,6 +1226,26 @@ movement. This closes destructive-reuse reservation as an independent change
 and confirms that preserving one cyclic grant is insufficient to make broad
 merged-body inlining profitable.
 
+### D.align-sweep stronger function-entry alignment rejected
+
+The locally smaller adjacent-copy prototype had shown that 16-byte function
+alignment still lets a small early size change move hotter functions by a
+whole entry slot. A direct policy sweep therefore rebuilt the accepted O3
+compiler with 32- and 64-byte alignment for the same final functions of at
+least 64 MIR instructions. The 32-byte producer added 28,320 text bytes over
+the accepted compiler; the 64-byte producer added 84,192 text bytes. Both
+compiled the hot preprocessing TU to the accepted exact object hash
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`.
+
+Neither stronger alignment was a stable throughput win. In a 36-lane
+three-way window, mean CPU per compile was 1.7092 seconds at 16 bytes, 1.7283
+at 32 bytes, and 1.6992 at 64 bytes. A cleaner 24-lane reversed window was
+1.3638, 1.4638, and 1.4000 seconds respectively. Thus 32 bytes regressed in
+both windows, while 64 bytes swung from 0.6% faster to 2.7% slower and paid a
+1.06% producer-text increase. Stronger padding is not the missing layout
+oracle. The shipped 16-byte policy was restored before documentation or test
+movement.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1257,6 +1277,7 @@ Fill one row for every retained or rejected dose.
 | D.hint-clone | apply existing loop-carried store/load forwarding to late O3 grouped clones | none; rejected at screen | specialized `Peek(0)` backedge reload removed; preserved-register count unchanged; producer +32 text bytes | twelve-lane hot wall +2.2%, user +2.3% | deterministic baseline/candidate objects; candidate removed | rejected; carried live range costs more than the reload |
 | D.loop-thread | thread a private loop-carried compare onto incoming edges and reuse `add 1` flags across latch stores | none; rejected at screen | latch reload/jump/test removed; clone remains 219 bytes and preserves three registers; producer +10,416 text bytes | 24-lane hot wall -0.21%, user exactly flat | deterministic baseline/candidate objects; candidate removed | rejected; real dynamic saving is too small for the implementation |
 | D.reuse-plan | keep destructive result reuse out of a future cyclic-result reservation, then recheck broad hinted inlining | none; rejected before contract movement | shipped tokenizer exact; guard-only O3 producer -3,872 text bytes; guarded hint96 `Run` 2,627 to 2,403 MIR and scalar loads/stores 616/516 to 513/383 | guarded hint96 hot +4.5--5%; guard-only three-pair mean CPU -0.13% but paired median 1.0001x, wall confounded by one baseline tail | exact 36-lane hot output and six full-workload outputs; candidate removed | rejected; restored grant does not overcome merged-body cost and guard alone is flat |
+| D.align-sweep | test 32/64-byte entry alignment as a stronger layout oracle for local O3 rewrites | none; rejected before contract movement | 32-byte producer +28,320 text bytes; 64-byte producer +84,192; hot object exact | 32-byte CPU +1.1% then +7.3%; 64-byte CPU -0.6% then +2.7% | 36-lane and reversed 24-lane output-exact screens; shipped 16-byte policy restored | rejected; stronger padding is unstable and not worth its text cost |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
