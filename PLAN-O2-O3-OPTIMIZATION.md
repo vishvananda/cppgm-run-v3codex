@@ -1304,6 +1304,32 @@ generated code. The sweep was removed before contract or test movement. A
 useful follow-up must eliminate the address/store/load shuttles that survive
 into MIR, not merely canonicalize dead LowIR storage.
 
+### D.const-ref constant reference-slot recovery rejected
+
+A stronger source-independent prototype recognized a scalar local whose
+address is used only by exact, nonvolatile loads and rewrote those loads back
+to direct slot loads before ordinary scalar promotion. The broad form removed
+more LowIR but lengthened nonconstant values across calls; in `AppendUTF8` it
+created six spills and two frame homes. The narrowed form admitted only slots
+whose direct stores are all integer or floating constants, which are freely
+rematerializable and cannot create that live-range cost.
+
+The narrowed property removed the ten zero-reference shuttles in
+`AppendUTF8`: the function fell from 495 to 465 MIR instructions, scalar loads
+from 80 to 70, native size from 1,965 to 1,846 bytes, and acquired no spill or
+frame home. The tokenizer lost 128 text bytes. Applied at every optimized
+level, however, the O3-produced compiler was 3,056 text bytes smaller but the
+24-lane O1 hot-TU screen regressed 1.56% mean CPU (0.9608 to 0.9758 seconds).
+
+To separate requested-level scan cost from O3 producer quality, a second form
+ran the rewrite only for requested O3. Its O3-produced compiler remained
+2,368 text bytes smaller, and its fixed O1 output was byte-exact with the
+accepted compiler, so the recognition scan was completely dormant in the
+timed workload. The 24-lane balanced repeat still regressed from 0.9642 to
+0.9808 seconds mean CPU (+1.73%) and from 0.9700 to 0.9875 seconds wall
+(+1.80%). The smaller O3 producer's changed code/layout is therefore itself
+detrimental; both forms were removed before contract or test movement.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1339,6 +1365,7 @@ Fill one row for every retained or rejected dose.
 | D.hint49 | inline the 48-instruction token move constructor whose flat profile appeared 256.9M instructions behind GCC | none; rejected before contract movement | direct calls 37 to 1; producer +11,600 text bytes; hot object exact | Cachegrind Ir -0.064%; native CPU -1.1% then +4.2% | exact static, Cachegrind, and 48 native outputs; override-only dose removed | rejected; flat constructor cost merely moved into callers |
 | D.group4 | admit four-call integer-constant groups under the retained static-payoff rule | none; rejected before contract movement | one 11-byte semantic clone; target object -5 bytes; producer text exact | 24-lane hot CPU +6.9% | exact hot outputs; eight-call threshold restored | rejected; tiny early size change is layout-negative |
 | D.final-slots | revisit zero-load scalar slots after final inline/load/edge cleanup | none; rejected before contract movement | tokenizer -34 LowIR instructions, but `AppendUTF8` remains 495 MIR/1,965 bytes and tokenizer remains 28,741 text bytes | static rejection; added scan has no generated-code benefit | focused LowIR/MIR/object census; prototype removed | rejected; native lowering already omits the residue |
+| D.const-ref | recover exact loads through addresses of constant scalar locals before promotion | none; rejected before contract movement | `AppendUTF8` 495 to 465 MIR, 80 to 70 scalar loads, 1,965 to 1,846 bytes, no spills; tokenizer -128 text bytes; O3 producer -2,368 bytes | all-level form CPU +1.56%; O3-only form with exact O1 output CPU +1.73%, wall +1.80% | two deterministic 24-lane screens; both forms removed | rejected; real local win produces a slower compiler even without runtime scan cost |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
