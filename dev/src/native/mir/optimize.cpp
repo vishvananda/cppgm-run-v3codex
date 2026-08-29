@@ -744,47 +744,75 @@ bool debug_ranges_use_register(const MirFunction & function,
   return false;
 }
 
+bool can_recolor_block(const MirBlock & block, RegisterMask live,
+                       X64Register source, X64Register destination,
+                       bool * source_seen)
+{
+  const RegisterMask source_bit = gpr_bit(source);
+  const RegisterMask destination_bit = gpr_bit(destination);
+  for(std::size_t i = block.instructions.size(); i != 0; --i) {
+    const MirInstruction & instruction = block.instructions[i - 1];
+    const RegisterMask defs = instruction_defs(instruction);
+    const RegisterMask uses = instruction_uses(instruction, true);
+    const RegisterMask explicit_mask = explicit_registers(instruction);
+    const RegisterMask before = uses | (live & ~defs);
+    const bool mentions_source = ((defs | uses) & source_bit) != 0;
+    *source_seen = *source_seen || mentions_source;
+    // Every source occurrence must be explicit so the rewrite cannot miss
+    // an ABI or instruction-specific implicit register dependency.
+    if(mentions_source && !(explicit_mask & source_bit)) return false;
+    // The two colors may not hold distinct live values at any boundary.
+    if((before & source_bit) && (before & destination_bit)) return false;
+    if((live & source_bit) && (live & destination_bit)) return false;
+    // A destination clobber cannot be crossed by a value formerly held in
+    // the callee-saved source register.
+    if((live & source_bit) && (defs & destination_bit) &&
+       !(defs & source_bit))
+      return false;
+    // Keep the first implementation conservative around instructions that
+    // mention both colors, even when boundary liveness would permit
+    // coalescing them.
+    if((explicit_mask & source_bit) &&
+       ((defs | uses) & destination_bit))
+      return false;
+    live = before;
+  }
+  return true;
+}
+
 bool can_recolor_register(const MirFunction & function,
                           const Liveness & liveness,
                           X64Register source, X64Register destination)
 {
-  const RegisterMask source_bit = gpr_bit(source);
-  const RegisterMask destination_bit = gpr_bit(destination);
   if(debug_ranges_use_register(function, source)) return false;
   bool source_seen = false;
   for(std::size_t block_index = 0;
       block_index < function.blocks.size(); ++block_index) {
     const MirBlock & block = function.blocks[block_index];
-    RegisterMask live = liveness.out[block_index];
-    for(std::size_t i = block.instructions.size(); i != 0; --i) {
-      const MirInstruction & instruction = block.instructions[i - 1];
-      const RegisterMask defs = instruction_defs(instruction);
-      const RegisterMask uses = instruction_uses(instruction, true);
-      const RegisterMask explicit_mask = explicit_registers(instruction);
-      const RegisterMask before = uses | (live & ~defs);
-      const bool mentions_source = ((defs | uses) & source_bit) != 0;
-      source_seen = source_seen || mentions_source;
-      // Every source occurrence must be explicit so the rewrite cannot miss
-      // an ABI or instruction-specific implicit register dependency.
-      if(mentions_source && !(explicit_mask & source_bit)) return false;
-      // The two colors may not hold distinct live values at any boundary.
-      if((before & source_bit) && (before & destination_bit)) return false;
-      if((live & source_bit) && (live & destination_bit)) return false;
-      // A destination clobber cannot be crossed by a value formerly held in
-      // the callee-saved source register.
-      if((live & source_bit) && (defs & destination_bit) &&
-         !(defs & source_bit))
-        return false;
-      // Keep the first implementation conservative around instructions that
-      // mention both colors, even when boundary liveness would permit
-      // coalescing them.
-      if((explicit_mask & source_bit) &&
-         ((defs | uses) & destination_bit))
-        return false;
-      live = before;
-    }
+    if(!can_recolor_block(
+         block, liveness.out[block_index], source, destination,
+         &source_seen)) return false;
   }
   return source_seen;
+}
+
+bool block_mentions_register(const MirBlock & block, X64Register reg)
+{
+  const RegisterMask bit = gpr_bit(reg);
+  for(std::size_t instruction = 0;
+      instruction < block.instructions.size(); ++instruction)
+    if((instruction_defs(block.instructions[instruction]) |
+        instruction_uses(block.instructions[instruction], true)) & bit)
+      return true;
+  return false;
+}
+
+bool function_mentions_register(const MirFunction & function,
+                                X64Register reg)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    if(block_mentions_register(function.blocks[block], reg)) return true;
+  return false;
 }
 
 void rewrite_register(MirOperand * operand, X64Register source,
@@ -864,6 +892,120 @@ bool recolor_call_free_callee_saved(MirFunction & function,
             rewrites[rewrite].first, rewrites[rewrite].second);
   if(stats) stats->rewrites += rewrites.size();
   return true;
+}
+
+// A completed CFG can expose several disjoint live ranges that happened to
+// receive the same callee-saved color during online lowering.  If none of the
+// ranges reaches a block edge, choose a conflict-free destination separately
+// in each block and eliminate the source color only when every range succeeds.
+// Caller-saved destinations are free.  A surviving callee-saved color is also
+// profitable because it adds no new save/restore.  The caller prevents an
+// eliminated source from becoming a destination again and prevents an anchor
+// destination from becoming a later source, so at most five colors can be
+// eliminated and the iterative liveness proof must converge.
+bool recolor_one_block_local_callee_saved(
+    MirFunction & function, const Liveness & liveness,
+    RegisterMask unavailable_sources,
+    RegisterMask unavailable_destinations,
+    RegisterMask * eliminated_source,
+    RegisterMask * anchored_destinations,
+    std::size_t persistent_analysis_storage,
+    Stats * stats)
+{
+  static const X64Register caller_saved[] = {
+    XR_RAX, XR_RCX, XR_RDX, XR_RDI, XR_RSI, XR_R8, XR_R9
+  };
+  for(std::size_t saved = function.callee_saved_regs.size();
+      saved != 0; --saved) {
+    const X64Register source = function.callee_saved_regs[saved - 1];
+    const RegisterMask source_bit = gpr_bit(source);
+    if(unavailable_sources & source_bit) continue;
+    if(debug_ranges_use_register(function, source)) continue;
+    if(!function_mentions_register(function, source)) continue;
+    if(stats) ++stats->block_recolor_candidates;
+    std::vector<X64Register> destinations(
+      function.blocks.size(), XR_RSP);
+    if(stats)
+      note_peak_analysis_bytes(stats, persistent_analysis_storage +
+        liveness.in.capacity() * sizeof(RegisterMask) +
+        liveness.out.capacity() * sizeof(RegisterMask) +
+        destinations.capacity() * sizeof(X64Register));
+    bool failed = false;
+    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+      if((liveness.in[block] | liveness.out[block]) & source_bit) {
+        failed = true;
+        break;
+      }
+      if(!block_mentions_register(function.blocks[block], source)) continue;
+      bool destination_found = false;
+      for(std::size_t candidate = 0;
+          candidate < sizeof(caller_saved) / sizeof(caller_saved[0]);
+          ++candidate) {
+        bool candidate_seen = false;
+        if(!can_recolor_block(
+             function.blocks[block], liveness.out[block], source,
+             caller_saved[candidate], &candidate_seen)) continue;
+        if(!candidate_seen) continue;
+        destination_found = true;
+        destinations[block] = caller_saved[candidate];
+        break;
+      }
+      if(!destination_found) {
+        for(std::size_t candidate = 0;
+            candidate < function.callee_saved_regs.size(); ++candidate) {
+          const X64Register destination =
+            function.callee_saved_regs[candidate];
+          if(destination == source ||
+             (unavailable_destinations & gpr_bit(destination)) ||
+             !function_mentions_register(function, destination)) continue;
+          bool candidate_seen = false;
+          if(!can_recolor_block(
+               function.blocks[block], liveness.out[block], source,
+               destination, &candidate_seen)) continue;
+          if(!candidate_seen) continue;
+          destination_found = true;
+          destinations[block] = destination;
+          break;
+        }
+      }
+      if(!destination_found) {
+        failed = true;
+        break;
+      }
+    }
+    if(failed) continue;
+    std::size_t changed_blocks = 0;
+    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+      if(destinations[block] == XR_RSP) continue;
+      ++changed_blocks;
+      for(std::size_t instruction = 0;
+          instruction < function.blocks[block].instructions.size();
+          ++instruction)
+        for(std::size_t operand = 0;
+            operand < function.blocks[block].instructions[instruction].
+              operands.size(); ++operand)
+          rewrite_register(
+            &function.blocks[block].instructions[instruction].operands[operand],
+            source, destinations[block]);
+    }
+    if(stats) {
+      stats->rewrites += changed_blocks;
+      ++stats->block_recolor_registers;
+      stats->block_recolor_blocks += changed_blocks;
+    }
+    *eliminated_source = source_bit;
+    *anchored_destinations = 0;
+    for(std::size_t block = 0; block < destinations.size(); ++block)
+      if(destinations[block] != XR_RSP &&
+         (destinations[block] == XR_RBX ||
+          destinations[block] == XR_R12 ||
+          destinations[block] == XR_R13 ||
+          destinations[block] == XR_R14 ||
+          destinations[block] == XR_R15))
+        *anchored_destinations |= gpr_bit(destinations[block]);
+    return true;
+  }
+  return false;
 }
 
 bool is_removable_definition(const MirInstruction & instruction,
@@ -1302,7 +1444,29 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
   clean_branches(function, stats);
   const bool recolored =
     recolor_call_free_callee_saved(function, liveness, stats);
-  if(level >= 2 || recolored) finalize_frame(function, stats);
+  bool block_recolored = false;
+  if(level >= 3 && !function.callee_saved_regs.empty()) {
+    RegisterMask eliminated_sources = 0;
+    RegisterMask anchored_destinations = 0;
+    Liveness local_liveness = compute_liveness(
+      function, cfg, stats, persistent_analysis_storage);
+    while(true) {
+      RegisterMask eliminated_source = 0;
+      RegisterMask newly_anchored = 0;
+      if(!recolor_one_block_local_callee_saved(
+           function, local_liveness,
+           eliminated_sources | anchored_destinations,
+           eliminated_sources, &eliminated_source, &newly_anchored,
+           persistent_analysis_storage, stats)) break;
+      block_recolored = true;
+      eliminated_sources |= eliminated_source;
+      anchored_destinations |= newly_anchored;
+      local_liveness = compute_liveness(
+        function, cfg, stats, persistent_analysis_storage);
+    }
+  }
+  if(level >= 2 || recolored || block_recolored)
+    finalize_frame(function, stats);
   select_frame_pointer_policy(function, stats);
   if(level >= 3 && instruction_count(function) >= 64)
     function.code_alignment = 16;

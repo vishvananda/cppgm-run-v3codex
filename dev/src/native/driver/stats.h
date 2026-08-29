@@ -85,6 +85,9 @@ struct Stats
   std::size_t machine_opt_worklist_pushes = 0;
   std::size_t machine_opt_rewrites = 0;
   std::size_t machine_opt_identity_moves = 0;
+  std::size_t machine_opt_block_recolor_candidates = 0;
+  std::size_t machine_opt_block_recolor_registers = 0;
+  std::size_t machine_opt_block_recolor_blocks = 0;
   std::size_t machine_opt_frameless_functions = 0;
   std::size_t machine_opt_frameless_call_functions = 0;
   std::size_t machine_opt_frameless_saved_registers = 0;

@@ -57,6 +57,12 @@ void report_codegen_pipeline_stats(std::ostream & output,
          << " machine_opt_pushes=" << stats.machine_opt_worklist_pushes
          << " machine_opt_rewrites=" << stats.machine_opt_rewrites
          << " machine_opt_identity_moves=" << stats.machine_opt_identity_moves
+         << " machine_opt_block_recolor_candidates="
+         << stats.machine_opt_block_recolor_candidates
+         << " machine_opt_block_recolor_registers="
+         << stats.machine_opt_block_recolor_registers
+         << " machine_opt_block_recolor_blocks="
+         << stats.machine_opt_block_recolor_blocks
          << " machine_opt_frameless_functions="
          << stats.machine_opt_frameless_functions
          << " machine_opt_frameless_call_functions="

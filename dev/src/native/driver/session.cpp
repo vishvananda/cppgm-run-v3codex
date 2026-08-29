@@ -548,6 +548,12 @@ struct ProgramLoweringSession::Impl
       stats->machine_opt_worklist_pushes += opt_stats.worklist_pushes;
       stats->machine_opt_rewrites += opt_stats.rewrites;
       stats->machine_opt_identity_moves += opt_stats.identity_moves;
+      stats->machine_opt_block_recolor_candidates +=
+        opt_stats.block_recolor_candidates;
+      stats->machine_opt_block_recolor_registers +=
+        opt_stats.block_recolor_registers;
+      stats->machine_opt_block_recolor_blocks +=
+        opt_stats.block_recolor_blocks;
       stats->machine_opt_frameless_functions += opt_stats.frameless_functions;
       stats->machine_opt_frameless_call_functions +=
         opt_stats.frameless_call_functions;

@@ -1569,6 +1569,84 @@ Do not retry call-barrier relaxation without a substantially larger dynamic
 population or a proof that reuses an already-retained summary at near-zero
 producer cost.
 
+### D.block-local-save block-local callee-save recoloring retained
+
+The accepted tokenizer profile exposed a native cost below the LowIR call
+structure.  Its hot grouped query clone was 219 bytes and preserved `rbx`,
+`r12`, and `r13`, even though complete MIR liveness showed that every `r13`
+range began and ended within one block.  Online physical placement had reused
+one callee-saved color for several disjoint local ranges, causing every call to
+pay a function-wide save and restore for values that never crossed an edge.
+
+The retained O3-only rule runs after complete MIR liveness.  It considers at
+most the five SysV callee-saved GPR colors.  A source color is eligible only
+when no debug range uses it, every occurrence is explicit, no live range
+reaches a block boundary, and every block containing it has a conflict-free
+destination.  Blocks may independently use a caller-saved color or merge into
+an already-used callee-saved color.  The rewrite is all-or-nothing across the
+source color.  Liveness is recomputed after each success; eliminated sources
+cannot become destinations, and callee-saved destination anchors cannot later
+be eliminated.  These monotonic masks prevent the recoloring cycles found in
+the first prototype and bound convergence by the five source colors.  O1 and
+O2 retain their existing whole-function recoloring policy.
+
+The final hot clone is 203 bytes and preserves two registers.  The complete O3
+producer shrinks from 8,702,448 to 8,699,524 text bytes, a 2,924-byte saving.
+The frozen large semantic-analysis object is deterministic at O2 and remains
+byte-identical between old and new producers at
+`b5e47d8f2682c301351581c47228eace71549bcb4b52f0c26322e4f97908aadf`.
+At O3 the old and new deterministic hashes are
+`762d84fec4163717b3e019e5ef04965f2b8bc3fe4a88d3abf6b673609dc54b7c`
+and
+`6432ef9d40c5c6567fb2af4b482e83b170e567c10c44f94d0e4eedc3efdd6e2d`;
+the candidate object is 55 text bytes smaller.  The hot O1 tokenizer object is
+byte-identical at
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`,
+while Callgrind falls from 4,662,903,717 to 4,582,516,636 instructions, a
+1.7247% reduction.
+
+On the fixed requested-O1 producer workload, six position-balanced blocks all
+favor the candidate in aggregate CPU.  Mean wall is 30.203 versus 30.248
+seconds (+0.15%) and paired-median wall is +0.31%, both within the 1% raw
+no-regression allowance.  Mean CPU falls from 855.518 to 850.642 seconds
+(-0.57%) and the paired median improves 0.49%.  The same-source GCC control
+moves -0.20% wall and +0.13% CPU by means, with paired medians of -0.29% and
++0.08%.  Mean normalization is therefore about 1.0035x wall and 0.9931x CPU;
+paired-median normalization is about 1.0060x and 0.9943x.  The wall result is
+scheduler-sensitive but remains below the hard floor; every self CPU block,
+the normalized CPU result, and deterministic attribution favor retention.
+
+Requested O3 is stronger and includes the new proof's own compile-time cost.
+Six valid self blocks improve mean wall from 30.412 to 29.976 seconds (-1.44%)
+and mean CPU from 858.572 to 852.233 seconds (-0.74%); paired medians improve
+1.81% and 0.75%.  Two self blocks were discarded whole and replaced after an
+unrelated repository scan and an unrelated GCC build were observed during
+their windows.  Five uncontaminated GCC O3 blocks move +0.22% wall and +0.19%
+CPU by means, with paired medians of -0.14% and +0.18%.  Repeated attempts at
+a sixth control block were discarded or stopped when the recurring external
+jobs reappeared.  The resulting mean-normalized O3 improvement is about 1.65%
+wall and 0.93% CPU; paired-median normalization is about 1.67% and 0.93%.
+The final same-source O3 wall ratio is approximately 1.648x, so the 1.5x phase
+goal remains open.
+
+PA38 owns the change because serialized LowIR is unchanged.  Its existing
+call-free recoloring fixture now compares O1/O2 and O3 preservation
+properties, proves a dynamically identified source color disappears without
+requiring a particular replacement register, retains a call-crossing negative
+control, executes all generated programs, and checks level-isolated bounded
+statistics.  On the fixture O3 reports 10 candidates, two eliminated colors,
+and six rewritten blocks; O2 reports zero for each field.  PA37 therefore
+needs no new contract or test.
+
+The PA38 suite passes 45/45, the full report passes 5,471/5,471, PA37/PA38
+debug and object-round-trip lanes pass, and the PA39 audit has zero fatal
+findings with the unchanged 32 warnings.  Explicit all-32 inception gates
+match every object and final compiler at O2 and O3.  O2 self/inception is exact
+at
+`83d76ec00738e03f5ad6ae48003d44a956e51342a2be305662518998e7535075`;
+O3 is exact at
+`2e39c2458ba0b8ed3afbbaca028bf64c653c8897eb4119fa1009d763c96df643`.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1610,6 +1688,7 @@ Fill one row for every retained or rejected dose.
 | D.group-header-inline | inline the one outer-loop-header call to a late grouped clone after repeat-stable-call reuse has consumed the original call equivalences | none; rejected before contract movement | moving the dose before repeat-stable reuse destroyed that reuse and did not reduce retained calls; the correctly ordered dose reduced `Lexer::Run` grouped-clone calls 28 to 27, grew the tokenizer object 48 text bytes, and grew the complete O3 producer 6,372 text bytes | three balanced hot-TU ABBA blocks were exact but candidate/baseline was +0.89% wall and +0.92% user | valid serializable LowIR and exact native output in the ordered screen; prototype and its transient invalid pre-reuse ordering removed | rejected; a real hot call removal lost to duplicated body/layout cost |
 | D.group-fast-sibling | split one grouped clone into a bounded fast wrapper plus complete slow clone, then tail-transfer eligible scalar call/return pairs | provisional PA37/PA38 structural, level-isolation, replay, encoding, stats, and behavior properties removed | combined hot Ir -1.058%; split-only full O3 CPU +0.614%; final sibling-only producer +3,288 text bytes | combined O1 +1.035% wall/+0.169% CPU and normalized +0.621%/+0.292%; combined O3 normalized -1.093%/-0.300%; final sibling-only O3 screen +1.641%/+0.370% | provisional PA37 188/188, PA38 45/45, 5,471/5,471, and audits clean; all implementation and contract movement removed | rejected; hot-only synergy and final layout sensitivity fail representative gates |
 | D.repeat-readonly-call | preserve repeat-stable query availability across direct internal call-free read-only helpers | none; rejected before contract movement | four more query reuses; tokenizer -48 text bytes; producer +1,348; hot Ir -0.273% | self O1 paired median +0.033% wall/+0.050% CPU; GCC +0.668%/+0.102%; normalized -0.631%/-0.052% | exact 219-object manifest and final output in all valid self/GCC lanes; two contaminated GCC blocks rejected whole and replaced | rejected; raw throughput is not in the intended direction and normalized CPU gain is negligible |
+| D.block-local-save | eliminate a callee-saved color whose disjoint ranges are all confined to individual blocks | PA38 README plus O2/O3 level-isolation, structural, bounded-stats, and behavioral properties; PA37 unchanged | hot clone 219 to 203 bytes and three to two saves; producer -2,924 text bytes; hot Ir -1.7247%; frozen O2 exact and O3 -55 text bytes | O1 workload CPU -0.57%, normalized -0.69%, wall within +0.60%; O3 workload -1.44% wall/-0.74% CPU, normalized -1.65%/-0.93% | 45/45; 5,471/5,471 full report; debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

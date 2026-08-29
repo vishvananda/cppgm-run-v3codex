@@ -324,10 +324,24 @@ backward-EH spans, cached address carriers, aliases, parameters, and fixed
 register effects.
 
 `-O3` must accept the LowIR produced by PA37's maximum optimization level and
-apply all `-O2` machine improvements. It does not require an additional
-O3-only instruction rewrite; the distinct PA37 transformation remains the
-LowIR full unroller, and its result must lower through the ordinary serialized
-MIR path.
+apply all `-O2` machine improvements. It additionally performs one bounded
+post-liveness recoloring step. A callee-saved physical-register color may be
+removed when none of its live ranges reaches a block edge, every occurrence is
+explicit, no debug range refers to it, and every block containing the color
+has a noninterfering replacement. Each block may independently choose a
+caller-saved register or an already-used callee-saved color that will remain
+preserved. A call clobber, implicit use, live-in or live-out edge, debug
+dependency, or unproved interference rejects the complete source color;
+partial elimination is not permitted.
+
+After each eliminated color, recompute complete MIR liveness. An eliminated
+color cannot become a later destination, and a surviving callee-saved color
+used as a destination cannot itself be eliminated. This monotonic policy
+bounds the iteration by the five available callee-saved GPR colors and avoids
+recoloring cycles. O1 and O2 retain the existing whole-function policy. With
+`--stats`, report `machine_opt_block_recolor_candidates`,
+`machine_opt_block_recolor_registers`, and
+`machine_opt_block_recolor_blocks`; all three remain zero below O3.
 
 After final O3 machine cleanup, a function containing at least 64 MIR
 instructions requests 16-byte native entry alignment. Smaller functions and
@@ -400,7 +414,10 @@ N3485 source-language clauses.
   future cyclic result span against earlier reactive results and completed
   call-argument pressure, guarded fast-loop `phi` residency without extra
   preserved-register capacity, and reuse after a completed cached-address
-  carrier lifetime. It also checks that an independently large final MIR body
+  carrier lifetime. It compares O2 and O3 preservation properties for a
+  block-confined color, keeps a call-crossing control protected, and checks the
+  bounded recoloring statistics without requiring particular register names.
+  It also checks that an independently large final MIR body
   receives O3-only 16-byte entry alignment, that a small body does not, and
   that the compile-only driver preserves the request in its relocatable text
   layout. It then runs the generated programs, permits equivalent physical-

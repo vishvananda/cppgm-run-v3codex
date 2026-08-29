@@ -49,6 +49,20 @@ sub preserve_count
 	return 0;
 }
 
+sub preserved_registers
+{
+	my ($body) = @_;
+	return split(/\s+/, $1) if $body =~ /^\s+preserve\s+([^\n]+)$/m;
+	return ();
+}
+
+sub stat_value
+{
+	my ($test, $stats, $name) = @_;
+	return 0 + $1 if $stats =~ /(?:^|\s)\Q$name\E=(\d+)(?:\s|$)/;
+	die "$test: --stats omitted $name\n";
+}
+
 sub code_alignment
 {
 	my ($body) = @_;
@@ -474,6 +488,86 @@ for my $test (@tests)
 		my %callee_saved = map { $_ => 1 } qw(rbx r12 r13 r14 r15);
 		die "$test: a call-crossing value was recolored to caller-saved state\n"
 			if !$callee_saved{$crossing};
+
+		my %level_mir;
+		my %level_stats;
+		for my $request (['O2', '-O2'], ['O3', '-O3']) {
+			my ($name, $requested_level) = @$request;
+			my $level_mir = "$directory/$name.mir";
+			my $level_program = "$directory/$name.program";
+			my $level_stderr = "$directory/$name.compile.stderr";
+			$status = run_command_capture(
+				cmd => [$app, $requested_level, '--stats',
+					'--dump-machine-ir', $level_mir,
+					'-o', $level_program, $test],
+				stdout => "$directory/$name.compile.stdout",
+				stderr => $level_stderr,
+				timeout => 30,
+			);
+			die "$test: $requested_level native compile failed\n" .
+				read_file($level_stderr) if $status != 0;
+			$run_status = run_command_capture(
+				cmd => [$level_program],
+				stdout => "$directory/$name.program.stdout",
+				stderr => "$directory/$name.program.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level generated program failed with status " .
+				"$run_status\n" if $run_status != 0;
+			$level_mir{$name} = read_file($level_mir);
+			$level_stats{$name} = read_file($level_stderr);
+		}
+
+		for my $symbol ('recolor_candidate',
+			'even_save_recolor_candidate') {
+			my $o1 = function_body($test, $mir, $symbol);
+			my $o2 = function_body($test, $level_mir{O2}, $symbol);
+			my $o3 = function_body($test, $level_mir{O3}, $symbol);
+			die "$test: O2 changed the established preservation policy for $symbol\n"
+				if join(' ', preserved_registers($o2)) ne
+				   join(' ', preserved_registers($o1));
+			die "$test: O3 did not remove one block-confined preservation color from $symbol\n"
+				if preserve_count($o3) == 0 ||
+				   preserve_count($o3) >= preserve_count($o2);
+
+			my %o3_preserved = map { $_ => 1 } preserved_registers($o3);
+			my @dropped = grep { !$o3_preserved{$_} }
+				preserved_registers($o2);
+			die "$test: O3 preservation reduction has no eliminated source color in $symbol\n"
+				if !@dropped;
+			for my $dropped (@dropped) {
+				die "$test: eliminated source color remains in $symbol\n"
+					if $o3 =~ /\b\Q$dropped\E\b/;
+			}
+		}
+
+		my $o2_guard = function_body(
+			$test, $level_mir{O2}, 'cross_call_guard');
+		my $o3_guard = function_body(
+			$test, $level_mir{O3}, 'cross_call_guard');
+		die "$test: O3 changed preservation for a call-crossing range\n"
+			if join(' ', preserved_registers($o3_guard)) ne
+			   join(' ', preserved_registers($o2_guard));
+		my ($o3_crossing) = $o3_guard =~
+			/^\s+load\.i64 ([a-z0-9]+), \@line\s*\n.*?^\s+call \@next_value\b.*?^\s+call \@next_value\b.*?^\s+add \1,/ms;
+		die "$test: O3 safety reducer lost its value spanning two calls\n"
+			if !defined($o3_crossing);
+		die "$test: O3 exposed a call-crossing value to call clobbers\n"
+			if !$callee_saved{$o3_crossing};
+
+		for my $field (qw(machine_opt_block_recolor_candidates
+			machine_opt_block_recolor_registers
+			machine_opt_block_recolor_blocks)) {
+			die "$test: O2 unexpectedly ran block-local callee-save recoloring\n"
+				if stat_value($test, $level_stats{O2}, $field) != 0;
+			die "$test: O3 did not report bounded block-local recoloring work\n"
+				if stat_value($test, $level_stats{O3}, $field) == 0;
+		}
+		die "$test: O3 reported fewer rewritten blocks than eliminated colors\n"
+			if stat_value($test, $level_stats{O3},
+				'machine_opt_block_recolor_blocks') <
+			   stat_value($test, $level_stats{O3},
+				'machine_opt_block_recolor_registers');
 		next;
 	}
 	if ($test =~ /historical-placement-contracts/) {
