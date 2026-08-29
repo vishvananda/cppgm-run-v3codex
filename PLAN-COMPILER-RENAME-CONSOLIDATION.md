@@ -1,6 +1,6 @@
 # Plan: Compiler Naming and Ownership Consolidation
 
-Status: ready
+Status: complete
 
 Date: 2026-08-28
 
@@ -1594,3 +1594,82 @@ checkpoint where applicable, commit, and push state.
   ownership 14/0.  R11 exits with no compatibility header or migration alias,
   no duplicate source ID, and no dependency on a removed path.  Push: with
   this checkpoint.
+- `3e2b022f`, `0f5ad715`, and this commit — R12 ownership and final closure.
+  Completed the old-to-new path manifest for all 215 starting PA-prefixed
+  production files and added an exact audit which rejects a missing baseline
+  row, a surviving old path, a missing current owner, an invalid PA-numbered
+  owner, a duplicate owner in one row, or an invalid disposition.  The final
+  manifest classifies 206 paths as renamed, seven as split, and two as merged.
+  The source-set audit covers all 14 tools, 49 responsibility variables, and
+  228 current production translation units; the layout audit covers 469 files
+  with zero legacy paths, includes, namespaces, or identifiers.
+
+  The final semantic ownership increment removed the arbitrary
+  `semantic/declarations/names.cpp` split.  The unchanged class-name builder
+  now lives beside `AnalyzeClass`, and the unchanged enum-name builder beside
+  `AnalyzeEnum`.  The semantic-input token classifier moved path-only from
+  `semantic/presentation/vocabulary.cpp` to
+  `semantic/analysis/vocabulary.cpp`.  One translation unit was removed, so
+  `cppgm++` now has 217 shared source objects plus its runner and entry object
+  (219 total).  The enum owner is an explicit responsibility group immediately
+  after the semantic-primary group; the vocabulary, lambda-presentation, and
+  LowIR-debug owners retain their canonical late positions.
+
+  Several mechanically plausible alternatives were measured and rejected.
+  Converting the high-fanout syntax tag headers to `#pragma once` produced a
+  six-lane self/GCC wall ratio of 1.511509x.  Merging semantic vocabulary into
+  the analyzer produced 1.527837x, and merging the two small demand-statistics
+  owners into `demand.cpp` produced 1.543375x.  Moving enum, vocabulary, and
+  LowIR debug together passed one O1 sample at 1.489145x but regressed the
+  optimized Clang frozen guard by 0.83% wall and 0.93% aggregate CPU.  Restored
+  canonical order remained too slow at 1.525154x, and moving only LowIR debug
+  remained too slow at 1.511722x.  All rejected source and ordering changes
+  were restored; they are not hidden behind the retained increment.
+
+  The retained enum-only ordering passed the optimized-host same-source ABBA
+  guard.  GCC-O3 old/new frozen medians were 4.550/4.525 seconds wall
+  (-0.55%), 4.540/4.520 seconds aggregate CPU (-0.44%), and
+  368118/370078 KiB RSS (+0.53%).  Clang-O3 medians were 4.760/4.740 seconds
+  wall (-0.42%), 4.750/4.735 seconds aggregate CPU (-0.32%), and
+  369428/370616 KiB RSS (+0.32%).  Both compilers produced byte-identical
+  frozen objects in every lane.  Against the pre-R12 GCC-O3 compiler, the
+  final compiler changes from 7,085,510/21,712/6,792 to
+  7,085,554/21,704/6,792 text/data/bss bytes.  Symbol-size comparison confines
+  the 44-byte text and eight-byte data delta to GCC's expected cross-TU
+  recompilation and link layout around the co-located semantic functions; no
+  feature or optimizer implementation changed.
+
+  The corrected final same-revision O1 matrix used 32-way object builds and 12
+  balanced self/GCC lanes because the result was close to the boundary.  Self
+  and GCC wall medians were 31.545/21.315 seconds, a 1.479944x ratio; the
+  median of paired wall ratios was 1.484839x.  Aggregate CPU medians were
+  907.725/591.765 seconds (1.533928x), and RSS medians were
+  231924/230504 KiB.  Three Clang lanes measured 22.210 seconds wall,
+  608.430 seconds aggregate CPU, and 230544 KiB RSS, for self/Clang ratios of
+  1.420306x wall and 1.491914x CPU.  The wall-time exit criterion therefore
+  passes below 1.50x; the higher self/GCC CPU ratio is recorded explicitly.
+  Current GCC-O1 and Clang-O1 compiler hashes are respectively
+  `bbdd945768d8ff2db2474a4d63429d1caf42ce97f93f0c948d3094996e5c6ee4`
+  and
+  `66aad5a8cea9cfc58e2fe8bfa5c339ece2742c0be715079b8f80b5161d4b4267`.
+
+  Fresh explicit-O1 32/32/32 inception matched every current object and the
+  final compiler exactly at SHA-256
+  `a836d867d7adaaa7679ff8ad5e8fd0546a526dc5e7c62ed122310ac6cfb7fba4`.
+  It completed in 51.33 seconds wall, 1,409.24 seconds aggregate CPU, and
+  232364 KiB maximum RSS.  The complete through-PA38 report passed 5471/5471,
+  all 18 frozen output surfaces were exact, LowIR remained 124/99, semantic
+  ownership remained 850/0, lowering ownership remained 100/13/45/0, native
+  ownership remained 14/0, and the normal file audit remained
+  zero-fatal/32-warning.  The final report-only tight scan has 139 duplicate
+  and 30 division advisories, two fewer duplicate representatives than R11
+  because the declaration-name fragment was consolidated.
+
+  No Cachegrind, Valgrind, perf, inception, or detached benchmark process was
+  left running.  Removed all 782 rename-plan scratch entries (12 GiB) from
+  `/dev/shm`, the plan's registered scratch worktree, all plan-owned
+  `/tmp/v3rename-*` data (reducing `/tmp` from 2.0 GiB to 55 MiB), and eight
+  obsolete declaration-name/vocabulary object or depfile artifacts.  Dirty
+  pre-existing `/tmp/v3codex-*` worktrees were deliberately preserved.  R12
+  and the complete rename consolidation plan exit with every retained commit
+  pushed.  Push: with this closure ledger.
