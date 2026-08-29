@@ -78,21 +78,39 @@ workload.  The normalized loss is larger: about 20% on the O1 workload and
 detrimental, but this matrix does not say which pass or interaction is at
 fault.
 
-At the current post-B3.2 checkpoint, the inversion has been removed.  Six
-position-balanced 32-way pairs put `S_31/S_11` at 0.986725x wall and
-0.992211x aggregate CPU, and `S_33/S_13` at 1.000174x wall and 0.996361x
-aggregate CPU.  GCC's corresponding O3/O1 producer ratios are approximately
-0.8595x/0.8462x on the O1 workload and 0.8893x/0.84845x on the O3 workload.
-The current normalized self/GCC ratios are therefore still approximately
-1.148x wall / 1.173x CPU on the O1 workload and 1.125x / 1.174x on the O3
-workload.  Raw parity is now met within the close-result window, but roughly
-17% of normalized O3 code-quality gap remains.
+At the current post-D.loop-priority-inline checkpoint, the inversion remains
+removed and O3 now has a meaningful raw lead.  Three order-rotated all-32
+lanes per cell give these producer medians:
 
-All compared objects and final compilers were exact at a fixed workload level.
-The O1 and O3 final hashes were respectively
-`a836d867d7adaaa7679ff8ad5e8fd0546a526dc5e7c62ed122310ac6cfb7fba4`
-and `f9aedfb6c438a2252f474632fd4000de4f135494f8c0f4906860b9a4eb8e60f2`.
-The matrix scratch was removed and no stale benchmark process remained.
+| Producer | O1 workload | O3 workload |
+| --- | ---: | ---: |
+| `S_1b` | 31.540 / 905.060 s | 31.790 / 907.720 s |
+| `S_2b` | 31.650 / 903.420 s | 31.440 / 905.000 s |
+| `S_3b` | 30.220 / 856.760 s | 30.120 / 858.110 s |
+| `G_1b` | 21.040 / 591.560 s | 21.710 / 592.660 s |
+| `G_2b` | 18.620 / 520.530 s | 18.820 / 523.500 s |
+| `G_3b` | 18.470 / 500.330 s | 17.940 / 498.970 s |
+
+On the fixed O1 workload, raw O2/O1 is 1.003488x wall and 0.998188x CPU;
+raw O3/O1 is 0.958148x and 0.946633x.  The corresponding normalized ratios
+are 1.133909x/1.134398x for O2 and 1.091470x/1.119242x for O3.  On the fixed
+O3 workload, raw O2/O1 is 0.988990x/0.997003x and raw O3/O1 is
+0.947468x/0.945347x.  Normalized O2/O1 is 1.140860x/1.128718x, while
+normalized O3/O1 is 1.146573x/1.122851x.  Thus the raw floor is met on O3;
+O2 wall remains a close-result extension item on the O1 workload.  O3 is now
+about 5.5% faster than O1 rather than merely equal, but approximately 12--15%
+of same-source normalized producer-quality gap remains, and roughly fifteen
+percentage points remain to the raw 20% stretch target.
+
+Every lane reproduced the same 219-object manifest at its fixed workload.
+The O1 and O3 manifest hashes were respectively
+`23faea475b40bd6a0980f9167b9225f547e2b5153aaf45ae6c6578f2bee08281`
+and `7d75a1956c5c0b4d059fa578a34868e39bd2d5310e05ea074dd7af241f6b9838`;
+the final compiler hashes were
+`2d4483245bd508e0f6242bf9717e2a6ede53bb2b7bbcf1b7f6fdf7cb1017583f`
+and `e4670c488cd40ceec44dcffbbc0a2a115db1c427360ff341175e234e78b84975`.
+The fixed matrix work root was removed after every exact lane, and no stale
+benchmark or profiler process remained.
 
 ## What changes above O1 today
 
