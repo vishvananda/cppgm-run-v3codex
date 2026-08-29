@@ -1268,6 +1268,23 @@ contract or test movement. Future profile work must use inclusive call paths
 or whole-program deltas before treating an out-of-line C++ helper as a large
 target.
 
+### D.group4 lower-frequency constant groups rejected
+
+The retained O3 grouped specializer was widened only by lowering its minimum
+matching-call threshold from eight to four. Across the complete compiler this
+found exactly one additional general case, in semantic template result
+identity. Its specialized native clone was 11 bytes, the target object shrank
+by five bytes, and total producer text remained exactly 7,907,026 bytes; the
+existing tokenizer clone was unchanged. Thus the dose did not add optimizer
+text or broad clone growth.
+
+The exact-output 24-lane hot-TU screen nevertheless regressed from 1.3525 to
+1.4458 seconds mean CPU per compile, about 6.9%. A five-byte early object
+change can still move later linked functions despite the retained 16-byte
+large-function alignment, so the local semantic simplification is not a
+stable whole-compiler win. The eight-call threshold was restored before
+contract or test movement.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1301,6 +1318,7 @@ Fill one row for every retained or rejected dose.
 | D.reuse-plan | keep destructive result reuse out of a future cyclic-result reservation, then recheck broad hinted inlining | none; rejected before contract movement | shipped tokenizer exact; guard-only O3 producer -3,872 text bytes; guarded hint96 `Run` 2,627 to 2,403 MIR and scalar loads/stores 616/516 to 513/383 | guarded hint96 hot +4.5--5%; guard-only three-pair mean CPU -0.13% but paired median 1.0001x, wall confounded by one baseline tail | exact 36-lane hot output and six full-workload outputs; candidate removed | rejected; restored grant does not overcome merged-body cost and guard alone is flat |
 | D.align-sweep | test 32/64-byte entry alignment as a stronger layout oracle for local O3 rewrites | none; rejected before contract movement | 32-byte producer +28,320 text bytes; 64-byte producer +84,192; hot object exact | 32-byte CPU +1.1% then +7.3%; 64-byte CPU -0.6% then +2.7% | 36-lane and reversed 24-lane output-exact screens; shipped 16-byte policy restored | rejected; stronger padding is unstable and not worth its text cost |
 | D.hint49 | inline the 48-instruction token move constructor whose flat profile appeared 256.9M instructions behind GCC | none; rejected before contract movement | direct calls 37 to 1; producer +11,600 text bytes; hot object exact | Cachegrind Ir -0.064%; native CPU -1.1% then +4.2% | exact static, Cachegrind, and 48 native outputs; override-only dose removed | rejected; flat constructor cost merely moved into callers |
+| D.group4 | admit four-call integer-constant groups under the retained static-payoff rule | none; rejected before contract movement | one 11-byte semantic clone; target object -5 bytes; producer text exact | 24-lane hot CPU +6.9% | exact hot outputs; eight-call threshold restored | rejected; tiny early size change is layout-negative |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
