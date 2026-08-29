@@ -1330,6 +1330,73 @@ timed workload. The 24-lane balanced repeat still regressed from 0.9642 to
 (+1.80%). The smaller O3 producer's changed code/layout is therefore itself
 detrimental; both forms were removed before contract or test movement.
 
+### D.repeat-stable-query repeated read-only query reuse retained
+
+Inclusive call-path profiling corrected the next target.  The retained
+specialized `Peek(0)` clone was called 29,501,413 times by `Lexer::Run` and
+accounted for 1,242,645,360 inclusive Cachegrind instructions, while the
+same-source GCC compiler called its corresponding constant-propagated helper
+only 7,314,471 times.  This was repeated dynamic query work, unlike the
+previous move-constructor flat-profile attribution.
+
+The retained O3-only LowIR rule proves a query property from structure rather
+than a function name or fixture body.  A candidate callee must enter a
+two-successor guard, have an acyclic, nonvolatile, side-effect-free fast arm
+ending in its sole normal return, and allow its slow arm to return normally
+only after revisiting the guard.  Synthetic continuations after known
+`noreturn` calls are ignored when identifying normal returns.  Caller
+availability is keyed by the callee and exact typed SSA argument tuple, merged
+across the CFG, and invalidated by stores, atomics, object copies, zeroing,
+volatile operations, or other calls.  EH callers are excluded.  The analysis
+admits at most 128 signatures per caller and has an explicit update budget.
+The first call establishes the available result and a subsequent proven call
+is replaced by a copy before the existing cleanup pipeline runs.
+
+On the tokenizer this removes 31 of 69 static calls to the specialized query,
+reduces `Lexer::Run` from 2,451 to 2,139 MIR instructions, cuts call copies
+from 286 to 182 and scalar stores from 311 to 308, and shrinks tokenizer text
+from 29,812 to 28,148 bytes without adding a spill.  O1 and O2 output hashes
+remain exact.  The bounded analysis recognizes one callee, four signatures,
+and 31 reuses with no budget skip and a 65,337-byte peak accounting estimate.
+An output-exact Callgrind comparison falls from 5,007,552,472 to
+4,781,819,644 retired instructions (-4.51%); clone calls fall from 29,501,413
+to 18,094,496 and their inclusive cost falls from 1.243 billion to 1.060
+billion instructions.
+
+The final position-balanced 12-lane hot screen improves paired median wall
+time 3.36% and user time 3.52%.  Three all-32 ABBA blocks over the complete
+fixed O1 workload are output-exact at manifest hash
+`b4f90fba3d0a3833dfd935d0bd09fff3f48898fdf6eaec1ad953645cc8226b93`
+and final hash
+`2844c3cb0f85f45a30d9b60f4baaae2904dc34e5f3c955bbb6b76181552df22a`.
+Their paired median ratios are 0.985355x wall and 0.979360x aggregate CPU.
+The equivalent requested-O3 workload has paired median ratios 0.989897x wall
+and 0.980850x CPU.  A same-source GCC-O3 producer control is effectively flat
+at 0.991355x wall and 1.002334x CPU; dividing block by block gives a normalized
+paired median of 0.993947x wall and 0.982454x CPU.  The retained decision is
+therefore supported by a roughly 1.75% normalized CPU gain, not merely by a
+raw self-host timing movement.
+
+PA37 now describes the structural query contract and owns a student-buildable
+property control covering the normal and cold-`noreturn` positive shapes plus
+store, ordinary-call, changed-argument, and volatile negative barriers.  The
+checker verifies O1/O2 isolation, O3 structure, bounded stats, LowIR replay,
+and native behavior without exact whole-program matching.  There is no new
+PA38 optimization contract: the existing PA37 control drives the changed
+LowIR through native compilation, and the unchanged PA38 surface is covered
+by its full suite.  PA37 passes 188/188, PA38 passes 45/45, the report through
+PA38 passes 5,471/5,471, and the PA37/PA38 debug and object-round-trip lanes
+pass.  The PA39 audit has zero fatal findings.  Two frozen O2 and O3 compiles
+remain deterministic at their prior hashes, and a fresh explicit all-32 O3
+inception run matches every object and the final executable in 31.30 seconds.
+The final O3 producer hash is
+`d61d9ec8610c9fb5cd5890a181aac3348294d1a66e45e84e12f6f37a98f398c3`.
+
+The residual 18,094,496 clone calls remain the strongest measured opportunity,
+but a follow-up must attribute which calls are separated by genuine mutation,
+by conservatively classified read-only calls, or by unrelated stores.  It
+must not broaden availability based on the `Peek` name or source layout.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1366,6 +1433,7 @@ Fill one row for every retained or rejected dose.
 | D.group4 | admit four-call integer-constant groups under the retained static-payoff rule | none; rejected before contract movement | one 11-byte semantic clone; target object -5 bytes; producer text exact | 24-lane hot CPU +6.9% | exact hot outputs; eight-call threshold restored | rejected; tiny early size change is layout-negative |
 | D.final-slots | revisit zero-load scalar slots after final inline/load/edge cleanup | none; rejected before contract movement | tokenizer -34 LowIR instructions, but `AppendUTF8` remains 495 MIR/1,965 bytes and tokenizer remains 28,741 text bytes | static rejection; added scan has no generated-code benefit | focused LowIR/MIR/object census; prototype removed | rejected; native lowering already omits the residue |
 | D.const-ref | recover exact loads through addresses of constant scalar locals before promotion | none; rejected before contract movement | `AppendUTF8` 495 to 465 MIR, 80 to 70 scalar loads, 1,965 to 1,846 bytes, no spills; tokenizer -128 text bytes; O3 producer -2,368 bytes | all-level form CPU +1.56%; O3-only form with exact O1 output CPU +1.73%, wall +1.80% | two deterministic 24-lane screens; both forms removed | rejected; real local win produces a slower compiler even without runtime scan cost |
+| D.repeat-stable-query | reuse a structurally proven repeat-stable internal query result for the same SSA argument tuple | PA37 README plus positive/negative structural, level-isolation, stats, replay, and behavior property | 31 calls removed; `Run` 2,451 to 2,139 MIR; tokenizer -1,664 text bytes; hot Ir -4.51%; O1/O2 exact | hot wall/user -3.36%/-3.52%; O1 workload CPU -2.06%; O3 workload CPU -1.92%; GCC-normalized CPU -1.75% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; frozen exact; all-32 O3 inception exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

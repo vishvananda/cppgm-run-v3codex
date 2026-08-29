@@ -222,6 +222,13 @@ struct Stats
   std::size_t ipa_cloned_instructions = 0;
   std::size_t ipa_clone_budget_skips = 0;
   std::size_t ipa_peak_analysis_bytes = 0;
+  std::size_t repeat_stable_function_visits = 0;
+  std::size_t repeat_stable_functions = 0;
+  std::size_t repeat_stable_call_sites = 0;
+  std::size_t repeat_stable_signatures = 0;
+  std::size_t repeat_stable_reuses = 0;
+  std::size_t repeat_stable_budget_skips = 0;
+  std::size_t repeat_stable_peak_analysis_bytes = 0;
   std::size_t budget_skips = 0;
   std::size_t rewrites = 0;
   std::size_t simplify_runs = 0;
@@ -329,6 +336,7 @@ struct Stats
   std::uint64_t late_inline_nanoseconds = 0;
   std::uint64_t post_prune_inline_nanoseconds = 0;
   std::uint64_t partial_inline_census_nanoseconds = 0;
+  std::uint64_t repeat_stable_nanoseconds = 0;
   std::uint64_t licm_nanoseconds = 0;
   std::uint64_t elapsed_nanoseconds = 0;
 };

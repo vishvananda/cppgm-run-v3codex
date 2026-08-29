@@ -2527,6 +2527,32 @@ void finish_optimizer_pipeline(
       timed_cfg(&program.functions[i], stats, &cfg_scratch);
     }
   }
+  if(level >= 3) {
+    const std::chrono::steady_clock::time_point repeat_started = stats ?
+      std::chrono::steady_clock::now() :
+      std::chrono::steady_clock::time_point();
+    std::vector<unsigned char> repeat_rewritten_symbols(
+      program.symbol_names.size(), 0);
+    const std::size_t repeat_rewrites = eliminate_repeated_stable_calls(
+      program, &repeat_rewritten_symbols, stats);
+    if(stats)
+      stats->repeat_stable_nanoseconds += static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - repeat_started).count());
+    if(repeat_rewrites) {
+      for(std::size_t i = 0; i < program.functions.size(); ++i)
+        if(repeat_rewritten_symbols[program.functions[i].symbol]) {
+          lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
+          timed_function_pass(simplify_values, &program.functions[i], stats,
+            &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+            &simplify_arena);
+          timed_dce(
+            &program.functions[i], boundaries, stats, &dce_scratch);
+          timed_cfg(
+            &program.functions[i], stats, &cfg_scratch, &analysis);
+        }
+    }
+  }
   const std::uint64_t elapsed = stats ? static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now() - started).count()) : 0;

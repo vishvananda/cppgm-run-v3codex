@@ -29,4 +29,11 @@ std::size_t specialize_o3_constant_groups(
     Stats * stats,
     const InlineCleanup * cleanup);
 
+// Reuse a normally returned result from a structurally repeat-stable query
+// until an intervening operation may change memory.
+std::size_t eliminate_repeated_stable_calls(
+    lowir_model::LowirProgram & program,
+    std::vector<unsigned char> * rewritten_symbols,
+    Stats * stats = 0);
+
 }  // namespace lowir_opt

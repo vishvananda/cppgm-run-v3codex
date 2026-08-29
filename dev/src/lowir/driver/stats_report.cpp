@@ -392,6 +392,16 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " ipa_cloned_instructions=" << stats.ipa_cloned_instructions
 		 << " ipa_clone_budget_skips=" << stats.ipa_clone_budget_skips
 		 << " ipa_peak_analysis_bytes=" << stats.ipa_peak_analysis_bytes
+		 << " repeat_stable_function_visits="
+		 << stats.repeat_stable_function_visits
+		 << " repeat_stable_functions=" << stats.repeat_stable_functions
+		 << " repeat_stable_call_sites=" << stats.repeat_stable_call_sites
+		 << " repeat_stable_signatures=" << stats.repeat_stable_signatures
+		 << " repeat_stable_reuses=" << stats.repeat_stable_reuses
+		 << " repeat_stable_budget_skips="
+		 << stats.repeat_stable_budget_skips
+		 << " repeat_stable_peak_analysis_bytes="
+		 << stats.repeat_stable_peak_analysis_bytes
 		 << " budget_skips=" << stats.budget_skips
 		 << " rewrites=" << stats.rewrites
 		 << " simplify_runs=" << stats.simplify_runs
@@ -520,6 +530,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.post_prune_inline_nanoseconds
 		 << " partial_inline_census_ns="
 		 << stats.partial_inline_census_nanoseconds
+		 << " repeat_stable_ns=" << stats.repeat_stable_nanoseconds
 		 << " licm_ns=" << stats.licm_nanoseconds
 		 << " elapsed_ns=" << stats.elapsed_nanoseconds;
 	output << " inline_retained_discardable_definition_matrix=";

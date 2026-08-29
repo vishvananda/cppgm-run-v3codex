@@ -517,6 +517,32 @@ at most 24 clones and 1,536 cloned LowIR instructions per translation unit.
 Budget exhaustion skips later candidates in deterministic function order.
 `-O1` and `-O2` do not perform mixed-group cloning.
 
+After the final `-O3` scalar and control-flow cleanup, an internal scalar
+query may also be proven repeat-stable.  Its entry must reach a two-way guard
+through only acyclic, nonvolatile scalar work.  One guard successor must be an
+acyclic region containing only nonvolatile scalar calculations and loads and
+ending at the query's sole normal return.  The other successor may do work,
+but every normally returning path from it must revisit the guard before it can
+reach that return.  A synthetic return following a call already proven
+`noreturn` is not a normal return.  Object, `i128`, and `f80` results are not
+eligible.
+
+When one direct call to such a query returns normally, a later call to the
+same symbol with the same typed SSA argument tuple must take the read-only
+side and produce the same result unless memory could have changed.  `-O3` may
+therefore replace that later call with the earlier result.  Availability is
+intersected at control-flow joins.  A store, object copy or zeroing operation,
+atomic or volatile access, any other call, exceptional instruction, or
+different argument tuple prevents reuse.  Callers containing exception
+regions are skipped.  A first call with no available result also clears other
+query facts because its slow path may mutate memory.
+
+The analysis tracks at most 128 query-and-argument signatures per caller.  Its
+forward worklist is limited to eight times
+`(block count + 1) * (signature count + 1)` state updates; exhausting that
+budget leaves the caller unchanged.  `-O1` and `-O2` do not reuse
+repeat-stable query results.
+
 During its final control-flow cleanup, `-O3` may also consume an equality
 established by the sole ordinary predecessor edge.  A true `x == c` edge or
 false `x != c` edge establishes `x == c`.  For an unsigned value, true

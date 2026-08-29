@@ -1,9 +1,13 @@
 #include "lowir/optimize/interprocedural_specialization.h"
 
+#include "lowir/analysis/function.h"
 #include "lowir/optimize/inline_o1.h"
 #include "lowir/optimize/pipeline.h"
+#include "lowir/optimize/scalar_rules.h"
+#include "lowir/optimize/unreachable.h"
 
 #include <algorithm>
+#include <deque>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -807,6 +811,454 @@ std::size_t specialize_o3_constant_groups(
       stats->ipa_peak_analysis_bytes, analysis_bytes);
   }
   return rewritten_calls;
+}
+
+namespace {
+
+const std::size_t kMaximumStableCallSignatures = 128;
+
+bool repeat_path_instruction(const Instruction & instruction)
+{
+  if(instruction.volatile_access) return false;
+  switch(instruction.kind) {
+  case Instruction::IK_CONST:
+  case Instruction::IK_COPY:
+  case Instruction::IK_ADDR:
+  case Instruction::IK_LOAD:
+  case Instruction::IK_INDEX:
+  case Instruction::IK_UNARY:
+  case Instruction::IK_BINARY:
+  case Instruction::IK_CMP:
+  case Instruction::IK_CONVERT:
+  case Instruction::IK_JUMP:
+  case Instruction::IK_BRANCH:
+  case Instruction::IK_SWITCH:
+  case Instruction::IK_RETURN:
+  case Instruction::IK_PHI:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool pure_return_region(const Function & function,
+                        const lowir_analysis::Graph & graph,
+                        std::size_t start, std::size_t guard,
+                        std::size_t return_block)
+{
+  std::vector<unsigned char> state(function.blocks.size(), 0);
+  std::vector<std::pair<std::size_t, std::size_t> > stack;
+  stack.push_back(std::make_pair(start, 0));
+  while(!stack.empty()) {
+    const std::size_t block = stack.back().first;
+    if(block == guard) return false;
+    if(state[block] == 2) { stack.pop_back(); continue; }
+    if(state[block] == 0) {
+      state[block] = 1;
+      const std::vector<Instruction> & instructions =
+        function.blocks[block].instructions;
+      if(instructions.empty()) return false;
+      for(std::size_t i = 0; i < instructions.size(); ++i)
+        if(!repeat_path_instruction(instructions[i])) return false;
+      if(instructions.back().kind == Instruction::IK_RETURN) {
+        if(block != return_block) return false;
+        state[block] = 2;
+        stack.pop_back();
+        continue;
+      }
+      if(instructions.back().kind != Instruction::IK_JUMP &&
+         instructions.back().kind != Instruction::IK_BRANCH &&
+         instructions.back().kind != Instruction::IK_SWITCH)
+        return false;
+    }
+    if(stack.back().second == graph.successors[block].size()) {
+      state[block] = 2;
+      stack.pop_back();
+      continue;
+    }
+    const std::size_t successor =
+      graph.successors[block][stack.back().second++];
+    if(successor == guard || state[successor] == 1) return false;
+    if(state[successor] == 0)
+      stack.push_back(std::make_pair(successor, 0));
+  }
+  return state[return_block] == 2;
+}
+
+bool reachable_without(const lowir_analysis::Graph & graph,
+                       std::size_t start, std::size_t target,
+                       std::size_t excluded)
+{
+  if(start == excluded) return false;
+  std::vector<unsigned char> seen(graph.successors.size(), 0);
+  std::vector<std::size_t> work(1, start);
+  seen[start] = 1;
+  for(std::size_t cursor = 0; cursor < work.size(); ++cursor) {
+    const std::size_t block = work[cursor];
+    if(block == target) return true;
+    for(std::size_t edge = 0;
+        edge < graph.successors[block].size(); ++edge) {
+      const std::size_t successor = graph.successors[block][edge];
+      if(successor == excluded || seen[successor]) continue;
+      seen[successor] = 1;
+      work.push_back(successor);
+    }
+  }
+  return false;
+}
+
+bool repeat_stable_query(
+    const Function & function,
+    const std::vector<unsigned char> & noreturn_symbols,
+    Stats * stats)
+{
+  if(function.metadata.binding != lowir_model::SBM_INTERNAL ||
+     function.blocks.empty() ||
+     function.return_type.kind == lowir_model::LTK_VOID ||
+     function.return_type.kind == lowir_model::LTK_OBJECT ||
+     function.return_type.kind == lowir_model::LTK_I128 ||
+     function.return_type.kind == lowir_model::LTK_F80)
+    return false;
+  std::size_t return_block = function.blocks.size();
+  std::size_t returns = 0;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    bool no_normal_continuation = false;
+    for(std::size_t i = 0;
+        i < function.blocks[block].instructions.size(); ++i) {
+      const Instruction & instruction =
+        function.blocks[block].instructions[i];
+      if(instruction.kind == Instruction::IK_CALL &&
+         (instruction.call_boundary.returns == lowir_model::CRM_NORETURN ||
+          (instruction.first.kind == Operand::OP_GLOBAL &&
+           instruction.first.symbol.valid() &&
+           static_cast<std::uint32_t>(instruction.first.symbol) <
+             noreturn_symbols.size() &&
+           noreturn_symbols[instruction.first.symbol])))
+        no_normal_continuation = true;
+      if(instruction.kind == Instruction::IK_RETURN &&
+         !no_normal_continuation) {
+        return_block = block;
+        ++returns;
+      }
+    }
+  }
+  if(returns != 1) return false;
+  const lowir_analysis::Graph graph =
+    lowir_analysis::build_graph(function, stats);
+  std::vector<unsigned char> entry_path(function.blocks.size(), 0);
+  std::size_t guard = 0;
+  while(true) {
+    if(guard >= function.blocks.size() || entry_path[guard]) return false;
+    entry_path[guard] = 1;
+    const std::vector<Instruction> & instructions =
+      function.blocks[guard].instructions;
+    if(instructions.empty()) return false;
+    for(std::size_t i = 0; i < instructions.size(); ++i)
+      if(!repeat_path_instruction(instructions[i])) return false;
+    const Instruction & terminal = instructions.back();
+    if(terminal.kind == Instruction::IK_BRANCH) break;
+    if(terminal.kind != Instruction::IK_JUMP ||
+       graph.successors[guard].size() != 1)
+      return false;
+    guard = graph.successors[guard][0];
+  }
+  if(graph.successors[guard].size() != 2) return false;
+  for(std::size_t fast_edge = 0; fast_edge < 2; ++fast_edge) {
+    const std::size_t fast = graph.successors[guard][fast_edge];
+    const std::size_t slow = graph.successors[guard][1 - fast_edge];
+    if(!pure_return_region(function, graph, fast, guard, return_block))
+      continue;
+    if(!reachable_without(graph, slow, guard, function.blocks.size()) ||
+       reachable_without(graph, slow, return_block, guard))
+      continue;
+    return true;
+  }
+  return false;
+}
+
+struct StableCallSignature
+{
+  lowir_model::SymbolId symbol;
+  std::vector<Operand> arguments;
+  std::size_t calls = 0;
+};
+
+bool same_signature(const StableCallSignature & signature,
+                    const Instruction & call)
+{
+  if(signature.symbol != call.first.symbol ||
+     signature.arguments.size() != call.args.size()) return false;
+  for(std::size_t i = 0; i < call.args.size(); ++i)
+    if(!same_operand(signature.arguments[i], call.args[i])) return false;
+  return true;
+}
+
+bool stable_call_barrier(const Instruction & instruction)
+{
+  if(instruction.volatile_access) return true;
+  switch(instruction.kind) {
+  case Instruction::IK_CONST:
+  case Instruction::IK_COPY:
+  case Instruction::IK_ADDR:
+  case Instruction::IK_LOAD:
+  case Instruction::IK_INDEX:
+  case Instruction::IK_UNARY:
+  case Instruction::IK_BINARY:
+  case Instruction::IK_CMP:
+  case Instruction::IK_CONVERT:
+  case Instruction::IK_JUMP:
+  case Instruction::IK_BRANCH:
+  case Instruction::IK_SWITCH:
+  case Instruction::IK_RETURN:
+  case Instruction::IK_PHI:
+  case Instruction::IK_UNREACHABLE:
+    return false;
+  default:
+    return true;
+  }
+}
+
+struct AvailableStableCall
+{
+  Operand value;
+  bool valid = false;
+};
+
+bool same_available(const AvailableStableCall & left,
+                    const AvailableStableCall & right)
+{
+  return left.valid == right.valid &&
+    (!left.valid || same_operand(left.value, right.value));
+}
+
+bool same_state(const std::vector<AvailableStableCall> & left,
+                const std::vector<AvailableStableCall> & right)
+{
+  if(left.size() != right.size()) return false;
+  for(std::size_t i = 0; i < left.size(); ++i)
+    if(!same_available(left[i], right[i])) return false;
+  return true;
+}
+
+void clear_available(std::vector<AvailableStableCall> * state)
+{
+  for(std::size_t i = 0; i < state->size(); ++i)
+    (*state)[i].valid = false;
+}
+
+Instruction stable_call_replacement(const Instruction & call,
+                                    const Operand & value)
+{
+  Instruction result;
+  result.kind = Instruction::IK_COPY;
+  result.dest = call.dest;
+  result.type = call.type;
+  result.first = value;
+  result.debug_location = call.debug_location;
+  return result;
+}
+
+}  // namespace
+
+std::size_t eliminate_repeated_stable_calls(
+    LowirProgram & program,
+    std::vector<unsigned char> * rewritten_symbols,
+    Stats * stats)
+{
+  const std::vector<unsigned char> noreturn_symbols =
+    noreturn_symbol_index(program);
+  std::vector<unsigned char> stable(program.symbol_names.size(), 0);
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    if(stats) ++stats->repeat_stable_function_visits;
+    if(repeat_stable_query(
+         program.functions[i], noreturn_symbols, stats)) {
+      stable[program.functions[i].symbol] = 1;
+      if(stats) ++stats->repeat_stable_functions;
+    }
+  }
+  std::size_t rewrites = 0;
+  for(std::size_t function_index = 0;
+      function_index < program.functions.size(); ++function_index) {
+    Function & function = program.functions[function_index];
+    std::vector<StableCallSignature> signatures;
+    std::vector<std::vector<std::size_t> > call_signatures(
+      function.blocks.size());
+    bool has_eh = false;
+    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+      call_signatures[block].assign(
+        function.blocks[block].instructions.size(),
+        kMaximumStableCallSignatures);
+      for(std::size_t index = 0;
+          index < function.blocks[block].instructions.size(); ++index) {
+        const Instruction & instruction =
+          function.blocks[block].instructions[index];
+        if(instruction.kind >= Instruction::IK_EH_TRY &&
+           instruction.kind <= Instruction::IK_RESUME)
+          has_eh = true;
+        if(instruction.kind != Instruction::IK_CALL ||
+           instruction.first.kind != Operand::OP_GLOBAL ||
+           instruction.first.symbol >= stable.size() ||
+           !stable[instruction.first.symbol] ||
+           instruction.call_returns_void || !instruction.dest.valid())
+          continue;
+        if(stats) ++stats->repeat_stable_call_sites;
+        std::size_t signature = 0;
+        while(signature < signatures.size() &&
+              !same_signature(signatures[signature], instruction))
+          ++signature;
+        if(signature == signatures.size()) {
+          if(signatures.size() == kMaximumStableCallSignatures) continue;
+          StableCallSignature added;
+          added.symbol = instruction.first.symbol;
+          added.arguments = instruction.args;
+          signatures.push_back(std::move(added));
+        }
+        ++signatures[signature].calls;
+        call_signatures[block][index] = signature;
+      }
+    }
+    if(has_eh || signatures.empty()) continue;
+    for(std::size_t signature = 0;
+        signature < signatures.size(); ++signature) {
+      if(signatures[signature].calls < 2) {
+        for(std::size_t block = 0; block < call_signatures.size(); ++block)
+          for(std::size_t index = 0;
+              index < call_signatures[block].size(); ++index)
+            if(call_signatures[block][index] == signature)
+              call_signatures[block][index] = kMaximumStableCallSignatures;
+      } else if(stats) {
+        ++stats->repeat_stable_signatures;
+      }
+    }
+    const lowir_analysis::Graph graph =
+      lowir_analysis::build_graph(function, stats);
+    typedef std::vector<AvailableStableCall> StableState;
+    const StableState empty(signatures.size());
+    std::vector<StableState> outgoing(function.blocks.size(), empty);
+    std::deque<std::size_t> work;
+    std::vector<unsigned char> queued(function.blocks.size(), 1);
+    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+      work.push_back(block);
+      if(stats) ++stats->worklist_pushes;
+    }
+    if(stats) {
+      std::size_t analysis_bytes = stable.capacity() +
+        noreturn_symbols.capacity() + queued.capacity() +
+        signatures.capacity() * sizeof(StableCallSignature) +
+        call_signatures.capacity() *
+          sizeof(std::vector<std::size_t>) +
+        outgoing.capacity() * sizeof(StableState);
+      for(std::size_t signature = 0;
+          signature < signatures.size(); ++signature)
+        analysis_bytes += signatures[signature].arguments.capacity() *
+          sizeof(Operand);
+      for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+        analysis_bytes += call_signatures[block].capacity() *
+          sizeof(std::size_t);
+        analysis_bytes += outgoing[block].capacity() *
+          sizeof(AvailableStableCall);
+      }
+      stats->repeat_stable_peak_analysis_bytes = std::max(
+        stats->repeat_stable_peak_analysis_bytes, analysis_bytes);
+    }
+    std::size_t updates = 0;
+    const std::size_t update_budget =
+      (function.blocks.size() + 1) * (signatures.size() + 1) * 8;
+    bool exhausted = false;
+    while(!work.empty() && !exhausted) {
+      const std::size_t block = work.front();
+      work.pop_front();
+      queued[block] = 0;
+      StableState state = empty;
+      if(block != 0 && graph.predecessors[block].size() != 0) {
+        state = outgoing[graph.predecessors[block][0]];
+        for(std::size_t edge = 1;
+            edge < graph.predecessors[block].size(); ++edge) {
+          const StableState & predecessor =
+            outgoing[graph.predecessors[block][edge]];
+          for(std::size_t signature = 0;
+              signature < state.size(); ++signature)
+            if(!same_available(state[signature], predecessor[signature]))
+              state[signature].valid = false;
+        }
+      }
+      const std::vector<Instruction> & instructions =
+        function.blocks[block].instructions;
+      for(std::size_t index = 0; index < instructions.size(); ++index) {
+        const std::size_t signature = call_signatures[block][index];
+        if(signature < signatures.size() &&
+           signatures[signature].calls >= 2) {
+          if(!state[signature].valid) {
+            clear_available(&state);
+            state[signature].valid = true;
+            state[signature].value.kind = Operand::OP_TEMP;
+            state[signature].value.value = instructions[index].dest;
+          }
+        } else if(stable_call_barrier(instructions[index]))
+          clear_available(&state);
+      }
+      if(same_state(state, outgoing[block])) continue;
+      outgoing[block].swap(state);
+      if(stats) ++stats->dataflow_updates;
+      if(++updates > update_budget) { exhausted = true; break; }
+      for(std::size_t edge = 0;
+          edge < graph.successors[block].size(); ++edge) {
+        const std::size_t successor = graph.successors[block][edge];
+        if(queued[successor]) continue;
+        queued[successor] = 1;
+        work.push_back(successor);
+        if(stats) ++stats->worklist_pushes;
+      }
+    }
+    if(exhausted) {
+      if(stats) {
+        ++stats->repeat_stable_budget_skips;
+        ++stats->budget_skips;
+      }
+      continue;
+    }
+    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+      StableState state = empty;
+      if(block != 0 && graph.predecessors[block].size() != 0) {
+        state = outgoing[graph.predecessors[block][0]];
+        for(std::size_t edge = 1;
+            edge < graph.predecessors[block].size(); ++edge) {
+          const StableState & predecessor =
+            outgoing[graph.predecessors[block][edge]];
+          for(std::size_t signature = 0;
+              signature < state.size(); ++signature)
+            if(!same_available(state[signature], predecessor[signature]))
+              state[signature].valid = false;
+        }
+      }
+      std::vector<Instruction> & instructions =
+        function.blocks[block].instructions;
+      for(std::size_t index = 0; index < instructions.size(); ++index) {
+        const std::size_t signature = call_signatures[block][index];
+        if(signature < signatures.size() &&
+           signatures[signature].calls >= 2) {
+          if(state[signature].valid) {
+            instructions[index] = stable_call_replacement(
+              instructions[index], state[signature].value);
+            ++rewrites;
+            if(stats) {
+              ++stats->repeat_stable_reuses;
+              ++stats->rewrites;
+            }
+            if(rewritten_symbols)
+              (*rewritten_symbols)[function.symbol] = 1;
+          } else {
+            clear_available(&state);
+            state[signature].valid = true;
+            state[signature].value.kind = Operand::OP_TEMP;
+            state[signature].value.value = instructions[index].dest;
+          }
+        } else if(stable_call_barrier(instructions[index]))
+          clear_available(&state);
+      }
+    }
+  }
+  return rewrites;
 }
 
 }  // namespace lowir_opt
