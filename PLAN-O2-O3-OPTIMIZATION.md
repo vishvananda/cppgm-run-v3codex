@@ -1285,6 +1285,25 @@ large-function alignment, so the local semantic simplification is not a
 stable whole-compiler win. The eight-call threshold was restored before
 contract or test movement.
 
+### D.final-slots final dead-slot sweep rejected
+
+The tokenizer's final optimized LowIR still contained repeated scalar setup
+slots from inlined `std::string::push_back` bodies. Some apparent uses had
+disappeared only after the late load-reuse and edge-cleanup waves, after the
+ordinary slot cleanup. A narrow prototype reran the existing zero-load slot
+remover at the very end, only for callers changed by inlining.
+
+The prototype found the intended structural residue: tokenizer output fell by
+34 LowIR instructions and six additional functions reported a dead-slot
+change. It did not change the relevant native work. `AppendUTF8` remained
+exactly 495 MIR instructions and 1,965 native bytes, with the same 80 scalar
+loads and 70 scalar stores; the complete tokenizer object remained 28,741
+text bytes. Native lowering already ignores these unread scalar setup slots,
+so another whole-function slot scan would duplicate work without improving
+generated code. The sweep was removed before contract or test movement. A
+useful follow-up must eliminate the address/store/load shuttles that survive
+into MIR, not merely canonicalize dead LowIR storage.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1319,6 +1338,7 @@ Fill one row for every retained or rejected dose.
 | D.align-sweep | test 32/64-byte entry alignment as a stronger layout oracle for local O3 rewrites | none; rejected before contract movement | 32-byte producer +28,320 text bytes; 64-byte producer +84,192; hot object exact | 32-byte CPU +1.1% then +7.3%; 64-byte CPU -0.6% then +2.7% | 36-lane and reversed 24-lane output-exact screens; shipped 16-byte policy restored | rejected; stronger padding is unstable and not worth its text cost |
 | D.hint49 | inline the 48-instruction token move constructor whose flat profile appeared 256.9M instructions behind GCC | none; rejected before contract movement | direct calls 37 to 1; producer +11,600 text bytes; hot object exact | Cachegrind Ir -0.064%; native CPU -1.1% then +4.2% | exact static, Cachegrind, and 48 native outputs; override-only dose removed | rejected; flat constructor cost merely moved into callers |
 | D.group4 | admit four-call integer-constant groups under the retained static-payoff rule | none; rejected before contract movement | one 11-byte semantic clone; target object -5 bytes; producer text exact | 24-lane hot CPU +6.9% | exact hot outputs; eight-call threshold restored | rejected; tiny early size change is layout-negative |
+| D.final-slots | revisit zero-load scalar slots after final inline/load/edge cleanup | none; rejected before contract movement | tokenizer -34 LowIR instructions, but `AppendUTF8` remains 495 MIR/1,965 bytes and tokenizer remains 28,741 text bytes | static rejection; added scan has no generated-code benefit | focused LowIR/MIR/object census; prototype removed | rejected; native lowering already omits the residue |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
