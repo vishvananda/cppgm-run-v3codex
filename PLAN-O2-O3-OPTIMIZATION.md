@@ -1131,6 +1131,25 @@ for O2 and
 `c8ca94b36224b126c0dd163f670ee5da3cd327898af4253821788b97d36a572b`
 for O3.
 
+### D.copy-pair-align aligned re-evaluation rejected
+
+The staged adjacent-copy prototype was reconstructed on top of the retained
+large-function alignment, with a stronger alias guard: the vector copy may
+cross only nonvolatile stores proven disjoint within the same destination
+base. It again replaces the two 64-bit loads and two stores by one exact
+16-byte copy in both generic and specialized `Peek`, saving three MIR
+instructions in each. The candidate producer grows 8,940 text bytes from the
+analysis itself.
+
+Alignment reduces but does not remove the layout penalty. Every dominant hot
+entry remains 16-byte aligned, but shrinking the early functions still moves
+`PhysicalCursor::Next` by one 16-byte slot. In a twelve-lane hot-TU screen,
+mean wall moves 1.208 to 1.222 seconds (+1.1%) and user time 1.155 to 1.173
+seconds (+1.6%). Each side is deterministic within its expected object hash.
+The candidate is therefore rejected and fully removed again: the local MIR
+win remains real, but 16-byte entry alignment is not a sufficiently strong
+layout oracle to make it a throughput win.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1158,6 +1177,7 @@ Fill one row for every retained or rejected dose.
 | D.epilogue | share repeated optimized return sequences, with broad and bounded variants | none; rejected before contract movement | broad: `Run` -161 native instructions and -23 physical epilogues; O3 producer -94,192 text bytes; bounded variants -17,928/-16,120 bytes | broad O1 user +1.5%; return-bounded +0.26%; bounded/excluded O3 CPU +0.32% and wall +1.5% | exact-output all-32 screens; all variants removed | rejected; taken return branches cost more than duplicate bytes |
 | D.copy-pair | fuse staged adjacent 64-bit predecessor loads/successor stores into one vector copy | none; rejected before contract movement | clone -3 MIR/-8 bytes; generic -8 bytes; tokenizer -22 text bytes; producer +8,744 text bytes | twelve-lane hot TU +4.1% wall/user, every candidate lane slower | exact hot outputs; candidate removed | rejected; exposed entry-address sensitivity |
 | D.align64 | align large final O3 MIR functions and preserve the request through object text partitioning | PA38 README plus dynamic MIR-count, level-isolation, behavior, driver-replay, and ELF-symbol property | 3,772/4,043 >=256-byte functions aligned; O3 producer +25,248 text bytes (+0.29%) | O1 workload -2.31% wall/-0.86% CPU; GCC CPU +0.09%; normalized CPU -0.95%; O3 workload -0.30% wall/-1.05% CPU; GCC CPU +0.06%; normalized CPU -1.11% | PA38 45/45; 5,471/5,471; PA37/38 debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
+| D.copy-pair-align | re-evaluate staged scalar-copy fusion on the aligned baseline with a stronger alias guard | none; rejected at screen | generic and clone each -3 MIR; producer +8,940 text bytes; hot entries remain aligned | twelve-lane hot wall +1.1%, user +1.6% | deterministic output; candidate removed | rejected; 16-byte alignment reduces but does not eliminate layout sensitivity |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
