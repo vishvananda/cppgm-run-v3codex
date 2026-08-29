@@ -20,6 +20,11 @@ bool fold_edge_known_branches(
 bool fold_edge_known_branches(
   lowir_model::Function * function, Stats * stats,
   CleanupCfgScratch * scratch);
+// The O3 form also lets an equality established by the sole predecessor edge
+// decide a local equality/inequality branch on the same typed SSA value.
+bool fold_edge_known_branches(
+  lowir_model::Function * function, Stats * stats,
+  CleanupCfgScratch * scratch, bool allow_integer_equality);
 // Fold the unsigned x-1 underflow test on an edge where a preceding branch
 // establishes that the same SSA value, or a stable reload of it, is nonzero.
 bool fold_nonzero_underflow_branches(

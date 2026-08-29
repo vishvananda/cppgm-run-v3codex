@@ -2432,6 +2432,40 @@ void finish_optimizer_pipeline(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - post_prune_inline_started).count());
   }
+  if(level >= 3) {
+    const std::chrono::steady_clock::time_point grouped_started = stats ?
+      std::chrono::steady_clock::now() :
+      std::chrono::steady_clock::time_point();
+    const InlineCallGraph grouped_call_graph =
+      analyze_inline_call_graph(program, stats);
+    std::vector<unsigned char> grouped_rewritten_symbols(
+      program.symbol_names.size(), 0);
+    LateInlineCleanupContext grouped_context = {
+      &boundaries, &program, &simplify_arena, &dce_scratch, &cfg_scratch};
+    InlineCleanup grouped_cleanup;
+    grouped_cleanup.run = cleanup_late_inline_body;
+    grouped_cleanup.context = &grouped_context;
+    const std::size_t grouped_rewrites = specialize_o3_constant_groups(
+      program, grouped_call_graph, &grouped_rewritten_symbols, stats,
+      &grouped_cleanup);
+    if(stats) {
+      stats->rewrites += grouped_rewrites;
+      stats->ipa_nanoseconds += static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - grouped_started).count());
+    }
+    if(grouped_rewrites) {
+      boundaries = function_boundaries(program);
+      inlined_symbols.resize(program.symbol_names.size(), 0);
+      for(std::size_t i = 0; i < program.functions.size(); ++i)
+        if(grouped_rewritten_symbols[program.functions[i].symbol]) {
+          inlined_symbols[program.functions[i].symbol] = 1;
+          prepare_for_inlining(
+            &program.functions[i], boundaries, stats, &simplify_arena,
+            &dce_scratch, &cfg_scratch);
+        }
+    }
+  }
   // Defer cross-block load reuse until
   // every inlining wave has finished.  Running it earlier changes the size
   // model used by the late inliners and can turn a local load reduction into
@@ -2485,7 +2519,13 @@ void finish_optimizer_pipeline(
       forward_loop_carried_store_loads(
         &program.functions[i], &analysis, stats);
     }
-    fold_edge_known_branches(&program.functions[i], stats, &cfg_scratch);
+    const bool edge_branches_changed = fold_edge_known_branches(
+      &program.functions[i], stats, &cfg_scratch, level >= 3);
+    if(level >= 3 && edge_branches_changed) {
+      timed_dce(
+        &program.functions[i], boundaries, stats, &dce_scratch);
+      timed_cfg(&program.functions[i], stats, &cfg_scratch);
+    }
   }
   const std::uint64_t elapsed = stats ? static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(

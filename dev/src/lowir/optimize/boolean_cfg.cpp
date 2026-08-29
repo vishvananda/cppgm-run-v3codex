@@ -25,6 +25,8 @@ using lowir_model::LowOperation;
 using lowir_model::Operand;
 
 bool cleanup_is_eh_instruction(Instruction::Kind kind);
+const Instruction * local_definition(
+    const Block & block, lowir_model::ValueId value);
 
 bool has_candidate_merge(const Function & function)
 {
@@ -54,7 +56,8 @@ bool has_direct_boolean_phi_branch(const Function & function)
 }
 
 bool has_edge_known_branch_candidate(
-    const Function & function, std::vector<unsigned char> * seen)
+    const Function & function, bool allow_integer_equality,
+    std::vector<unsigned char> * seen)
 {
   seen->assign(function.value_names.size(), 0);
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
@@ -64,9 +67,31 @@ bool has_edge_known_branch_candidate(
        instructions.back().kind == Instruction::IK_BRANCH &&
        instructions.back().first.kind == Operand::OP_TEMP) {
       const std::uint32_t value = instructions.back().first.value;
-      if(value >= seen->size()) continue;
-      if((*seen)[value]) return true;
-      (*seen)[value] = 1;
+      if(value < seen->size()) {
+        if((*seen)[value]) return true;
+        (*seen)[value] = 1;
+      }
+      if(!allow_integer_equality) continue;
+      const Instruction * predicate =
+        local_definition(function.blocks[block], instructions.back().first.value);
+      if(!predicate || predicate->kind != Instruction::IK_CMP)
+        continue;
+      lowir_model::ValueId tested;
+      if(predicate->first.kind == Operand::OP_TEMP &&
+         predicate->second.kind == Operand::OP_INTEGER &&
+         predicate->second.has_int_value)
+        tested = predicate->first.value;
+      else if((predicate->op.kind == LowOperation::LOP_EQ ||
+               predicate->op.kind == LowOperation::LOP_NE) &&
+              predicate->second.kind == Operand::OP_TEMP &&
+              predicate->first.kind == Operand::OP_INTEGER &&
+              predicate->first.has_int_value)
+        tested = predicate->second.value;
+      else
+        continue;
+      if(!tested.valid() || tested >= seen->size()) continue;
+      if((*seen)[tested]) return true;
+      (*seen)[tested] = 1;
     }
   }
   return false;
@@ -384,11 +409,86 @@ bool fold_direct_boolean_phi_branches(Function * function, Stats * stats)
   return changed;
 }
 
+bool edge_establishes_integer_equality(
+    const Block & predecessor,
+    bool true_edge,
+    Operand * value,
+    Operand * constant)
+{
+  if(predecessor.instructions.empty()) return false;
+  const Instruction & terminal = predecessor.instructions.back();
+  if(terminal.kind != Instruction::IK_BRANCH ||
+     terminal.first.kind != Operand::OP_TEMP)
+    return false;
+  const Instruction * predicate =
+    local_definition(predecessor, terminal.first.value);
+  if(!predicate || predicate->kind != Instruction::IK_CMP)
+    return false;
+  Operand tested;
+  Operand literal;
+  if(predicate->first.kind == Operand::OP_TEMP &&
+     predicate->second.kind == Operand::OP_INTEGER &&
+     predicate->second.has_int_value) {
+    tested = predicate->first;
+    literal = predicate->second;
+  } else if((predicate->op.kind == LowOperation::LOP_EQ ||
+             predicate->op.kind == LowOperation::LOP_NE) &&
+            predicate->second.kind == Operand::OP_TEMP &&
+            predicate->first.kind == Operand::OP_INTEGER &&
+            predicate->first.has_int_value) {
+    tested = predicate->second;
+    literal = predicate->first;
+  } else {
+    return false;
+  }
+  const bool equality =
+    (predicate->op.kind == LowOperation::LOP_EQ && true_edge) ||
+    (predicate->op.kind == LowOperation::LOP_NE && !true_edge) ||
+    (predicate->first.kind == Operand::OP_TEMP &&
+     lowir_opt::is_zero(literal) &&
+     ((predicate->op.kind == LowOperation::LOP_ULE && true_edge) ||
+      (predicate->op.kind == LowOperation::LOP_UGT && !true_edge))) ||
+    (predicate->first.kind == Operand::OP_TEMP &&
+     lowir_opt::is_one(literal) &&
+     ((predicate->op.kind == LowOperation::LOP_ULT && true_edge) ||
+      (predicate->op.kind == LowOperation::LOP_UGE && !true_edge)));
+  if(!equality) return false;
+  *value = tested;
+  *constant = literal;
+  return true;
+}
+
+bool equality_decides_branch(const Block & block,
+                             const Instruction & branch,
+                             const Operand & value,
+                             const Operand & constant,
+                             bool * condition)
+{
+  const Instruction * predicate =
+    local_definition(block, branch.first.value);
+  if(!predicate || predicate->kind != Instruction::IK_CMP ||
+     (predicate->op.kind != LowOperation::LOP_EQ &&
+      predicate->op.kind != LowOperation::LOP_NE))
+    return false;
+  const bool direct = predicate->first.kind == Operand::OP_TEMP &&
+    predicate->first.value == value.value &&
+    lowir_opt::same_operand(predicate->second, constant);
+  const bool reversed = predicate->second.kind == Operand::OP_TEMP &&
+    predicate->second.value == value.value &&
+    lowir_opt::same_operand(predicate->first, constant);
+  if(!direct && !reversed) return false;
+  *condition = predicate->op.kind == LowOperation::LOP_EQ;
+  return true;
+}
+
 bool fold_edge_known_branches_with_scratch(
     Function * function, Stats * stats,
+    bool allow_integer_equality,
     std::vector<unsigned char> * branch_values)
 {
-  if(!has_edge_known_branch_candidate(*function, branch_values)) return false;
+  if(!has_edge_known_branch_candidate(
+       *function, allow_integer_equality, branch_values))
+    return false;
   const Graph graph = build_graph(*function, stats);
   bool changed = false;
   for(std::size_t block = 0; block < function->blocks.size(); ++block) {
@@ -409,16 +509,28 @@ bool fold_edge_known_branches_with_scratch(
     const Instruction & incoming =
       function->blocks[predecessor].instructions.back();
     if(incoming.kind != Instruction::IK_BRANCH ||
-       incoming.first.kind != Operand::OP_TEMP ||
-       incoming.first.value != branch.first.value)
+       incoming.first.kind != Operand::OP_TEMP)
       continue;
     const bool true_edge = incoming.second.kind == Operand::OP_LABEL &&
       incoming.second.block == current.id;
     const bool false_edge = incoming.third.kind == Operand::OP_LABEL &&
       incoming.third.block == current.id;
     if(true_edge == false_edge) continue;
-    const Operand selected = true_edge ? branch.second : branch.third;
-    const Operand removed = true_edge ? branch.third : branch.second;
+    bool condition = true_edge;
+    bool range_fold = false;
+    if(incoming.first.value != branch.first.value) {
+      if(!allow_integer_equality) continue;
+      Operand value;
+      Operand constant;
+      if(!edge_establishes_integer_equality(
+           function->blocks[predecessor], true_edge, &value, &constant) ||
+         !equality_decides_branch(
+           current, branch, value, constant, &condition))
+        continue;
+      range_fold = true;
+    }
+    const Operand selected = condition ? branch.second : branch.third;
+    const Operand removed = condition ? branch.third : branch.second;
     // Removing a direct predecessor edge requires phi repair.  Keep this
     // inexpensive fold on the edge-local case; the general edge editor owns
     // phi-changing rewrites.
@@ -430,7 +542,10 @@ bool fold_edge_known_branches_with_scratch(
     branch.first = selected;
     branch.debug_location = debug;
     changed = true;
-    if(stats) ++stats->rewrites;
+    if(stats) {
+      ++stats->rewrites;
+      if(range_fold) ++stats->predicate_range_folds;
+    }
   }
   return changed;
 }
@@ -513,17 +628,25 @@ bool fold_nonzero_underflow_branches(Function * function, Stats * stats)
 
 bool fold_edge_known_branches(Function * function, Stats * stats)
 {
-  return fold_edge_known_branches(function, stats, 0);
+  return fold_edge_known_branches(function, stats, 0, false);
 }
 
 bool fold_edge_known_branches(Function * function, Stats * stats,
                               CleanupCfgScratch * reusable_scratch)
 {
+  return fold_edge_known_branches(
+    function, stats, reusable_scratch, false);
+}
+
+bool fold_edge_known_branches(Function * function, Stats * stats,
+                              CleanupCfgScratch * reusable_scratch,
+                              bool allow_integer_equality)
+{
   CleanupCfgScratch owned_scratch;
   CleanupCfgScratch & scratch = reusable_scratch ?
     *reusable_scratch : owned_scratch;
   return fold_edge_known_branches_with_scratch(
-    function, stats, &scratch.branch_values);
+    function, stats, allow_integer_equality, &scratch.branch_values);
 }
 
 bool fold_boolean_phi_branch(Function * function, Stats * stats)
@@ -753,7 +876,7 @@ bool cleanup_cfg(Function * function, Stats * stats, CleanupCfgScratch * scratch
   CleanupCfgScratch owned_scratch;
   CleanupCfgScratch & active_scratch = scratch ? *scratch : owned_scratch;
   bool changed = fold_edge_known_branches_with_scratch(
-    function, stats, &active_scratch.branch_values);
+    function, stats, false, &active_scratch.branch_values);
   changed = fold_direct_boolean_phi_branches(function, stats) || changed;
   changed = fold_boolean_phi_branch(function, stats) || changed;
   // Phi predecessor identities are part of the instruction contract.  Phi

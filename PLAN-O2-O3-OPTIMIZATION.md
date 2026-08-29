@@ -78,6 +78,16 @@ workload.  The normalized loss is larger: about 20% on the O1 workload and
 detrimental, but this matrix does not say which pass or interaction is at
 fault.
 
+At the current post-B3.2 checkpoint, the inversion has been removed.  Six
+position-balanced 32-way pairs put `S_31/S_11` at 0.986725x wall and
+0.992211x aggregate CPU, and `S_33/S_13` at 1.000174x wall and 0.996361x
+aggregate CPU.  GCC's corresponding O3/O1 producer ratios are approximately
+0.8595x/0.8462x on the O1 workload and 0.8893x/0.84845x on the O3 workload.
+The current normalized self/GCC ratios are therefore still approximately
+1.148x wall / 1.173x CPU on the O1 workload and 1.125x / 1.174x on the O3
+workload.  Raw parity is now met within the close-result window, but roughly
+17% of normalized O3 code-quality gap remains.
+
 All compared objects and final compilers were exact at a fixed workload level.
 The O1 and O3 final hashes were respectively
 `a836d867d7adaaa7679ff8ad5e8fd0546a526dc5e7c62ed122310ac6cfb7fba4`
@@ -185,6 +195,18 @@ an emulator as well as the compiler and are unlikely to beat the native
 32-way timing path.  Do not start Cachegrind until checking for an existing
 `valgrind`, `cachegrind`, or `callgrind` process.  Stop only a process owned by
 the recorded experiment and exact PID; never kill an unrelated user process.
+
+The retained deterministic attribution oracle is one O1 compile of the hot
+`preprocessor.cpp` translation unit under Cachegrind.  It completes in about
+one minute with the self producer, preserves an exact output hash, and is used
+only after the native hot-TU screen has shortlisted a candidate.  On the
+current sources, self O1 and O3 execute 5,196,654,174 and 5,181,114,513
+instructions respectively, only a 0.299% reduction.  Same-source GCC O1 and
+O3 execute 2,952,710,945 and 2,424,753,931 instructions, a 17.88% reduction.
+GCC's change is distributed across whitespace scanning, decoding, range and
+identifier checks, literal scanning, vector growth, UTF-8 append, and macro
+operator checks; it is broad interprocedural simplification, not one isolated
+backend peephole.
 
 For each timing window:
 
@@ -813,11 +835,93 @@ or 5.35% wall and 5.53% user.  This rejects indiscriminate late inlining even
 under the newer O3-native pipeline; the next inlining attempt must address the
 merged region's location pressure rather than merely raising the size cap.
 
+A narrower O3 ordinary-inliner dose admitted only hinted 41-through-72
+instruction callees whose actual arguments were all direct and included an
+integer literal.  It reduced direct `Peek` calls from 96 to 50 and removed
+237 million dynamic instructions from `Peek` in the hot Cachegrind compile,
+but total instructions increased from 5,181,114,513 to 5,346,449,839
+(3.19%).  The enlarged callers displaced smaller profitable inlines: dynamic
+work rose by about 204 million instructions in string equality, 182 million
+in `Take`, 83 million in `ScanPunctuator`, and 48 million in
+`StartTokenSpelling`.  Native six-pair hot-TU time regressed 4.87% wall and
+4.84% user.  The dose was removed.
+
+A follow-up protected ordinary inlining by placing the same literal-call
+class in a separate O3 wave after pruning.  At a 288-instruction translation-
+unit dose, the existing small inlines remained intact and hot Cachegrind work
+fell 0.50%, but native wall/user time rose 1.54%/1.62%.  At a 768-instruction
+dose, Cachegrind work fell 1.26% and `Peek` calls fell from 96 to 73, while the
+tokenizer object grew 39%, the hot `Run` body grew from 2,686 to 3,890 MIR
+instructions, and native wall/user time rose 1.79%/1.34%.  This independently
+confirms the P31 guarded-partial-inline grid: fewer calls or simulated
+instructions do not pay for merged-body instruction-cache and frame pressure.
+No further broad or partial inlining dose should be attempted without a new
+region-allocation result.
+
+The whole-compiler mixed-constant census then examined all 217 optimized
+shared-source translation units.  Repeated groups are not confined to
+`Peek`: material populations occur in parser expectations and expression
+modes, semantic flags, lowering instruction kinds, temporary-frame modes,
+serialization widths, and native encoding modes.  Any next specialization
+prototype is therefore source-agnostic and O3-only: at most one bounded clone
+per internal target, only a sufficiently repeated scalar group, and only when
+substitution makes control flow removable.  It must keep unspecialized calls
+on the original body, run normal cleanup before costing, and pass the hot
+native screen before a student-facing contract is added.
+
 The post-inline call-graph rebuild cross was also tested and rejected.  It
 changed no workload object except `pipeline.o` itself, whose extra analysis
 call added 56 text bytes.  Specialization rescans current calls and uses the
 pre-inline graph only for the still-valid symbol/function map and conservative
 recursion flag, so rebuilding has no present compiler-workload benefit.
+
+### D.group-late bounded mixed-group specialization
+
+The retained follow-up differs from the rejected `C.peek0` prototype in both
+placement and policy.  It runs at O3 after the ordinary and post-prune inline
+waves, considers the source-diverse populations found by `D.group-census`, and
+never folds a target merely because one source-visible constant is common.
+For an internal, nonobservable, nonrecursive fixed-arity target of at most 128
+instructions, it selects at most one integer parameter/value group with at
+least eight matching calls and at least one unlike call.  A cleaned generic
+copy is compared with the cleaned specialized copy, and the group is accepted
+only when the removed work across its matching calls pays for the complete
+clone.  The census tracks at most 64 groups per target; the translation-unit
+budgets are 24 clones and 1,536 cloned instructions.  Unspecialized calls stay
+on the original definition.
+
+The profitable compiler instance is the repeated zero-mode tokenizer path:
+69 calls move to a one-parameter clone, while the unlike calls remain generic.
+Final O3 cleanup combines this with a general predecessor-edge implication
+rule: equality, inequality, and unsigned zero/one boundary edges may establish
+an integer equality for a downstream `eq`/`ne` branch with one ordinary
+predecessor.  The generic body remains 9 blocks / 57 LowIR instructions; its
+specialized clone is 6 blocks / 43 instructions, and their native symbol sizes
+are 315 and 219 bytes.  The tokenizer object grows by only 113 text bytes.
+The final O3 compiler grows from 8,590,756 to 8,619,172 text bytes because it
+also contains the new optimizer implementation.
+
+The deterministic hot Cachegrind compile falls from 5,181,114,513 to
+5,076,525,416 instructions (2.019%) with exact output.  On the full fixed O1
+workload, six position-balanced 32-way self pairs move unpaired median wall
+from 31.620 to 31.480 seconds (0.44%) and aggregate CPU from 902.935 to
+897.660 seconds (0.58%); paired medians are 0.998094x wall and 0.994004x CPU.
+The six-pair same-source GCC control is 1.001921x on paired CPU, giving a
+normalized self result of 0.992099x, a 0.79% improvement.  Wall-time noise is
+recorded as inconclusive: GCC's paired and unpaired estimators disagree in
+direction, and the paired normalized wall ratio is 1.005274x.  All twelve
+self results and all twelve GCC-control results produce the same final binary
+hash, `fb6e82d42a8394299b3fc3abc724fc5ed653deb75f6d1bbe00ee2408e1875469`.
+
+PA37 documents the general rule and owns a structural/behavioral property
+that keeps O1/O2 generic, dynamically identifies the O3 clone without naming
+it, proves the clone is smaller and the unlike call survives, verifies the
+edge implication, and executes the serialized optimized LowIR through the
+native path.  PA37 passed 188/188, PA38 passed 45/45, the through-PA38 report
+passed 5,471/5,471, complete PA37/PA38 debug and object-round-trip lanes
+passed, and the PA39 file audit had zero fatal findings.  Fresh 32-way O3
+inception matched every object; self and inception both hash
+`76e2cc0c198eb0f3d7521ad27c9f569ada72124dd5122f8d55b688173a8bba0e`.
 
 Fill one row for every retained or rejected dose.
 
@@ -836,6 +940,10 @@ Fill one row for every retained or rejected dose.
 | C.copy61 | replace weak small-object `rep movsb` with direct chunks | provisional PA38 README/property removed | hot move share about 3.6% to 3.0% | six-pair median +3.05% wall/+0.38% CPU | 5,471/5,471; debug clean; O2/O3 inception exact | rejected and restored |
 | C.boolphi | thread O2/O3 narrow and acyclic constant Boolean phis | none; rejected at screen | O3 producer -5,036 text bytes; O1 workload byte-exact | hot TU about -0.3%; full CPU +0.72% | focused shape and exact-output checks | rejected and restored |
 | D.hint96 | recheck broad hinted late inlining under O3 native optimization | none; rejected at screen | `Peek` calls 100 to 44; O3 producer +827,994 text bytes | hot TU +5.35% wall/+5.53% user | exact-output ABBA screen | rejected; no source change |
+| D.const72 | admit only hinted 41--72 instruction calls with all-direct actuals and an integer literal | none; rejected at screen | `Peek` calls 96 to 50; hot dynamic instructions +3.19%; `Run` loads/stores and frame bindings increased | six-pair hot TU +4.87% wall/+4.84% user | exact output; candidate removed | rejected; displaced smaller profitable inlines |
+| D.literal-supp | put literal-call inlining in a separate post-prune budget | none; rejected at screen | dose 288: hot Ir -0.50%; dose 768: Ir -1.26%, tokenizer text +39%, `Run` MIR 2,686 to 3,890 | dose 288 +1.54%/+1.62% wall/user; dose 768 +1.79%/+1.34% | exact output; both candidates removed | rejected; merged-region pressure despite fewer instructions |
+| D.group-census | find source-diverse constant groups that can delete control flow without broad inlining | none; diagnostic only | 217 TUs; populations in parser, semantic, lowering, serialization, and native paths | no timing claim | immutable O3 LowIR census | supports one bounded O3 prototype |
+| D.group-late | clone one profitable repeated integer-constant group after all inline waves and consume its edge equality | PA37 README plus level-isolation, structural, replay, and behavior property | hot Ir -2.019%; 69 calls redirected; clone 43 vs generic 57 LowIR instructions; O3 producer +28,416 text bytes | self -0.44% wall/-0.58% CPU; same-source GCC paired CPU +0.19%; normalized CPU -0.79%; wall normalization inconclusive | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; O3 inception exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

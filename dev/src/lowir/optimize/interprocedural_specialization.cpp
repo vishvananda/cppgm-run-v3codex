@@ -1,5 +1,6 @@
 #include "lowir/optimize/interprocedural_specialization.h"
 
+#include "lowir/optimize/inline_o1.h"
 #include "lowir/optimize/pipeline.h"
 
 #include <algorithm>
@@ -19,6 +20,11 @@ using lowir_model::Operand;
 const std::size_t kNoParameter = static_cast<std::size_t>(-1);
 const std::size_t kMaximumSpecializedClones = 256;
 const std::size_t kMaximumClonedInstructions = 8192;
+const std::size_t kO3MinimumGroupedCalls = 8;
+const std::size_t kO3MaximumGroupedTargetInstructions = 128;
+const std::size_t kO3MaximumConstantGroupsPerTarget = 64;
+const std::size_t kO3MaximumGroupedClones = 24;
+const std::size_t kO3MaximumGroupedInstructions = 1536;
 
 enum AgreementState
 {
@@ -162,11 +168,12 @@ bool uniform_parameter_controls_cfg(
 lowir_model::SymbolId allocate_clone_symbol(
     LowirProgram * program,
     std::vector<unsigned char> * used_names,
-    std::size_t * ordinal)
+    std::size_t * ordinal,
+    const char * prefix)
 {
   for(;;) {
     const lowir_model::StringId name = program->strings.intern(
-      "__o2spec" + std::to_string((*ordinal)++));
+      std::string(prefix) + std::to_string((*ordinal)++));
     const std::uint32_t id = name;
     if(id >= used_names->size()) used_names->resize(id + 1, 0);
     if((*used_names)[id]) continue;
@@ -277,6 +284,41 @@ void append_specialized_clones(
   for(std::size_t function = original_function_count;
       function < program->functions.size(); ++function)
     (*rewritten_symbols)[program->functions[function].symbol] = 1;
+}
+
+struct ConstantGroup
+{
+  std::size_t parameter = 0;
+  Operand value;
+  std::size_t calls = 0;
+};
+
+struct GroupSelection
+{
+  bool active = false;
+  std::size_t parameter = 0;
+  Operand value;
+  lowir_model::SymbolId replacement;
+  std::vector<unsigned char> removed;
+};
+
+bool count_constant_group(std::vector<ConstantGroup> * groups,
+                          std::size_t parameter,
+                          const Operand & value)
+{
+  for(std::size_t group = 0; group < groups->size(); ++group)
+    if((*groups)[group].parameter == parameter &&
+       same_argument((*groups)[group].value, value)) {
+      ++(*groups)[group].calls;
+      return true;
+    }
+  if(groups->size() == kO3MaximumConstantGroupsPerTarget) return false;
+  ConstantGroup group;
+  group.parameter = parameter;
+  group.value = value;
+  group.calls = 1;
+  groups->push_back(group);
+  return true;
 }
 
 void remove_internal_dead_parameters(
@@ -461,7 +503,7 @@ std::size_t specialize_interprocedural_arguments(
          &used_parameters, stats)) {
       if(discardable_weak) {
         replacement_symbol[function] = allocate_clone_symbol(
-          &program, &used_symbol_names, &clone_ordinal);
+          &program, &used_symbol_names, &clone_ordinal, "__o2spec");
         make_internal_clone(destination, replacement_symbol[function]);
         const unsigned char * removed = &removed_parameters[first];
         if(has_removed_parameter(removed, parameter_count))
@@ -544,6 +586,227 @@ std::size_t specialize_interprocedural_arguments(
       used_parameters.capacity();
   }
   return changes;
+}
+
+std::size_t specialize_o3_constant_groups(
+    LowirProgram & program,
+    const InlineCallGraph & call_graph,
+    std::vector<unsigned char> * rewritten_symbols,
+    Stats * stats,
+    const InlineCleanup * cleanup)
+{
+  const std::size_t function_count = program.functions.size();
+  std::vector<std::size_t> direct_calls(function_count, 0);
+  std::vector<unsigned char> escaped(function_count, 0);
+  std::vector<unsigned char> invalid_shape(function_count, 0);
+  std::vector<unsigned char> group_limit_reached(function_count, 0);
+  std::vector<std::vector<ConstantGroup> > groups(function_count);
+
+  for(std::size_t global = 0; global < program.globals.size(); ++global) {
+    mark_reference(program.globals[global].init_operand, call_graph, &escaped);
+    for(std::size_t item = 0;
+        item < program.globals[global].data_items.size(); ++item) {
+      const lowir_model::GlobalDefinition::DataItem & value =
+        program.globals[global].data_items[item];
+      if(value.kind != lowir_model::GlobalDefinition::DataItem::ITEM_ADDR ||
+         value.symbol_id >= call_graph.definition_by_symbol.size())
+        continue;
+      const std::size_t target =
+        call_graph.definition_by_symbol[value.symbol_id];
+      if(target != InlineCallGraph::no_function()) escaped[target] = 1;
+    }
+  }
+  for(std::size_t alias = 0; alias < program.object_aliases.size(); ++alias) {
+    const std::uint32_t symbol = program.object_aliases[alias].target_id;
+    if(symbol >= call_graph.definition_by_symbol.size()) continue;
+    const std::size_t target = call_graph.definition_by_symbol[symbol];
+    if(target != InlineCallGraph::no_function()) escaped[target] = 1;
+  }
+
+  for(std::size_t caller = 0; caller < function_count; ++caller) {
+    const Function & function = program.functions[caller];
+    for(std::size_t block = 0; block < function.blocks.size(); ++block)
+      for(std::size_t index = 0;
+          index < function.blocks[block].instructions.size(); ++index) {
+        const Instruction & instruction =
+          function.blocks[block].instructions[index];
+        const std::size_t target = direct_target(instruction, call_graph);
+        if(target == InlineCallGraph::no_function())
+          mark_reference(instruction.first, call_graph, &escaped);
+        mark_reference(instruction.second, call_graph, &escaped);
+        mark_reference(instruction.third, call_graph, &escaped);
+        for(std::size_t argument = 0;
+            argument < instruction.args.size(); ++argument)
+          mark_reference(instruction.args[argument], call_graph, &escaped);
+        if(target == InlineCallGraph::no_function()) continue;
+        ++direct_calls[target];
+        const Function & callee = program.functions[target];
+        if(instruction.args.size() != callee.params.size() ||
+           (instruction.has_call_signature &&
+            instruction.call_params.size() != instruction.args.size())) {
+          invalid_shape[target] = 1;
+          continue;
+        }
+        for(std::size_t argument = 0;
+            argument < instruction.args.size(); ++argument)
+          if(instruction.args[argument].kind == Operand::OP_INTEGER &&
+             instruction.args[argument].has_int_value &&
+             removable_parameter(callee.params[argument]))
+            if(!count_constant_group(
+                 &groups[target], argument, instruction.args[argument]) &&
+               !group_limit_reached[target]) {
+              group_limit_reached[target] = 1;
+              if(stats) ++stats->ipa_clone_budget_skips;
+            }
+      }
+  }
+
+  std::vector<unsigned char> used_symbol_names(program.strings.size() + 1, 0);
+  for(std::size_t symbol = 0; symbol < program.symbol_names.size(); ++symbol)
+    used_symbol_names[program.symbol_names[symbol]] = 1;
+  std::vector<GroupSelection> selections(function_count);
+  std::vector<Function> clones;
+  std::size_t clone_ordinal = 0;
+  std::size_t cloned_instructions = 0;
+  std::vector<std::size_t> parameter_by_value;
+  std::vector<unsigned char> used_parameters;
+
+  for(std::size_t function = 0; function < function_count; ++function) {
+    const Function & target = program.functions[function];
+    const std::size_t target_instructions = instruction_count(target);
+    const bool observable = escaped[function] ||
+      target.metadata.object_output_root || target.metadata.keep_internal_alias ||
+      target.metadata.role != lowir_model::SR_NONE ||
+      target.metadata.tls_for_symbol_id.valid();
+    if(target.metadata.binding != lowir_model::SBM_INTERNAL || observable ||
+       invalid_shape[function] || call_graph.recursive[function] ||
+       target.metadata.no_inline || direct_calls[function] == 0 ||
+       target.params.empty() ||
+       target.boundary.arity != lowir_model::CAM_FIXED ||
+       target_instructions > kO3MaximumGroupedTargetInstructions)
+      continue;
+
+    const ConstantGroup * best = 0;
+    for(std::size_t group = 0; group < groups[function].size(); ++group) {
+      const ConstantGroup & candidate = groups[function][group];
+      if(candidate.calls < kO3MinimumGroupedCalls ||
+         candidate.calls == direct_calls[function])
+        continue;
+      if(!best || candidate.calls > best->calls) best = &candidate;
+    }
+    if(!best) continue;
+
+    Function baseline = target;
+    if(cleanup && cleanup->run)
+      cleanup->run(&baseline, 0, cleanup->context);
+    const std::size_t baseline_instructions = instruction_count(baseline);
+    Function clone = target;
+    std::vector<ArgumentAgreement> agreements(clone.params.size());
+    for(std::size_t parameter = 0; parameter < agreements.size(); ++parameter)
+      agreements[parameter].state = AS_DIFFERENT;
+    agreements[best->parameter].state = AS_UNIFORM;
+    agreements[best->parameter].value = best->value;
+    std::vector<unsigned char> removed(clone.params.size(), 0);
+    if(!specialize_function(
+         &clone, &agreements[0], agreements.size(), &removed[0],
+         &parameter_by_value, &used_parameters, 0))
+      continue;
+    if(cleanup && cleanup->run)
+      cleanup->run(&clone, 0, cleanup->context);
+    const std::size_t clone_instructions = instruction_count(clone);
+    const std::size_t saved = baseline_instructions > clone_instructions ?
+      baseline_instructions - clone_instructions : 0;
+    const std::size_t minimum_saved =
+      clone_instructions / best->calls +
+      (clone_instructions % best->calls != 0);
+    if(saved < minimum_saved)
+      continue;
+    if(clones.size() == kO3MaximumGroupedClones ||
+       clone_instructions >
+         kO3MaximumGroupedInstructions - cloned_instructions) {
+      if(stats) ++stats->ipa_clone_budget_skips;
+      continue;
+    }
+
+    GroupSelection & selection = selections[function];
+    selection.active = true;
+    selection.parameter = best->parameter;
+    selection.value = best->value;
+    selection.removed = removed;
+    selection.replacement = allocate_clone_symbol(
+      &program, &used_symbol_names, &clone_ordinal, "__o3groupspec");
+    make_internal_clone(&clone, selection.replacement);
+    const std::size_t parameter_count = clone.params.size();
+    remove_masked(&clone.params, &selection.removed[0], parameter_count);
+    cloned_instructions += clone_instructions;
+    clones.push_back(std::move(clone));
+    if(stats) {
+      ++stats->ipa_specialized_clones;
+      stats->ipa_cloned_instructions += clone_instructions;
+      ++stats->ipa_functions_changed;
+    }
+  }
+
+  std::size_t rewritten_calls = 0;
+  for(std::size_t caller = 0; caller < function_count; ++caller) {
+    Function & function = program.functions[caller];
+    for(std::size_t block = 0; block < function.blocks.size(); ++block)
+      for(std::size_t index = 0;
+          index < function.blocks[block].instructions.size(); ++index) {
+        Instruction & call = function.blocks[block].instructions[index];
+        const std::size_t target = direct_target(call, call_graph);
+        if(target == InlineCallGraph::no_function() ||
+           !selections[target].active)
+          continue;
+        const GroupSelection & selection = selections[target];
+        if(selection.parameter >= call.args.size() ||
+           !same_argument(call.args[selection.parameter], selection.value))
+          continue;
+        const std::size_t old_arguments = call.args.size();
+        bool caller_needs_cleanup = false;
+        for(std::size_t argument = 0; argument < call.args.size(); ++argument)
+          caller_needs_cleanup = caller_needs_cleanup ||
+            (selection.removed[argument] &&
+             call.args[argument].kind == Operand::OP_TEMP);
+        call.first.symbol = selection.replacement;
+        call.first.address_binding = Operand::ADDRESS_LOCAL;
+        remove_masked(
+          &call.args, &selection.removed[0], selection.removed.size());
+        if(call.has_call_signature)
+          remove_masked(
+            &call.call_params, &selection.removed[0],
+            selection.removed.size());
+        if(rewritten_symbols && caller_needs_cleanup)
+          (*rewritten_symbols)[function.symbol] = 1;
+        if(stats) {
+          ++stats->ipa_calls_rewritten;
+          stats->ipa_arguments_removed += old_arguments - call.args.size();
+        }
+        ++rewritten_calls;
+      }
+  }
+
+  append_specialized_clones(
+    &program, function_count, &clones, rewritten_symbols);
+  if(stats) {
+    std::size_t analysis_bytes =
+      direct_calls.capacity() * sizeof(std::size_t) + escaped.capacity() +
+      invalid_shape.capacity() + group_limit_reached.capacity() +
+      groups.capacity() * sizeof(std::vector<ConstantGroup>) +
+      used_symbol_names.capacity() +
+      selections.capacity() * sizeof(GroupSelection) +
+      clones.capacity() * sizeof(Function) +
+      parameter_by_value.capacity() * sizeof(std::size_t) +
+      used_parameters.capacity();
+    for(std::size_t function = 0; function < function_count; ++function) {
+      analysis_bytes +=
+        groups[function].capacity() * sizeof(ConstantGroup);
+      analysis_bytes += selections[function].removed.capacity();
+    }
+    stats->ipa_peak_analysis_bytes = std::max(
+      stats->ipa_peak_analysis_bytes, analysis_bytes);
+  }
+  return rewritten_calls;
 }
 
 }  // namespace lowir_opt

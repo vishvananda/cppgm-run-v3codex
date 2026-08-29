@@ -8,6 +8,7 @@
 
 namespace lowir_opt {
 
+struct InlineCleanup;
 struct Stats;
 
 // Propagate arguments agreed by every direct caller into non-address-observable
@@ -17,5 +18,15 @@ std::size_t specialize_interprocedural_arguments(
     const InlineCallGraph & call_graph,
     std::vector<unsigned char> * rewritten_symbols,
     Stats * stats = 0);
+
+// Split a repeated constant group from an otherwise mixed internal target.
+// The caller supplies ordinary local cleanup so the generic and specialized
+// bodies can be costed on comparable simplified shapes before redirection.
+std::size_t specialize_o3_constant_groups(
+    lowir_model::LowirProgram & program,
+    const InlineCallGraph & call_graph,
+    std::vector<unsigned char> * rewritten_symbols,
+    Stats * stats,
+    const InlineCleanup * cleanup);
 
 }  // namespace lowir_opt

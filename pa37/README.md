@@ -498,6 +498,35 @@ ordinary escape, type, definition, exceptional-handler, and phi-budget guards
 still apply; this cleanup does not make an otherwise ineligible slot
 promotable, and `-O0` performs neither the inlining nor the promotion.
 
+After the post-reachability inlining wave, `-O3` may split one repeated
+integer-constant call group from an otherwise mixed internal target.  The
+target must be fixed-arity, nonrecursive, `no_inline`-free, no larger than 128
+LowIR instructions, and unobservable through an address, lifecycle role,
+object root, or alias.  At least eight direct calls must pass the same integer
+constant to the same removable scalar parameter, while at least one other
+direct call remains unlike.  Compare an ordinarily cleaned copy of the target
+with a copy cleaned after substituting the constant; accept the clone only
+when its per-call removed work, multiplied by the matching call count, pays
+for the complete clone.  Redirect only the matching calls and remove scalar
+parameters made dead by substitution.  The unlike calls and original target
+remain unchanged.
+
+This grouped specialization considers at most one constant group per target,
+tracks at most 64 distinct parameter/value groups for that target, and creates
+at most 24 clones and 1,536 cloned LowIR instructions per translation unit.
+Budget exhaustion skips later candidates in deterministic function order.
+`-O1` and `-O2` do not perform mixed-group cloning.
+
+During its final control-flow cleanup, `-O3` may also consume an equality
+established by the sole ordinary predecessor edge.  A true `x == c` edge or
+false `x != c` edge establishes `x == c`.  For an unsigned value, true
+`x <= 0`, false `x > 0`, true `x < 1`, and false `x >= 1` edges establish
+`x == 0` as well.  A downstream `x == c` or `x != c` branch may then become
+an unconditional edge.  Keep the branch when the block has another
+predecessor, is an exceptional-handler target, compares a different typed
+value, or removing the untaken edge would require phi repair.  `-O1` and
+`-O2` retain these downstream comparisons.
+
 General slot-value forwarding beyond complete eligible-slot promotion remains
 an `-O2` responsibility. At `-O1`, a live load whose value is consumed along
 multiple successor paths must remain unless the slot is fully promotable or an
