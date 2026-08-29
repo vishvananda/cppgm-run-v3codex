@@ -290,6 +290,22 @@ protected:
   {
     deferred_carrier_registers_[static_cast<unsigned>(reg)] = 1;
   }
+  // A deferred address pins the current physical-register lifetime, not the
+  // register name forever.  A later value may reuse a physically free
+  // register without inheriting the old carrier's release veto.  Check the
+  // rare stale-mark case first so ordinary value updates do not inspect the
+  // live-location index or write the carrier table.  Keep O1's established
+  // native output stable while the more precise model is an O2/O3 feature.
+  void begin_register_lifetime(const mir_model::MirOperand & location)
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    if(lowerer.optimization_level_ < 2 ||
+       location.kind != mir_model::MirOperand::OP_REG ||
+       !deferred_carrier_registers_[static_cast<unsigned>(location.reg)] ||
+       !lowerer.live_locations_.gpr_values(location.reg).empty())
+      return;
+    deferred_carrier_registers_[static_cast<unsigned>(location.reg)] = 0;
+  }
   // A planned resident whose final use lies inside a span is only
   // releasable once the walk passes its extended plan end — but the
   // consume-time check runs at the final use, so without a schedule the

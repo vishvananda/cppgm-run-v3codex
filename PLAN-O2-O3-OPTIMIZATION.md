@@ -642,6 +642,46 @@ frame-policy and residency improvements; after checking that debug locations
 were unchanged, the canonical compatibility fixtures were refreshed and the
 complete PA38 debug lane passed 11/11 in corrective commit `bf0da1a9`.
 
+### B3.2 reset completed deferred-carrier register lifetimes
+
+The whole-function placement census exposed a lifetime-ownership error rather
+than ordinary register pressure.  A deferred address marked its physical
+carrier register as non-releasable, but the mark survived after the address
+and carrier were dead and the pool had assigned that register to an unrelated
+value.  The new value consequently inherited the old carrier's release veto.
+In the hot macro-processor `Run` function this stale state blocked one cyclic
+region grant and kept an unrelated short-lived value resident well past its
+last use.
+
+The retained repair clears a carrier mark only when O2/O3 begins a new value
+lifetime in that register and the live-location index proves that the prior
+lifetime is over.  The stale-bit test comes before the live-index query, so the
+ordinary value-update path performs neither the query nor a table write.  A
+broader prototype that queried and rewrote the carrier table for every
+register assignment produced the same useful code but regressed the six-pair
+screen by 0.11% aggregate CPU; it was narrowed before retention.
+
+On the hot function, MIR instructions fell from 2,753 to 2,686, scalar loads
+and stores from 453/433 to 408/388, and cyclic-region residencies rose from one
+to two while busy failures fell from four to three.  The complete O3-produced
+compiler lost 34,640 `.text` bytes (7,890,434 to 7,855,794).  Six balanced
+32-way O1-workload pairs, all with the exact final hash
+`81676d5b65301728a48a7e4a47d2c88435f91ed0b593412dd3f5ded1f02d171e`,
+improved median paired wall time by 0.68% and aggregate CPU by 0.41%.
+
+The same-source GCC-O3 control moved 0.11% in the slower aggregate-CPU
+direction across three balanced pairs, giving an incremental normalized gain
+of about 0.53%.  Its shorter wall samples were substantially noisier and are
+not used to inflate the claim.  PA38 now documents carrier lifetime ownership,
+and a structural/behavioral control checks reuse using relationships between
+arbitrary chosen registers rather than exact register names or complete MIR.
+The through-PA38 report passed 5,471/5,471, PA38 debug passed 11/11, and the
+PA39 audit had zero fatal findings.  Fresh 32-way inception comparisons were
+exact: O2 self/inception both hashed
+`7af023ee8a4933b4971df7de0980282876e05c5cf4415542689bd679cb43e4b1`,
+and O3 self/inception both hashed
+`341c8feca143281ed92f11980178e034d5bccc1d27f7fe36e58cffafb9d38ff0`.
+
 ### B2.1 defer O2/O3 memory GVN until after inlining
 
 The first pass-order cross confirmed the O1 pipeline's warning: running memory
@@ -791,6 +831,7 @@ Fill one row for every retained or rejected dose.
 | B1.1 | prevent weak specialization clones from defeating link coalescing | PA37 README plus positive control-flow and negative data-only property control | O2 -46,397 text bytes and 162/82,891 surviving clone symbols/bytes removed; O3 -46,365 text bytes | O1-workload -2.59% wall/-0.49% CPU; normalized direction about -0.56%/-0.24%; invalid O3 window discarded | 5,471/5,471; PA37 debug/round-trip clean; zero-fatal audit; O2/O3 inception exact | retained in this checkpoint |
 | B2.graph | rebuild specialization graph after ordinary inline | none | no workload object changes; `pipeline.o` +56 text bytes | static rejection | experiment removed | rejected |
 | B3.1 | prevent trace layout from displacing conditional fallthrough | PA38 README plus positive/negative structural control | O2 text -73,012 bytes; O3-workload result -73,316 text bytes | O1-workload CPU -0.92%; O3-workload CPU -1.59%; normalized floor still open | 5,471/5,471; debug 11/11; zero-fatal audit | retained in this checkpoint |
+| B3.2 | prevent a completed deferred-address carrier from pinning a later register lifetime | PA38 README plus register-agnostic structural/behavioral control | hot MIR -67 instructions and -45/-45 scalar loads/stores; O3 producer -34,640 text bytes | O1 workload -0.68% wall/-0.41% CPU; normalized CPU direction about -0.53% | 5,471/5,471; debug 11/11; zero-fatal audit; O2/O3 inception exact | retained in this checkpoint |
 | C.peek0 | specialize the dominant repeated `Peek(0)` call family | provisional property removed | 57 calls redirected; combined `Peek` profile 8.56% to 8.37% | one exact pair -0.28% wall/-0.08% CPU, below useful signal | candidate restored | rejected |
 | C.copy61 | replace weak small-object `rep movsb` with direct chunks | provisional PA38 README/property removed | hot move share about 3.6% to 3.0% | six-pair median +3.05% wall/+0.38% CPU | 5,471/5,471; debug clean; O2/O3 inception exact | rejected and restored |
 | C.boolphi | thread O2/O3 narrow and acyclic constant Boolean phis | none; rejected at screen | O3 producer -5,036 text bytes; O1 workload byte-exact | hot TU about -0.3%; full CPU +0.72% | focused shape and exact-output checks | rejected and restored |

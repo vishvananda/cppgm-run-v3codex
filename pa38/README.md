@@ -295,6 +295,12 @@ semantic-preserving rewrites where safe:
 - remove callee-saved register preservation that is no longer needed after
   optimization
 - recompute final stack reservation from the surviving frame state
+- treat a cached-address carrier as pinning its current physical-register
+  lifetime, not that register name for the rest of the function.  After the
+  carrier and every address that replays it are finished and the register is
+  physically free, a later unrelated value may begin a new register lifetime
+  without inheriting the old carrier's release restriction.  A carrier still
+  referenced by a cached address remains pinned
 
 The same interval machinery is available at every optimizing level for the
 bounded O1 placement classes used by the checked fixtures. Loop-carried phis
@@ -372,10 +378,11 @@ N3485 source-language clauses.
   oracle.
 - `course/pa38/controls` checks only documented focused relationships: selected
   frame homes and edge movement, residency of a repeatedly compared
-  iteration-local call result across an intervening call, and guarded
-  fast-loop `phi` residency without extra preserved-register capacity.  It
-  then runs the generated program, permits equivalent physical-register
-  choices, and does not compare a complete MIR dump or executable image.
+  iteration-local call result across an intervening call, guarded fast-loop
+  `phi` residency without extra preserved-register capacity, and reuse after
+  a completed cached-address carrier lifetime.  It then runs the generated
+  program, permits equivalent physical-register choices, and does not compare
+  a complete MIR dump or executable image.
 - A survivor-property pass also reuses selected small `course/pa38/o1`
   reducers at `-O0` and `-O1`. It checks only local relationships such as a
   frame home disappearing while its guarded twin remains, a call result being

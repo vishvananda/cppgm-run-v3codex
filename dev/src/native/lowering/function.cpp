@@ -1043,8 +1043,8 @@ private:
   void set_value(lowir_model::ValueId value, const ValueFact & replacement)
   {
     const bool live = value_is_live(value);
-    if(live && value_known_[value])
-      live_locations_.remove(value, values_[value].location);
+    if(live && value_known_[value]) live_locations_.remove(value, values_[value].location);
+    begin_register_lifetime(replacement.location);
     values_[value] = replacement;
     value_known_[value] = 1;
     if(live) live_locations_.add(value, replacement.location);
@@ -1052,10 +1052,10 @@ private:
   void set_value_location(lowir_model::ValueId value,
                           const MirOperand & replacement)
   {
-    if(!value_known_[value])
-      throw std::logic_error("cannot move an unknown native value");
+    if(!value_known_[value]) throw std::logic_error("cannot move an unknown native value");
     const bool live = value_is_live(value);
     if(live) live_locations_.remove(value, values_[value].location);
+    begin_register_lifetime(replacement);
     values_[value].location = replacement;
     if(replacement.kind == MirOperand::OP_FRAME &&
        replacement.frame_binding != 0) {

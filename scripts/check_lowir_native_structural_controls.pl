@@ -55,7 +55,7 @@ if (scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -64,7 +64,9 @@ for my $test (@tests)
 		CLEANUP => 1);
 	my $mir_path = "$directory/test.mir";
 	my $program = "$directory/test.program";
-	my $level = $test =~ /conditional-fallthrough-layout/ ? '-O2' : '-O1';
+	my $level = $test =~
+		/(?:conditional-fallthrough-layout|deferred-carrier-lifetime-reset)/
+		? '-O2' : '-O1';
 	my $status = run_command_capture(
 		cmd => [$app, $level, '--dump-machine-ir', $mir_path,
 			'-o', $program, $test],
@@ -72,7 +74,7 @@ for my $test (@tests)
 		stderr => "$directory/compile.stderr",
 		timeout => 30,
 	);
-	die "$test: O1 native compile failed\n" .
+	die "$test: optimized native compile failed\n" .
 		read_file("$directory/compile.stderr") if $status != 0;
 	my $run_status = run_command_capture(
 		cmd => [$program],
@@ -83,6 +85,48 @@ for my $test (@tests)
 	die "$test: generated program failed with status $run_status\n" if $run_status != 0;
 
 	my $mir = read_file($mir_path);
+	if ($test =~ /deferred-carrier-lifetime-reset/) {
+		my $positive = function_body($test, $mir, 'carrier_lifetimes');
+		my @choices = $positive =~
+			/^\s+call \@read_choice\b[^\n]*\n\s+mov ([a-z0-9]+), rax$/mg;
+		die "$test: reducer lost its two cyclic choice results\n"
+			if scalar(@choices) != 2;
+		die "$test: a completed carrier lifetime still blocked register reuse\n"
+			if $choices[0] ne $choices[1];
+		die "$test: pressure setup lost its deferred address consumers\n"
+			if scalar(() = $positive =~
+				/^\s+load\.i64 [a-z0-9]+, \[[a-z0-9]+\+8\]$/mg) < 4;
+
+		my $baseline_mir = "$directory/baseline.mir";
+		my $baseline_program = "$directory/baseline.program";
+		$status = run_command_capture(
+			cmd => [$app, '-O1', '--dump-machine-ir', $baseline_mir,
+				'-o', $baseline_program, $test],
+			stdout => "$directory/baseline-compile.stdout",
+			stderr => "$directory/baseline-compile.stderr",
+			timeout => 30,
+		);
+		die "$test: O1 native compile failed\n" .
+			read_file("$directory/baseline-compile.stderr") if $status != 0;
+		$run_status = run_command_capture(
+			cmd => [$baseline_program],
+			stdout => "$directory/baseline-program.stdout",
+			stderr => "$directory/baseline-program.stderr",
+			timeout => 30,
+		);
+		die "$test: O1 generated program failed with status $run_status\n"
+			if $run_status != 0;
+		my $baseline = function_body(
+			$test, read_file($baseline_mir), 'carrier_lifetimes');
+		my @baseline_choices = $baseline =~
+			/^\s+call \@read_choice\b[^\n]*\n\s+mov ([a-z0-9]+), rax$/mg;
+		die "$test: O1 control no longer distinguishes carrier reuse\n"
+			if scalar(@baseline_choices) != 2 ||
+			   $baseline_choices[0] eq $baseline_choices[1];
+		die "$test: lifetime reset changed preserved-register capacity\n"
+			if preserve_count($positive) != preserve_count($baseline);
+		next;
+	}
 	if ($test =~ /conditional-fallthrough-layout/) {
 		my $trace = function_body($test, $mir, 'pure_trace');
 		die "$test: O2 did not place the unconditional trace successor next\n"
