@@ -725,6 +725,34 @@ every object and the final compilers: O2 self/inception both hashed
 and O3 self/inception both hashed
 `b59f30c02cb640220a953d4f506781b6636246b9f340f2fddc406c4af30c3044`.
 
+### Rejected generated-code follow-ups
+
+An O3-only repeated-constant specialization dose targeted the dominant
+`Peek(0)` family seen in the self-O3 profile.  It redirected 57 calls and an
+additional inverse-predicate cleanup reduced the resulting clone, but the
+valid exact-output A/B moved only from 32.01 / 906.01 to 31.92 / 905.26 seconds
+wall/aggregate CPU.  A candidate profile still attributed about 8.37% to the
+generic and specialized `Peek` bodies together, versus 8.56% in the baseline.
+The GCC advantage is therefore not explained by constant cloning alone.  The
+dose and its provisional tests were removed.
+
+A second dose split weakly aligned 33-through-64-byte object copies into MIR
+chunks no larger than 32 bytes, allowing direct unaligned loads and stores in
+place of `rep movsb`.  It reduced the hot `Token` move-constructor sample share
+from approximately 3.6% to 3.0%, and the focused PA38 property failed under a
+pre-change policy.  The complete six-pair, position-balanced O1 workload told
+the opposite end-to-end story: the paired candidate/baseline median was
+1.0305x wall and 1.0038x aggregate CPU, with five of six CPU pairs regressing.
+All twelve final outputs were byte-exact at
+`ff2a0f31c8402e7d1acc081f1a08cdc3dd558c5610abe37e63f6a89549904756`.
+The candidate did pass the 5,471-test through-PA38 report, the complete PA38
+debug lane, and exact O2/O3 inception comparisons; the corresponding O2 and
+O3 hashes were
+`e41f8efe295ed58f006bd4d84275a0e89730eea33bd63c252b4542da3ccfa0b4`
+and `ef6ecdebb5a2ca83242b4f54763b70a15622d16fb2757c73ef6a9973809d5456`.
+Those correctness results do not override the measured throughput regression,
+so the implementation, student-facing text, and test were removed together.
+
 The post-inline call-graph rebuild cross was also tested and rejected.  It
 changed no workload object except `pipeline.o` itself, whose extra analysis
 call added 56 text bytes.  Specialization rescans current calls and uses the
@@ -743,6 +771,8 @@ Fill one row for every retained or rejected dose.
 | B1.1 | prevent weak specialization clones from defeating link coalescing | PA37 README plus positive control-flow and negative data-only property control | O2 -46,397 text bytes and 162/82,891 surviving clone symbols/bytes removed; O3 -46,365 text bytes | O1-workload -2.59% wall/-0.49% CPU; normalized direction about -0.56%/-0.24%; invalid O3 window discarded | 5,471/5,471; PA37 debug/round-trip clean; zero-fatal audit; O2/O3 inception exact | retained in this checkpoint |
 | B2.graph | rebuild specialization graph after ordinary inline | none | no workload object changes; `pipeline.o` +56 text bytes | static rejection | experiment removed | rejected |
 | B3.1 | prevent trace layout from displacing conditional fallthrough | PA38 README plus positive/negative structural control | O2 text -73,012 bytes; O3-workload result -73,316 text bytes | O1-workload CPU -0.92%; O3-workload CPU -1.59%; normalized floor still open | 5,471/5,471; debug 11/11; zero-fatal audit | retained in this checkpoint |
+| C.peek0 | specialize the dominant repeated `Peek(0)` call family | provisional property removed | 57 calls redirected; combined `Peek` profile 8.56% to 8.37% | one exact pair -0.28% wall/-0.08% CPU, below useful signal | candidate restored | rejected |
+| C.copy61 | replace weak small-object `rep movsb` with direct chunks | provisional PA38 README/property removed | hot move share about 3.6% to 3.0% | six-pair median +3.05% wall/+0.38% CPU | 5,471/5,471; debug clean; O2/O3 inception exact | rejected and restored |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
