@@ -2314,6 +2314,32 @@ and final compiler
 `8e9760ee54552b29f67f109a0ba6b7641d1c7aa59cbe9a9d2cdeead2c5e57ee8`.
 The prototype was removed before README or property-test movement.
 
+### Rejected repeated Boolean-diamond fixed point
+
+The retained O3 Boolean-diamond pass deliberately folds one eligible diamond
+per function.  A follow-up changed that single attempt into a bounded fixed
+point: every successful iteration removes three blocks, so the loop must
+terminate.  On the current tokenizer this removed the other nine generated
+string-growth diamonds, reducing LowIR by 90 lines, MIR by 135 lines, and the
+tokenizer object by 352 text bytes.  After self-application, the complete G2
+producer was 14,704 text bytes smaller than the retained producer.
+
+The extra static reduction was mostly cold.  An output-exact hot O1 Callgrind
+compile moved from 4,303,862,921 to 4,303,248,595 instructions, only 614,326
+instructions or 0.0143%, and native hot timing was effectively flat.  More
+importantly, uncontaminated all-32 O3-workload lanes repeatedly put candidate
+aggregate CPU at 784--787 seconds versus 777--779 seconds for the baseline,
+about a 0.8--1.0% regression.  Reversing the producer order reproduced the
+loss: the clean candidate lane used 784.30 seconds while the two intervening
+baseline lanes used 776.64 and 778.91 seconds.  Separate 830--909 second host
+events were discarded and did not determine the result.  Both sides emitted
+219 deterministic objects; the candidate G3 hash was
+`268f78fb8ee3aac25b2c33131520f11afcc05b67238befe328ba41e74c5e2564`.
+
+The repeated scan was therefore removed.  No README or property test was
+added: the retained one-diamond contract remains covered, while making it a
+per-function fixed point is neither required nor profitable.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -2357,7 +2383,7 @@ Fill one row for every retained or rejected dose.
 | D.repeat-readonly-call | preserve repeat-stable query availability across direct internal call-free read-only helpers | none; rejected before contract movement | four more query reuses; tokenizer -48 text bytes; producer +1,348; hot Ir -0.273% | self O1 paired median +0.033% wall/+0.050% CPU; GCC +0.668%/+0.102%; normalized -0.631%/-0.052% | exact 219-object manifest and final output in all valid self/GCC lanes; two contaminated GCC blocks rejected whole and replaced | rejected; raw throughput is not in the intended direction and normalized CPU gain is negligible |
 | D.block-local-save | eliminate a callee-saved color whose disjoint ranges are all confined to individual blocks | PA38 README plus O2/O3 level-isolation, structural, bounded-stats, and behavioral properties; PA37 unchanged | hot clone 219 to 203 bytes and three to two saves; producer -2,924 text bytes; hot Ir -1.7247%; frozen O2 exact and O3 -55 text bytes | O1 workload CPU -0.57%, normalized -0.69%, wall within +0.60%; O3 workload -1.44% wall/-0.74% CPU, normalized -1.65%/-0.93% | 45/45; 5,471/5,471 full report; debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.medium-copy-chunks | select direct chunks for weakly aligned fixed 33--64-byte copies at O2+ | PA38 README plus O0/O1 isolation, O2/O3 structure/stats/encoding/replay/behavior property; PA29 O0 guard retained | hot constructor 215 to 258 bytes and loses fixed-tail `rep movsb`; producer +6,708 text; hot Ir -2.9409%; O1 requested output exact | O1 workload -1.52% wall/-0.82% CPU, normalized -1.89%/-0.84%; O3 workload -0.53%/-0.66%, normalized -0.41%/-0.75% | 45/45; 5,471/5,471 full report; debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
-| D.trivial-bool-diamond | bypass an exact O3 two-arm constant-Boolean phi diamond after measuring its self-applied G2 form | PA37 README plus O0--O2 isolation, structural guards, serialized replay, and behavior property; PA38 unchanged | token move constructor 234 to 206 bytes; producer -5,856 text bytes; hot Ir -0.8644%; O1 output exact | O3 self mean -2.12% wall/-0.97% CPU and block median -2.40%/-0.36%; GCC Ir -0.011%; normalized Ir -0.853% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; frozen exact; all-32 O2 and O3 G2/G3 exact | retained after fixed-point re-evaluation; initial G1-era rejection superseded |
+| D.trivial-bool-diamond | bypass an exact O3 two-arm constant-Boolean phi diamond after measuring its self-applied G2 form | PA37 README plus O0--O2 isolation, structural guards, serialized replay, and behavior property; PA38 unchanged | token move constructor 234 to 206 bytes; producer -5,856 text bytes; hot Ir -0.8644%; O1 output exact | O3 self mean -2.12% wall/-0.97% CPU and block median -2.40%/-0.36%; GCC Ir -0.011%; normalized Ir -0.853% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; frozen exact; all-32 O2 and O3 G2/G3 exact | retained after G1/G2 re-evaluation; initial G1-era rejection superseded |
 | D.multi-return-query | admit repeat-stable queries with additional pure return paths | none; rejected before contract movement | four stable functions vs one; six generic calls removed; `Lexer::Run` -42 bytes; producer +4,204 text bytes | output-exact hot Ir -0.0034%; native screen flat | structural/stats/object probes deterministic; prototype removed before full gate | rejected; removed calls are cold |
 | D.innermost-loop-helper | inline one highly repeated small internal loop-shaped helper at its unique call in a tiny innermost caller loop | none; rejected before contract movement | one 42-instruction helper expanded; hottest 3,623,141-call site removed; tokenizer +96 text bytes; producer +5,876 | three hot ABBA blocks about +2.7% wall/+2.9% user; Callgrind +0.0522% Ir | exact O1 object and valid O3 LowIR; prototype removed | rejected; duplicated cursor loop and exceptional control cost more than the call |
 | D.selection-compare-cascade | thread an acyclic two-stage Boolean/scalar selection directly into its sole compare branch | none; rejected before contract movement | ten `u8` plus ten `i64` phis removed; `AppendUTF8` 495 to 405 MIR and 1,965 to 1,509 bytes; tokenizer -448 text; producer +7,108 | hot Ir -0.5699%; O1 CPU -0.80%, normalized -0.47% CPU/+1.38% wall; O3 CPU -0.17% and wall +0.73% | O1/O2 LowIR exact; deterministic 219-object O1 outputs and per-side O3 outputs; candidate reproduced its O3 compiler; prototype removed | rejected; material local saving is representative-O3 flat and normalized wall-negative |
@@ -2374,6 +2400,7 @@ Fill one row for every retained or rejected dose.
 | D.transient-swap-staging | remove a complete write-only transient local and its first overwritten copy from an adjacent three-copy object swap | none; rejected before contract movement; a retained form would require positive/negative PA37 properties plus unrelated-call-argument survival | two real 80-byte swap populations simplified; macro body -115 native bytes; self producer +9,072 text bytes; hot Ir -0.6710% | self mean wall/CPU -0.20%/-0.05%; GCC +0.36%/-0.26%; normalized wall -0.56% but CPU +0.21%; paired normalized CPU effectively flat | corrected candidate exact on hot output and all 219 full-workload objects/final; initial self-move bug diagnosed without fixture changes; prototype removed | rejected; dynamic instruction saving did not clear the normalized close-result CPU gate |
 | D.merge-phi-register | reuse the exact local-phi interval proof for acyclic O2/O3 merge phis | none; rejected before contract movement | G1 +256 text and O1 output exact; G2 self-applied to -74,224 text but changed O1 MIR/object despite exact LowIR | G1 hot Ir +0.0012%; G2 performance invalidated by miscompile | O0 exact; G2 repeat deterministic; G2-to-G3 failed across unrelated TUs; prototype removed | rejected as unsound; predecessor transfers need a stronger proof |
 | D.terminal-address-load | fold a terminal `lea`/load/return into one representable indexed load | none; rejected before contract movement | two hot returns each -1 MIR/-3 bytes; G2 producer +1,952 text; hot Ir -0.4422%; O1 output exact | self wall/CPU 1.01030x/0.99976x; GCC 0.99918x/0.99882x; normalized 1.0111x/1.0009x | PA38 45/45; exact 219-object manifest/final; G1/G2 distinction verified; prototype removed | rejected; deterministic saving is normalized-flat and wall-negative |
+| D.trivial-bool-repeat | repeat the retained Boolean-diamond fold to a bounded per-function fixed point | none; rejected before contract movement | nine more tokenizer diamonds removed; tokenizer -352 text; G2 producer -14,704 text; hot Ir -0.0143% | hot native flat; clean all-32 O3 CPU about +0.8--1.0%, reproduced with reversed order | deterministic 219-object outputs; candidate G3 hash recorded; prototype removed | rejected; cold size saving does not repay repeated O3 work/layout loss |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
