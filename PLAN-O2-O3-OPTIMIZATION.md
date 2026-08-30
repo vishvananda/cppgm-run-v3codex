@@ -2270,8 +2270,9 @@ through-target, debug, and round-trip gates still run.
 PA37 passes 188/188, PA38 passes 45/45, and the report through PA38 passes
 5,471/5,471.  PA37/PA38 debug and object-round-trip lanes pass, and the PA39
 file audit remains at zero fatal findings and the established 32 warnings.
-Two frozen O1 compiles are byte-identical at
-`ee984053486a141c2ef7892cbbf7ef7edaf859071593c87c67900c266f43b333`.
+Two frozen O1 compiles of the established `preprocessor.cpp` input are
+byte-identical at
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`.
 Fresh 32-way fixed-point trees match every object and final compiler.  O2 has
 219-object manifest
 `9d3b0611867e8993c1c130599dba94b204beac8443ee924a9a29c23f6ae22217`
