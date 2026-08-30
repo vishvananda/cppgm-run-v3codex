@@ -2917,6 +2917,43 @@ reachable-address scan and the producer-wide layout change therefore cost more
 than the small local spill saving.  The implementation was removed, and no
 PA38 README or property test was added for rejected behavior.
 
+### Rejected short dynamic-index base takeover
+
+The next native screen targeted the remaining frame home in
+`Program::FindEntry`.  Under register pressure, a dynamic `index` always wrote
+through `rax` to a new frame home even when its register base was at its exact
+final use.  Reusing that base for the indexed result removed the pointer home,
+one callee save, and half of the frame in `FindEntry`; the body fell from 84 to
+80 MIR instructions.  A broad O2/O3 form did not generalize cleanly: although
+it reduced MIR in several semantic functions, it lengthened register pressure
+in `InternTemplateArgumentList` and three index-table functions.
+
+The narrowed proof required at least three uses, no call-crossing lifetime, at
+most twelve LowIR positions from definition through final use, an exact final
+use of the base, and no physical-register clobber.  O0 and O1 MIR remained
+byte-exact.  Across the six representative O3 translation units it changed
+only `Program::FindEntry` and `Program::EnsureEntry`; `program.cpp` lost eleven
+final MIR instructions and seven scalar-movement instructions, while the
+other five units were unchanged (the existing `pipeline.cpp` MIR serializer
+limitation prevented a dump but both complete bootstrap generations compiled
+it normally).  G2 and G3 matched all 219 objects and the final compiler at
+`608dd02bf8b5f3dc560fd41b1980ec1bd9e6c249b4f92956ea868ad08f2e282d`.
+The implementation plus its self-applied code grew the D4 producer by 756
+`.text` bytes.
+
+Representative normalized timing did not support retention.  On the fixed O1
+workload, self candidate/baseline mean wall and aggregate-CPU ratios were
+1.06403x and 1.00639x; GCC was 1.01158x and 0.99840x, giving normalized
+1.05185x wall and 1.00801x CPU.  One self wall lane was visibly slow, so the
+actual O3 workload was measured independently rather than rejecting on that
+block alone.  There, self was 1.01325x wall and 1.00613x CPU while GCC was
+1.01857x and 1.00503x.  Normalized wall was 0.99478x, but normalized CPU was
+still 1.00110x and raw self throughput regressed in both measures.  Every O1
+lane emitted the same 219 objects and final compiler; each O3 side was
+internally deterministic at its expected G1 or G2 hash.  The prototype was
+removed.  Because the behavior is rejected, no PA38 README or property test
+was added; PA37 was unaffected throughout.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -2988,6 +3025,7 @@ Fill one row for every retained or rejected dose.
 | D4.final-transfer-region | clean cloned `noreturn` continuations, reuse an acyclic source home at its exact final phi transfer, and recolor complete connected source-live regions | PA37/PA38 READMEs plus role-, liveness-, level-, guard-, replay-, and behavior-based properties | `Next` frame 240 to 208 bytes, preserves -2, body 4,264 to 4,157 bytes; producer -14,928 `.text`; hot Ir -1.8031% | full self wall/CPU 0.997131x/0.992809x; GCC CPU 1.008088x; normalized CPU 0.984844x and normalized Ir 0.982027x; normalized wall intentionally unclaimed | PA37 187/187; PA38 45/45; 5,470/5,470 full report; debug/round-trip clean; zero-fatal audit; 219-object G2/G3 exact | retained; general three-layer movement family clears the deterministic and normalized CPU gates |
 | D.fast-prefix-partial | copy one bounded pure fast-return prefix at hot loop calls and share one cyclic slow clone | provisional PA37/PA38 structural, level, guard, stats, replay, native, and behavior properties passed, then were removed with the rejected feature | isolated `inline_o1.o` exact; hot Ir -1.1228%; producer +48,016 text bytes; 16 sites beat the 24-site dose | self wall/CPU 1.051011x/1.010428x; GCC 0.988649x/0.998224x; normalized 1.063078x/1.012225x | exact G1/G2; all three 220-object self/GCC pairs and final compiler exact; implementation and contract movement removed | rejected; representative normalized CPU regresses despite the local deterministic saving |
 | D.cyclic-dead-parameter | reclaim a dead incoming parameter register in a cycle only when neither the parameter nor a register-backed deferred address can be replayed from that cycle | none; rejected behavior was not moved into PA38 | `FindChild` 48 to 45 MIR and 177 to 166 bytes; corrected fixed-point producer -6,348 `.text`; O0/O1 representative outputs exact | O1 wall/CPU 0.98499x/1.00252x; O3 wall/CPU 1.05614x/1.01239x | initial G2 crash diagnosed as a replayed deferred address; corrected all-32 G1/G2 exact at 219 objects and final hash `874c5fba...` | rejected and removed; representative O3 regresses despite the local allocation win |
+| D.dynamic-index-takeover | reuse a final-use dynamic-index base only for a short, repeated-use, call-free range after allocation fails | none; rejected behavior was not moved into PA38; PA37 unchanged | `FindEntry` 84 to 80 MIR, frame 32 to 16, one save removed; narrowed six-TU screen changed only two `program.cpp` functions; fixed-point producer +756 `.text` | O1 normalized wall/CPU 1.05185x/1.00801x; O3 raw self 1.01325x/1.00613x and normalized 0.99478x/1.00110x | O0/O1 MIR exact; 219 G2/G3 objects and final hash `608dd02b...` exact | rejected and removed; local frame win does not improve normalized CPU or raw throughput |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
