@@ -2547,6 +2547,14 @@ void finish_optimizer_pipeline(
   // repeated CFG proof to callers that an inlining wave actually changed.
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     if(level >= 3) {
+      if(fold_trivial_boolean_phi_diamond(&program.functions[i], stats)) {
+        lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
+        timed_function_pass(simplify_values, &program.functions[i], stats,
+          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+          &simplify_arena);
+        timed_dce(&program.functions[i], boundaries, stats, &dce_scratch);
+        timed_cfg(&program.functions[i], stats, &cfg_scratch, &analysis);
+      }
       for(std::size_t round = 0; round < 4; ++round) {
         if(!timed_terminal_phi_returns(&program.functions[i], stats)) break;
         if(round == 3 && stats) ++stats->o3_terminal_phi_round_cap_hits;

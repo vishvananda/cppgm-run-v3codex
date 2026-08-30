@@ -761,6 +761,88 @@ bool fold_boolean_phi_branch(Function * function, Stats * stats)
   return false;
 }
 
+bool fold_trivial_boolean_phi_diamond(Function * function, Stats * stats)
+{
+  if(!has_direct_boolean_phi_branch(*function)) return false;
+  const std::vector<std::size_t> uses = value_uses(*function);
+  const Graph graph = build_graph(*function, stats);
+  for(std::size_t merge = 0; merge < function->blocks.size(); ++merge) {
+    const Block & merge_block = function->blocks[merge];
+    if(merge_block.instructions.size() != 2 ||
+       merge_block.instructions[0].kind != Instruction::IK_PHI ||
+       merge_block.instructions[1].kind != Instruction::IK_BRANCH)
+      continue;
+    const Instruction & phi = merge_block.instructions[0];
+    const Instruction & branch = merge_block.instructions[1];
+    if(!phi.dest.valid() || phi.type.kind != lowir_model::LTK_U8 ||
+       phi.args.size() != 4 || phi.dest >= uses.size() ||
+       uses[phi.dest] != 1 || branch.first.kind != Operand::OP_TEMP ||
+       branch.first.value != phi.dest ||
+       branch.second.kind != Operand::OP_LABEL ||
+       branch.third.kind != Operand::OP_LABEL ||
+       graph.predecessors[merge].size() != 2)
+      continue;
+
+    const std::size_t left = graph.predecessors[merge][0];
+    const std::size_t right = graph.predecessors[merge][1];
+    if(left == right || graph.predecessors[left].size() != 1 ||
+       graph.predecessors[right].size() != 1 ||
+       graph.predecessors[left][0] != graph.predecessors[right][0])
+      continue;
+    const std::size_t parent = graph.predecessors[left][0];
+    if(parent == merge || function->blocks[parent].instructions.empty())
+      continue;
+    const Block & left_block = function->blocks[left];
+    const Block & right_block = function->blocks[right];
+    if(left_block.instructions.size() != 1 ||
+       right_block.instructions.size() != 1 ||
+       left_block.instructions[0].kind != Instruction::IK_JUMP ||
+       right_block.instructions[0].kind != Instruction::IK_JUMP ||
+       left_block.instructions[0].first.kind != Operand::OP_LABEL ||
+       right_block.instructions[0].first.kind != Operand::OP_LABEL ||
+       left_block.instructions[0].first.block != merge_block.id ||
+       right_block.instructions[0].first.block != merge_block.id)
+      continue;
+    Instruction & parent_branch = function->blocks[parent].instructions.back();
+    if(parent_branch.kind != Instruction::IK_BRANCH ||
+       parent_branch.second.kind != Operand::OP_LABEL ||
+       parent_branch.third.kind != Operand::OP_LABEL)
+      continue;
+    const std::uint32_t left_id = left_block.id;
+    const std::uint32_t right_id = right_block.id;
+    if(!((parent_branch.second.block == left_id &&
+          parent_branch.third.block == right_id) ||
+         (parent_branch.second.block == right_id &&
+          parent_branch.third.block == left_id)) ||
+       graph.eh_targets[left_id] || graph.eh_targets[right_id] ||
+       graph.eh_targets[static_cast<std::uint32_t>(merge_block.id)])
+      continue;
+
+    Operand selected_true, selected_false;
+    const auto selected_target = [&phi, &branch](
+        lowir_model::BlockId predecessor, Operand * selected) {
+      Operand value;
+      if(!direct_phi_incoming(phi, predecessor, &value) ||
+         value.kind != Operand::OP_INTEGER || !value.has_int_value ||
+         (value.int_value != 0 && value.int_value != 1))
+        return false;
+      *selected = value.int_value ? branch.second : branch.third;
+      return true;
+    };
+    if(!selected_target(parent_branch.second.block, &selected_true) ||
+       !selected_target(parent_branch.third.block, &selected_false) ||
+       selected_true.block == selected_false.block)
+      continue;
+    parent_branch.second = selected_true;
+    parent_branch.third = selected_false;
+    lowir_phi_edges::rewrite_moved_phi_edges(
+      function, parent_branch, merge_block.id, function->blocks[parent].id);
+    remove_unreachable_blocks(function, stats);
+    return true;
+  }
+  return false;
+}
+
 bool thread_terminal_phi_returns(Function * function, Stats * stats)
 {
   if(function->blocks.empty() ||

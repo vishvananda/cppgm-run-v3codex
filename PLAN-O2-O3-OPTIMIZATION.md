@@ -1719,7 +1719,7 @@ compiler: O2 is exact at
 and O3 is exact at
 `bd2fa645d3ca089f7cab634d37c5287cd34af5d8173e25d918717ffb74db3e95`.
 
-### Rejected O3 trivial Boolean-diamond dose
+### Initial G1 rejection of the O3 trivial Boolean-diamond dose
 
 The residual profile motivated a narrower recheck of the earlier acyclic
 Boolean-phi rejection.  The dose was limited to O3 and to an exact two-arm
@@ -1739,9 +1739,11 @@ paired median) while wall was 1.0104x by mean.  The complete requested-O3
 workload regressed to 1.00149x mean CPU and 1.00195x paired-median CPU; wall
 was 1.00373x by mean.  Every O1 lane produced the same 219-object manifest and
 final compiler, and each O3 side was internally deterministic.  The
-prototype was restored without student-contract or test movement.  This is
-another case where a real hot-path instruction reduction is insufficient in
-the presence of whole-program layout and build-wide optimizer costs.
+prototype was restored without student-contract or test movement.  This was
+a valid decision for the G1 compiler that was measured, but it predated the
+later requirement that a code-generation change be judged only after G2 has
+self-applied it.  The fixed-point re-evaluation below supersedes this
+performance disposition while preserving the original evidence.
 
 ### Rejected multi-return stable-query dose
 
@@ -2226,6 +2228,62 @@ remains far from the 0.80 raw and normalized target.  Additional self blocks,
 the O2 GCC cell, and Clang controls remain final-matrix work rather than being
 silently inferred from this refresh.
 
+### D.trivial-bool-diamond fixed-point re-evaluation retained
+
+The corrected G1/G2 methodology materially changes the earlier disposition.
+The source-independent O3 pass recognizes only an exact acyclic two-arm
+diamond: the arms are otherwise empty jumps with one common predecessor, the
+merge contains one `u8` phi immediately consumed by a branch, the phi has one
+use and selects opposite constant Boolean values, and no exceptional edge is
+being bypassed.  It retargets the original branch and repairs phi labels on
+the two downstream edges.  O0, O1, and O2 do not run the pass.
+
+The clean G2 compiler self-applies the transformation.  The hot token move
+constructor falls from 234 to 206 native bytes and the complete compiler
+falls from 7,972,210 to 7,966,354 ELF `.text` bytes (-5,856).  On the fixed
+O1 hot compile, Callgrind falls from 4,341,389,715 to 4,303,862,921
+instructions (-37,526,794, -0.8644%).  The same-source GCC control falls only
+from 2,423,591,919 to 2,423,316,717 (-0.01135%), so the deterministic
+normalized instruction ratio is 0.99147x, a 0.853% relative improvement.
+Three balanced native hot-TU blocks also average about 0.991x wall and 0.984x
+user time.
+
+Six valid position-balanced blocks over the complete requested-O3 workload
+all emitted deterministic per-side output.  Candidate/baseline mean wall and
+aggregate-CPU ratios are 0.97883x and 0.99035x; block-median ratios are
+0.97600x and 0.99642x.  The requested-O1 output remains exact and its warm
+balanced measurements are approximately flat to slightly favorable.  Native
+GCC full-build timing was contaminated by isolated scheduler tails, so no
+precise native normalization is claimed from that window; the deterministic
+GCC Callgrind control above establishes that the self improvement is not
+created by adding proportionally more optimizer work to GCC.
+
+PA37 now documents the high-level O3 rule and owns a property control rather
+than an exact-program fixture comparison.  It checks that the private merge
+is removed only at O3, that a shared Boolean remains, that arm work remains
+conditional and observable, that reversed Boolean mapping behaves correctly,
+and that noncanonical truth values preserve behavior.  Serialized O1 and O3
+outputs are replayed through the driver.  PA38 receives no new contract
+because neither MIR structure nor native encoding changed; its full,
+through-target, debug, and round-trip gates still run.
+
+PA37 passes 188/188, PA38 passes 45/45, and the report through PA38 passes
+5,471/5,471.  PA37/PA38 debug and object-round-trip lanes pass, and the PA39
+file audit remains at zero fatal findings and the established 32 warnings.
+Two frozen O1 compiles are byte-identical at
+`ee984053486a141c2ef7892cbbf7ef7edaf859071593c87c67900c266f43b333`.
+Fresh 32-way fixed-point trees match every object and final compiler.  O2 has
+219-object manifest
+`9d3b0611867e8993c1c130599dba94b204beac8443ee924a9a29c23f6ae22217`
+and final hash
+`8696907c7cdc868b431509307c66d8fd85f12719aadb4a6d5e2e7ed70267c7f0`;
+O3 has manifest
+`e8c56c8601e75228b78ca84970d428a0d0de87d91b8cce0dc926c4f1468d5b28`
+and G2/G3 final hash
+`5fef334d3590bdb19af6f695287cd95d25b48690a8f463450c67793194a0d498`.
+The complete O2 and O3 self/inception comparisons take 52.83 and 48.36
+seconds respectively with 32 build and object workers.
+
 ### Rejected terminal return-address load folding
 
 An O2+ MIR prototype folded the exact terminal sequence `lea address`,
@@ -2298,7 +2356,7 @@ Fill one row for every retained or rejected dose.
 | D.repeat-readonly-call | preserve repeat-stable query availability across direct internal call-free read-only helpers | none; rejected before contract movement | four more query reuses; tokenizer -48 text bytes; producer +1,348; hot Ir -0.273% | self O1 paired median +0.033% wall/+0.050% CPU; GCC +0.668%/+0.102%; normalized -0.631%/-0.052% | exact 219-object manifest and final output in all valid self/GCC lanes; two contaminated GCC blocks rejected whole and replaced | rejected; raw throughput is not in the intended direction and normalized CPU gain is negligible |
 | D.block-local-save | eliminate a callee-saved color whose disjoint ranges are all confined to individual blocks | PA38 README plus O2/O3 level-isolation, structural, bounded-stats, and behavioral properties; PA37 unchanged | hot clone 219 to 203 bytes and three to two saves; producer -2,924 text bytes; hot Ir -1.7247%; frozen O2 exact and O3 -55 text bytes | O1 workload CPU -0.57%, normalized -0.69%, wall within +0.60%; O3 workload -1.44% wall/-0.74% CPU, normalized -1.65%/-0.93% | 45/45; 5,471/5,471 full report; debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.medium-copy-chunks | select direct chunks for weakly aligned fixed 33--64-byte copies at O2+ | PA38 README plus O0/O1 isolation, O2/O3 structure/stats/encoding/replay/behavior property; PA29 O0 guard retained | hot constructor 215 to 258 bytes and loses fixed-tail `rep movsb`; producer +6,708 text; hot Ir -2.9409%; O1 requested output exact | O1 workload -1.52% wall/-0.82% CPU, normalized -1.89%/-0.84%; O3 workload -0.53%/-0.66%, normalized -0.41%/-0.75% | 45/45; 5,471/5,471 full report; debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
-| D.trivial-bool-diamond | bypass an exact O3 two-arm constant-Boolean phi diamond | none; rejected before contract movement | token move constructor 258 to 230 bytes; producer -11,956 text bytes; hot Ir -0.84%; O1 output exact | O1 CPU 1.00065x mean/1.00001x paired median; O3 CPU 1.00149x/1.00195x and wall 1.00373x mean | deterministic 219-object O1 manifest/final output and deterministic O3 outputs; prototype removed | rejected; local instruction saving does not survive representative O3 cost/layout |
+| D.trivial-bool-diamond | bypass an exact O3 two-arm constant-Boolean phi diamond after measuring its self-applied G2 form | PA37 README plus O0--O2 isolation, structural guards, serialized replay, and behavior property; PA38 unchanged | token move constructor 234 to 206 bytes; producer -5,856 text bytes; hot Ir -0.8644%; O1 output exact | O3 self mean -2.12% wall/-0.97% CPU and block median -2.40%/-0.36%; GCC Ir -0.011%; normalized Ir -0.853% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; frozen exact; all-32 O2 and O3 G2/G3 exact | retained after fixed-point re-evaluation; initial G1-era rejection superseded |
 | D.multi-return-query | admit repeat-stable queries with additional pure return paths | none; rejected before contract movement | four stable functions vs one; six generic calls removed; `Lexer::Run` -42 bytes; producer +4,204 text bytes | output-exact hot Ir -0.0034%; native screen flat | structural/stats/object probes deterministic; prototype removed before full gate | rejected; removed calls are cold |
 | D.innermost-loop-helper | inline one highly repeated small internal loop-shaped helper at its unique call in a tiny innermost caller loop | none; rejected before contract movement | one 42-instruction helper expanded; hottest 3,623,141-call site removed; tokenizer +96 text bytes; producer +5,876 | three hot ABBA blocks about +2.7% wall/+2.9% user; Callgrind +0.0522% Ir | exact O1 object and valid O3 LowIR; prototype removed | rejected; duplicated cursor loop and exceptional control cost more than the call |
 | D.selection-compare-cascade | thread an acyclic two-stage Boolean/scalar selection directly into its sole compare branch | none; rejected before contract movement | ten `u8` plus ten `i64` phis removed; `AppendUTF8` 495 to 405 MIR and 1,965 to 1,509 bytes; tokenizer -448 text; producer +7,108 | hot Ir -0.5699%; O1 CPU -0.80%, normalized -0.47% CPU/+1.38% wall; O3 CPU -0.17% and wall +0.73% | O1/O2 LowIR exact; deterministic 219-object O1 outputs and per-side O3 outputs; candidate reproduced its O3 compiler; prototype removed | rejected; material local saving is representative-O3 flat and normalized wall-negative |

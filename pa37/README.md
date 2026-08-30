@@ -230,6 +230,14 @@ running optimizing transforms.
   branch selector; retain the merge when its value is shared, when the `phi`
   carries state around the loop, or when successor `phi` inputs or exceptional
   control would need repair;
+  at `-O3`, an acyclic two-arm branch whose otherwise empty arms select the
+  opposite `u8` Boolean constants for a single-use `phi` immediately consumed
+  by a branch may bypass those arms and the Boolean merge; preserve the diamond
+  at lower optimization levels, and do not apply this bypass when an arm
+  performs work, the selected values are not exactly Boolean opposites, the
+  merged value is shared, or exceptional edges and successor `phi` inputs
+  cannot be repaired safely; other independently safe CFG simplifications may
+  still reshape such a graph while preserving its work and value semantics;
   straight-line merging must preserve the
   serialized LowIR rule that every temporary definition precedes every use
 - removal of a conditional edge whose target ends in the PA13 `unreachable`

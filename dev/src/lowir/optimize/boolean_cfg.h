@@ -15,6 +15,11 @@ struct CleanupCfgScratch
 
 bool fold_boolean_phi_branch(
   lowir_model::Function * function, Stats * stats);
+// Bypass an acyclic two-arm choice that only materializes opposite u8
+// Boolean constants for an immediately following branch.  This is an O3
+// pipeline dose; ordinary CFG cleanup retains its loop-oriented policy.
+bool fold_trivial_boolean_phi_diamond(
+  lowir_model::Function * function, Stats * stats);
 bool fold_edge_known_branches(
   lowir_model::Function * function, Stats * stats);
 bool fold_edge_known_branches(
