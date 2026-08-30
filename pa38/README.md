@@ -185,6 +185,11 @@ semantic-preserving rewrites where safe:
   rematerializable MIR operands across their complete use interval; observing
   the pointer value, clobbering a carrier, variable indexing, or arithmetic on
   the pointer requires materialization
+- when constant-index lowering changes from an intact incoming parameter
+  register to a preselected parameter home, retain the setup transfer before
+  any materialized or deferred use of that home.  Reusing the ABI carrier is
+  also valid while it remains intact; optimized MIR must never name an
+  uninitialized alternate home
 - place an unplanned edge-live integer or pointer identity copy directly into
   its required frame home, and likewise allow an eligible scalar call result
   to be stored from its ABI return register; planned and exact-forward values

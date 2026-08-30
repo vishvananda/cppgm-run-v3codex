@@ -97,6 +97,8 @@ protected:
         require_selected_parameter_home = true;
       }
     }
+    if(require_selected_parameter_home)
+      base = lowerer.selected_value_location(instruction.first.value);
     // The union flag extends deferral only to the FRAME form: a pure
     // rbp-relative address replays anywhere, while register-carried
     // forms need the carrier alive at every consumer, which only the
@@ -134,8 +136,6 @@ protected:
         }
       }
       if(encodable) {
-        if(require_selected_parameter_home)
-          base = lowerer.selected_value_location(instruction.first.value);
         lowerer.reserve_deferred_address_carriers(address);
         ValueFact value;
         value.location = address;

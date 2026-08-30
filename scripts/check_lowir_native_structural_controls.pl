@@ -87,7 +87,7 @@ if (scalar(@ARGV) != 3)
 
 my ($app, $driver, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks|composite-copy-pointer-preservation|adjacent-integer-normalizations).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks|composite-copy-pointer-preservation|selected-parameter-index-home|adjacent-integer-normalizations).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -219,6 +219,88 @@ for my $test (@tests)
 				if $status != 0;
 			die "$test: O3 driver $symbol lost its dynamic native copy\n"
 				if read_file($disassembly) !~ /\brep\s+movs/;
+		}
+		next;
+	}
+	if ($test =~ /selected-parameter-index-home/) {
+		my %level_mir;
+		for my $request (['O0', '-O0'], ['O1', '-O1'],
+			['O2', '-O2'], ['O3', '-O3']) {
+			my ($name, $requested_level) = @$request;
+			my $level_mir = "$directory/$name.mir";
+			my $level_program = "$directory/$name.program";
+			$status = run_command_capture(
+				cmd => [$app, $requested_level, '--dump-machine-ir',
+					$level_mir, '-o', $level_program, $test],
+				stdout => "$directory/$name.compile.stdout",
+				stderr => "$directory/$name.compile.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level native compile failed\n" .
+				read_file("$directory/$name.compile.stderr") if $status != 0;
+			$run_status = run_command_capture(
+				cmd => [$level_program],
+				stdout => "$directory/$name.program.stdout",
+				stderr => "$directory/$name.program.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level generated program failed with status " .
+				"$run_status\n" if $run_status != 0;
+			$level_mir{$name} = read_file($level_mir);
+		}
+
+		for my $name (qw(O1 O2 O3)) {
+			my $body = function_body(
+				$test, $level_mir{$name}, 'copy_then_index');
+			my ($source_register) =
+				$body =~ /^\s+param\s+%source\s+->\s+(\w+)\s+:\s+ptr$/m;
+			die "$test: $name lost the source parameter ABI binding\n"
+				if !defined($source_register);
+			my ($prefix, $index_register) = $body =~
+				/\A(.*?)^\s+lea\s+\w+,\s*\[(\w+)\+144\]\s*$/ms;
+			die "$test: $name lost the post-copy constant-index address\n"
+				if !defined($index_register);
+			if ($index_register ne $source_register) {
+				my $direct = $prefix =~
+					/^\s+mov\s+\Q$index_register\E,\s*\Q$source_register\E\s*$/m;
+				my $through_frame = 0;
+				while ($prefix =~
+					/^\s+store\.ptr\s+(\[rbp[^\]]*\]),\s*\Q$source_register\E\s*$/mg) {
+					my $home = $1;
+					if ($prefix =~
+						/^\s+load\.ptr\s+\Q$index_register\E,\s*\Q$home\E\s*$/m) {
+						$through_frame = 1;
+						last;
+					}
+				}
+				die "$test: $name used an uninitialized selected parameter home\n"
+					if !$direct && !$through_frame;
+			}
+		}
+
+		my $driver_input = "$directory/test.lowir";
+		copy($test, $driver_input) or
+			die "$test: unable to prepare driver replay: $!\n";
+		for my $name (qw(O1 O2 O3)) {
+			my $driver_program = "$directory/driver-$name.program";
+			$status = run_command_capture(
+				cmd => [$driver, "-$name", '-o', $driver_program,
+					$driver_input],
+				stdout => "$directory/driver-$name.compile.stdout",
+				stderr => "$directory/driver-$name.compile.stderr",
+				timeout => 30,
+			);
+			die "$test: $name driver replay failed\n" .
+				read_file("$directory/driver-$name.compile.stderr")
+				if $status != 0;
+			$run_status = run_command_capture(
+				cmd => [$driver_program],
+				stdout => "$directory/driver-$name.program.stdout",
+				stderr => "$directory/driver-$name.program.stderr",
+				timeout => 30,
+			);
+			die "$test: $name driver output failed with status $run_status\n"
+				if $run_status != 0;
 		}
 		next;
 	}
