@@ -1756,6 +1756,32 @@ restored before a full-build gate or student-contract movement.  Multiple
 pure returns are valid but not a material continuation of the retained query
 reuse on this workload.
 
+### Rejected innermost-loop helper-inline dose
+
+Instruction-position profiling attributed the largest remaining grouped-query
+site precisely: one call in `Lexer::Run` executes 3,623,141 times and is the
+only call to its helper in a seven-block innermost natural loop.  A bounded
+O3-only prototype selected one 32--64-instruction internal scalar helper with
+at least 16 direct uses, at least 16 uses in one caller, and exactly one call
+inside an innermost loop of at most eight blocks.  It then allowed that one
+structurally selected call to override the ordinary shared-loop-body inline
+guard.  On the tokenizer this selected the 42-instruction grouped query, which
+has 38 static uses and 28 in `Lexer::Run`, and removed exactly the profiled hot
+call.  Subsequent cleanup also eliminated several redundant cursor-index
+reloads.  O1 requested output remained byte-identical.
+
+The expansion was nevertheless harmful.  The tokenizer object grew 96 text
+bytes and the complete O3 producer grew 5,876 text bytes.  Three sub-second
+hot-TU ABBA blocks were output-exact but averaged about +2.7% wall and +2.9%
+user time for the candidate.  More decisively, an output-exact Callgrind run
+increased from 4,447,750,256 to 4,450,070,595 instructions, or 2,320,339
+instructions (+0.0522%).  Inlining duplicates the helper's cursor-fill loop
+and exception path inside an already large caller; the removed call overhead
+does not repay the resulting control-flow, allocation, and layout effects.
+The prototype was restored without student-contract or test movement.  Do not
+retry shared loop-shaped helper inlining merely from call frequency; require
+a callee whose body becomes materially simpler under the call-site facts.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1801,6 +1827,7 @@ Fill one row for every retained or rejected dose.
 | D.medium-copy-chunks | select direct chunks for weakly aligned fixed 33--64-byte copies at O2+ | PA38 README plus O0/O1 isolation, O2/O3 structure/stats/encoding/replay/behavior property; PA29 O0 guard retained | hot constructor 215 to 258 bytes and loses fixed-tail `rep movsb`; producer +6,708 text; hot Ir -2.9409%; O1 requested output exact | O1 workload -1.52% wall/-0.82% CPU, normalized -1.89%/-0.84%; O3 workload -0.53%/-0.66%, normalized -0.41%/-0.75% | 45/45; 5,471/5,471 full report; debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.trivial-bool-diamond | bypass an exact O3 two-arm constant-Boolean phi diamond | none; rejected before contract movement | token move constructor 258 to 230 bytes; producer -11,956 text bytes; hot Ir -0.84%; O1 output exact | O1 CPU 1.00065x mean/1.00001x paired median; O3 CPU 1.00149x/1.00195x and wall 1.00373x mean | deterministic 219-object O1 manifest/final output and deterministic O3 outputs; prototype removed | rejected; local instruction saving does not survive representative O3 cost/layout |
 | D.multi-return-query | admit repeat-stable queries with additional pure return paths | none; rejected before contract movement | four stable functions vs one; six generic calls removed; `Lexer::Run` -42 bytes; producer +4,204 text bytes | output-exact hot Ir -0.0034%; native screen flat | structural/stats/object probes deterministic; prototype removed before full gate | rejected; removed calls are cold |
+| D.innermost-loop-helper | inline one highly repeated small internal loop-shaped helper at its unique call in a tiny innermost caller loop | none; rejected before contract movement | one 42-instruction helper expanded; hottest 3,623,141-call site removed; tokenizer +96 text bytes; producer +5,876 | three hot ABBA blocks about +2.7% wall/+2.9% user; Callgrind +0.0522% Ir | exact O1 object and valid O3 LowIR; prototype removed | rejected; duplicated cursor loop and exceptional control cost more than the call |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
