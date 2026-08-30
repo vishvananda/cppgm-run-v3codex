@@ -821,10 +821,10 @@ for my $test (@tests)
 
 		my $even = function_body(
 			$test, $mir, 'even_save_recolor_candidate');
-		my $even_append = block_body($even, 'append');
+		my $even_append = block_body($even, 'append_column');
 		my ($even_carrier) = defined($even_append) ?
 			($even_append =~ /^\s+lea ([a-z0-9]+), \[/m) : ();
-		die "$test: even-save call-free range was not recolored\n"
+		die "$test: even-save call-free address was not kept in caller-saved state\n"
 			if !defined($even_carrier) || !$caller_saved{$even_carrier};
 		die "$test: odd pair did not remove its additional save capacity\n"
 			if preserve_count($positive) == 0 ||
@@ -876,7 +876,7 @@ for my $test (@tests)
 			die "$test: O2 changed the established preservation policy for $symbol\n"
 				if join(' ', preserved_registers($o2)) ne
 				   join(' ', preserved_registers($o1));
-			die "$test: O3 did not remove one block-confined preservation color from $symbol\n"
+			die "$test: O3 did not remove one proven preservation color from $symbol\n"
 				if preserve_count($o3) == 0 ||
 				   preserve_count($o3) >= preserve_count($o2);
 
@@ -905,12 +905,34 @@ for my $test (@tests)
 		die "$test: O3 exposed a call-crossing value to call clobbers\n"
 			if !$callee_saved{$o3_crossing};
 
+		my %region_carrier;
+		for my $name (qw(O2 O3)) {
+			my $region = function_body($test, $level_mir{$name},
+				'even_save_recolor_candidate');
+			my $append = block_body($region, 'append');
+			my ($carrier) = defined($append) ? ($append =~
+				/^\s+load\.i64 ([a-z0-9]+), \@head\s*\n.*?^\s+imul \1, 24$/ms) : ();
+			die "$test: $name reducer lost its edge-live scaled carrier\n"
+				if !defined($carrier);
+			for my $successor (qw(append_column append_alternate)) {
+				my $body = block_body($region, $successor);
+				die "$test: $name $successor does not consume the shared carrier\n"
+					if !defined($body) ||
+					   $body !~ /^\s+lea [a-z0-9]+, \[[^\n]*\b\Q$carrier\E\b[^\n]*\]$/m;
+			}
+			$region_carrier{$name} = $carrier;
+		}
+		die "$test: O2 lost the callee-saved edge-live control\n"
+			if !$callee_saved{$region_carrier{O2}};
+		die "$test: O3 did not recolor the connected call-free region\n"
+			if !$caller_saved{$region_carrier{O3}};
+
 		for my $field (qw(machine_opt_block_recolor_candidates
 			machine_opt_block_recolor_registers
 			machine_opt_block_recolor_blocks)) {
-			die "$test: O2 unexpectedly ran block-local callee-save recoloring\n"
+			die "$test: O2 unexpectedly ran region-local callee-save recoloring\n"
 				if stat_value($test, $level_stats{O2}, $field) != 0;
-			die "$test: O3 did not report bounded block-local recoloring work\n"
+			die "$test: O3 did not report bounded region-local recoloring work\n"
 				if stat_value($test, $level_stats{O3}, $field) == 0;
 		}
 		die "$test: O3 reported fewer rewritten blocks than eliminated colors\n"
@@ -1064,6 +1086,63 @@ for my $test (@tests)
 		next;
 	}
 
+	my %phi_level_mir;
+	for my $request (['O2', '-O2'], ['O3', '-O3']) {
+		my ($name, $requested_level) = @$request;
+		my $level_mir = "$directory/phi-$name.mir";
+		my $level_program = "$directory/phi-$name.program";
+		$status = run_command_capture(
+			cmd => [$app, $requested_level, '--dump-machine-ir',
+				$level_mir, '-o', $level_program, $test],
+			stdout => "$directory/phi-$name.compile.stdout",
+			stderr => "$directory/phi-$name.compile.stderr",
+			timeout => 30,
+		);
+		die "$test: $requested_level native compile failed\n" .
+			read_file("$directory/phi-$name.compile.stderr") if $status != 0;
+		$run_status = run_command_capture(
+			cmd => [$level_program],
+			stdout => "$directory/phi-$name.program.stdout",
+			stderr => "$directory/phi-$name.program.stderr",
+			timeout => 30,
+		);
+		die "$test: $requested_level generated program failed with status " .
+			"$run_status\n" if $run_status != 0;
+		$phi_level_mir{$name} = read_file($level_mir);
+	}
+
+	my $o2_transfer = function_body(
+		$test, $phi_level_mir{O2}, 'last_transfer_chain');
+	my $o3_transfer = function_body(
+		$test, $phi_level_mir{O3}, 'last_transfer_chain');
+	my $o2_transfer_source = frame_offset($o2_transfer, 'inner_value');
+	my $o2_transfer_result = frame_offset($o2_transfer, 'result');
+	my $o3_transfer_source = frame_offset($o3_transfer, 'inner_value');
+	my $o3_transfer_result = frame_offset($o3_transfer, 'result');
+	die "$test: last-transfer reducer lost its two O2 frame homes\n"
+		if !defined($o2_transfer_source) || !defined($o2_transfer_result) ||
+		   $o2_transfer_source eq $o2_transfer_result;
+	die "$test: O3 did not reuse a merge home after its final edge transfer\n"
+		if !defined($o3_transfer_source) || !defined($o3_transfer_result) ||
+		   $o3_transfer_source ne $o3_transfer_result;
+	my $o3_transfer_edge = block_body(
+		$o3_transfer, 'inner_value_edge');
+	die "$test: O3 final-transfer edge retained an identity move\n"
+		if !defined($o3_transfer_edge) ||
+		   $o3_transfer_edge =~ /^\s+(?:mov|load|store)(?:\.|\s)/m;
+	my $o3_transfer_use = block_body($o3_transfer, 'inner_join');
+	die "$test: final-transfer source lost its earlier observable use\n"
+		if !defined($o3_transfer_use) ||
+		   $o3_transfer_use !~ /^\s+store\.i64 \@transfer_observed,/m;
+
+	my $o3_multi = function_body(
+		$test, $phi_level_mir{O3}, 'multi_use_guard');
+	my $o3_multi_source = frame_offset($o3_multi, 'inner_value');
+	my $o3_multi_result = frame_offset($o3_multi, 'result');
+	die "$test: O3 reused a source home that remains live after transfer\n"
+		if defined($o3_multi_source) && defined($o3_multi_result) &&
+		   $o3_multi_source eq $o3_multi_result;
+
 	my $positive = function_body($test, $mir, 'single_use_chain');
 	my $inner = frame_offset($positive, 'inner_value');
 	my $result = frame_offset($positive, 'result');
@@ -1139,6 +1218,13 @@ for my $test (@tests)
 	die "$test: repeated invariant unsafely donated its frame home\n"
 		if defined($stable) && defined($guard_choice) &&
 		   $stable eq $guard_choice;
+	my $o3_invariant = function_body(
+		$test, $phi_level_mir{O3}, 'repeated_invariant_call_guard');
+	my $o3_stable = frame_offset($o3_invariant, 'stable');
+	my $o3_guard_choice = frame_offset($o3_invariant, 'choice');
+	die "$test: O3 final-transfer proof overwrote a loop invariant\n"
+		if defined($o3_stable) && defined($o3_guard_choice) &&
+		   $o3_stable eq $o3_guard_choice;
 
 }
 

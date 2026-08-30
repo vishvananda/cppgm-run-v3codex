@@ -534,6 +534,15 @@ place.  This bounds growth to one clone of at most 512 instructions and avoids
 duplicating the body when both calls are loop-local.  `-O1` and `-O2` do not
 perform this loop-priority inlining.
 
+Immediately after that clone is installed, restore the ordinary non-returning
+control-flow invariant before promoting slots or simplifying the caller.  A
+cloned arm ending in a call proven `noreturn` has no normal successor, even
+when the inliner created a continuation for another return in the same
+callee.  Remove the dead edge and its corresponding merge-phi input while
+retaining normally returning arms.  This cleanup is structural: it follows
+the typed call boundary and control-flow graph, not a callee name or source
+spelling.
+
 After the post-reachability inlining wave, `-O3` may split one repeated
 integer-constant call group from an otherwise mixed internal target.  The
 target must be fixed-arity, nonrecursive, `no_inline`-free, no larger than 128

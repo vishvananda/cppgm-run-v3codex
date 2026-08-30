@@ -1,3 +1,9 @@
+function @fail() -> void
+    [binding=internal, return=noreturn, no_inline=yes] {
+  block ^entry:
+    unreachable
+}
+
 function @advance(%value : i64) -> i64 [unwind=no, no_inline=yes] {
   block ^entry:
     %next = binary add i64 %value, 1
@@ -7,6 +13,14 @@ function @advance(%value : i64) -> i64 [unwind=no, no_inline=yes] {
 function @preferred_body(%value : i64) -> i64
     [binding=internal, unwind=no, inline_hint=yes] {
   block ^entry:
+    %bad = cmp eq i64 %value, -1
+    branch %bad, ^failure, ^work
+
+  block ^failure:
+    call void @fail()
+    return i64 0
+
+  block ^work:
     %v0 = call i64 @advance(%value)
     %v1 = call i64 @advance(%v0)
     %v2 = call i64 @advance(%v1)

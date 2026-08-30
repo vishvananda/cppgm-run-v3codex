@@ -2150,6 +2150,28 @@ void promote_after_late_inlining(Function * function,
   timed_function_pass(remove_dead_slots, function, stats,
     &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
 }
+
+bool cleanup_noreturn_continuations_after_inlining(
+    Function * function,
+    const std::vector<unsigned char> & noreturn_symbols,
+    const FunctionBoundaries & boundaries,
+    Stats * stats,
+    SimplifyScratch * simplify_arena,
+    DceScratch * dce_scratch,
+    CleanupCfgScratch * cfg_scratch)
+{
+  if(!truncate_noreturn_continuations(
+       function, noreturn_symbols, stats))
+    return false;
+  lowir_analysis::FunctionAnalysis analysis(*function, stats);
+  timed_function_pass(simplify_values, function, stats,
+    &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+    simplify_arena);
+  timed_dce(function, boundaries, stats, dce_scratch);
+  timed_cfg(function, stats, cfg_scratch, &analysis);
+  return true;
+}
+
 void optimize_function_bodies(
     LowirProgram & program, int level, const FunctionBoundaries & boundaries,
     const std::vector<unsigned char> & inlined_symbols,
@@ -2429,15 +2451,9 @@ void finish_optimizer_pipeline(
       pruning.unreachable_internal_functions += prior_unreachable_internal;
     }
     for(std::size_t i = 0; i < program.functions.size(); ++i) {
-      if(truncate_noreturn_continuations(
-           &program.functions[i], noreturn_symbols, stats)) {
-        lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
-        timed_function_pass(simplify_values, &program.functions[i], stats,
-          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
-          &simplify_arena);
-        timed_dce(&program.functions[i], boundaries, stats, &dce_scratch);
-        timed_cfg(&program.functions[i], stats, &cfg_scratch, &analysis);
-      }
+      cleanup_noreturn_continuations_after_inlining(
+        &program.functions[i], noreturn_symbols, boundaries, stats,
+        &simplify_arena, &dce_scratch, &cfg_scratch);
       sink_cold_only_definitions(&program.functions[i], noreturn_symbols, stats);
       sink_cold_blocks(&program.functions[i], noreturn_symbols, stats);
     }
@@ -2472,6 +2488,9 @@ void finish_optimizer_pipeline(
     for(std::size_t i = 0; i < program.functions.size(); ++i)
       if(loop_inline_rewritten[program.functions[i].symbol]) {
         inlined_symbols[program.functions[i].symbol] = 1;
+        cleanup_noreturn_continuations_after_inlining(
+          &program.functions[i], noreturn_symbols, boundaries, stats,
+          &simplify_arena, &dce_scratch, &cfg_scratch);
         promote_after_late_inlining(
           &program.functions[i], boundaries, stats, &simplify_arena,
           &dce_scratch, &cfg_scratch);

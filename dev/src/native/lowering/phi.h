@@ -25,7 +25,9 @@ public:
                          bool loop_carried, std::size_t block,
                          bool target_is_cyclic,
                          const std::vector<std::size_t> & phi_blocks,
-                         const std::vector<std::size_t> & definition_blocks) = 0;
+                         const std::vector<std::size_t> & definition_blocks,
+                         const std::vector<std::size_t> &
+                           block_last_positions) = 0;
   virtual mir_model::MirOperand PhiDestination(
     lowir_model::ValueId value) const = 0;
   virtual mir_model::MirOperand PhiSource(
@@ -143,7 +145,9 @@ protected:
                  bool loop_carried, std::size_t block,
                  bool target_is_cyclic,
                  const std::vector<std::size_t> & phi_blocks,
-                 const std::vector<std::size_t> & definition_blocks) override
+                 const std::vector<std::size_t> & definition_blocks,
+                 const std::vector<std::size_t> &
+                   block_last_positions) override
   {
     Derived & lowerer = static_cast<Derived &>(*this);
     const lowir_model::ValueId value = phi.dest;
@@ -155,9 +159,23 @@ protected:
         const lowir_model::Operand & operand = phi.args[incoming];
         if(operand.kind != lowir_model::Operand::OP_TEMP) continue;
         const std::uint32_t source = operand.value;
+        const lowir_model::Operand & predecessor = phi.args[incoming - 1];
+        const std::uint32_t predecessor_id = predecessor.block;
+        const bool source_dies_on_transfer =
+          lowerer.facts_.uses[source] == 1 ||
+          (lowerer.optimization_level_ >= 3 &&
+           predecessor.kind == lowir_model::Operand::OP_LABEL &&
+           predecessor_id < block_last_positions.size() &&
+           block_last_positions[predecessor_id] !=
+             static_cast<std::size_t>(-1) &&
+           lowerer.facts_.last_use[source] ==
+             block_last_positions[predecessor_id] &&
+           !lowerer.facts_.has(
+             operand.value,
+             analysis::FunctionFacts::VF_LOOP_INVARIANT));
         if(source >= lowerer.merge_phi_frame_home_.size() ||
            !lowerer.merge_phi_frame_home_[source] ||
-           lowerer.facts_.uses[source] != 1 ||
+           !source_dies_on_transfer ||
            !lowerer.value_known_[source] ||
            !lowir_model::same_lowir_type(
              lowerer.values_[source].type, type))

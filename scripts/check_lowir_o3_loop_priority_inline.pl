@@ -137,6 +137,22 @@ for my $test (@tests)
 	my @expanded = grep { call_count($_, 'advance') >= 256 } @loop_bodies;
 	die "$test: selected loop caller does not contain the complete body\n"
 		if scalar(@expanded) != 1;
+	my ($failure_label, $failure_body);
+	while($expanded[0] =~
+		/^\s*block \^([^:]+):\n(.*?)(?=^\s*block \^|\z)/msg) {
+		my ($label, $body) = ($1, $2);
+		next if $body !~ /^\s+call void \@fail\(\)$/m;
+		die "$test: expanded caller contains more than one cloned failure arm\n"
+			if defined($failure_label);
+		($failure_label, $failure_body) = ($label, $body);
+	}
+	die "$test: selected loop caller lost the cloned noreturn arm\n"
+		if !defined($failure_label);
+	die "$test: late inlining retained a normal successor after noreturn\n"
+		if $failure_body =~ /^\s+(?:jump|branch|switch)\b/m;
+	die "$test: removed noreturn successor remains in a merge phi\n"
+		if $expanded[0] =~
+			/^\s+%\w+ = phi [^\n]*\[\^\Q$failure_label\E:/m;
 	my $retained = function_body($test, $o3, 'preferred_body');
 	die "$test: shared callable body was not retained for non-loop calls\n"
 		if call_count($retained, 'advance') < 256;

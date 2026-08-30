@@ -2773,6 +2773,60 @@ removed together.  Cold partitioning should not be retried without profile or
 linker support that distinguishes dynamically cold edges more accurately than
 structural `noreturn` reachability.
 
+### D4 post-inline final-transfer residency retained
+
+The D4 profile showed that the remaining `TranslationCursor::Next` gap was
+not one isolated peephole.  O3 loop-priority inlining left fifteen impossible
+merge inputs behind cloned `noreturn` arms.  Those inputs prevented an
+otherwise final predecessor transfer from donating its frame home, and the
+resulting edge-live carrier kept two additional callee-saved colors alive.
+The retained family repairs those three connected layers:
+
+1. immediately after the O3 loop-priority inline, truncate normal
+   continuations after serialized `noreturn` calls and rerun value, dead-code,
+   and CFG cleanup before post-inline promotion;
+2. at O3, allow an acyclic merge source with earlier uses to donate its frame
+   home when its exact final use is the predecessor's merge transfer, while
+   retaining the loop-invariant, after-transfer-use, type, and cyclic guards;
+   and
+3. extend final-MIR callee-save recoloring from block-confined ranges to
+   connected source-live regions, selecting one interference- and
+   clobber-free destination for the complete region and retaining the existing
+   all-or-nothing source-color rule.
+
+The optimized hot function loses all fifteen impossible phi inputs, shares
+the `%t0`, `%t80`, and `%t116` home, drops the `r12` and `r13` preserves,
+shrinks its frame from 240 to 208 bytes, and shrinks from 4,264 to 4,157 native
+bytes.  The complete fixed-point O3 compiler is 14,928 `.text` bytes smaller
+than the accepted D1 producer.  Its G2 and G3 hashes are both
+`49737c1838ad1068d5b40c571356a998ca468536fbd704590992da27c4c1492d`.
+All requested-O1 full builds contain 219 objects, use canonical manifest hash
+`be3c70b657dd4e3fc023d2367795617dd411081162dda9af42d10b1c6a390502`,
+and produce final compiler hash
+`f22ce5ec7d8e877f3df2ce80c9e7da6706eb45bafb87c824e50a8ea23f6f665b`.
+
+The deterministic hot compile falls from 4,221,931,361 to 4,145,849,093
+Callgrind instructions, a 1.8021% reduction.  The same-source GCC-O3 control
+falls only 0.0059%, so the normalized instruction result is 0.982037x, or a
+1.7963% gain.  Six position-balanced all-32 self pairs give median aggregate
+CPU of 824.685 seconds before and 818.755 seconds after (0.992809x) and median
+wall of 29.625 and 29.540 seconds (0.997131x).  Six GCC controls give median
+CPU of 505.040 and 509.125 seconds (1.008088x), making normalized aggregate
+CPU 0.984844x, a 1.5156% gain.  GCC wall time had two independently visible
+high-CPU/high-wall candidate lanes and another scheduling-stretched lane, so
+no normalized wall claim is made; the deterministic instruction oracle and
+aggregate CPU independently clear the 1% gate.
+
+PA37 now describes and checks the post-inline `noreturn` invariant by cloned
+block role and removed phi predecessor.  PA38 describes and checks the O3
+final-transfer proof, O2 isolation, earlier observable use, after-transfer and
+loop-invariant guards, and connected-region recoloring across two successors
+with the call-crossing negative retained.  The focused controls pass, PA37 is
+187/187, PA38 is 45/45, and the through-PA38 and full reports are 5,470/5,470.
+PA37/PA38 debug and object-roundtrip lanes pass, the LowIR audit remains clean,
+and the PA39 file audit has zero fatal findings and the established 32
+warnings.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -2841,6 +2895,7 @@ Fill one row for every retained or rejected dose.
 | D1.zero-bounded-O2 | promote the zero-bounded signed-range fold to O2 | none; existing O3 contract remains | tokenizer -8 text bytes; fixed-point O2 producer +32 text bytes | 1.01304x wall / 1.01235x CPU versus addressed-slot O2 | exact fixed point and 219-object outputs; threshold restored | rejected; scan/layout cost exceeds the tiny O2 population |
 | D1.addressed-boolean-terminal-O2 | reuse three bounded O3 reductions at O2 | PA37 README and role/behavior properties now require O2/O3; brittle exact fixture replaced by post-inlining property; PA38 contract unchanged | fixed-point O2 `.text` 7,961,170 to 7,885,106 (-76,064); final 219-object O1/O2/O3 outputs deterministic | fixed O1 self 0.955405x/0.962863x wall/CPU, normalized 1.078510x/1.091429x; fixed O2 self 0.945069x/0.963116x, normalized 1.068937x/1.086273x; O3 no-erosion 0.98255x/0.99683x | PA37 187/187; PA38 45/45; 5,470/5,470; debug/round-trip and LowIR/file audits clean; self and GCC O2/O3 exact | retained; raw O2 floor cleared, normalized parity still open |
 | D2.cold-partition | group structurally raising O3 MIR behind a serialized suffix and emit eligible strong fragments in `.text.unlikely` | provisional PA38 README and structural/ELF/unwind/debug/behavior property passed, then removed with the rejected feature; PA37 unchanged | tokenizer 9 fragments/3,408 cold bytes/77 cross fixups; macro 3/444/7; linked producer +30,192 `.text` | hot wall/user +2.29%/+1.20%; full self wall/CPU -0.30%/-0.63%; GCC -0.76%/-0.12%; normalized +0.46% wall/-0.50% CPU | focused property and PA38 45/45 clean; earlier all-32 prototype inception exact; all timed O1 outputs exact | rejected; misses the 1% normalized gate and regresses both normalized wall and the hot oracle |
+| D4.final-transfer-region | clean cloned `noreturn` continuations, reuse an acyclic source home at its exact final phi transfer, and recolor complete connected source-live regions | PA37/PA38 READMEs plus role-, liveness-, level-, guard-, replay-, and behavior-based properties | `Next` frame 240 to 208 bytes, preserves -2, body 4,264 to 4,157 bytes; producer -14,928 `.text`; hot Ir -1.8021% | full self wall/CPU 0.997131x/0.992809x; GCC CPU 1.008088x; normalized CPU 0.984844x and normalized Ir 0.982037x; normalized wall intentionally unclaimed | PA37 187/187; PA38 45/45; 5,470/5,470 full report; debug/round-trip clean; zero-fatal audit; 219-object G2/G3 exact | retained; general three-layer movement family clears the deterministic and normalized CPU gates |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

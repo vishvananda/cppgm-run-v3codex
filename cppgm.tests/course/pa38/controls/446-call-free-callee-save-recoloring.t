@@ -154,12 +154,28 @@ function @even_save_recolor_candidate(%context : ptr, %offset : i64) -> i64 [unw
     %sum = binary add i64 %current_head, %current_size
     %wrapped = binary and i64 %sum, 3
     %scaled = binary mul i64 %wrapped, 24
+    branch %offset, ^append_alternate, ^append_column
+
+  block ^append_column:
     %entry = index i8 [projection=array_element] %context, %scaled
     store i64 %value, %entry
     %line_entry = index i8 [projection=field] %entry, 8
     store i64 %saved_line, %line_entry
     %column_entry = index i8 [projection=field] %entry, 16
     store i64 %saved_column, %column_entry
+    jump ^append_finish
+
+  block ^append_alternate:
+    %alternate_entry = index i8 [projection=array_element] %context, %scaled
+    store i64 %value, %alternate_entry
+    %alternate_line = index i8 [projection=field] %alternate_entry, 8
+    store i64 %saved_line, %alternate_line
+    %alternate_column = index i8 [projection=field] %alternate_entry, 16
+    store i64 %saved_column, %alternate_column
+    store i64 %saved_column, @column_sink
+    jump ^append_finish
+
+  block ^append_finish:
     store i64 %value, @value_sink
     store i64 %saved_line, @line_sink
     store i64 %saved_column, @column_sink

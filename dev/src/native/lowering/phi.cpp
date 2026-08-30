@@ -57,6 +57,9 @@ void plan_transfers(
     function.value_names.size(), no_block);
   std::vector<std::size_t> definition_blocks(
     function.value_names.size(), no_block);
+  std::vector<std::size_t> block_last_positions(
+    function.next_block_id, no_block);
+  std::size_t position = 0;
   for(std::size_t block = 0; block < function.blocks.size(); ++block)
     block_by_id[function.blocks[block].id] = block;
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
@@ -68,6 +71,9 @@ void plan_transfers(
       if(instruction.kind == lowir_model::Instruction::IK_PHI)
         phi_blocks[instruction.dest] = block;
     }
+    position += function.blocks[block].instructions.size();
+    if(!function.blocks[block].instructions.empty())
+      block_last_positions[function.blocks[block].id] = position - 1;
   }
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
     const lowir_model::LowirBlock & target = function.blocks[block];
@@ -87,7 +93,8 @@ void plan_transfers(
         }
       }
       emitter->DefinePhi(phi, loop_carried, block, target_is_cyclic,
-                         phi_blocks, definition_blocks);
+                         phi_blocks, definition_blocks,
+                         block_last_positions);
       for(std::size_t incoming = 0;
           incoming + 1 < phi.args.size(); incoming += 2) {
         const std::uint32_t predecessor = phi.args[incoming].block;

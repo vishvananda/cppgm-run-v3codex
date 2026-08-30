@@ -2,6 +2,7 @@ global @observed : i64 = 0
 global @phi_input : i64 = 7
 global @phi_zero_a : i64 = 0
 global @phi_zero_b : i64 = 0
+global @transfer_observed : i64 = 0
 
 function @identity(%value : i64) -> i64 [unwind=no] {
   block ^entry:
@@ -56,6 +57,33 @@ function @multi_use_guard(%outer : i64, %inner : i64) -> i64 [unwind=no] {
   block ^join:
     %result = phi i64 [^outer_value: 66, ^inner_value_edge: %inner_value]
     store i64 %inner_value, @observed
+    return i64 %result
+}
+
+function @last_transfer_chain(%outer : i64, %inner : i64) -> i64 [unwind=no] {
+  block ^entry:
+    branch %inner, ^inner_true, ^inner_false
+
+  block ^inner_true:
+    jump ^inner_join
+
+  block ^inner_false:
+    jump ^inner_join
+
+  block ^inner_join:
+    %inner_value = phi i64 [^inner_true: 11, ^inner_false: 22]
+    %observed = binary add i64 %inner_value, 1
+    store i64 %observed, @transfer_observed
+    branch %outer, ^outer_value, ^inner_value_edge
+
+  block ^outer_value:
+    jump ^join
+
+  block ^inner_value_edge:
+    jump ^join
+
+  block ^join:
+    %result = phi i64 [^outer_value: 33, ^inner_value_edge: %inner_value]
     return i64 %result
 }
 
@@ -285,6 +313,8 @@ function @main() -> i64 [role=entry] {
     %inner = call i64 @single_use_chain(0, 1)
     %outer = call i64 @single_use_chain(1, 0)
     %multi = call i64 @multi_use_guard(1, 1)
+    %last_transfer = call i64 @last_transfer_chain(0, 1)
+    %transfer_saved = load i64 @transfer_observed
     %saved = load i64 @observed
     %looped = call i64 @loop_carried_guard(1, 10)
     %repeated = call i64 @repeated_merge_guard(1, 2)
@@ -296,6 +326,8 @@ function @main() -> i64 [role=entry] {
     %bad1 = cmp ne i64 %outer, 33
     %bad2 = cmp ne i64 %multi, 66
     %bad3 = cmp ne i64 %saved, 44
+    %bad18 = cmp ne i64 %last_transfer, 11
+    %bad19 = cmp ne i64 %transfer_saved, 12
     %bad4 = cmp ne i64 %looped, 10
     %bad8 = cmp ne i64 %repeated, 7
     %bad10 = cmp ne i64 %local, 44
@@ -310,6 +342,8 @@ function @main() -> i64 [role=entry] {
     %bad14 = binary or i64 %bad10, %bad11
     %bad15 = binary or i64 %bad12, %bad13
     %bad17 = binary or i64 %bad15, %bad16
-    %bad = binary or i64 %bad14, %bad17
+    %bad20 = binary or i64 %bad18, %bad19
+    %bad21 = binary or i64 %bad14, %bad17
+    %bad = binary or i64 %bad20, %bad21
     return i64 %bad
 }

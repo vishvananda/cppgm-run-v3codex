@@ -191,12 +191,16 @@ semantic-preserving rewrites where safe:
   retain their selected locations
 - let a single-use scalar value from an acyclic merge `phi` share its frame
   home with a later acyclic merge `phi` that consumes it on one incoming edge.
-  The shared home removes an identity edge transfer.  Inside a cyclic region,
-  this is safe only when both non-loop-carried merges belong to the same cycle,
-  so the source is refreshed before each dynamic use.  A loop-carried merge,
-  a loop invariant feeding a repeated merge, a value with another use, or a
-  representation change must retain an independent home unless a different
-  register-resident implementation makes the transfer unnecessary
+  At O3, the source may also have completed earlier uses when its final use is
+  exactly that predecessor's merge transfer; O2 and below retain the
+  single-use boundary.  The shared home removes an identity edge transfer and
+  every alternate incoming edge still writes that home.  Inside a cyclic
+  region, this is safe only when both non-loop-carried merges belong to the
+  same cycle, so the source is refreshed before each dynamic use.  A
+  loop-carried merge, a loop invariant feeding a repeated merge, a source used
+  after its transfer, or a representation change must retain an independent
+  home unless a different register-resident implementation makes the transfer
+  unnecessary
 - when a one-use scalar merge is consumed immediately as a call argument,
   allow one same-typed, one-use incoming temporary to be defined directly in
   the merge's frame home.  This removes the incoming temporary's separate
@@ -341,13 +345,16 @@ register effects.
 `-O3` must accept the LowIR produced by PA37's maximum optimization level and
 apply all `-O2` machine improvements. It additionally performs one bounded
 post-liveness recoloring step. A callee-saved physical-register color may be
-removed when none of its live ranges reaches a block edge, every occurrence is
-explicit, no debug range refers to it, and every block containing the color
-has a noninterfering replacement. Each block may independently choose a
-caller-saved register or an already-used callee-saved color that will remain
-preserved. A call clobber, implicit use, live-in or live-out edge, debug
-dependency, or unproved interference rejects the complete source color;
-partial elimination is not permitted.
+removed when every occurrence is explicit, no debug range refers to it, and
+each connected source-live region has one noninterfering replacement. A
+region may span control-flow edges, but all blocks connected by source
+liveness use the same replacement. Disjoint regions may independently choose
+a caller-saved register or an already-used callee-saved color that will remain
+preserved. Exact instruction and block-boundary liveness must prove that the
+replacement does not hold another live value and is not clobbered while the
+source is live. A call clobber, implicit use, debug dependency, or unproved
+interference rejects the complete source color; partial elimination is not
+permitted.
 
 After each eliminated color, recompute complete MIR liveness. An eliminated
 color cannot become a later destination, and a surviving callee-saved color

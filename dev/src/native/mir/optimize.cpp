@@ -900,17 +900,21 @@ bool recolor_call_free_callee_saved(MirFunction & function,
   return true;
 }
 
-// A completed CFG can expose several disjoint live ranges that happened to
-// receive the same callee-saved color during online lowering.  If none of the
-// ranges reaches a block edge, choose a conflict-free destination separately
-// in each block and eliminate the source color only when every range succeeds.
-// Caller-saved destinations are free.  A surviving callee-saved color is also
-// profitable because it adds no new save/restore.  The caller prevents an
-// eliminated source from becoming a destination again and prevents an anchor
-// destination from becoming a later source, so at most five colors can be
-// eliminated and the iterative liveness proof must converge.
-bool recolor_one_block_local_callee_saved(
-    MirFunction & function, const Liveness & liveness,
+// A completed CFG can expose several disjoint live regions that happened to
+// receive the same callee-saved color during online lowering.  Choose one
+// conflict-free destination for every connected source-live region and
+// eliminate the source color only when every region succeeds.  Using one
+// destination throughout an edge-live component preserves the value across
+// blocks, while exact instruction and boundary liveness rejects a caller-
+// saved destination across any call or other clobber.  Caller-saved
+// destinations are free.  A surviving callee-saved color is also profitable
+// because it adds no new save/restore.  The caller prevents an eliminated
+// source from becoming a destination again and prevents an anchor destination
+// from becoming a later source, so at most five colors can be eliminated and
+// the iterative liveness proof must converge.
+bool recolor_one_region_local_callee_saved(
+    MirFunction & function, const ControlFlow & cfg,
+    const Liveness & liveness,
     RegisterMask unavailable_sources,
     RegisterMask unavailable_destinations,
     RegisterMask * eliminated_source,
@@ -929,31 +933,56 @@ bool recolor_one_block_local_callee_saved(
     if(debug_ranges_use_register(function, source)) continue;
     if(!function_mentions_register(function, source)) continue;
     if(stats) ++stats->block_recolor_candidates;
-    std::vector<X64Register> destinations(
-      function.blocks.size(), XR_RSP);
+    std::vector<X64Register> destinations(function.blocks.size(), XR_RSP);
+    std::vector<unsigned char> active(function.blocks.size(), 0);
+    std::vector<unsigned char> visited(function.blocks.size(), 0);
+    for(std::size_t block = 0; block < function.blocks.size(); ++block)
+      active[block] = block_mentions_register(function.blocks[block], source) ||
+        ((liveness.in[block] | liveness.out[block]) & source_bit);
     if(stats)
       note_peak_analysis_bytes(stats, persistent_analysis_storage +
         liveness.in.capacity() * sizeof(RegisterMask) +
         liveness.out.capacity() * sizeof(RegisterMask) +
-        destinations.capacity() * sizeof(X64Register));
+        destinations.capacity() * sizeof(X64Register) +
+        active.capacity() + visited.capacity());
     bool failed = false;
-    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
-      if((liveness.in[block] | liveness.out[block]) & source_bit) {
-        failed = true;
-        break;
+    for(std::size_t root = 0; root < function.blocks.size(); ++root) {
+      if(!active[root] || visited[root]) continue;
+      std::vector<std::size_t> component(1, root);
+      visited[root] = 1;
+      for(std::size_t cursor = 0; cursor < component.size(); ++cursor) {
+        const std::size_t block = component[cursor];
+        const std::vector<std::size_t> * edges[] =
+          {&cfg.successors[block], &cfg.predecessors[block]};
+        for(std::size_t direction = 0; direction < 2; ++direction)
+          for(std::size_t edge = 0; edge < edges[direction]->size(); ++edge) {
+            const std::size_t neighbor = (*edges[direction])[edge];
+            if(!active[neighbor] || visited[neighbor]) continue;
+            visited[neighbor] = 1;
+            component.push_back(neighbor);
+          }
       }
-      if(!block_mentions_register(function.blocks[block], source)) continue;
       bool destination_found = false;
+      X64Register selected = XR_RSP;
       for(std::size_t candidate = 0;
           candidate < sizeof(caller_saved) / sizeof(caller_saved[0]);
           ++candidate) {
+        bool candidate_ok = true;
         bool candidate_seen = false;
-        if(!can_recolor_block(
-             function.blocks[block], liveness.out[block], source,
-             caller_saved[candidate], &candidate_seen)) continue;
-        if(!candidate_seen) continue;
+        for(std::size_t member = 0; member < component.size(); ++member) {
+          bool block_seen = false;
+          const std::size_t block = component[member];
+          if(!can_recolor_block(
+               function.blocks[block], liveness.out[block], source,
+               caller_saved[candidate], &block_seen)) {
+            candidate_ok = false;
+            break;
+          }
+          candidate_seen = candidate_seen || block_seen;
+        }
+        if(!candidate_ok || !candidate_seen) continue;
         destination_found = true;
-        destinations[block] = caller_saved[candidate];
+        selected = caller_saved[candidate];
         break;
       }
       if(!destination_found) {
@@ -964,13 +993,22 @@ bool recolor_one_block_local_callee_saved(
           if(destination == source ||
              (unavailable_destinations & gpr_bit(destination)) ||
              !function_mentions_register(function, destination)) continue;
+          bool candidate_ok = true;
           bool candidate_seen = false;
-          if(!can_recolor_block(
-               function.blocks[block], liveness.out[block], source,
-               destination, &candidate_seen)) continue;
-          if(!candidate_seen) continue;
+          for(std::size_t member = 0; member < component.size(); ++member) {
+            bool block_seen = false;
+            const std::size_t block = component[member];
+            if(!can_recolor_block(
+                 function.blocks[block], liveness.out[block], source,
+                 destination, &block_seen)) {
+              candidate_ok = false;
+              break;
+            }
+            candidate_seen = candidate_seen || block_seen;
+          }
+          if(!candidate_ok || !candidate_seen) continue;
           destination_found = true;
-          destinations[block] = destination;
+          selected = destination;
           break;
         }
       }
@@ -978,6 +1016,8 @@ bool recolor_one_block_local_callee_saved(
         failed = true;
         break;
       }
+      for(std::size_t member = 0; member < component.size(); ++member)
+        destinations[component[member]] = selected;
     }
     if(failed) continue;
     std::size_t changed_blocks = 0;
@@ -1572,8 +1612,8 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
     while(true) {
       RegisterMask eliminated_source = 0;
       RegisterMask newly_anchored = 0;
-      if(!recolor_one_block_local_callee_saved(
-           function, local_liveness,
+      if(!recolor_one_region_local_callee_saved(
+           function, cfg, local_liveness,
            eliminated_sources | anchored_destinations,
            eliminated_sources, &eliminated_source, &newly_anchored,
            persistent_analysis_storage, stats)) break;
