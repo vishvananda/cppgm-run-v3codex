@@ -3090,6 +3090,40 @@ generic bounded decision-tree or post-specialization loop transformation,
 not a wider grouping threshold.  No PA37 contract or property test was added
 for rejected behavior; PA38 was unaffected.
 
+### Rejected exact-80 direct-copy encoding
+
+The remaining self profile attributed 89.5 million instructions to the
+out-of-line `std::deque` data-swap helper used by the macro processor.  This
+was not a retry of transient-swap staging: a narrow O2+ native prototype kept
+all three 80-byte copies and selected five unaligned vector load/store pairs
+for each one instead of `rep movsb`.  The existing 33--64-byte direct-copy
+contract and every other size remained unchanged.
+
+The intended helper was the only relevant hot change.  Its three compact
+copies became fifteen vector pairs, its body grew from 241 to 372 bytes, and
+the macro-processor object grew 176 text bytes.  A fresh 32-way candidate
+self compiler took 17.97 seconds to build and grew 3,892 text bytes.  The
+tokenizer-only oracle was byte-exact and unchanged because that translation
+unit contains no 80-byte copy, confirming that it cannot screen this
+macro-processor hypothesis.
+
+The faster native oracle compiled `preprocessor.cpp` with the generated
+baseline and candidate compilers.  All outputs were byte-exact at
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+Twenty position-balanced software `task-clock` observations per side averaged
+866.454 ms for baseline and 865.714 ms for candidate.  The ten pair ratios
+had mean 0.99916x and median 0.99989x; excluding the first cold pair changed
+the pair-mean direction to 1.00051x.  This is flat well inside noise and far
+below the 1% retention gate, while code size increases.  Hardware cycles and
+instructions were unavailable, but software `task-clock` provided the needed
+sub-millisecond CPU oracle without emulation or Cachegrind.
+
+The prototype was removed before a full workload or inception escalation.
+No PA38 README or property test was added for rejected behavior; PA37 was
+unaffected.  The profile's large repeated-instruction attribution reflects
+the accounting of compact string operations, not a demonstrated native-time
+opportunity.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3166,6 +3200,7 @@ Fill one row for every retained or rejected dose.
 | D.selected-parameter-index-home | preserve the setup transfer whenever constant-index lowering selects an optional parameter home | PA38 README plus O1/O2/O3 structural, behavior, EH, and direct-driver replay property; PA37 unchanged | fixes an uninitialized alternate parameter carrier after a large copy and EH marker | correctness-only; no performance claim | PA38 45/45; 5,470/5,470 through report; original G1 crash reproduced before the fix | retained correctness backfill in pushed commit `cd335c0a` |
 | D.guarded-frame-store | sink one exact temporary frame definition below the only scalar-guard arm that dominates all later reloads | none; rejected behavior was not moved into PA38; PA37 unchanged | tokenizer -16 text bytes; `Next` -12; producer +17,952; isolated producer +15,680 and one workload object | hot Ir -0.3940%, normalized -0.395%; 12-pair normalized medians +1.030% wall/+0.406% CPU; isolated raw CPU median +0.13% | inline G1/G2 exact at 219 objects; isolated G1/G2 exact at 220; prototypes removed | rejected; local instruction saving loses to representative normalized cache/layout behavior |
 | D.correlated-constant-group | specialize all correlated constant/global parameters within one four-site O3 call group | none; rejected behavior was not moved into PA37; PA38 unchanged | four E1-table calls lose two arguments; 74-byte clone; tokenizer +26 text bytes | exact fast oracle +236,392 Ir (+0.0531%); specialized helper path itself +472,764 Ir | immediate deterministic rejection; prototype removed before fixed point | rejected; parameter removal does not simplify the binary-search loop |
+| D.copy80 | select direct vector chunks for exact 80-byte O2+ copies | none; rejected behavior was not moved into PA38; PA37 unchanged | deque swap 241 to 372 bytes; macro object +176 text; producer +3,892 text | 20 observations/side: aggregate task-clock 0.99915x; pair mean 0.99916x, median 0.99989x; warm pair mean 1.00051x | exact generated object; fresh 32-way candidate self compiler; prototype removed before full/inception gate | rejected; native CPU is flat while code grows |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
