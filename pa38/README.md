@@ -429,7 +429,16 @@ N3485 source-language clauses.
   layout. A weakly aligned medium-copy control checks O0/O1 isolation, the
   serialized O2/O3 encoding choice, bounded statistics, direct native chunks,
   compact oversized fallback, and generated behavior without fixing scratch
-  registers or complete instruction sequences. It then runs the
+  registers or complete instruction sequences. An O3 composite-move control
+  also permits a bounded object copy directly between incoming parameter
+  addresses to preserve those carriers. If the same function later discards
+  the result of the recognized memory-copy builtin, that dynamic copy may use
+  explicit operands and preserve the incoming carriers too. The control
+  checks O0/O1/O2 isolation, reduced preserved-register pressure, direct frame
+  addresses, a dynamic-only negative case, a used-result call guard, driver
+  replay, and behavior. The serialized preservation fact is independent of
+  the medium-copy encoding fact, and the test does not require particular
+  scratch registers or a complete MIR sequence. It then runs the
   generated programs, permits equivalent physical-
   register choices, and does not compare a complete MIR dump or executable
   image.

@@ -2,6 +2,7 @@
 #define CPPGM_LOWIR_NATIVE_BULK_LOWERING_H
 
 #include "native/mir/construction.h"
+#include "native/lowering/memcpy.h"
 #include "lowir/model/program.h"
 
 #include <vector>
@@ -22,13 +23,62 @@ template <class Derived>
 class BulkLowering
 {
 protected:
+  bool try_emit_preserving_dynamic_copy(
+      const Instruction& instruction,
+      lowir_model::SymbolId memcpy_symbol,
+      std::vector<MirInstruction>& out)
+  {
+    Derived& derived = static_cast<Derived&>(*this);
+    if(derived.optimization_level_ < 3 ||
+       !derived.facts_.has_small_direct_parameter_copy ||
+       !memcpy_detail::is_inline_unused_call(
+         instruction, derived.facts_.uses, memcpy_symbol)) return false;
+    MirInstruction copy = machine_instruction(MirInstruction::MI_COPY_BYTES);
+    copy.copy_preserves_pointers = true;
+    for(std::size_t i = 0; i < instruction.args.size(); ++i) {
+      MirOperand argument =
+        derived.resolve_gpr_call_argument(instruction.args[i]);
+      if(instruction.args[i].kind == Operand::OP_TEMP) {
+        const auto& value = derived.values_[instruction.args[i].value];
+        if(value.forwarded_parameter.valid())
+          argument = derived.selected_value_location(
+            value.forwarded_parameter);
+      }
+      if(derived.is_frame_address(instruction.args[i]))
+        copy.copy_address_operand_mask |= 1u << i;
+      append_operand(copy, argument);
+    }
+    out.push_back(copy);
+    for(std::size_t i = 0; i < instruction.args.size(); ++i)
+      derived.consume(instruction.args[i]);
+    derived.active_instruction_ = 0;
+    derived.consume(instruction.first);
+    return true;
+  }
+
+  bool can_preserve_parameter_pointers(const Operand& source,
+                                       const Operand& destination,
+                                       std::size_t bytes) const
+  {
+    const Derived& derived = static_cast<const Derived&>(*this);
+    return derived.optimization_level_ >= 3 && bytes && bytes <= 64 &&
+      source.kind == Operand::OP_TEMP &&
+      destination.kind == Operand::OP_TEMP &&
+      derived.facts_.has(source.value,
+                         analysis::FunctionFacts::VF_PARAMETER) &&
+      derived.facts_.has(destination.value,
+                         analysis::FunctionFacts::VF_PARAMETER);
+  }
+
   void append_object_copy(std::size_t bytes, std::size_t alignment,
                           X64Register destination, X64Register source,
+                          bool preserve_pointers,
                           std::vector<MirInstruction>& out)
   {
     MirInstruction copy = machine_instruction(MirInstruction::MI_COPY_BYTES);
     copy.byte_count = bytes;
     copy.byte_alignment = alignment;
+    copy.copy_preserves_pointers = preserve_pointers;
     append_operand(copy, reg_operand(destination));
     append_operand(copy, reg_operand(source));
     out.push_back(copy);
@@ -67,9 +117,12 @@ protected:
 
   void emit_object_copy(const Operand& source, const Operand& destination,
                         std::size_t bytes, std::size_t alignment,
+                        bool admit_parameter_preservation,
                         std::vector<MirInstruction>& out)
   {
     Derived& derived = static_cast<Derived&>(*this);
+    const bool preserve_pointers = admit_parameter_preservation &&
+      can_preserve_parameter_pointers(source, destination, bytes);
     if (derived.aliases_same_object(source, destination))
     {
       derived.consume(source);
@@ -89,6 +142,7 @@ protected:
           machine_instruction(MirInstruction::MI_COPY_BYTES);
         copy.byte_count = bytes;
         copy.byte_alignment = alignment;
+        copy.copy_preserves_pointers = preserve_pointers;
         append_operand(copy, destination_side);
         append_operand(copy, source_side);
         out.push_back(copy);
@@ -136,7 +190,7 @@ protected:
       source_register = XR_RSI;
     }
     append_object_copy(bytes, alignment, destination_register,
-                       source_register, out);
+                       source_register, preserve_pointers, out);
     derived.consume(source);
     derived.consume(destination);
   }
@@ -172,7 +226,7 @@ protected:
     if (!direct_source)
       derived.emit_operand_address(out, XR_RSI, source);
     append_object_copy(type.storage_size, type.alignment,
-                       destination_register, source_register, out);
+                       destination_register, source_register, false, out);
     derived.consume(source);
     derived.define_object_result(value, type, 0, home);
   }
@@ -195,7 +249,7 @@ protected:
     else
       emit_object_copy(instruction.first, instruction.second,
                        instruction.type.storage_size,
-                       instruction.type.alignment, out);
+                       instruction.type.alignment, false, out);
     return true;
   }
 
@@ -205,7 +259,7 @@ protected:
     if (instruction.kind == Instruction::IK_COPYOBJ)
       emit_object_copy(instruction.first, instruction.second,
                        instruction.byte_count,
-                       instruction.byte_alignment, out);
+                       instruction.byte_alignment, true, out);
     else
       emit_object_zero(instruction.first, instruction.byte_count,
                        instruction.byte_alignment, out);

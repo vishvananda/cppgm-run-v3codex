@@ -1069,6 +1069,7 @@ bool prepare_explicit_operands(CodeBuffer & out,
   }
   if(instruction.opcode == mir_model::MirInstruction::MI_COPY_BYTES) {
     if(!instruction.byte_count) {
+      if(emit_preserving_dynamic_copy(out, instruction, function)) return true;
       require_operands(instruction, 0);
       emit_register_move(out, XR_RCX, XR_RDX);
       out.byte(0xf3); out.byte(0xa4);

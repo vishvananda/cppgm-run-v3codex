@@ -1958,6 +1958,100 @@ PA37 passes 188/188, PA38 passes 45/45, and the through-PA38 report passes
 file audit has zero fatal findings.  The retained decision uses only the clean
 fixed-point producer and the clean G2/G3 all-32 inception comparison.
 
+### Rejected whole-color leaf recoloring and the remaining frame gap
+
+The next native probe asked whether the hot token move constructor's five
+callee-saved registers were merely an online-allocation accident.  An O3-only
+prototype tried to recolor each complete callee-saved physical color to any
+caller-saved register proven conflict-free by completed MIR liveness.  This is
+the narrowest possible extension of the retained whole-function recoloring
+proof and required no hidden LowIR or frontend facts.
+
+The proof could eliminate only `r13` from the hot constructor.  The function
+kept its frame pointer, four saves, and temporary frame slots, shrinking from
+258 to 253 bytes.  Across the compiler the new choices instead grew the clean
+O3 producer by 2,096 text bytes.  A four-block, 16-run output-exact hot-TU ABBA
+screen measured candidate/baseline paired ratios of 1.00835x wall and 1.01171x
+user time.  The prototype was therefore removed before README, property,
+Callgrind, or full-workload movement.
+
+This rejects whole-color recoloring as the explanation for the remaining
+self/GCC gap.  GCC's hot constructor is frameless and save-free; reaching that
+shape requires a general live-range split or earlier placement repair that can
+eliminate the constructor's frame temporaries and redistribute multiple
+cross-block ranges, not another whole-register substitution.  Any such dose
+must first demonstrate that it improves the complete framed and frameless
+populations rather than this one symbol.
+
+An immediately following static probe tested constant-index rematerialization
+from incoming pointer parameters.  It removed two pointer homes from the hot
+constructor but did not reduce its 258 native bytes, five saved registers, or
+frame, while growing the hot source object by about 1.9 KiB.  The prototype was
+removed without timing or contract movement: eliminating address homes alone
+does not repair the live ranges that force the frame.
+
+### D.composite-copy-preserve O3 parameter-carrier preservation retained
+
+The useful placement boundary was the composite move itself.  At O3, a fixed
+copy of 1--64 bytes directly between two incoming parameter addresses may use
+the reserved encoder scratch registers instead of destroying the incoming
+address carriers.  If that same function later discards the result of the
+recognized memory-copy builtin, the dynamic copy receives explicit MIR
+operands and preserves the incoming carriers around `rep movsb`.  Fixed copies
+through derived addresses, functions having only a dynamic copy, used builtin
+results, and O0/O1/O2 retain their previous conservative forms.  The dynamic
+form records which operands are direct frame/global addresses so object
+encoding does not reconstruct a call or lose address semantics.
+
+The first broad prototype was intentionally rejected as a correctness failure,
+not hidden by a source change.  It marked every small fixed copy as preserving
+the string-operation pointers even when address setup had already destroyed
+them; its G2 compiler crashed in `TypeTable::Intern`.  A corrected but still
+broad probe also changed unrelated copy bodies: the hot `std::string` copy
+constructor alone added 2.765 million Callgrind instructions.  Restricting the
+proof to direct parameter copies and enabling explicit dynamic preservation
+only in the same composite-move function removes that offset.  The unrelated
+string constructor is within 30 instructions of the accepted profile.
+
+The retained token move constructor falls from 258 to 234 native bytes, from
+five to four saved registers, and from a 64-byte to a 48-byte frame.  Its two
+parameter evacuations and pointer frame homes disappear.  The final fixed copy
+through derived addresses remains independent: it keeps its existing
+`encoding=direct_chunks` fact without receiving the preservation fact.  The
+complete O3 producer grows 5,904 ELF `.text` bytes, from 7,975,634 to
+7,981,538.
+
+On the fixed hot compile, output remains exact at
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`.
+Callgrind falls from 4,388,177,694 to 4,377,937,136 instructions (-0.23337%);
+the token move itself falls from 181,339,590 to 171,181,377.  The same-source
+GCC control moves from 2,423,258,043 to 2,423,432,711 (+0.00721%), giving a
+normalized instruction ratio of 0.997594x (-0.24056%).  Four hot ABBA blocks
+improve paired-median wall/user time by 1.66%/0.88%.
+
+Three rotated, clean 32-way blocks over the complete requested-O3 workload
+produce deterministic per-side compilers.  Mean wall falls from 29.563 to
+29.358 seconds (-0.69%) and aggregate CPU from 841.720 to 836.298 seconds
+(-0.64%); paired-median wall/CPU ratios are 0.99372x and 0.99348x.  A final
+balanced requested-O1 block is byte-exact at one 219-object manifest and
+compiler; wall falls from 29.770 to 28.755 seconds (-3.41%) and aggregate CPU
+from 839.715 to 830.825 seconds (-1.06%).
+
+PA38 documents the source-independent rule and owns a LowIR property fixture.
+The checker validates O3-only fixed and dynamic preservation, reduced
+preserved-register pressure, a direct frame-address operand, dynamic-only and
+used-result negative controls, driver replay, and behavior.  It names fixture
+roles but does not compare complete MIR, exact physical registers, executable
+bytes, or program-specific compiler output.
+
+PA29 passes 291/291, PA38 passes 45/45, and the report through PA38 passes
+5,471/5,471.  PA37/PA38 debug and object-round-trip lanes pass, and the PA39
+file audit has zero fatal findings.  Fresh all-32 O3 G1/G2/G3 object trees and
+final compilers are exact at
+`659de0c5ba8799ccf96c273fb3aeb35b3c85e64c67f7641fa1425baa9ce87ace`;
+fresh O2 G1/G2 is exact at
+`58424d56c9c3a64101514eac5f68265f4ac3d11814fdfa1b85d87d7379d25ca9`.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -2010,6 +2104,10 @@ Fill one row for every retained or rejected dose.
 | D.secondary-group | admit one additional same-parameter integer-constant group under the retained cleaned-body payoff proof | none; rejected at static census | no second clone passed payoff, including at a four-call secondary floor; tokenizer output unchanged | no timing warranted | focused O3 LowIR/object checks exact; prototype removed | rejected; no profitable compiler population |
 | D.loop-wrapper-inline | inline one small acyclic wrapper around a loop helper at its unique innermost-loop call | none; rejected before contract movement | one 3,623,141-execution call removed; optimized LowIR +58 lines; `Run` +197 native bytes; tokenizer +208 text; producer +6,704 text | sixteen exact hot lanes about +3% wall/user | deterministic hot output; candidate removed before Callgrind/full gate | rejected; wrapper removal still duplicates and enlarges the hot loop region |
 | D.terminal-phi-return | move a bounded terminal scalar phi/chain or return-adjacent phi branch onto two direct incoming edges | PA37 README plus positive forms, guard, level-isolation, bounded-stats, replay, and behavior property | tokenizer -84 text bytes; identifier predicate 185 to 109 bytes and frameless; fixed-point producer +9,700 text; hot Ir -1.3394%; O1/O2 isolated | O1 workload -1.59% wall/-1.12% CPU, normalized -2.63%/-0.98%; O3 workload -0.66% wall/-0.72% CPU, normalized -1.68%/-0.76% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; stale incremental producer discarded; clean G2/G3 all-32 inception exact | retained in this checkpoint |
+| D.leaf-whole-color | recolor complete callee-saved colors in leaf functions into completed-liveness-proven caller-saved registers | none; rejected before contract movement | hot token move 258 to 253 bytes and five to four saves; frame retained; clean O3 producer +2,096 text bytes | 16-run hot paired wall 1.00835x and user 1.01171x | exact hot output; clean candidate root; prototype removed before full gate | rejected; one whole color is insufficient and broad layout/code-size effects are negative |
+| D.parameter-index-remat | rematerialize constant indexes from incoming pointer parameters instead of keeping their address homes | none; rejected at static screen | two pointer homes removed, but hot token move remains 258 bytes/five saves/framed; hot source object about +1.9 KiB | no timing warranted | deterministic MIR/object screen; prototype removed | rejected; address homes are not the ranges forcing the frame |
+| D.copy-preserve-broad | preserve pointer carriers for every bounded fixed and unused dynamic copy | none; rejected before contract movement | initial form mis-modeled destructive address setup and crashed its G2 compiler; corrected broad form added 2.765M Ir to an unrelated string-copy body | broad total Ir -0.184%, but unrelated offsets obscured the local saving | failing G2 and narrowed safety proof retained as diagnostic evidence; broad prototype removed | rejected; proof and population were too broad |
+| D.composite-copy-preserve | preserve incoming address carriers across a bounded direct-parameter copy and a later unused builtin copy in the same O3 composite move | PA38 README plus O0--O2 isolation, structural pressure/frame-address, negative-call, driver-replay, and behavior property | hot token move 258 to 234 bytes, five to four saves, frame 64 to 48; producer +5,904 `.text`; hot Ir -0.23337%, normalized -0.24056% | O3 workload -0.69% wall/-0.64% CPU, paired CPU -0.65%; final O1 block -3.41% wall/-1.06% CPU and output-exact | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; all-32 O2 G1/G2 and O3 G1/G2/G3 exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

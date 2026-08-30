@@ -83,6 +83,10 @@ struct FunctionFacts
   bool has_dynamic_stack = false;
   bool has_i128_atomic = false;
   bool has_direct_branch_parameter = false;
+  // The function contains a bounded object copy directly between incoming
+  // parameter addresses.  O3 may preserve those incoming carriers across
+  // that copy and a later inlined bulk copy in the same composite move.
+  bool has_small_direct_parameter_copy = false;
   bool has_eh = false;
 
   static std::size_t missing_position()

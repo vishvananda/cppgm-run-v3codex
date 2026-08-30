@@ -87,7 +87,7 @@ if (scalar(@ARGV) != 3)
 
 my ($app, $driver, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks|composite-copy-pointer-preservation).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -97,7 +97,8 @@ for my $test (@tests)
 	my $mir_path = "$directory/test.mir";
 	my $program = "$directory/test.program";
 	my $level = $test =~
-		/o3-large-function-alignment/ ? '-O3' : $test =~
+		/(?:o3-large-function-alignment|composite-copy-pointer-preservation)/
+		? '-O3' : $test =~
 		/(?:conditional-fallthrough-layout|deferred-carrier-lifetime-reset|call-result-plan-reservation)/
 		? '-O2' : '-O1';
 	my $status = run_command_capture(
@@ -118,6 +119,109 @@ for my $test (@tests)
 	die "$test: generated program failed with status $run_status\n" if $run_status != 0;
 
 	my $mir = read_file($mir_path);
+	if ($test =~ /composite-copy-pointer-preservation/) {
+		my %level_mir;
+		for my $request (['O0', '-O0'], ['O1', '-O1'],
+			['O2', '-O2'], ['O3', '-O3']) {
+			my ($name, $requested_level) = @$request;
+			my $level_mir = "$directory/$name.mir";
+			my $level_program = "$directory/$name.program";
+			$status = run_command_capture(
+				cmd => [$app, $requested_level, '--dump-machine-ir',
+					$level_mir, '-o', $level_program, $test],
+				stdout => "$directory/$name.compile.stdout",
+				stderr => "$directory/$name.compile.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level native compile failed\n" .
+				read_file("$directory/$name.compile.stderr") if $status != 0;
+			$run_status = run_command_capture(
+				cmd => [$level_program],
+				stdout => "$directory/$name.program.stdout",
+				stderr => "$directory/$name.program.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level generated program failed with status " .
+				"$run_status\n" if $run_status != 0;
+			$level_mir{$name} = read_file($level_mir);
+		}
+
+		for my $name (qw(O0 O1 O2)) {
+			my $composite = function_body(
+				$test, $level_mir{$name}, 'composite_move');
+			my $frame = function_body(
+				$test, $level_mir{$name}, 'frame_composite_move');
+			die "$test: $name unexpectedly enabled pointer-preserving copies\n"
+				if $composite =~ /\[preserve_pointers\]/ ||
+				   $frame =~ /\[preserve_pointers\]/;
+		}
+
+		my $o3_composite = function_body(
+			$test, $level_mir{O3}, 'composite_move');
+		my @fixed_copies =
+			$o3_composite =~ /^\s+copy_bytes\s+\d+x\d+,[^\n]+$/mg;
+		die "$test: composite reducer lost its fixed-copy boundaries\n"
+			if scalar(@fixed_copies) < 2;
+		my @preserved_fixed = grep { /\[preserve_pointers\]/ } @fixed_copies;
+		die "$test: O3 did not limit fixed-copy preservation to direct parameters\n"
+			if scalar(@preserved_fixed) != 1;
+		die "$test: O3 did not serialize explicit preserved dynamic operands\n"
+			if $o3_composite !~
+				/^\s+copy_bytes_dynamic,\s+[^,\n]+,\s+[^,\n]+,\s+[^\n]+\[preserve_pointers\]/m;
+		my $o2_composite = function_body(
+			$test, $level_mir{O2}, 'composite_move');
+		die "$test: O3 did not reduce composite-move preserved-register pressure\n"
+			if preserve_count($o3_composite) >= preserve_count($o2_composite);
+
+		my $o3_frame = function_body(
+			$test, $level_mir{O3}, 'frame_composite_move');
+		die "$test: preserved dynamic copy lost its direct frame address\n"
+			if $o3_frame !~
+				/^\s+copy_bytes_dynamic,[^\n]*\[rbp[^\]]*\][^\n]*\[preserve_pointers\][^\n]*\[address_operands=\d+\]/m;
+		my $o2_frame = function_body(
+			$test, $level_mir{O2}, 'frame_composite_move');
+		die "$test: O3 did not reduce frame-composite preservation pressure\n"
+			if preserve_count($o3_frame) >= preserve_count($o2_frame);
+
+		my $dynamic_only = function_body(
+			$test, $level_mir{O3}, 'dynamic_only');
+		die "$test: dynamic-only guard did not retain the ordinary copy form\n"
+			if $dynamic_only !~ /^\s+copy_bytes_dynamic\s*$/m ||
+			   $dynamic_only =~ /\[preserve_pointers\]/;
+		my $used = function_body(
+			$test, $level_mir{O3}, 'used_result_guard');
+		die "$test: used-result guard did not retain its ordinary call\n"
+			if $used !~ /^\s+call\s+\@memory_copy\b/m ||
+			   $used =~ /^\s+copy_bytes_dynamic/m;
+
+		my $driver_input = "$directory/test.lowir";
+		copy($test, $driver_input) or
+			die "$test: unable to prepare driver replay: $!\n";
+		my $object = "$directory/driver-O3.o";
+		$status = run_command_capture(
+			cmd => [$driver, '-c', '-O3', '-o', $object, $driver_input],
+			stdout => "$directory/driver.compile.stdout",
+			stderr => "$directory/driver.compile.stderr",
+			timeout => 30,
+		);
+		die "$test: O3 driver replay failed\n" .
+			read_file("$directory/driver.compile.stderr") if $status != 0;
+		for my $symbol (qw(composite_move frame_composite_move)) {
+			my $disassembly = "$directory/$symbol.disassembly";
+			$status = run_command_capture(
+				cmd => ['objdump', '-d', '-Mintel',
+					"--disassemble=$symbol", $object],
+				stdout => $disassembly,
+				stderr => "$disassembly.stderr",
+				timeout => 30,
+			);
+			die "$test: O3 driver $symbol disassembly failed\n"
+				if $status != 0;
+			die "$test: O3 driver $symbol lost its dynamic native copy\n"
+				if read_file($disassembly) !~ /\brep\s+movs/;
+		}
+		next;
+	}
 	if ($test =~ /medium-copy-direct-chunks/) {
 		my %level_mir;
 		my %level_stats;

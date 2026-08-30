@@ -33,5 +33,9 @@ bool emit_small_copy_bytes(
     elf_detail::CodeBuffer & out,
     const mir_model::MirInstruction & instruction,
     const mir_model::MirFunction * function);
+bool emit_preserving_dynamic_copy(
+    elf_detail::CodeBuffer & out,
+    const mir_model::MirInstruction & instruction,
+    const mir_model::MirFunction * function);
 
 }  // namespace lowir_native

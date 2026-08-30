@@ -200,7 +200,13 @@ RegisterMask instruction_defs(const MirInstruction & instruction)
     defs |= gpr_bit(XR_RAX) | gpr_bit(XR_RCX) | gpr_bit(XR_R11);
     break;
   case MirInstruction::MI_COPY_BYTES:
-    defs |= gpr_bit(XR_RDI) | gpr_bit(XR_RSI) | gpr_bit(XR_RCX);
+    if(instruction.copy_preserves_pointers)
+      defs |= instruction.byte_count ?
+        gpr_bit(XR_RAX) | gpr_bit(XR_R10) | gpr_bit(XR_R11) :
+        gpr_bit(XR_RAX) | gpr_bit(XR_RCX) |
+          gpr_bit(XR_R10) | gpr_bit(XR_R11);
+    else
+      defs |= gpr_bit(XR_RDI) | gpr_bit(XR_RSI) | gpr_bit(XR_RCX);
     break;
   case MirInstruction::MI_ZERO_BYTES:
     defs |= gpr_bit(XR_RAX) | gpr_bit(XR_RDI) | gpr_bit(XR_RCX);
@@ -249,7 +255,7 @@ RegisterMask instruction_uses(
       instruction.call_argument_register_mask : kCallArguments;
     break;
   case MirInstruction::MI_COPY_BYTES:
-    if(!instruction.byte_count)
+    if(!instruction.byte_count && instruction.operands.empty())
       uses |= gpr_bit(XR_RDI) | gpr_bit(XR_RSI) | gpr_bit(XR_RDX);
     break;
   case MirInstruction::MI_EH_PUSH:

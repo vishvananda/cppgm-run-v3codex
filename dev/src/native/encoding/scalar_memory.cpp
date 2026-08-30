@@ -227,9 +227,12 @@ bool emit_small_copy_bytes(
   // MIR liveness.  A multi-chunk copy revisits both address registers, so the
   // integer scratch must avoid them; among the three string-op clobbers one
   // always remains.
-  const X64Register scratch =
-    destination != XR_RCX && source != XR_RCX ? XR_RCX :
-    destination != XR_RSI && source != XR_RSI ? XR_RSI : XR_RDI;
+  const bool preserve_pointers = instruction.copy_preserves_pointers;
+  const X64Register scratch = preserve_pointers ?
+    (destination != XR_R11 && source != XR_R11 ? XR_R11 :
+     destination != XR_R10 && source != XR_R10 ? XR_R10 : XR_RAX) :
+    (destination != XR_RCX && source != XR_RCX ? XR_RCX :
+     destination != XR_RSI && source != XR_RSI ? XR_RSI : XR_RDI);
   std::size_t offset = 0;
   while(offset < bytes) {
     const std::size_t remaining = bytes - offset;
@@ -250,6 +253,78 @@ bool emit_small_copy_bytes(
                static_cast<unsigned>(chunk * 8));
     offset += chunk;
   }
+  return true;
+}
+
+bool emit_preserving_dynamic_copy(
+    elf_detail::CodeBuffer & out,
+    const mir_model::MirInstruction & instruction,
+    const mir_model::MirFunction * function)
+{
+  if(!instruction.copy_preserves_pointers) return false;
+  if(instruction.operands.size() != 3)
+    throw std::logic_error("invalid explicit dynamic-copy operands");
+  if(!function)
+    throw std::logic_error("explicit dynamic copy outside function");
+  emit_register_move(out, XR_R10, XR_RDI);
+  emit_register_move(out, XR_R11, XR_RSI);
+  const auto remap_saved_parameter = [](mir_model::MirOperand operand) {
+    if(operand.kind == mir_model::MirOperand::OP_REG) {
+      if(operand.reg == XR_RDI) operand.reg = XR_R10;
+      else if(operand.reg == XR_RSI) operand.reg = XR_R11;
+    } else if(operand.kind == mir_model::MirOperand::OP_DEREF) {
+      if(operand.reg == XR_RDI) operand.reg = XR_R10;
+      else if(operand.reg == XR_RSI) operand.reg = XR_R11;
+      if(operand.has_index && operand.index == XR_RDI)
+        operand.index = XR_R10;
+      else if(operand.has_index && operand.index == XR_RSI)
+        operand.index = XR_R11;
+    }
+    return operand;
+  };
+  const auto materialize_argument = [&](X64Register destination,
+                                        std::size_t index) {
+    mir_model::MirOperand operand =
+      remap_saved_parameter(instruction.operands[index]);
+    if(instruction.copy_address_operand_mask & (1u << index)) {
+      if(operand.kind == mir_model::MirOperand::OP_FRAME)
+        emit_lea(out, destination, XR_RBP,
+                 actual_frame_offset(*function, operand.offset));
+      else if(operand.kind == mir_model::MirOperand::OP_DEREF) {
+        if(operand.has_index)
+          emit_indexed_lea(out, destination, operand.reg, operand.index,
+                           operand.scale, operand.offset);
+        else emit_lea(out, destination, operand.reg, operand.offset);
+      } else if(operand.kind == mir_model::MirOperand::OP_SYMBOL ||
+                operand.kind == mir_model::MirOperand::OP_GLOBAL)
+        emit_symbol_move(out, destination, operand.symbol,
+                         operand.address_binding);
+      else throw std::logic_error(
+        "unsupported explicit dynamic-copy address");
+      return;
+    }
+    if(operand.kind == mir_model::MirOperand::OP_REG)
+      emit_register_move(out, destination, operand.reg);
+    else if(operand.kind == mir_model::MirOperand::OP_IMM)
+      emit_immediate_move(out, destination,
+                          static_cast<std::uint64_t>(operand.imm));
+    else if(operand.kind == mir_model::MirOperand::OP_SYMBOL)
+      emit_symbol_move(out, destination, operand.symbol,
+                       operand.address_binding);
+    else if(operand.kind == mir_model::MirOperand::OP_GLOBAL &&
+            operand.address_binding ==
+              mir_model::MirOperand::ADDRESS_PREEMPTIBLE) {
+      emit_symbol_move(out, XR_RAX, operand.symbol,
+                       operand.address_binding);
+      emit_load(out, destination, XR_RAX, 0, 64);
+    } else emit_address_load(out, destination, operand, 64, *function);
+  };
+  materialize_argument(XR_RDI, 0);
+  materialize_argument(XR_RSI, 1);
+  materialize_argument(XR_RCX, 2);
+  out.byte(0xf3); out.byte(0xa4);
+  emit_register_move(out, XR_RDI, XR_R10);
+  emit_register_move(out, XR_RSI, XR_R11);
   return true;
 }
 

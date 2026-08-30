@@ -290,6 +290,11 @@ std::string instruction_text(const Instruction & instruction,
     render_operands(out, instruction, program, function, true);
     if(instruction.copy_encoding == Instruction::MBC_DIRECT_CHUNKS)
       out << " [encoding=direct_chunks]";
+    if(instruction.copy_preserves_pointers)
+      out << " [preserve_pointers]";
+    if(instruction.copy_address_operand_mask)
+      out << " [address_operands=" << instruction.copy_address_operand_mask
+          << ']';
     return out.str();
   }
   if(instruction.opcode == Instruction::MI_ZERO_BYTES) {

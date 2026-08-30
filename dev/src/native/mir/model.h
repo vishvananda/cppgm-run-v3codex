@@ -358,6 +358,14 @@ struct Instruction
   // chunks; serializing that choice keeps object emission reproducible from
   // the same machine operation.  O0 and O1 retain the compact default.
   CopyEncoding copy_encoding = MBC_DEFAULT;
+  // Pointer-preserving bulk operations use reserved scratch registers rather
+  // than destructively consuming their logical address operands.  This fact
+  // is orthogonal to the fixed-copy encoding choice above.
+  bool copy_preserves_pointers = false;
+  // An explicit dynamic-copy operand normally contains a pointer value.
+  // A set bit instead says that the corresponding frame/dereference operand
+  // itself is the pointer value, matching call argument address formation.
+  unsigned copy_address_operand_mask = 0;
   lowir_model::SymbolId tls_storage_symbol;
   // A volatile access must survive machine-level forwarding and elision.
   bool volatile_access = false;

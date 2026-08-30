@@ -20,11 +20,26 @@ using lowir_model::Operand;
 
 unsigned instruction_clobber_mask(const Instruction & instruction,
                                   bool direct_memory_index = false,
-                                  bool inline_unused_memcpy = false)
+                                  bool inline_unused_memcpy = false,
+                                  bool preserve_copy_pointers = false)
 {
   if(inline_unused_memcpy)
-    return register_mask(XR_RCX) | register_mask(XR_RSI) |
-      register_mask(XR_RDI);
+    return register_mask(XR_RCX) |
+      (preserve_copy_pointers ?
+       register_mask(XR_RAX) | register_mask(XR_R10) |
+         register_mask(XR_R11) :
+       register_mask(XR_RSI) | register_mask(XR_RDI));
+  const std::size_t copy_bytes =
+    instruction.kind == Instruction::IK_COPYOBJ ? instruction.byte_count :
+    instruction.type.storage_size;
+  if(preserve_copy_pointers && copy_bytes && copy_bytes <= 64 &&
+     (instruction.kind == Instruction::IK_COPYOBJ ||
+      (instruction.type.kind == lowir_model::LTK_OBJECT &&
+       (instruction.kind == Instruction::IK_COPY ||
+        instruction.kind == Instruction::IK_LOAD ||
+        instruction.kind == Instruction::IK_STORE))))
+    return register_mask(XR_RAX) | register_mask(XR_R10) |
+      register_mask(XR_R11);
   const bool wide = instruction.type.kind == lowir_model::LTK_I128;
   if(wide && (instruction.kind == Instruction::IK_CONST ||
               instruction.kind == Instruction::IK_COPY))
@@ -144,14 +159,47 @@ void note_instruction_operands(FunctionFacts & facts,
     note_operand(facts, instruction.args[i], position);
 }
 
+bool direct_parameter_copy(const Instruction & instruction,
+                           const FunctionFacts & facts)
+{
+  return instruction.kind == Instruction::IK_COPYOBJ &&
+    instruction.first.kind == Operand::OP_TEMP &&
+    instruction.second.kind == Operand::OP_TEMP &&
+    facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER) &&
+    facts.has(instruction.second.value, FunctionFacts::VF_PARAMETER);
+}
+
+bool small_direct_parameter_copy(const Instruction & instruction,
+                                 const FunctionFacts & facts)
+{
+  return direct_parameter_copy(instruction, facts) &&
+    instruction.byte_count && instruction.byte_count <= 64;
+}
+
 unsigned analyzed_instruction_clobber_mask(
     const Instruction & instruction, const FunctionFacts & facts,
-    lowir_model::SymbolId memcpy_symbol, bool direct_memory_index)
+    lowir_model::SymbolId memcpy_symbol, bool direct_memory_index,
+    int optimization_level)
 {
+  const bool inline_unused_memcpy = memcpy_detail::is_inline_unused_call(
+    instruction, facts.uses, memcpy_symbol);
   return instruction_clobber_mask(
-    instruction, direct_memory_index,
-    memcpy_detail::is_inline_unused_call(
-      instruction, facts.uses, memcpy_symbol));
+    instruction, direct_memory_index, inline_unused_memcpy,
+    optimization_level >= 3 &&
+      (direct_parameter_copy(instruction, facts) ||
+       (inline_unused_memcpy && facts.has_small_direct_parameter_copy)));
+}
+
+bool is_effective_call(const Instruction & instruction,
+                       const FunctionFacts & facts,
+                       lowir_model::SymbolId memcpy_symbol,
+                       int optimization_level)
+{
+  return instruction.kind == Instruction::IK_CALL &&
+    !(optimization_level >= 3 &&
+      facts.has_small_direct_parameter_copy &&
+      memcpy_detail::is_inline_unused_call(
+        instruction, facts.uses, memcpy_symbol));
 }
 
 bool direct_memory_index_use(const FunctionFacts & facts,
@@ -671,7 +719,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
          facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER))
         facts.mark(instruction.first.value,
                    FunctionFacts::VF_DESTRUCTIVE_PARAMETER);
-      if(instruction.kind == Instruction::IK_CALL) facts.calls.push_back(position);
+      if(optimization_level >= 3 && small_direct_parameter_copy(instruction, facts)) facts.has_small_direct_parameter_copy = true;
       if(instruction.kind == Instruction::IK_CALL &&
          instruction.dest.valid() && !instruction.call_returns_void &&
          (instruction.type.kind == lowir_model::LTK_I64 ||
@@ -731,8 +779,8 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
       const bool direct_index = direct_memory_index_use(facts, instructions, j);
       if(direct_index)
         facts.mark(instruction.dest, FunctionFacts::VF_DIRECT_MEMORY_INDEX);
-      const unsigned clobbers = analyzed_instruction_clobber_mask(
-        instruction, facts, memcpy_symbol, direct_index);
+      const unsigned clobbers = analyzed_instruction_clobber_mask(instruction, facts, memcpy_symbol, direct_index, optimization_level);
+      if(is_effective_call(instruction, facts, memcpy_symbol, optimization_level)) facts.calls.push_back(position);
       for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg)
         if(clobbers & (1u << reg)) {
           clobber_positions[reg].push_back(position);
@@ -802,12 +850,10 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
         facts.last_use[value] = std::max(facts.last_use[value], block_start + j);
         for(std::size_t k = comparison + 1; k < j; ++k) {
           const unsigned clobbers = analyzed_instruction_clobber_mask(
-            instructions[k], facts, memcpy_symbol,
-            facts.has(instructions[k].dest,
-                      FunctionFacts::VF_DIRECT_MEMORY_INDEX));
+            instructions[k], facts, memcpy_symbol, facts.has(instructions[k].dest,
+              FunctionFacts::VF_DIRECT_MEMORY_INDEX), optimization_level);
           facts.live_across_clobbers[value] |= clobbers;
-          if(instructions[k].kind == Instruction::IK_CALL)
-            facts.mark(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
+          if(is_effective_call(instructions[k], facts, memcpy_symbol, optimization_level)) facts.mark(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
         }
       }
     }

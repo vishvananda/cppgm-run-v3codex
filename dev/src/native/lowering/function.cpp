@@ -2534,6 +2534,7 @@ private:
                  std::size_t instruction_index,
                  std::vector<MirInstruction> & out)
   {
+    if(try_emit_preserving_dynamic_copy(instruction, memcpy_symbol_, out)) return;
     const std::vector<lowir_model::LowirParameter> parameters =
       call_parameters(instruction);
     if(requires_extended_call(instruction, parameters)) {
@@ -2983,7 +2984,6 @@ private:
   }
 };
 }  // namespace
-
 mir_model::MirFunction session_detail::lower_native_function(
     const lowir_model::LowirProgram & program,
     const lowir_model::LowirFunction & function,
