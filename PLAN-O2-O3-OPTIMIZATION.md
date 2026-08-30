@@ -2189,6 +2189,20 @@ Callgrind increased from 4,341,389,715 to 4,341,442,410 instructions
 was already slightly worse, no noisy full-workload timing was warranted.
 The prototype was removed before README or PA38 property movement.
 
+The later G1/G2 screening correction required a fixed-point audit before
+treating that performance rejection as final.  G2 did self-apply the rule:
+the tokenizer fell 416 text bytes and the complete producer fell from
+7,972,210 to 7,897,986 bytes (-74,224).  That apparent saving was invalid.
+Although O0 output remained exact and the two producers emitted identical O1
+LowIR, G2 emitted different O1 MIR and a different object for unchanged input;
+its repeated output was internally deterministic.  G2 then failed to build
+G3 with invalid native operands, allocation failures, crashes, and corrupted
+semantic state across unrelated translation units.  A merge phi's multiple
+predecessor transfers cannot inherit the local loop-phi register proof merely
+because their enclosing linear interval is claim- and clobber-free.  The
+fixed-point failure upgrades the decision from a performance rejection to a
+correctness rejection.
+
 ### Current producer-matrix refresh
 
 After the adjacent-normalization checkpoint, new O1 and O2 self producers
@@ -2299,7 +2313,7 @@ Fill one row for every retained or rejected dose.
 | D.composite-copy-preserve | preserve incoming address carriers across a bounded direct-parameter copy and a later unused builtin copy in the same O3 composite move | PA38 README plus O0--O2 isolation, structural pressure/frame-address, negative-call, driver-replay, and behavior property | hot token move 258 to 234 bytes, five to four saves, frame 64 to 48; producer +5,904 `.text`; hot Ir -0.23337%, normalized -0.24056% | O3 workload -0.69% wall/-0.64% CPU, paired CPU -0.65%; final O1 block -3.41% wall/-1.06% CPU and output-exact | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; all-32 O2 G1/G2 and O3 G1/G2/G3 exact | retained in this checkpoint |
 | D.adjacent-integer-normalizations | combine adjacent O2+ integer normalizations and select signed/unsigned narrow loads in final MIR | PA38 README plus O0/O1 isolation, safe-chain and negative-guard structure, debug, replay, encoding, and behavior property; PA37 unchanged | hot MIR -61, object `.text` -144; O3 producer -9,328 `.text`; hot Ir -0.8348%; O1 output exact | self paired median -1.79% wall/-0.65% CPU; GCC -0.62%/-0.17%; normalized -1.17%/-0.49%; dedicated stats counter rejected after layout regression | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; frozen exact; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.transient-swap-staging | remove a complete write-only transient local and its first overwritten copy from an adjacent three-copy object swap | none; rejected before contract movement; a retained form would require positive/negative PA37 properties plus unrelated-call-argument survival | two real 80-byte swap populations simplified; macro body -115 native bytes; self producer +9,072 text bytes; hot Ir -0.6710% | self mean wall/CPU -0.20%/-0.05%; GCC +0.36%/-0.26%; normalized wall -0.56% but CPU +0.21%; paired normalized CPU effectively flat | corrected candidate exact on hot output and all 219 full-workload objects/final; initial self-move bug diagnosed without fixture changes; prototype removed | rejected; dynamic instruction saving did not clear the normalized close-result CPU gate |
-| D.merge-phi-register | reuse the exact local-phi interval proof for acyclic O2/O3 merge phis | none; rejected before contract movement | several O3 helper bodies smaller, but complete GCC/self producers +128/+256 `.text`; O1 output exact | hot Ir +0.0012% on an isolated producer comparison | clean O2+ gate and exact hot object; prototype removed | rejected; deterministic producer cost is slightly worse |
+| D.merge-phi-register | reuse the exact local-phi interval proof for acyclic O2/O3 merge phis | none; rejected before contract movement | G1 +256 text and O1 output exact; G2 self-applied to -74,224 text but changed O1 MIR/object despite exact LowIR | G1 hot Ir +0.0012%; G2 performance invalidated by miscompile | O0 exact; G2 repeat deterministic; G2-to-G3 failed across unrelated TUs; prototype removed | rejected as unsound; predecessor transfers need a stronger proof |
 | D.terminal-address-load | fold a terminal `lea`/load/return into one representable indexed load | none; rejected before contract movement | two hot returns each -1 MIR/-3 bytes; G2 producer +1,952 text; hot Ir -0.4422%; O1 output exact | self wall/CPU 1.01030x/0.99976x; GCC 0.99918x/0.99882x; normalized 1.0111x/1.0009x | PA38 45/45; exact 219-object manifest/final; G1/G2 distinction verified; prototype removed | rejected; deterministic saving is normalized-flat and wall-negative |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
