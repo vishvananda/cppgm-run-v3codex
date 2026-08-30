@@ -238,6 +238,16 @@ running optimizing transforms.
   merged value is shared, or exceptional edges and successor `phi` inputs
   cannot be repaired safely; other independently safe CFG simplifications may
   still reshape such a graph while preserving its work and value semantics;
+  at `-O3`, a private two-step signed range check that rejects both `x < 0`
+  and `x > C`, where `C` is nonnegative, may replace those tests with the
+  equivalent unsigned `x > C` decision; preserve the two tests at lower
+  optimization levels, and retain them when the upper-bound block has another
+  predecessor, the rejection destinations differ, the compared SSA values or
+  integer types differ, either comparison result is shared, exceptional
+  control targets the private upper block, or a rejection `phi` distinguishes
+  the original edges;
+  successor `phi` inputs on an otherwise safe moved edge must continue to name
+  the actual predecessor;
   straight-line merging must preserve the
   serialized LowIR rule that every temporary definition precedes every use
 - removal of a conditional edge whose target ends in the PA13 `unreachable`

@@ -2285,6 +2285,59 @@ and G2/G3 final hash
 The complete O2 and O3 self/inception comparisons take 52.83 and 48.36
 seconds respectively with 32 build and object workers.
 
+### D.zero-bounded-signed-range retained
+
+The next self-versus-GCC profile comparison isolated one remaining source
+shape that GCC already canonicalized but the self compiler did not.  A signed
+validation of one SSA value first rejected `x < 0`, then entered a private
+block that rejected `x > C` for a nonnegative constant `C`.  The equivalent
+single unsigned comparison `x ugt C` removes the intermediate decision.  In
+the tokenizer this occurs in `AppendUTF8`: optimized LowIR loses the private
+block and one comparison/branch pair, the object loses 16 text bytes, and the
+function falls from 0x773 to 0x76b native bytes.
+
+The source-independent O3 transform requires signed i8/i16/i32/i64 operands,
+the same typed SSA value, constant zero and a nonnegative upper bound,
+single-use comparison results, one ordinary predecessor for the otherwise
+two-instruction upper block, a common rejection destination, and no rejection
+phi that distinguishes the two original edges.  It repairs phis on the moved
+accept edge.  A cheap terminal-pattern scan runs before graph/use construction,
+and the transform removes the now-unreachable block itself.  An initial form
+then reran simplify, DCE, and CFG cleanup after every fold; 22 requested-O3
+hot lanes per side put that form at 1.00517x aggregate CPU.  Removing those
+redundant cleanups left the tokenizer object byte-identical and changed the
+same oracle to 0.99740x CPU and 0.99793x wall.  The final pass remains one
+bounded attempt per function rather than a fixed point.
+
+The clean G2 compiler has 7,970,114 bytes of ELF `.text`, 3,760 bytes above
+the accepted 7,966,354-byte producer because of the implementation, but 48
+bytes below G1 after self-application.  On the fixed O1 compile it executes
+4,295,303,367 instructions versus 4,303,862,921 for the accepted producer
+(-8,559,554, -0.19888%).  The same-source GCC control moves from
+2,423,316,717 to 2,423,347,366 (+0.00126%), for a normalized instruction
+ratio of 0.997999x (-0.20014%).  At requested O3, self moves from
+4,312,137,267 to 4,303,639,623 (-8,497,644, -0.19706%) while GCC moves from
+2,425,815,071 to 2,425,765,241 (-0.00205%); normalized O3 is 0.998050x
+(-0.19501%).  Every profiled output is byte-identical at its requested level.
+
+After several whole blocks were rejected intact for isolated 812--822 second
+host events, a clean reversed 32-way O3 block measured candidate/baseline at
+0.98539x wall and 0.99850x aggregate CPU.  A clean 32-way O1 block measured
+0.96249x wall and 0.99292x CPU.  Both O1 producers emitted the same 219-object
+manifest and final compiler; the O3 sides were internally deterministic and
+differed only by the intended self-applied range fold.
+
+PA37 documents the rule and owns a property/behavior reducer.  It proves
+O0--O2 isolation, the positive unsigned replacement, accept-edge phi repair,
+serialized O1/O3 replay, and guards for distinct rejection targets, distinct
+SSA values, a shared upper block, a shared predicate, and a rejection phi.
+PA38 receives no new contract because neither MIR semantics nor native
+encoding changed.  G2 and G3 match all 219 objects and final compiler hash
+`3bc6cd9f5f61f2ee6f67719a3867b8c565c9da054d90defa211583f1640b3ab0`.
+PA37 passes 188/188, PA38 passes 45/45, and the through-PA38 report passes
+5,471/5,471.  PA37/PA38 debug and object-round-trip lanes pass, and the PA39
+file audit remains at zero fatal findings and the established 32 warnings.
+
 ### Rejected terminal return-address load folding
 
 An O2+ MIR prototype folded the exact terminal sequence `lea address`,
@@ -2401,6 +2454,7 @@ Fill one row for every retained or rejected dose.
 | D.merge-phi-register | reuse the exact local-phi interval proof for acyclic O2/O3 merge phis | none; rejected before contract movement | G1 +256 text and O1 output exact; G2 self-applied to -74,224 text but changed O1 MIR/object despite exact LowIR | G1 hot Ir +0.0012%; G2 performance invalidated by miscompile | O0 exact; G2 repeat deterministic; G2-to-G3 failed across unrelated TUs; prototype removed | rejected as unsound; predecessor transfers need a stronger proof |
 | D.terminal-address-load | fold a terminal `lea`/load/return into one representable indexed load | none; rejected before contract movement | two hot returns each -1 MIR/-3 bytes; G2 producer +1,952 text; hot Ir -0.4422%; O1 output exact | self wall/CPU 1.01030x/0.99976x; GCC 0.99918x/0.99882x; normalized 1.0111x/1.0009x | PA38 45/45; exact 219-object manifest/final; G1/G2 distinction verified; prototype removed | rejected; deterministic saving is normalized-flat and wall-negative |
 | D.trivial-bool-repeat | repeat the retained Boolean-diamond fold to a bounded per-function fixed point | none; rejected before contract movement | nine more tokenizer diamonds removed; tokenizer -352 text; G2 producer -14,704 text; hot Ir -0.0143% | hot native flat; clean all-32 O3 CPU about +0.8--1.0%, reproduced with reversed order | deterministic 219-object outputs; candidate G3 hash recorded; prototype removed | rejected; cold size saving does not repay repeated O3 work/layout loss |
+| D.zero-bounded-range | combine a private O3 `x < 0` / `x > C` signed rejection chain into one unsigned bound | PA37 README plus O0--O2 isolation, structural guards, phi repair, replay, and behavior property; PA38 unchanged | `AppendUTF8` 0x773 to 0x76b; tokenizer -16 text; G2 producer +3,760 text implementation cost | O1 Ir -0.1989%, normalized -0.2001%; O3 Ir -0.1971%, normalized -0.1950%; clean full O1 wall/CPU -3.75%/-0.71%, O3 -1.46%/-0.15% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; all 219 G2/G3 objects and final hash exact | retained; prefilter and no redundant cleanup preserve raw O3 direction |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

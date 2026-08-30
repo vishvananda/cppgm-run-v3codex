@@ -55,6 +55,26 @@ bool has_direct_boolean_phi_branch(const Function & function)
   return false;
 }
 
+bool has_zero_bounded_signed_branch_candidate(const Function & function)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    if(instructions.size() < 2) continue;
+    const Instruction & compare = instructions[instructions.size() - 2];
+    const Instruction & branch = instructions.back();
+    if(compare.kind == Instruction::IK_CMP &&
+       compare.op.kind == LowOperation::LOP_LT &&
+       compare.first.kind == Operand::OP_TEMP &&
+       lowir_opt::is_zero(compare.second) &&
+       branch.kind == Instruction::IK_BRANCH &&
+       branch.first.kind == Operand::OP_TEMP &&
+       branch.first.value == compare.dest)
+      return true;
+  }
+  return false;
+}
+
 void find_terminal_phi_candidates(const Function & function,
 				  bool * return_chain,
 				  bool * return_branch)
@@ -652,6 +672,86 @@ bool fold_nonzero_underflow_branches(Function * function, Stats * stats)
     }
   }
   return changed;
+}
+
+bool fold_zero_bounded_signed_branch(Function * function, Stats * stats)
+{
+  if(!has_zero_bounded_signed_branch_candidate(*function)) return false;
+  const Graph graph = build_graph(*function, stats);
+  const std::vector<std::size_t> uses = value_uses(*function);
+  for(std::size_t lower_block = 0;
+      lower_block < function->blocks.size(); ++lower_block) {
+    Block & lower = function->blocks[lower_block];
+    if(lower.instructions.size() < 2) continue;
+    Instruction & lower_compare =
+      lower.instructions[lower.instructions.size() - 2];
+    Instruction & lower_branch = lower.instructions.back();
+    if(lower_compare.kind != Instruction::IK_CMP ||
+       lower_compare.op.kind != LowOperation::LOP_LT ||
+       lower_compare.first.kind != Operand::OP_TEMP ||
+       lower_compare.second.kind != Operand::OP_INTEGER ||
+       !lower_compare.second.has_int_value ||
+       lower_compare.second.int_value != 0 ||
+       (lower_compare.type.kind != lowir_model::LTK_I8 &&
+        lower_compare.type.kind != lowir_model::LTK_I16 &&
+        lower_compare.type.kind != lowir_model::LTK_I32 &&
+        lower_compare.type.kind != lowir_model::LTK_I64) ||
+       !lower_compare.dest.valid() || lower_compare.dest >= uses.size() ||
+       uses[lower_compare.dest] != 1 ||
+       lower_branch.kind != Instruction::IK_BRANCH ||
+       lower_branch.first.kind != Operand::OP_TEMP ||
+       lower_branch.first.value != lower_compare.dest ||
+       lower_branch.second.kind != Operand::OP_LABEL ||
+       lower_branch.third.kind != Operand::OP_LABEL)
+      continue;
+
+    const lowir_model::BlockId rejected = lower_branch.second.block;
+    const lowir_model::BlockId upper_id = lower_branch.third.block;
+    const std::size_t upper_block = graph.find(upper_id);
+    if(upper_block >= function->blocks.size() ||
+       graph.predecessors[upper_block].size() != 1 ||
+       graph.predecessors[upper_block][0] != lower_block)
+      continue;
+    const Block & upper = function->blocks[upper_block];
+    if(upper.instructions.size() != 2 ||
+       static_cast<std::uint32_t>(upper.id) >= graph.eh_targets.size() ||
+       graph.eh_targets[static_cast<std::uint32_t>(upper.id)])
+      continue;
+    const Instruction & upper_compare = upper.instructions[0];
+    const Instruction & upper_branch = upper.instructions[1];
+    if(upper_compare.kind != Instruction::IK_CMP ||
+       upper_compare.op.kind != LowOperation::LOP_GT ||
+       upper_compare.first.kind != Operand::OP_TEMP ||
+       upper_compare.first.value != lower_compare.first.value ||
+       upper_compare.second.kind != Operand::OP_INTEGER ||
+       !upper_compare.second.has_int_value ||
+       upper_compare.second.int_value < 0 ||
+       !lowir_model::same_lowir_type(
+         upper_compare.type, lower_compare.type) ||
+       !upper_compare.dest.valid() || upper_compare.dest >= uses.size() ||
+       uses[upper_compare.dest] != 1 ||
+       upper_branch.kind != Instruction::IK_BRANCH ||
+       upper_branch.first.kind != Operand::OP_TEMP ||
+       upper_branch.first.value != upper_compare.dest ||
+       upper_branch.second.kind != Operand::OP_LABEL ||
+       upper_branch.third.kind != Operand::OP_LABEL ||
+       upper_branch.second.block != rejected)
+      continue;
+    // Both original rejection edges would become the same predecessor.  A
+    // rejection phi can distinguish negative values from values above C, so
+    // it cannot in general be represented after the edge collapse.
+    if(block_has_phi(*function, graph, lower_branch.second)) continue;
+
+    lower_compare.op.kind = LowOperation::LOP_UGT;
+    lower_compare.second = upper_compare.second;
+    lower_branch.third = upper_branch.third;
+    lowir_phi_edges::rewrite_moved_phi_edges(
+      function, lower_branch, upper.id, lower.id);
+    if(stats) ++stats->predicate_range_folds;
+    remove_unreachable_blocks(function, stats);
+    return true;
+  }
+  return false;
 }
 
 bool fold_edge_known_branches(Function * function, Stats * stats)

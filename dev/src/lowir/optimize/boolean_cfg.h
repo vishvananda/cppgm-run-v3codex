@@ -34,6 +34,11 @@ bool fold_edge_known_branches(
 // establishes that the same SSA value, or a stable reload of it, is nonzero.
 bool fold_nonzero_underflow_branches(
   lowir_model::Function * function, Stats * stats);
+// Replace a two-edge signed rejection of x < 0 followed by x > C with the
+// equivalent single unsigned x > C branch.  The intermediate block must be
+// private and otherwise contain only its comparison and branch.
+bool fold_zero_bounded_signed_branch(
+  lowir_model::Function * function, Stats * stats);
 // Thread a two-input scalar phi through a short terminal scalar chain or a
 // branch with a direct-return successor.  This is an O3 pipeline dose;
 // ordinary CFG cleanup does not invoke it.

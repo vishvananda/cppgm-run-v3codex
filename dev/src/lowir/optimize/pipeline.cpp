@@ -2547,6 +2547,7 @@ void finish_optimizer_pipeline(
   // repeated CFG proof to callers that an inlining wave actually changed.
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     if(level >= 3) {
+      fold_zero_bounded_signed_branch(&program.functions[i], stats);
       if(fold_trivial_boolean_phi_diamond(&program.functions[i], stats)) {
         lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
         timed_function_pass(simplify_values, &program.functions[i], stats,
