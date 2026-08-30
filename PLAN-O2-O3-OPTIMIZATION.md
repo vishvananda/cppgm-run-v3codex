@@ -3161,6 +3161,46 @@ PA37 README or property test was added for rejected behavior; PA38 was
 unaffected.  A successor needs a code-generation improvement inside the
 range search or its call sites rather than another ownership-only retry.
 
+### Rejected query-family fast-postcondition helper
+
+The retained repeat-stable-query pass removes 31 exact-signature `Peek(0)`
+calls, but the optimized tokenizer still executes the specialized query about
+18.09 million times.  A deliberately unsafe upper-bound prototype treated a
+normally returning higher-index call in the same specialization family as if
+it preserved the earlier zero-index scalar result.  It removed another 12
+static full-query calls and 6.60 million dynamic calls, reduced the hot
+Callgrind total from 4,152,374,237 to 4,051,687,396 instructions (-2.425%),
+and improved a 20-observation native screen by 1.74%.  That result was useful
+only as a ceiling: `Peek(n)` can extend and mutate the queue, so reusing the
+old scalar is not a valid transformation.
+
+A safer prototype retained only the control fact implied by a normally
+returning higher-index query, then redirected a later `Peek(0)` to a generated
+fast helper which reloads the current head value.  The helper avoided the
+full query guard without assuming that memory or the old result survived.
+During the first self build this experiment also exposed a dataflow-meet bug:
+when predecessor facts differed, the prototype cleared the exact value but
+incorrectly kept the first predecessor's fast fact.  The resulting compiler
+could loop in tokenization.  Intersecting the fast fact independently at
+every join fixed the failure; the corrected compiler completed the tiny and
+hot O1 probes promptly and emitted byte-exact objects.
+
+The corrected shape replaced 19 full specialized-query calls with calls to a
+30-byte reload helper.  It grew the tokenizer by 51 text bytes and a fresh
+32-way self compiler by 12,096 text bytes and 16 data bytes.  Both producers
+emitted the exact hot object at
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`.
+Twenty position-balanced software `task-clock` observations per side averaged
+859.673 ms for baseline and 867.732 ms for candidate, an aggregate ratio of
+1.00937x.  Every one of the ten balanced blocks favored the baseline.  Thus
+the safe part of the idea is almost 1% slower and increases code size; the
+large upper-bound gain depended on the invalid cached-value reuse.
+
+Both prototypes were removed before full-workload or inception escalation.
+No PA37 README or property test was added for rejected behavior; PA38 was
+unaffected.  A future retry would need a sound memory-value proof strong
+enough to recover the scalar reuse itself, not merely a postcondition helper.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3239,6 +3279,7 @@ Fill one row for every retained or rejected dose.
 | D.correlated-constant-group | specialize all correlated constant/global parameters within one four-site O3 call group | none; rejected behavior was not moved into PA37; PA38 unchanged | four E1-table calls lose two arguments; 74-byte clone; tokenizer +26 text bytes | exact fast oracle +236,392 Ir (+0.0531%); specialized helper path itself +472,764 Ir | immediate deterministic rejection; prototype removed before fixed point | rejected; parameter removal does not simplify the binary-search loop |
 | D.copy80 | select direct vector chunks for exact 80-byte O2+ copies | none; rejected behavior was not moved into PA38; PA37 unchanged | deque swap 241 to 372 bytes; macro object +176 text; producer +3,892 text | 20 observations/side: aggregate task-clock 0.99915x; pair mean 0.99916x, median 0.99989x; warm pair mean 1.00051x | exact generated object; fresh 32-way candidate self compiler; prototype removed before full/inception gate | rejected; native CPU is flat while code grows |
 | D.shared-loop-owner | localize two calls to one shared loop inside a multiply-used acyclic wrapper, then preserve that cyclic wrapper | none; rejected behavior was not moved into PA37; PA38 unchanged | retained 192-byte identifier wrapper; `Run` -172 bytes; tokenizer +108 text; producer +2,816 text/+16 data | 20 observations/side: aggregate task-clock 1.00329x; balanced-block mean 1.00337x; medians 864.125/867.515 ms | exact fixed-O1 hot object; fresh 32-way self compiler; prototype removed before full/inception gate | rejected; GCC-like ownership alone is slightly slower on this backend |
+| D.query-family-fast | carry a general query's fast-return postcondition to later zero-index calls and reload through a generated helper | none; rejected behavior was not moved into PA37; PA38 unchanged | unsafe ceiling removed 6.60M dynamic full calls and -2.425% hot Ir; corrected helper redirected 19 static calls, tokenizer +51 text, producer +12,096 text/+16 data | unsafe ceiling -1.74% task-clock but invalid; corrected 20-observation aggregate 1.00937x and all ten blocks slower | corrected tiny/hot outputs exact; join bug reproduced and fixed in prototype; all code removed before full/inception gate | rejected; safe guard elimination is slower and the apparent win required unsound cached-value reuse |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
