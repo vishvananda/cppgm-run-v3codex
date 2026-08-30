@@ -2990,6 +2990,76 @@ or property movement.  A successor must eliminate transfers or use a bounded
 call-free caller-saved segment; complete-home callee-save promotion is not a
 useful retry.
 
+### Selected-parameter index-home correctness backfill
+
+The first fixed-point build of the next native experiment exposed a general
+pre-existing lowering bug rather than a failure of the experiment.  A
+constant-index operation could switch from an intact incoming parameter
+carrier to its preselected optional parameter home.  The encodable/deferred
+path marked the setup transfer as required, but the materialized-index path
+did not.  Under the self compiler this let `std::vector::insert(const T&)`
+read an uninitialized `r8` after an EH marker and made G1 segfault while
+building G2.
+
+The fix marks the selected parameter home required as soon as lowering elects
+to use it, independently of the later address-encoding path.  PA38 now states
+that contract and its control uses EH, a large prefix copy, a post-copy
+constant index, and a throwing noinline reader.  The structural assertion is
+register-agnostic: it accepts either the intact ABI carrier or a defined
+register/frame home and rejects only an uninitialized alternate home.  The
+behavior and direct-driver replay run at O1, O2, and O3.  PA38 passes 45/45
+and the through-PA38 report passes 5,470/5,470.  This correctness checkpoint
+is commit `cd335c0a`; it was pushed before performance work resumed.
+
+### Rejected guarded frame-store sinking
+
+The residual tokenizer profile showed a compiler-created frame value stored
+immediately before a scalar null guard, reloaded only below one arm, and then
+read repeatedly there.  A bounded O3 prototype recognized only an exact
+store/reload/test/conditional tail, required a non-debug temporary binding,
+required every other reference to be a same-type nonvolatile reload, and
+moved the store only to a direct single-predecessor successor proven to
+dominate every reload.  It removed the pre-guard store and reload while
+retaining the value in its defining register across the guard.
+
+The local saving was real.  `pp_tokenizer.o` lost 16 text bytes and
+`TranslationCursor::Next` lost 12 bytes.  The exact 634,463-byte tokenizer
+oracle fell from 444,824,631 to 443,592,542 instructions (-0.2770%), with
+`Next` itself falling from 38,863,701 to 37,631,612 (-3.1703%).  An
+output-exact requested-O3 compile fell from 4,152,374,237 to 4,136,015,572
+instructions (-0.3940%); the same-source GCC control rose only 0.0012%, for a
+normalized deterministic ratio of about 0.99605x.  G1 and G2 matched at
+compiler hash
+`b15af072861d46ee0a0c77b1805e5531dbe1ded258ce627f5046ab9500effd88`.
+
+The producer and representative timing did not justify retention.  The
+implementation added 16,536 text bytes to `native/mir/optimize.o`; after 29
+other objects changed, the linked compiler was still 17,952 text bytes larger
+than the clean `cd335c0a` baseline.  A twelve-pair position-balanced all-32 O1
+workload gave pair-median self ratios of 0.99533x wall and 1.00043x aggregate
+CPU.  GCC ratios were 0.98963x and 0.99582x, so normalized medians regressed to
+1.01030x wall and 1.00406x CPU.  Mean ratios told the same story: self
+0.99595x/0.99951x, GCC 0.98881x/0.99529x, and normalized
+1.00722x/1.00424x.  All lanes compiled 219 objects; invariant implementation
+objects were exact within each producer/source class, while the harness's
+lane-specific default object-root string intentionally varied the entry
+object.
+
+A destructive-interference control moved the implementation to a final
+separate translation unit.  It preserved the transformed objects and
+deterministic gain, reduced linked growth to 15,680 text bytes, and reached an
+exact 220-object G1/G2 fixed point.  Once the extra source compilation was
+counted, however, its three self CPU pairs were -0.09%, +0.13%, and +0.35%; the
+median raw CPU ratio regressed about 0.13%.  One later GCC lane was visibly
+host-contaminated and the declared GCC window was discarded, but the already
+negative raw self result was sufficient to reject the isolated dose.
+
+Both forms were removed.  No PA38 README or property fixture was added for
+rejected behavior; PA37 was unaffected.  The fast tokenizer and no-cache
+Callgrind oracles remain useful screening tools, but a small dynamic store
+saving must not be retained when representative normalized throughput moves
+the other way.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3063,6 +3133,8 @@ Fill one row for every retained or rejected dose.
 | D.cyclic-dead-parameter | reclaim a dead incoming parameter register in a cycle only when neither the parameter nor a register-backed deferred address can be replayed from that cycle | none; rejected behavior was not moved into PA38 | `FindChild` 48 to 45 MIR and 177 to 166 bytes; corrected fixed-point producer -6,348 `.text`; O0/O1 representative outputs exact | O1 wall/CPU 0.98499x/1.00252x; O3 wall/CPU 1.05614x/1.01239x | initial G2 crash diagnosed as a replayed deferred address; corrected all-32 G1/G2 exact at 219 objects and final hash `874c5fba...` | rejected and removed; representative O3 regresses despite the local allocation win |
 | D.dynamic-index-takeover | reuse a final-use dynamic-index base only for a short, repeated-use, call-free range after allocation fails | none; rejected behavior was not moved into PA38; PA37 unchanged | `FindEntry` 84 to 80 MIR, frame 32 to 16, one save removed; narrowed six-TU screen changed only two `program.cpp` functions; fixed-point producer +756 `.text` | O1 normalized wall/CPU 1.05185x/1.00801x; O3 raw self 1.01325x/1.00613x and normalized 0.99478x/1.00110x | O0/O1 MIR exact; 219 G2/G3 objects and final hash `608dd02b...` exact | rejected and removed; local frame win does not improve normalized CPU or raw throughput |
 | D.complete-scalar-home | replace every load/store/compare of one heavily reused compiler scalar frame home with an unused callee-saved register | none; rejected behavior was not moved into PA38; PA37 unchanged | tokenizer `.text` 28,949 to 29,095; `Next` 4,157 to 4,217 bytes; output exact | tokenizer oracle 444,824,631 to 448,205,534 Ir (+0.7601%); `Next` 38,878,635 to 41,343,637 (+6.3393%) | five-second instruction-address oracle exact; full workload unwarranted; prototype removed | rejected; four instructions/call of save/restore/alignment tax outweigh unchanged move count |
+| D.selected-parameter-index-home | preserve the setup transfer whenever constant-index lowering selects an optional parameter home | PA38 README plus O1/O2/O3 structural, behavior, EH, and direct-driver replay property; PA37 unchanged | fixes an uninitialized alternate parameter carrier after a large copy and EH marker | correctness-only; no performance claim | PA38 45/45; 5,470/5,470 through report; original G1 crash reproduced before the fix | retained correctness backfill in pushed commit `cd335c0a` |
+| D.guarded-frame-store | sink one exact temporary frame definition below the only scalar-guard arm that dominates all later reloads | none; rejected behavior was not moved into PA38; PA37 unchanged | tokenizer -16 text bytes; `Next` -12; producer +17,952; isolated producer +15,680 and one workload object | hot Ir -0.3940%, normalized -0.395%; 12-pair normalized medians +1.030% wall/+0.406% CPU; isolated raw CPU median +0.13% | inline G1/G2 exact at 219 objects; isolated G1/G2 exact at 220; prototypes removed | rejected; local instruction saving loses to representative normalized cache/layout behavior |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
