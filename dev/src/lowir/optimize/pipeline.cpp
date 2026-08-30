@@ -2045,6 +2045,18 @@ bool timed_cfg(Function * function, Stats * stats,
       std::chrono::steady_clock::now() - started).count());
   return changed;
 }
+bool timed_terminal_phi_returns(Function * function, Stats * stats)
+{
+  if(!stats) return thread_terminal_phi_returns(function, 0);
+  ++stats->o3_terminal_phi_runs;
+  const std::chrono::steady_clock::time_point started =
+    std::chrono::steady_clock::now();
+  const bool changed = thread_terminal_phi_returns(function, stats);
+  stats->o3_terminal_phi_nanoseconds += static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - started).count());
+  return changed;
+}
 bool prepare_for_inlining(Function * function,
                           const FunctionBoundaries & boundaries,
                           Stats * stats,
@@ -2534,6 +2546,18 @@ void finish_optimizer_pipeline(
   // final O1 load-reuse pass has exposed their shared SSA value.  Restrict the
   // repeated CFG proof to callers that an inlining wave actually changed.
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    if(level >= 3) {
+      for(std::size_t round = 0; round < 4; ++round) {
+        if(!timed_terminal_phi_returns(&program.functions[i], stats)) break;
+        if(round == 3 && stats) ++stats->o3_terminal_phi_round_cap_hits;
+        lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
+        timed_function_pass(simplify_values, &program.functions[i], stats,
+          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+          &simplify_arena);
+        timed_dce(&program.functions[i], boundaries, stats, &dce_scratch);
+        timed_cfg(&program.functions[i], stats, &cfg_scratch, &analysis);
+      }
+    }
     if(inlined_symbols[program.functions[i].symbol] &&
        fold_nonzero_underflow_branches(&program.functions[i], stats)) {
       lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);

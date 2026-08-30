@@ -29,6 +29,11 @@ bool fold_edge_known_branches(
 // establishes that the same SSA value, or a stable reload of it, is nonzero.
 bool fold_nonzero_underflow_branches(
   lowir_model::Function * function, Stats * stats);
+// Thread a two-input scalar phi through a short terminal scalar chain or a
+// branch with a direct-return successor.  This is an O3 pipeline dose;
+// ordinary CFG cleanup does not invoke it.
+bool thread_terminal_phi_returns(
+  lowir_model::Function * function, Stats * stats);
 // Terminal folding, unreachable-block removal with dead-edge value
 // rematerialization, jump bypassing, and forward block merging.  Functions
 // containing phis stop after the two folds above; their CFG stays stable

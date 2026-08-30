@@ -1895,6 +1895,69 @@ The out-of-line predicate itself remains a better target: its 185-byte self
 body materializes Boolean joins through frame slots, whereas GCC threads the
 choices into returns after inlining the predicate.
 
+### D.terminal-phi-return O3 terminal return threading retained
+
+The residual comparison above identified a narrower form of GCC's control-
+flow advantage that does not require inlining the identifier predicate.  At
+the end of O3, the retained dose moves a two-input scalar phi and up to three
+one-use `convert`, `cmp`, or `unary` operations from a terminal return join
+onto its two direct incoming edges.  It also moves a two-input `u8` or `i64`
+phi used directly by a branch when at least one successor is a direct return.
+The proof rejects shared values, longer or non-linear scalar chains, secondary
+temporary operands, indirect incoming edges, loops and backedges, exceptional
+regions, and branch successors needing phi repair.  Cleanup is bounded to
+four successful rounds per function and is isolated from O1 and O2.
+
+PA37 documents that source-independent contract and owns a property fixture
+with both eligible forms, shared-value and long-chain guards, O1/O2 isolation,
+bounded statistics, serialized-LowIR replay through the compiler driver, and
+behavior.  The checker tests structural properties rather than complete
+program text, exact generated names, or a fixed compiler output.
+
+The fixed O1 hot object remains exact at
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`.
+The retained O3 producer reduces its Callgrind instruction count from
+4,447,750,256 to 4,388,177,694 (-1.3394%).  The tokenizer object loses 84 text
+bytes, and the hot out-of-line identifier predicate falls from 185 to 109
+bytes with its frame eliminated.  The clean fixed-point producer is
+`5157235e785e72b59d6b1e5c77bfdb3bb7ddd6f735e0d8c36febe03e4941a826`
+with 8,715,932 text bytes, 9,700 bytes above the accepted producer.
+
+Three clean all-32 ABBA blocks over the complete requested-O1 workload are
+exact at one 219-object manifest and final compiler.  Mean wall falls from
+30.625 to 30.138 seconds (-1.59%) and aggregate CPU from 850.617 to 841.057
+seconds (-1.12%); paired medians improve 2.03% and 1.11%, with all three CPU
+blocks favorable.  The valid same-source GCC control moves +1.06% wall and
+-0.14% CPU, so mean normalization is 0.9737x wall and 0.9902x CPU; paired-
+median normalization is 0.9642x and 0.9898x.
+
+At requested O3, each producer is internally deterministic: the accepted
+producer emits final hash
+`278bcf604f412b836c7e33174567da7f19ad0da5119c4c43068c2927cbf3a8d3`,
+while the retained producer emits
+`5157235e785e72b59d6b1e5c77bfdb3bb7ddd6f735e0d8c36febe03e4941a826`.
+Mean wall falls from 30.228 to 30.030 seconds (-0.66%) and aggregate CPU from
+849.245 to 843.133 seconds (-0.72%).  The paired medians improve 0.45% wall
+and 0.75% CPU, and every CPU block is favorable.  The same-source GCC control
+moves +1.04% wall and +0.04% CPU, giving mean-normalized ratios of 0.9832x
+wall and 0.9924x CPU and paired-median ratios of 0.9907x and 0.9928x.
+
+The final inception gate also exposed why fresh roots are mandatory.  An
+incrementally reused producer tree predated the added `Stats` fields, while
+the self-host compiler had accepted `-MMD` without creating the requested
+dependency files.  Its stale entry object therefore differed from a clean
+inception object.  All timings from that producer were discarded.  A clean
+generation built by the accepted compiler produced the expected G1 hash;
+that compiler produced the G2 hash above; and a clean G3 build matched every
+G2 object and the final compiler.  This is one expected bootstrap generation
+for an optimization that changes the compiler's own O3 output, followed by an
+exact fixed point, not an ignored inception mismatch.
+
+PA37 passes 188/188, PA38 passes 45/45, and the through-PA38 report passes
+5,471/5,471.  PA37/PA38 debug and object-round-trip lanes pass, and the PA39
+file audit has zero fatal findings.  The retained decision uses only the clean
+fixed-point producer and the clean G2/G3 all-32 inception comparison.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1946,6 +2009,7 @@ Fill one row for every retained or rejected dose.
 | D.query-local-store | preserve a repeat-stable query result across writes to proven nonescaping caller-local slots | none; rejected at static census | optimized tokenizer LowIR and object unchanged | no timing warranted | accepted tokenizer rebuilt exact at `81aa9bd37bcb3b53cf72b77856d810cbb816e4858f2b7f1ae83923adcff4cc0b`; prototype removed | rejected; remaining availability barriers are calls rather than caller-local stores |
 | D.secondary-group | admit one additional same-parameter integer-constant group under the retained cleaned-body payoff proof | none; rejected at static census | no second clone passed payoff, including at a four-call secondary floor; tokenizer output unchanged | no timing warranted | focused O3 LowIR/object checks exact; prototype removed | rejected; no profitable compiler population |
 | D.loop-wrapper-inline | inline one small acyclic wrapper around a loop helper at its unique innermost-loop call | none; rejected before contract movement | one 3,623,141-execution call removed; optimized LowIR +58 lines; `Run` +197 native bytes; tokenizer +208 text; producer +6,704 text | sixteen exact hot lanes about +3% wall/user | deterministic hot output; candidate removed before Callgrind/full gate | rejected; wrapper removal still duplicates and enlarges the hot loop region |
+| D.terminal-phi-return | move a bounded terminal scalar phi/chain or return-adjacent phi branch onto two direct incoming edges | PA37 README plus positive forms, guard, level-isolation, bounded-stats, replay, and behavior property | tokenizer -84 text bytes; identifier predicate 185 to 109 bytes and frameless; fixed-point producer +9,700 text; hot Ir -1.3394%; O1/O2 isolated | O1 workload -1.59% wall/-1.12% CPU, normalized -2.63%/-0.98%; O3 workload -0.66% wall/-0.72% CPU, normalized -1.68%/-0.76% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; stale incremental producer discarded; clean G2/G3 all-32 inception exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

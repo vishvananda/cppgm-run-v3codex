@@ -207,6 +207,11 @@ struct Stats
   std::size_t partial_inline_census_backedge_stops = 0;
   std::size_t partial_inline_census_join_stops = 0;
   std::size_t predicate_range_folds = 0;
+  std::size_t o3_terminal_phi_runs = 0;
+  std::size_t o3_terminal_phi_merges = 0;
+  std::size_t o3_terminal_phi_incoming_edges = 0;
+  std::size_t o3_terminal_phi_cloned_instructions = 0;
+  std::size_t o3_terminal_phi_round_cap_hits = 0;
   std::size_t adjacent_scalar_copy_runs = 0;
   std::size_t adjacent_scalar_copy_groups = 0;
   std::size_t adjacent_scalar_copy_bytes = 0;
@@ -339,6 +344,7 @@ struct Stats
   std::uint64_t loop_nanoseconds = 0;
   std::uint64_t o3_unroll_nanoseconds = 0;
   std::uint64_t o3_loop_inline_nanoseconds = 0;
+  std::uint64_t o3_terminal_phi_nanoseconds = 0;
   std::uint64_t late_inline_nanoseconds = 0;
   std::uint64_t post_prune_inline_nanoseconds = 0;
   std::uint64_t partial_inline_census_nanoseconds = 0;

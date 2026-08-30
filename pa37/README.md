@@ -570,6 +570,22 @@ predecessor, is an exceptional-handler target, compares a different typed
 value, or removing the untaken edge would require phi repair.  `-O1` and
 `-O2` retain these downstream comparisons.
 
+At the end of `-O3`, a two-input scalar phi used only to produce a return may
+be moved back onto its two incoming edges.  Each predecessor must jump
+directly to the phi block, and the value between the phi and return may pass
+through no more than three `convert`, `cmp`, or `unary` instructions.  Those
+small, side-effect-free calculations are copied onto the incoming edges so
+the join and its return can disappear.  A two-input `u8` or `i64` phi used
+only as a branch condition may be moved in the same way when at least one
+branch destination is a direct return.
+
+Keep the join when the phi value is shared, the terminal scalar chain is
+longer than three instructions, control is loop-carried, an exceptional
+region is present, either incoming edge is not a direct jump, or moving a
+branch would require successor-phi repair.  The final cleanup performs no
+more than four successful terminal-phi cleanup rounds per function.  `-O1`
+and `-O2` do not perform this terminal return threading.
+
 General slot-value forwarding beyond complete eligible-slot promotion remains
 an `-O2` responsibility. At `-O1`, a live load whose value is consumed along
 multiple successor paths must remain unless the slot is fully promotable or an

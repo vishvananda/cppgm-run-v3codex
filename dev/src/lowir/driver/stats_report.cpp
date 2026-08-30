@@ -377,6 +377,14 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " partial_inline_census_join_stops="
 		 << stats.partial_inline_census_join_stops
 		 << " predicate_range_folds=" << stats.predicate_range_folds
+		 << " o3_terminal_phi_runs=" << stats.o3_terminal_phi_runs
+		 << " o3_terminal_phi_merges=" << stats.o3_terminal_phi_merges
+		 << " o3_terminal_phi_incoming_edges="
+		 << stats.o3_terminal_phi_incoming_edges
+		 << " o3_terminal_phi_cloned_instructions="
+		 << stats.o3_terminal_phi_cloned_instructions
+		 << " o3_terminal_phi_round_cap_hits="
+		 << stats.o3_terminal_phi_round_cap_hits
 		 << " adjacent_scalar_copy_runs="
 		 << stats.adjacent_scalar_copy_runs
 		 << " adjacent_scalar_copy_groups="
@@ -535,6 +543,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " loop_ns=" << stats.loop_nanoseconds
 		 << " o3_unroll_ns=" << stats.o3_unroll_nanoseconds
 		 << " o3_loop_inline_ns=" << stats.o3_loop_inline_nanoseconds
+		 << " o3_terminal_phi_ns=" << stats.o3_terminal_phi_nanoseconds
 		 << " late_inline_ns=" << stats.late_inline_nanoseconds
 		 << " post_prune_inline_ns="
 		 << stats.post_prune_inline_nanoseconds

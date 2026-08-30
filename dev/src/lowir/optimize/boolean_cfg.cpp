@@ -55,6 +55,34 @@ bool has_direct_boolean_phi_branch(const Function & function)
   return false;
 }
 
+void find_terminal_phi_candidates(const Function & function,
+				  bool * return_chain,
+				  bool * return_branch)
+{
+  *return_chain = false;
+  *return_branch = false;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    if(instructions.size() >= 3 && instructions.size() <= 5 &&
+       instructions.front().kind == Instruction::IK_PHI &&
+       instructions.back().kind == Instruction::IK_RETURN)
+      *return_chain = true;
+    if(instructions.size() == 2 &&
+       instructions.front().kind == Instruction::IK_PHI &&
+       instructions.back().kind == Instruction::IK_BRANCH)
+      *return_branch = true;
+  }
+}
+
+bool has_secondary_temp_operand(const Instruction & instruction)
+{
+  return (instruction.second.kind == Operand::OP_TEMP &&
+	  instruction.second.value.valid()) ||
+    (instruction.third.kind == Operand::OP_TEMP &&
+	  instruction.third.value.valid());
+}
+
 bool has_edge_known_branch_candidate(
     const Function & function, bool allow_integer_equality,
     std::vector<unsigned char> * seen)
@@ -731,6 +759,247 @@ bool fold_boolean_phi_branch(Function * function, Stats * stats)
     return true;
   }
   return false;
+}
+
+bool thread_terminal_phi_returns(Function * function, Stats * stats)
+{
+  if(function->blocks.empty() ||
+     function->return_type.kind == lowir_model::LTK_VOID)
+    return false;
+  bool return_chain_candidate = false;
+  bool return_branch_candidate = false;
+  find_terminal_phi_candidates(
+    *function, &return_chain_candidate, &return_branch_candidate);
+  if(!return_chain_candidate && !return_branch_candidate) return false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t instruction = 0;
+        instruction < function->blocks[block].instructions.size();
+        ++instruction)
+      if(cleanup_is_eh_instruction(
+           function->blocks[block].instructions[instruction].kind))
+        return false;
+
+  struct IncomingRewrite
+  {
+    std::size_t predecessor;
+    Operand value;
+  };
+  bool changed = false;
+  if(return_chain_candidate) {
+    const std::vector<std::size_t> uses = value_uses(*function);
+    const Graph graph = build_graph(*function, stats);
+    for(std::size_t merge = 0; merge < function->blocks.size(); ++merge) {
+      const Block & merge_block = function->blocks[merge];
+      if(merge_block.instructions.size() < 3 ||
+         merge_block.instructions.size() > 5 ||
+         merge_block.instructions[0].kind != Instruction::IK_PHI ||
+         merge_block.instructions.back().kind != Instruction::IK_RETURN ||
+         graph.eh_targets[static_cast<std::uint32_t>(merge_block.id)])
+        continue;
+      const Instruction phi = merge_block.instructions[0];
+      const Instruction result = merge_block.instructions.back();
+      if(!phi.dest.valid() || phi.args.size() != 4 ||
+         phi.dest >= uses.size() || uses[phi.dest] != 1 ||
+         !lowir_model::same_lowir_type(result.type, function->return_type) ||
+         graph.predecessors[merge].size() != 2)
+        continue;
+      lowir_model::ValueId prior = phi.dest;
+      bool linear = true;
+      for(std::size_t chain = 1;
+          chain + 1 < merge_block.instructions.size(); ++chain) {
+        const Instruction & scalar = merge_block.instructions[chain];
+        if((scalar.kind != Instruction::IK_CONVERT &&
+            scalar.kind != Instruction::IK_CMP &&
+            scalar.kind != Instruction::IK_UNARY) ||
+           !scalar.dest.valid() || scalar.dest >= uses.size() ||
+           uses[scalar.dest] != 1 ||
+           scalar.first.kind != Operand::OP_TEMP ||
+           scalar.first.value != prior ||
+           has_secondary_temp_operand(scalar) || !scalar.args.empty()) {
+          linear = false;
+          break;
+        }
+        prior = scalar.dest;
+      }
+      if(!linear || result.first.kind != Operand::OP_TEMP ||
+         result.first.value != prior)
+        continue;
+
+      std::vector<IncomingRewrite> rewrites;
+      rewrites.reserve(2);
+      bool safe = true;
+      for(std::size_t incoming = 0;
+          incoming < graph.predecessors[merge].size(); ++incoming) {
+        const std::size_t predecessor = graph.predecessors[merge][incoming];
+        const Block & predecessor_block = function->blocks[predecessor];
+        Operand value;
+        if(predecessor == merge || predecessor_block.instructions.empty() ||
+           graph.eh_targets[
+             static_cast<std::uint32_t>(predecessor_block.id)] ||
+           !direct_phi_incoming(phi, predecessor_block.id, &value) ||
+           (value.kind != Operand::OP_TEMP &&
+            !(value.kind == Operand::OP_INTEGER && value.has_int_value))) {
+          safe = false;
+          break;
+        }
+        const Instruction & terminal = predecessor_block.instructions.back();
+        if(terminal.kind != Instruction::IK_JUMP ||
+           terminal.first.kind != Operand::OP_LABEL ||
+           terminal.first.block != merge_block.id) {
+          safe = false;
+          break;
+        }
+        rewrites.push_back(IncomingRewrite{predecessor, value});
+      }
+      if(!safe) continue;
+
+      for(std::size_t rewrite = 0; rewrite < rewrites.size(); ++rewrite) {
+        Block & predecessor = function->blocks[rewrites[rewrite].predecessor];
+        predecessor.instructions.pop_back();
+        Instruction returned = result;
+        const bool direct_boolean_trunc =
+          merge_block.instructions.size() == 3 &&
+          phi.type.kind == lowir_model::LTK_I64 &&
+          merge_block.instructions[1].kind == Instruction::IK_CONVERT &&
+          merge_block.instructions[1].op.kind == LowOperation::LOP_TRUNC &&
+          merge_block.instructions[1].type.kind == lowir_model::LTK_U8 &&
+          rewrites[rewrite].value.kind == Operand::OP_INTEGER &&
+           (rewrites[rewrite].value.int_value == 0 ||
+            rewrites[rewrite].value.int_value == 1);
+        if(direct_boolean_trunc) {
+          returned.first = rewrites[rewrite].value;
+        } else {
+          Operand current = rewrites[rewrite].value;
+          for(std::size_t chain = 1;
+              chain + 1 < merge_block.instructions.size(); ++chain) {
+            Instruction scalar = merge_block.instructions[chain];
+            scalar.dest = lowir_model::append_lowir_fresh_generated_value(
+              *function, scalar.type);
+            scalar.first = current;
+            current = Operand();
+            current.kind = Operand::OP_TEMP;
+            current.value = scalar.dest;
+            predecessor.instructions.push_back(std::move(scalar));
+            if(stats) ++stats->o3_terminal_phi_cloned_instructions;
+          }
+          returned.first = current;
+        }
+        predecessor.instructions.push_back(std::move(returned));
+        if(stats) ++stats->rewrites;
+      }
+      if(stats) {
+        ++stats->o3_terminal_phi_merges;
+        stats->o3_terminal_phi_incoming_edges += rewrites.size();
+      }
+      remove_unreachable_blocks(function, stats);
+      changed = true;
+      break;
+    }
+  }
+
+  if(!return_branch_candidate) return changed;
+
+  const std::vector<std::size_t> uses = value_uses(*function);
+  const Graph graph = build_graph(*function, stats);
+  const lowir_analysis::DominatorTree dom =
+    lowir_analysis::dominators(graph, stats);
+  const lowir_analysis::LoopForest loops =
+    lowir_analysis::discover_loops(*function, graph, dom, stats);
+  for(std::size_t merge = 0; merge < function->blocks.size(); ++merge) {
+    const Block & merge_block = function->blocks[merge];
+    if(merge_block.instructions.size() != 2 ||
+       merge_block.instructions[0].kind != Instruction::IK_PHI ||
+       merge_block.instructions[1].kind != Instruction::IK_BRANCH ||
+       graph.eh_targets[static_cast<std::uint32_t>(merge_block.id)] ||
+       (merge_block.instructions[0].type.kind != lowir_model::LTK_U8 &&
+        merge_block.instructions[0].type.kind != lowir_model::LTK_I64))
+      continue;
+    const Instruction phi = merge_block.instructions[0];
+    const Instruction branch = merge_block.instructions[1];
+    if(!phi.dest.valid() || phi.args.size() != 4 ||
+       phi.dest >= uses.size() || uses[phi.dest] != 1 ||
+       branch.first.kind != Operand::OP_TEMP ||
+       branch.first.value != phi.dest ||
+       branch.second.kind != Operand::OP_LABEL ||
+       branch.third.kind != Operand::OP_LABEL ||
+       merge >= loops.innermost_loop.size() ||
+       loops.innermost_loop[merge] < loops.loops.size() ||
+       graph.predecessors[merge].size() != 2 ||
+       block_has_phi(*function, graph, branch.second) ||
+       block_has_phi(*function, graph, branch.third))
+      continue;
+    const std::size_t true_target = graph.find(branch.second.block);
+    const std::size_t false_target = graph.find(branch.third.block);
+    if(true_target == static_cast<std::size_t>(-1) ||
+       false_target == static_cast<std::size_t>(-1))
+      continue;
+    const bool true_returns =
+      function->blocks[true_target].instructions.size() == 1 &&
+      function->blocks[true_target].instructions[0].kind ==
+        Instruction::IK_RETURN;
+    const bool false_returns =
+      function->blocks[false_target].instructions.size() == 1 &&
+      function->blocks[false_target].instructions[0].kind ==
+        Instruction::IK_RETURN;
+    if(!true_returns && !false_returns) continue;
+
+    std::vector<IncomingRewrite> rewrites;
+    rewrites.reserve(2);
+    bool safe = true;
+    for(std::size_t incoming = 0;
+        incoming < graph.predecessors[merge].size(); ++incoming) {
+      const std::size_t predecessor = graph.predecessors[merge][incoming];
+      const Block & predecessor_block = function->blocks[predecessor];
+      Operand value;
+      if(predecessor == merge || predecessor_block.instructions.empty() ||
+         dom.dominates(merge, predecessor) ||
+         graph.eh_targets[
+           static_cast<std::uint32_t>(predecessor_block.id)] ||
+         !direct_phi_incoming(phi, predecessor_block.id, &value) ||
+         (value.kind != Operand::OP_TEMP &&
+          !(value.kind == Operand::OP_INTEGER && value.has_int_value))) {
+        safe = false;
+        break;
+      }
+      const Instruction & terminal = predecessor_block.instructions.back();
+      if(terminal.kind != Instruction::IK_JUMP ||
+         terminal.first.kind != Operand::OP_LABEL ||
+         terminal.first.block != merge_block.id) {
+        safe = false;
+        break;
+      }
+      rewrites.push_back(IncomingRewrite{predecessor, value});
+    }
+    if(!safe) continue;
+
+    for(std::size_t rewrite = 0; rewrite < rewrites.size(); ++rewrite) {
+      Instruction & terminal =
+        function->blocks[rewrites[rewrite].predecessor].instructions.back();
+      const lowir_model::InstructionDebugLocation old_debug =
+        terminal.debug_location;
+      const Operand value = rewrites[rewrite].value;
+      terminal = Instruction();
+      if(value.kind == Operand::OP_INTEGER) {
+        terminal.kind = Instruction::IK_JUMP;
+        terminal.first = value.int_value ? branch.second : branch.third;
+        terminal.debug_location = old_debug;
+      } else {
+        terminal.kind = Instruction::IK_BRANCH;
+        terminal.first = value;
+        terminal.second = branch.second;
+        terminal.third = branch.third;
+        terminal.debug_location = branch.debug_location;
+      }
+      if(stats) ++stats->rewrites;
+    }
+    if(stats) {
+      ++stats->o3_terminal_phi_merges;
+      stats->o3_terminal_phi_incoming_edges += rewrites.size();
+    }
+    remove_unreachable_blocks(function, stats);
+    return true;
+  }
+  return changed;
 }
 
 
