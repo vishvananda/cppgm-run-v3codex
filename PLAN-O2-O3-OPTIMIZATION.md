@@ -1782,6 +1782,42 @@ The prototype was restored without student-contract or test movement.  Do not
 retry shared loop-shaped helper inlining merely from call frequency; require
 a callee whose body becomes materially simpler under the call-site facts.
 
+### Rejected acyclic selection/compare cascade threading
+
+The accepted `AppendUTF8` profile exposed ten repeated `std::string::push_back`
+capacity selections.  Each tests whether the string uses local storage,
+materializes that Boolean through a two-arm phi, selects either constant
+capacity 15 or a loaded heap capacity through a second phi, and only then
+compares the new size.  A bounded O3 prototype first threaded the scalar
+capacity phi into two incoming compares while preserving the intervening local
+stores.  That form reduced `AppendUTF8` from 495 to 485 MIR instructions and
+from 1,965 to 1,789 bytes, but Callgrind improved only 0.0890% because the
+preceding Boolean frame shuttle remained.
+
+The complete dose therefore required the scalar selection to be immediately
+fed by an exact constant-Boolean diamond and collapsed both selections as one
+structural operation.  It rejected loop-carried, exceptional, phi-target,
+volatile, nonlocal-store, multi-use, and non-two-input shapes.  On the tokenizer
+it removed ten `u8` and ten `i64` phis, reduced optimized LowIR by 70
+instructions, reduced `AppendUTF8` to 405 MIR instructions and 1,509 bytes,
+and reduced the tokenizer object's text by 448 bytes.  The complete O3 producer
+nevertheless grew 7,108 text bytes.  O1 and O2 requested LowIR remained
+byte-exact.  The output-exact hot Callgrind workload fell from 4,447,750,256 to
+4,422,404,305 instructions, a real 25,345,951-instruction or 0.5699% saving.
+
+That local result did not become a material representative O3 win.  Across six
+32-way O1 pairs, every raw CPU pair favored the candidate: mean CPU improved
+0.80% and mean wall was flat.  The same-source GCC control improved 0.34% CPU
+and 1.38% wall, leaving mean normalization at 0.99533x CPU but 1.01380x wall;
+paired-median normalization was 0.99632x CPU and 1.02422x wall.  Requested O3
+was smaller still: mean CPU improved only 0.17%, paired-median CPU improved
+0.10%, mean wall regressed 0.73%, and three of six CPU pairs regressed.  Both
+sides were deterministic and the candidate reproduced its own O3 compiler,
+so this is a performance rejection rather than a correctness failure.  The
+prototype was fully removed without README or property movement.  Future work
+should not retry this cascade alone; it needs a broader string-append
+simplification capable of approaching GCC's much smaller complete body.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1828,6 +1864,7 @@ Fill one row for every retained or rejected dose.
 | D.trivial-bool-diamond | bypass an exact O3 two-arm constant-Boolean phi diamond | none; rejected before contract movement | token move constructor 258 to 230 bytes; producer -11,956 text bytes; hot Ir -0.84%; O1 output exact | O1 CPU 1.00065x mean/1.00001x paired median; O3 CPU 1.00149x/1.00195x and wall 1.00373x mean | deterministic 219-object O1 manifest/final output and deterministic O3 outputs; prototype removed | rejected; local instruction saving does not survive representative O3 cost/layout |
 | D.multi-return-query | admit repeat-stable queries with additional pure return paths | none; rejected before contract movement | four stable functions vs one; six generic calls removed; `Lexer::Run` -42 bytes; producer +4,204 text bytes | output-exact hot Ir -0.0034%; native screen flat | structural/stats/object probes deterministic; prototype removed before full gate | rejected; removed calls are cold |
 | D.innermost-loop-helper | inline one highly repeated small internal loop-shaped helper at its unique call in a tiny innermost caller loop | none; rejected before contract movement | one 42-instruction helper expanded; hottest 3,623,141-call site removed; tokenizer +96 text bytes; producer +5,876 | three hot ABBA blocks about +2.7% wall/+2.9% user; Callgrind +0.0522% Ir | exact O1 object and valid O3 LowIR; prototype removed | rejected; duplicated cursor loop and exceptional control cost more than the call |
+| D.selection-compare-cascade | thread an acyclic two-stage Boolean/scalar selection directly into its sole compare branch | none; rejected before contract movement | ten `u8` plus ten `i64` phis removed; `AppendUTF8` 495 to 405 MIR and 1,965 to 1,509 bytes; tokenizer -448 text; producer +7,108 | hot Ir -0.5699%; O1 CPU -0.80%, normalized -0.47% CPU/+1.38% wall; O3 CPU -0.17% and wall +0.73% | O1/O2 LowIR exact; deterministic 219-object O1 outputs and per-side O3 outputs; candidate reproduced its O3 compiler; prototype removed | rejected; material local saving is representative-O3 flat and normalized wall-negative |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
