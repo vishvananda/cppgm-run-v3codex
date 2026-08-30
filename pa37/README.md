@@ -781,6 +781,17 @@ and hand the resulting scalar slot to the ordinary promotion pass. A
 union/find over complete `copyobj` edges lets connected temporary objects share
 one observed scalar type without string keys or repeated instruction scans.
 
+At `-O3`, extend that complete-use proof to ordinary scalar slots whose address
+was materialized. Follow only typed `addr`, pointer `copy`, and zero-offset
+`index` chains. Canonicalize complete, type-compatible, nonvolatile loads,
+stores, exact whole-slot copies, and exact whole-slot zero initialization back
+to direct slot operations, then let ordinary slot promotion construct SSA.
+Keep the slot when its pointer escapes, an address step is nonzero or variable,
+an access is volatile, an access covers only part of the slot, or observed
+scalar types disagree. `-O0` through `-O2` retain the addressed scalar form.
+Candidate, promoted-slot, memory-rewrite, and copy-rewrite accounting remains
+bounded by dense slot and instruction scans.
+
 For redundant-load elimination, derive compact location identities from the
 typed `addr` and `index` operations. Sparse memory versions placed through the
 same dominance frontiers can represent stores and conservative unknown-memory

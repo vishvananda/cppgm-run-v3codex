@@ -503,6 +503,14 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.small_object_memory_rewrites
 		 << " small_object_copies_rewritten="
 		 << stats.small_object_copies_rewritten
+		 << " addressed_scalar_candidates="
+		 << stats.addressed_scalar_candidates
+		 << " addressed_scalars_promoted="
+		 << stats.addressed_scalars_promoted
+		 << " addressed_scalar_memory_rewrites="
+		 << stats.addressed_scalar_memory_rewrites
+		 << " addressed_scalar_copies_rewritten="
+		 << stats.addressed_scalar_copies_rewritten
 		 << " dead_store_runs=" << stats.dead_store_runs
 		 << " dead_store_changes=" << stats.dead_store_changes
 		 << " cleanup_resume_runs=" << stats.cleanup_resume_runs

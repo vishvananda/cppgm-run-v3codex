@@ -1978,7 +1978,8 @@ bool timed_function_pass(FunctionPass pass, Function * function,
     detailed_runs = &Stats::promote_slot_runs;
     detailed_changes = &Stats::promote_slot_changes;
     detailed_nanoseconds = &Stats::promote_slot_nanoseconds;
-  } else if(pass == promote_small_objects) {
+  } else if(pass == promote_small_objects ||
+            pass == promote_small_objects_with_addressed_scalars) {
     detailed_runs = &Stats::small_object_runs;
     detailed_changes = &Stats::small_object_changes;
     detailed_nanoseconds = &Stats::small_object_nanoseconds;
@@ -2206,7 +2207,9 @@ void optimize_function_bodies(
     }
     bool object_slots_changed = level >= 1 &&
       scalar_replace_aggregate_slots(&program, &function, stats);
-    if(level >= 1 && timed_function_pass(promote_small_objects, &function,
+    const FunctionPass object_promotion = level >= 3 ?
+      promote_small_objects_with_addressed_scalars : promote_small_objects;
+    if(level >= 1 && timed_function_pass(object_promotion, &function,
         stats, &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis))
       object_slots_changed = true;
     if(object_slots_changed) {

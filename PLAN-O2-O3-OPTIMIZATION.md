@@ -2338,6 +2338,79 @@ PA37 passes 188/188, PA38 passes 45/45, and the through-PA38 report passes
 5,471/5,471.  PA37/PA38 debug and object-round-trip lanes pass, and the PA39
 file audit remains at zero fatal findings and the established 32 warnings.
 
+### D.dynamic-small-copy rejected
+
+The next native experiment tried to improve the remaining dynamic composite
+move in the hot token constructor.  When the runtime size was at most 16
+bytes, it selected first/last scalar chunks; larger sizes retained `rep
+movsb`.  The complete PA38 suite passed and clean G2/G3 output was exact, but
+the runtime selection enlarged the constructor from 206 to 302 bytes and
+added work on every move.  Requested-O3 hot Callgrind rose from 4,303,639,623
+to 4,330,485,600 instructions (+0.62380%).  The token move itself rose from
+156,000,130 to 181,906,972 instructions over 1,413,664 calls.  Native timing
+was flat to slightly slower.  The prototype was removed before contract or
+test movement; fixed-size chunk selection and this runtime-size dispatch are
+different optimization populations.
+
+### D.addressed-scalar-slot retained
+
+The follow-up returned to the LowIR source of the hot frame.  A one-byte
+scalar reference temporary was stored directly, addressed, immediately
+loaded through that address, and then copied to its destination.  The address
+operation prevented ordinary scalar-slot promotion, leaving a frame solely
+for that byte.  At O3, the small-object complete-use proof now also admits an
+ordinary scalar slot when its address was materialized.  Dense address facts
+follow only typed `addr`, pointer `copy`, and `index` chains.  Every use must be
+a complete, type-compatible, nonvolatile load/store, an exact whole-slot copy
+or zero initialization, or an address-carrier operation; a call argument,
+unsupported use, nonzero or variable final offset, partial access, volatile
+access, or conflicting type rejects the slot.  Rewritten memory operands
+become direct scalar-slot operations and the existing promotion pass owns SSA
+construction.  O0 through O2 retain the previous path and output.
+
+In the hot token move constructor this removes the only slot and changes 206
+native bytes to a frameless 185-byte body.  The macro object grows 5,036 ELF
+`.text` bytes because the source-independent rule fires elsewhere too, while
+the complete fixed-point compiler falls from 7,970,114 to 7,913,826 `.text`
+bytes (-56,288).  On the exact requested-O3 hot compile, self Callgrind falls
+from 4,303,639,623 to 4,225,444,281 instructions (-1.81696%).  Fresh GCC-built
+baseline and candidate controls move from 2,425,846,483 to 2,423,904,398
+(-0.08006%), giving a normalized instruction ratio of 0.982617x (-1.73829%).
+
+Three position-balanced 32-way blocks per side over each complete workload
+give:
+
+| Fixed workload | Producer | Baseline wall / CPU | Candidate wall / CPU | Raw change | Normalized change |
+| --- | --- | ---: | ---: | ---: | ---: |
+| O1 | self O3 | 29.508 / 827.010 s | 28.572 / 816.570 s | -3.17% / -1.26% | -4.85% / -1.33% |
+| O1 | GCC O3 | 17.915 / 499.757 s | 18.230 / 500.122 s | +1.76% / +0.07% | control |
+| O3 | self O3 | 29.467 / 829.602 s | 29.188 / 820.948 s | -0.94% / -1.04% | -1.61% / -1.16% |
+| O3 | GCC O3 | 18.027 / 501.138 s | 18.148 / 501.713 s | +0.67% / +0.11% | control |
+
+The O1 workload is byte-identical between producers, with 219-object manifest
+`aaa956b46d968221bff4ec0206a3b1e9465fbd0d7f2995fa1a0ae5cc46c32e25`
+and final hash
+`5170138047eab3cb6f016cbef2297fb95f1e83f2e4544bf36bff861219cf7920`.
+The O3 baseline and candidate are each deterministic: their manifests are
+`92fc1e30be87ff3104fa87ed2045586fcf5246d5a1f13debcb45b0ab003bf2fa`
+and `4e1206ae289fd6cb76cb84fc159edbb7a1d1c4823297c6d50e504b9d57eea3ec`,
+and their final hashes are
+`14b54cc91bc20921e6ad94ad17159f1f69d25b8a7a9cc5415e123e7f9071bc7e`
+and `3d72f8607d98a33a3eba55adde272138ea983ba870a6fd1b29978a24a78bdefa`.
+Fresh G1/G2 trees match all 219 candidate objects and the candidate final
+binary exactly.
+
+PA37 documents the high-level O3 rule and owns a property/behavior control.
+It checks positive direct, pointer-copy/zero-index, addressed-store,
+whole-slot-copy, and zero-initialization cases; O0--O2 isolation; escape,
+nonzero-index, variable-index, volatile, and partial-type guards; bounded
+candidate/promotion/rewrite stats; serialized O3 replay; and O2/O3 behavior.
+It does not compare an entire expected program.  PA38 is unchanged because no
+new MIR or encoding contract is required.  PA37 passes 188/188, PA38 passes
+45/45, and the through-PA38 report passes 5,471/5,471.  PA37/PA38 debug and
+object-round-trip lanes pass, the LowIR contract audit remains clean, and the
+PA39 file audit has zero fatal findings and the established 32 warnings.
+
 ### Rejected terminal return-address load folding
 
 An O2+ MIR prototype folded the exact terminal sequence `lea address`,
@@ -2455,6 +2528,8 @@ Fill one row for every retained or rejected dose.
 | D.terminal-address-load | fold a terminal `lea`/load/return into one representable indexed load | none; rejected before contract movement | two hot returns each -1 MIR/-3 bytes; G2 producer +1,952 text; hot Ir -0.4422%; O1 output exact | self wall/CPU 1.01030x/0.99976x; GCC 0.99918x/0.99882x; normalized 1.0111x/1.0009x | PA38 45/45; exact 219-object manifest/final; G1/G2 distinction verified; prototype removed | rejected; deterministic saving is normalized-flat and wall-negative |
 | D.trivial-bool-repeat | repeat the retained Boolean-diamond fold to a bounded per-function fixed point | none; rejected before contract movement | nine more tokenizer diamonds removed; tokenizer -352 text; G2 producer -14,704 text; hot Ir -0.0143% | hot native flat; clean all-32 O3 CPU about +0.8--1.0%, reproduced with reversed order | deterministic 219-object outputs; candidate G3 hash recorded; prototype removed | rejected; cold size saving does not repay repeated O3 work/layout loss |
 | D.zero-bounded-range | combine a private O3 `x < 0` / `x > C` signed rejection chain into one unsigned bound | PA37 README plus O0--O2 isolation, structural guards, phi repair, replay, and behavior property; PA38 unchanged | `AppendUTF8` 0x773 to 0x76b; tokenizer -16 text; G2 producer +3,760 text implementation cost | O1 Ir -0.1989%, normalized -0.2001%; O3 Ir -0.1971%, normalized -0.1950%; clean full O1 wall/CPU -3.75%/-0.71%, O3 -1.46%/-0.15% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; all 219 G2/G3 objects and final hash exact | retained; prefilter and no redundant cleanup preserve raw O3 direction |
+| D.dynamic-small-copy | use direct chunks for runtime copy sizes up to 16 bytes, retaining `rep movsb` otherwise | none; rejected before contract movement | hot token move 206 to 302 bytes; move self cost 156.00M to 181.91M Ir | hot requested-O3 Ir +0.6238%; native flat/slower | PA38 45/45 during experiment; G2/G3 exact; prototype removed | rejected; dispatch and footprint outweigh small-copy saving |
+| D.addressed-scalar-slot | recover complete nonescaping scalar slots whose derived addresses have only safe uses | PA37 README plus positive/negative, level-isolation, bounded-stats, replay, and behavior property; PA38 unchanged | hot token move 206 to 185 bytes and frameless; final producer -56,288 `.text`; O0--O2 output exact | O1 self -3.17% wall/-1.26% CPU, normalized -4.85%/-1.33%; O3 self -0.94%/-1.04%, normalized -1.61%/-1.16%; hot normalized Ir -1.738% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip and audits clean; all 219 G1/G2 objects and final exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

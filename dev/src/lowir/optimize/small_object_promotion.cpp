@@ -446,22 +446,47 @@ lowir_model::StringId fresh_field_slot_name(
 
 }  // namespace
 
-bool promote_small_objects(Function * function, Stats * stats)
+namespace {
+
+bool promote_small_objects_impl(Function * function, Stats * stats,
+                                bool recover_addressed_scalars)
 {
   if(function->slots.empty() || function->blocks.empty()) return false;
   const std::size_t slot_count = function->slot_names.size();
   std::vector<unsigned char> candidate(slot_count, 0);
+  std::vector<unsigned char> object_candidate(slot_count, 0);
   std::vector<unsigned char> invalid(slot_count, 0);
   std::vector<TypeFact> observed_types(slot_count);
   std::size_t candidate_count = 0;
+  std::size_t object_candidate_count = 0;
   for(std::size_t i = 0; i < function->slots.size(); ++i) {
     const SlotId slot = function->slots[i];
     if(small_scalar_object(lowir_model::lowir_slot_type(*function, slot))) {
       candidate[slot] = 1;
+      object_candidate[slot] = 1;
       ++candidate_count;
+      ++object_candidate_count;
     }
   }
-  if(stats) stats->small_object_candidates += candidate_count;
+  // Scalar reference temporaries frequently take their address only to feed
+  // an inlined load/store pair.  Admit those slots to the same complete-use
+  // proof so their derived memory operands can be canonicalized back to the
+  // slot form consumed by ordinary scalar promotion.
+  for(std::size_t b = 0; recover_addressed_scalars &&
+                         b < function->blocks.size(); ++b)
+    for(std::size_t i = 0; i < function->blocks[b].instructions.size(); ++i) {
+      const Instruction & instruction = function->blocks[b].instructions[i];
+      if(instruction.kind != Instruction::IK_ADDR ||
+         instruction.first.kind != Operand::OP_SLOT) continue;
+      const SlotId slot = instruction.first.slot;
+      if(slot >= slot_count || candidate[slot] ||
+         !slot_is_phi_scalar_type(
+           lowir_model::lowir_slot_type(*function, slot))) continue;
+      candidate[slot] = 1;
+      ++candidate_count;
+      if(stats) ++stats->addressed_scalar_candidates;
+    }
+  if(stats) stats->small_object_candidates += object_candidate_count;
   if(candidate_count == 0) return false;
 
   AddressProvenance provenance(*function);
@@ -576,6 +601,7 @@ bool promote_small_objects(Function * function, Stats * stats)
   std::vector<unsigned char> active(slot_count, 0);
   std::vector<LowType> scalar_types(slot_count);
   std::size_t promoted_count = 0;
+  std::size_t promoted_object_count = 0;
   for(std::size_t slot = 0; slot < slot_count; ++slot) {
     if(!candidate[slot]) continue;
     const std::uint32_t root = sets.find(static_cast<std::uint32_t>(slot));
@@ -588,8 +614,10 @@ bool promote_small_objects(Function * function, Stats * stats)
     scalar_types[slot] = type.type;
     function->slot_types[slot] = type.type;
     ++promoted_count;
+    if(object_candidate[slot]) ++promoted_object_count;
+    else if(stats) ++stats->addressed_scalars_promoted;
   }
-  if(stats) stats->small_objects_promoted += promoted_count;
+  if(stats) stats->small_objects_promoted += promoted_object_count;
   if(promoted_count == 0) return false;
   // Rewriting moves block instruction vectors.  Cache every value fact while
   // the definition table still points into the original vectors.
@@ -609,7 +637,12 @@ bool promote_small_objects(Function * function, Stats * stats)
         if(fact.known && fact.zero_offset && fact.slot < slot_count &&
            active[fact.slot]) {
           address = slot_operand(fact.slot, scalar_types[fact.slot]);
-          if(stats) ++stats->small_object_memory_rewrites;
+          if(stats) {
+            if(object_candidate[fact.slot])
+              ++stats->small_object_memory_rewrites;
+            else
+              ++stats->addressed_scalar_memory_rewrites;
+          }
         }
         rewritten.push_back(std::move(instruction));
         continue;
@@ -625,7 +658,12 @@ bool promote_small_objects(Function * function, Stats * stats)
         if(scalar_source || scalar_destination) {
           if(scalar_source && scalar_destination &&
              source.slot == destination.slot) {
-            if(stats) ++stats->small_object_copies_rewritten;
+            if(stats) {
+              if(object_candidate[source.slot])
+                ++stats->small_object_copies_rewritten;
+              else
+                ++stats->addressed_scalar_copies_rewritten;
+            }
             continue;
           }
           const LowType & type = scalar_source ? scalar_types[source.slot] :
@@ -648,7 +686,17 @@ bool promote_small_objects(Function * function, Stats * stats)
             slot_operand(destination.slot, type) : instruction.second;
           store.debug_location = instruction.debug_location;
           rewritten.push_back(std::move(store));
-          if(stats) ++stats->small_object_copies_rewritten;
+          if(stats) {
+            const bool object_rewrite =
+              (scalar_source && object_candidate[source.slot]) ||
+              (scalar_destination && object_candidate[destination.slot]);
+            const bool addressed_scalar_rewrite =
+              (scalar_source && !object_candidate[source.slot]) ||
+              (scalar_destination && !object_candidate[destination.slot]);
+            if(object_rewrite) ++stats->small_object_copies_rewritten;
+            if(addressed_scalar_rewrite)
+              ++stats->addressed_scalar_copies_rewritten;
+          }
           continue;
         }
       } else if(instruction.kind == Instruction::IK_ZEROINIT) {
@@ -663,7 +711,12 @@ bool promote_small_objects(Function * function, Stats * stats)
           instruction.args.clear();
           instruction.byte_count = 0;
           instruction.byte_alignment = 1;
-          if(stats) ++stats->small_object_memory_rewrites;
+          if(stats) {
+            if(object_candidate[destination.slot])
+              ++stats->small_object_memory_rewrites;
+            else
+              ++stats->addressed_scalar_memory_rewrites;
+          }
         }
       }
       rewritten.push_back(std::move(instruction));
@@ -671,6 +724,19 @@ bool promote_small_objects(Function * function, Stats * stats)
     function->blocks[b].instructions.swap(rewritten);
   }
   return true;
+}
+
+}  // namespace
+
+bool promote_small_objects(Function * function, Stats * stats)
+{
+  return promote_small_objects_impl(function, stats, false);
+}
+
+bool promote_small_objects_with_addressed_scalars(
+    Function * function, Stats * stats)
+{
+  return promote_small_objects_impl(function, stats, true);
 }
 
 namespace {

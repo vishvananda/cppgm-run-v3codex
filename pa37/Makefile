@@ -124,6 +124,7 @@ define run_inline_control_bucket
 		perl ../scripts/check_lowir_optimizer_stats.pl $(LOWIROPT_APP) "$(1)"; \
 		perl ../scripts/check_lowir_boolean_phi_controls.pl $(LOWIROPT_APP) $(CPPGM_DRIVER_APP) "$(1)"; \
 		perl ../scripts/check_lowir_zero_bounded_range.pl $(LOWIROPT_APP) $(CPPGM_DRIVER_APP) "$(1)"; \
+		perl ../scripts/check_lowir_addressed_scalar_slots.pl $(LOWIROPT_APP) $(CPPGM_DRIVER_APP) "$(1)"; \
 		perl ../scripts/check_lowir_post_inline_promotion.pl $(LOWIROPT_APP) $(CPPGM_DRIVER_APP) "$(1)"; \
 		perl ../scripts/check_lowir_historical_contracts.pl $(LOWIROPT_APP) $(CPPGM_DRIVER_APP) "$(1)"; \
 		perl ../scripts/check_lowir_late_load_reuse.pl $(LOWIROPT_APP) $(CPPGM_DRIVER_APP) "$(1)"; \
