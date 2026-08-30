@@ -3060,6 +3060,36 @@ Callgrind oracles remain useful screening tools, but a small dynamic store
 saving must not be retained when representative normalized throughput moves
 the other way.
 
+### Rejected correlated constant-group specialization
+
+The next profile comparison isolated 94.7 million self instructions in the
+generic `IsInRanges` binary-search helper, while GCC had folded the helper
+into its identifier predicates.  The existing O3 grouped specialization saw
+four E1-table call sites but grouped only one literal integer argument, did
+not resolve local `addr @global` producers, required eight sites, and required
+an instruction-count reduction.  A bounded prototype lowered the screen to
+four sites, resolved direct global-address producers, collected every
+correlated uniform argument within the selected group, and allowed a clone
+when it removed at least two parameters even if cleanup left the same body
+instruction count.
+
+The intended population was the only useful tokenizer change: four calls
+sharing the 45-entry E1 table and count became one-argument calls to a 74-byte
+clone.  The two four-entry E2 calls retained the general helper.  Output was
+exact, but `pp_tokenizer.o` grew 26 text bytes.  More importantly, the fast
+oracle rose from 444,824,631 to 445,061,023 instructions (+0.0531%).  The
+retained general helper's 12,520,207 flat instructions became 2,355,781 in the
+remaining general calls plus 10,637,190 in the clone: specialization added
+472,764 helper instructions, only partly offset by a 105,638-instruction
+reduction in `IsIdentifierBody`.
+
+The prototype was removed before fixed-point or full-workload escalation.
+Removing two constant call arguments does not simplify this loop enough to
+repay the clone and its changed calling sequence.  A successor would need a
+generic bounded decision-tree or post-specialization loop transformation,
+not a wider grouping threshold.  No PA37 contract or property test was added
+for rejected behavior; PA38 was unaffected.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3135,6 +3165,7 @@ Fill one row for every retained or rejected dose.
 | D.complete-scalar-home | replace every load/store/compare of one heavily reused compiler scalar frame home with an unused callee-saved register | none; rejected behavior was not moved into PA38; PA37 unchanged | tokenizer `.text` 28,949 to 29,095; `Next` 4,157 to 4,217 bytes; output exact | tokenizer oracle 444,824,631 to 448,205,534 Ir (+0.7601%); `Next` 38,878,635 to 41,343,637 (+6.3393%) | five-second instruction-address oracle exact; full workload unwarranted; prototype removed | rejected; four instructions/call of save/restore/alignment tax outweigh unchanged move count |
 | D.selected-parameter-index-home | preserve the setup transfer whenever constant-index lowering selects an optional parameter home | PA38 README plus O1/O2/O3 structural, behavior, EH, and direct-driver replay property; PA37 unchanged | fixes an uninitialized alternate parameter carrier after a large copy and EH marker | correctness-only; no performance claim | PA38 45/45; 5,470/5,470 through report; original G1 crash reproduced before the fix | retained correctness backfill in pushed commit `cd335c0a` |
 | D.guarded-frame-store | sink one exact temporary frame definition below the only scalar-guard arm that dominates all later reloads | none; rejected behavior was not moved into PA38; PA37 unchanged | tokenizer -16 text bytes; `Next` -12; producer +17,952; isolated producer +15,680 and one workload object | hot Ir -0.3940%, normalized -0.395%; 12-pair normalized medians +1.030% wall/+0.406% CPU; isolated raw CPU median +0.13% | inline G1/G2 exact at 219 objects; isolated G1/G2 exact at 220; prototypes removed | rejected; local instruction saving loses to representative normalized cache/layout behavior |
+| D.correlated-constant-group | specialize all correlated constant/global parameters within one four-site O3 call group | none; rejected behavior was not moved into PA37; PA38 unchanged | four E1-table calls lose two arguments; 74-byte clone; tokenizer +26 text bytes | exact fast oracle +236,392 Ir (+0.0531%); specialized helper path itself +472,764 Ir | immediate deterministic rejection; prototype removed before fixed point | rejected; parameter removal does not simplify the binary-search loop |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
