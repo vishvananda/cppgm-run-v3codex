@@ -1855,6 +1855,46 @@ The candidate was restored without README or property movement.  The cold
 divide removal does not justify the new native representation contract or its
 unfavorable O3 result.
 
+### Residual tokenizer attribution and rejected availability/inline probes
+
+A fresh same-source GCC-O3 producer was rebuilt from the accepted revision so
+that the residual comparison did not rely on an older source or layout.  On
+the exact hot tokenizer workload it executes 2,423,258,043 Callgrind
+instructions, versus 4,447,750,256 for the accepted self-O3 producer.  The
+new GCC count differs from the prior control by only about 125,000
+instructions, so the residual ranking is stable.  The largest self/GCC
+exclusive-instruction gaps are the tokenizer `Run` body (+172.55 million),
+the translation cursor `Next` body (+120.19 million), the grouped query versus
+GCC's constant-propagated `Peek` (+272.91 million), UTF-8 append (+110.66
+million), and the token move constructor (+127.78 million).  Together these
+five regions explain about 804 million instructions, or roughly 40% of the
+remaining 2.024-billion-instruction gap.  The next doses therefore remain
+focused on general CFG/value-placement improvements in these regions rather
+than a new broad whole-program pass.
+
+Two repeat-stable-query extensions failed at the static proof/census stage.
+First, preserving an available query across stores to proven nonescaping
+caller-local slots changed neither optimized tokenizer LowIR nor the final
+object: the remaining useful barriers are predominantly calls, not local
+stores.  Second, permitting a second same-parameter constant group, including
+a reduced four-call secondary floor, produced no additional clone that passed
+the existing cleaned-body payoff test.  Both probes were fully removed; they
+do not justify contract or test movement.
+
+A third source-independent O3 probe targeted the hot identifier predicate
+without duplicating its inner range-search loop directly.  It selected an
+acyclic 16--64-instruction wrapper with exactly two direct uses and one nested
+loop-shaped call, then inlined the wrapper at its one call inside an
+innermost loop of the largest caller.  This removed the 3,623,141-execution
+`IsIdentifierBody` call in `Lexer::Run`, but grew optimized LowIR from 8,403
+to 8,461 lines, grew `Run` from 9,578 to 9,775 native bytes, grew the tokenizer
+object by 208 text bytes, and grew the complete O3 producer by 6,704 text
+bytes.  Sixteen output-exact hot lanes regressed by about 3% wall and user
+time.  The prototype was removed before Callgrind, README, or test movement.
+The out-of-line predicate itself remains a better target: its 185-byte self
+body materializes Boolean joins through frame slots, whereas GCC threads the
+choices into returns after inlining the predicate.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1903,6 +1943,9 @@ Fill one row for every retained or rejected dose.
 | D.innermost-loop-helper | inline one highly repeated small internal loop-shaped helper at its unique call in a tiny innermost caller loop | none; rejected before contract movement | one 42-instruction helper expanded; hottest 3,623,141-call site removed; tokenizer +96 text bytes; producer +5,876 | three hot ABBA blocks about +2.7% wall/+2.9% user; Callgrind +0.0522% Ir | exact O1 object and valid O3 LowIR; prototype removed | rejected; duplicated cursor loop and exceptional control cost more than the call |
 | D.selection-compare-cascade | thread an acyclic two-stage Boolean/scalar selection directly into its sole compare branch | none; rejected before contract movement | ten `u8` plus ten `i64` phis removed; `AppendUTF8` 495 to 405 MIR and 1,965 to 1,509 bytes; tokenizer -448 text; producer +7,108 | hot Ir -0.5699%; O1 CPU -0.80%, normalized -0.47% CPU/+1.38% wall; O3 CPU -0.17% and wall +0.73% | O1/O2 LowIR exact; deterministic 219-object O1 outputs and per-side O3 outputs; candidate reproduced its O3 compiler; prototype removed | rejected; material local saving is representative-O3 flat and normalized wall-negative |
 | D.remainder-one | fold signed/unsigned remainder by one while retaining zero array address boundaries and borrowing stable zero-displacement deferred addresses | none; rejected before contract movement | nine remainders and six native divides removed; `Next` 947 to 881 MIR and 4,297 to 4,132 bytes; tokenizer -208 text; producer +1,832 | hot Ir +0.0064%; O1 normalized CPU -0.15%; O3 self flat and GCC -0.25%, normalized O3 +0.25% | exact hot output and deterministic 219-object manifests/finals; prototype removed | rejected; cold divide removal cannot repay contract/layout cost |
+| D.query-local-store | preserve a repeat-stable query result across writes to proven nonescaping caller-local slots | none; rejected at static census | optimized tokenizer LowIR and object unchanged | no timing warranted | accepted tokenizer rebuilt exact at `81aa9bd37bcb3b53cf72b77856d810cbb816e4858f2b7f1ae83923adcff4cc0b`; prototype removed | rejected; remaining availability barriers are calls rather than caller-local stores |
+| D.secondary-group | admit one additional same-parameter integer-constant group under the retained cleaned-body payoff proof | none; rejected at static census | no second clone passed payoff, including at a four-call secondary floor; tokenizer output unchanged | no timing warranted | focused O3 LowIR/object checks exact; prototype removed | rejected; no profitable compiler population |
+| D.loop-wrapper-inline | inline one small acyclic wrapper around a loop helper at its unique innermost-loop call | none; rejected before contract movement | one 3,623,141-execution call removed; optimized LowIR +58 lines; `Run` +197 native bytes; tokenizer +208 text; producer +6,704 text | sixteen exact hot lanes about +3% wall/user | deterministic hot output; candidate removed before Callgrind/full gate | rejected; wrapper removal still duplicates and enlarges the hot loop region |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
