@@ -2116,6 +2116,54 @@ and O3 is exact at
 their complete self/inception gates take 49.37 and 48.46 seconds respectively
 with 32 build and object workers.
 
+### Rejected late transient-swap staging elimination
+
+A late O2+ LowIR prototype recognized three adjacent equal-size object copies
+in a complete-object swap.  It removed the first copy only when its source was
+a distinct, complete, write-only local slot and removed that slot's address
+plumbing and initialization at the same time.  The general proof handled the
+same-address destination/incoming case, rejected partial, escaped, observed,
+volatile, nonlocal, size-mismatched, alignment-mismatched, and incomplete
+three-copy forms, and did not depend on compiler symbols or source text.
+
+The first in-place implementation exposed a prototype correctness bug before
+any source fixture was changed.  Its compactor moved a retained instruction
+onto itself before the first deletion; self-move cleared vector-valued call
+arguments.  In the generated ELF writer this changed
+`_M_initialize_map(this, 0)` into a zero-argument call and made the candidate
+compiler consume excessive memory.  Guarding the move with
+`kept != other_index` restored the exact 219-object workload and final
+compiler.  A retained version would have required a PA37 property control
+proving that an unrelated preceding call keeps all of its arguments, in
+addition to the positive and negative swap proofs.  Because the corrected
+optimization was rejected, neither a new contract nor that implementation-
+specific regression surface was added to the student assignment.
+
+The corrected lean form removed a transient 80-byte slot, its zero stores,
+and one full copy from both the macro swap and ELF-writer move-construction
+population.  The macro body fell 115 native bytes.  The self O3 producer grew
+9,072 `.text` bytes, however.  Its fixed O1 hot output remained exact at
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`,
+and Callgrind fell from 4,341,389,715 to 4,312,247,681 instructions
+(-0.6710%).
+
+Three lean self ABBA blocks over the complete 32-way requested-O1 workload
+were exact.  Mean wall/aggregate-CPU ratios were 0.99800x/0.99947x; paired
+medians were about 0.99777x/0.99824x.  Three same-source GCC `-O3` producer
+blocks were also exact at manifest
+`dfd53e92d5e503a61b2a5c5a6ab7767d5a947c871fb97a3c4555d6ded7fd1a85`
+and final hash
+`3c9e3f6bc8ee5b17bd3308bdc46aba3d88e6f6dfce0885adce68851e58e4f476`.
+Their mean wall/CPU ratios were 1.00357x/0.99740x, with paired medians
+1.00165x/0.99816x.  Normalized wall therefore improved about 0.56% by means
+and 0.39% by paired median, but normalized CPU regressed 0.21% by means and
+was effectively flat at 1.00008x by paired median.  The initial corrected
+form with redundant cleanup was separately flat in six self samples; the
+leaner pipeline call did not turn the deterministic instruction saving into
+a corroborated CPU improvement.  The complete prototype was removed under
+the close-result rule before README, property-test, or compatibility-fixture
+movement.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -2173,6 +2221,7 @@ Fill one row for every retained or rejected dose.
 | D.copy-preserve-broad | preserve pointer carriers for every bounded fixed and unused dynamic copy | none; rejected before contract movement | initial form mis-modeled destructive address setup and crashed its G2 compiler; corrected broad form added 2.765M Ir to an unrelated string-copy body | broad total Ir -0.184%, but unrelated offsets obscured the local saving | failing G2 and narrowed safety proof retained as diagnostic evidence; broad prototype removed | rejected; proof and population were too broad |
 | D.composite-copy-preserve | preserve incoming address carriers across a bounded direct-parameter copy and a later unused builtin copy in the same O3 composite move | PA38 README plus O0--O2 isolation, structural pressure/frame-address, negative-call, driver-replay, and behavior property | hot token move 258 to 234 bytes, five to four saves, frame 64 to 48; producer +5,904 `.text`; hot Ir -0.23337%, normalized -0.24056% | O3 workload -0.69% wall/-0.64% CPU, paired CPU -0.65%; final O1 block -3.41% wall/-1.06% CPU and output-exact | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; all-32 O2 G1/G2 and O3 G1/G2/G3 exact | retained in this checkpoint |
 | D.adjacent-integer-normalizations | combine adjacent O2+ integer normalizations and select signed/unsigned narrow loads in final MIR | PA38 README plus O0/O1 isolation, safe-chain and negative-guard structure, debug, replay, encoding, and behavior property; PA37 unchanged | hot MIR -61, object `.text` -144; O3 producer -9,328 `.text`; hot Ir -0.8348%; O1 output exact | self paired median -1.79% wall/-0.65% CPU; GCC -0.62%/-0.17%; normalized -1.17%/-0.49%; dedicated stats counter rejected after layout regression | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; frozen exact; all-32 O2/O3 inception exact | retained in this checkpoint |
+| D.transient-swap-staging | remove a complete write-only transient local and its first overwritten copy from an adjacent three-copy object swap | none; rejected before contract movement; a retained form would require positive/negative PA37 properties plus unrelated-call-argument survival | two real 80-byte swap populations simplified; macro body -115 native bytes; self producer +9,072 text bytes; hot Ir -0.6710% | self mean wall/CPU -0.20%/-0.05%; GCC +0.36%/-0.26%; normalized wall -0.56% but CPU +0.21%; paired normalized CPU effectively flat | corrected candidate exact on hot output and all 219 full-workload objects/final; initial self-move bug diagnosed without fixture changes; prototype removed | rejected; dynamic instruction saving did not clear the normalized close-result CPU gate |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
