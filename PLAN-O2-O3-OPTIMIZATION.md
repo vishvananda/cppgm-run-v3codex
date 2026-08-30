@@ -1818,6 +1818,43 @@ prototype was fully removed without README or property movement.  Future work
 should not retry this cascade alone; it needs a broader string-append
 simplification capable of approaching GCC's much smaller complete body.
 
+### Rejected remainder-by-one/address-boundary dose
+
+The accepted O1/O2/O3 tokenizer LowIR retained nine signed or unsigned
+remainders by one, including six dynamically executed divides in
+`TranslationCursor::Next`.  A scalar-only fold removed all nine and reduced
+that function from 947 to 886 MIR instructions and from 4,297 to 4,156 native
+bytes.  It nevertheless changed the zero-index address use shape, gained two
+callee-saved registers plus two common-path address calculations, and added
+about 47.6 million instructions to `Next`.  Hot Callgrind consequently
+regressed 1.071%.
+
+A broader attempt to rematerialize the affected addresses exposed a contract
+problem rather than a safe optimization: `ValueFact::deferred_address`
+currently represents both a semantic address and a postponed memory load, and
+the ownership of counted base/index dependencies is tied to that distinction.
+Propagating it through arbitrary aliases can therefore load where an address
+is required or consume a shared dependency too early.  That prototype and all
+of its diagnostic code were fully removed.  A narrower form preserved the
+zero array projection as an address-class boundary and borrowed only a stable
+zero-displacement deferred representation for its identity copy.  This
+removed the common-path address calculation while avoiding the broader
+contract change.
+
+The final narrow candidate still removed all nine remainders and all six
+native divides.  `TranslationCursor::Next` fell to 881 MIR instructions and
+4,132 bytes, the tokenizer lost 208 text bytes, and the complete producer grew
+1,832 text bytes.  Its exact-output hot Callgrind result was effectively flat:
+4,448,033,704 versus 4,447,750,256 instructions (+0.0064%), with `Next`
+itself improving by 60,718 instructions.  Across the complete 32-way O1
+workload self CPU improved 0.18% while same-source GCC improved 0.03%, for an
+approximately 0.15% normalized CPU gain.  Requested O3 self CPU was flat
+(-0.002%) while same-source GCC improved 0.25%, so the normalized O3 ratio
+regressed approximately 0.25%; native hot timing also regressed about 0.9%.
+The candidate was restored without README or property movement.  The cold
+divide removal does not justify the new native representation contract or its
+unfavorable O3 result.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1865,6 +1902,7 @@ Fill one row for every retained or rejected dose.
 | D.multi-return-query | admit repeat-stable queries with additional pure return paths | none; rejected before contract movement | four stable functions vs one; six generic calls removed; `Lexer::Run` -42 bytes; producer +4,204 text bytes | output-exact hot Ir -0.0034%; native screen flat | structural/stats/object probes deterministic; prototype removed before full gate | rejected; removed calls are cold |
 | D.innermost-loop-helper | inline one highly repeated small internal loop-shaped helper at its unique call in a tiny innermost caller loop | none; rejected before contract movement | one 42-instruction helper expanded; hottest 3,623,141-call site removed; tokenizer +96 text bytes; producer +5,876 | three hot ABBA blocks about +2.7% wall/+2.9% user; Callgrind +0.0522% Ir | exact O1 object and valid O3 LowIR; prototype removed | rejected; duplicated cursor loop and exceptional control cost more than the call |
 | D.selection-compare-cascade | thread an acyclic two-stage Boolean/scalar selection directly into its sole compare branch | none; rejected before contract movement | ten `u8` plus ten `i64` phis removed; `AppendUTF8` 495 to 405 MIR and 1,965 to 1,509 bytes; tokenizer -448 text; producer +7,108 | hot Ir -0.5699%; O1 CPU -0.80%, normalized -0.47% CPU/+1.38% wall; O3 CPU -0.17% and wall +0.73% | O1/O2 LowIR exact; deterministic 219-object O1 outputs and per-side O3 outputs; candidate reproduced its O3 compiler; prototype removed | rejected; material local saving is representative-O3 flat and normalized wall-negative |
+| D.remainder-one | fold signed/unsigned remainder by one while retaining zero array address boundaries and borrowing stable zero-displacement deferred addresses | none; rejected before contract movement | nine remainders and six native divides removed; `Next` 947 to 881 MIR and 4,297 to 4,132 bytes; tokenizer -208 text; producer +1,832 | hot Ir +0.0064%; O1 normalized CPU -0.15%; O3 self flat and GCC -0.25%, normalized O3 +0.25% | exact hot output and deterministic 219-object manifests/finals; prototype removed | rejected; cold divide removal cannot repay contract/layout cost |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
