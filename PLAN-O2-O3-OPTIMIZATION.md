@@ -2164,6 +2164,26 @@ a corroborated CPU improvement.  The complete prototype was removed under
 the close-result rule before README, property-test, or compatibility-fixture
 movement.
 
+### Rejected acyclic merge-phi caller-saved allocation
+
+An O2+ native-allocation prototype admitted acyclic merge phis to the existing
+exact transfer-to-last-use local-phi interval proof.  It could assign a
+caller-saved register only when the complete linear interval was free of
+claims and clobbers.  The first broad probe also ran at O1 and changed the
+fixed workload, so the measured form was explicitly gated to O2/O3.  The
+gated candidate reproduced the retained O1 hot object exactly at
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`.
+
+The source-independent proof produced real local changes under O3.  In the
+GCC-built tokenizer object it reduced `AppendUTF8` by 309 native bytes and
+also shortened three smaller helpers, although complete compiler layout grew
+128 `.text` bytes.  The clean self-built O3 producer grew 256 `.text` bytes,
+from 7,972,210 to 7,972,466.  On the identical requested-O1 hot compile,
+Callgrind increased from 4,341,389,715 to 4,341,442,410 instructions
+(+52,695, +0.0012%).  Because the isolated deterministic producer comparison
+was already slightly worse, no noisy full-workload timing was warranted.
+The prototype was removed before README or PA38 property movement.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -2222,6 +2242,7 @@ Fill one row for every retained or rejected dose.
 | D.composite-copy-preserve | preserve incoming address carriers across a bounded direct-parameter copy and a later unused builtin copy in the same O3 composite move | PA38 README plus O0--O2 isolation, structural pressure/frame-address, negative-call, driver-replay, and behavior property | hot token move 258 to 234 bytes, five to four saves, frame 64 to 48; producer +5,904 `.text`; hot Ir -0.23337%, normalized -0.24056% | O3 workload -0.69% wall/-0.64% CPU, paired CPU -0.65%; final O1 block -3.41% wall/-1.06% CPU and output-exact | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; all-32 O2 G1/G2 and O3 G1/G2/G3 exact | retained in this checkpoint |
 | D.adjacent-integer-normalizations | combine adjacent O2+ integer normalizations and select signed/unsigned narrow loads in final MIR | PA38 README plus O0/O1 isolation, safe-chain and negative-guard structure, debug, replay, encoding, and behavior property; PA37 unchanged | hot MIR -61, object `.text` -144; O3 producer -9,328 `.text`; hot Ir -0.8348%; O1 output exact | self paired median -1.79% wall/-0.65% CPU; GCC -0.62%/-0.17%; normalized -1.17%/-0.49%; dedicated stats counter rejected after layout regression | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; frozen exact; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.transient-swap-staging | remove a complete write-only transient local and its first overwritten copy from an adjacent three-copy object swap | none; rejected before contract movement; a retained form would require positive/negative PA37 properties plus unrelated-call-argument survival | two real 80-byte swap populations simplified; macro body -115 native bytes; self producer +9,072 text bytes; hot Ir -0.6710% | self mean wall/CPU -0.20%/-0.05%; GCC +0.36%/-0.26%; normalized wall -0.56% but CPU +0.21%; paired normalized CPU effectively flat | corrected candidate exact on hot output and all 219 full-workload objects/final; initial self-move bug diagnosed without fixture changes; prototype removed | rejected; dynamic instruction saving did not clear the normalized close-result CPU gate |
+| D.merge-phi-register | reuse the exact local-phi interval proof for acyclic O2/O3 merge phis | none; rejected before contract movement | several O3 helper bodies smaller, but complete GCC/self producers +128/+256 `.text`; O1 output exact | hot Ir +0.0012% on an isolated producer comparison | clean O2+ gate and exact hot object; prototype removed | rejected; deterministic producer cost is slightly worse |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
