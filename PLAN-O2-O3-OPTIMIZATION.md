@@ -2734,6 +2734,45 @@ The repeated scan was therefore removed.  No README or property test was
 added: the retained one-diamond contract remains covered, while making it a
 per-function fixed point is neither required nor profitable.
 
+### D2 structurally cold native partition rejected
+
+The D2 prototype used only final MIR control-flow facts.  It selected blocks
+ending in `throw` or a serialized `noreturn` call, propagated coldness backward
+only through all-cold successors, rejected cold-to-hot edges and host-EH
+functions, grouped the cold blocks into one serialized suffix, materialized
+old fallthroughs, and removed physical continuation after `noreturn`.  The
+relocatable writer put sufficiently large ordinary strong suffixes in a shared
+`.text.unlikely` section, externalized cross-section local branches, and gave
+the cold fragment a steady-frame-state FDE.  Weak/COMDAT functions, small
+fragments, and bounded object budgets remained guarded.
+
+The population was real.  The optimized tokenizer object selected nine
+fragments containing 68 blocks and 787 MIR instructions.  It moved 3,408
+encoded bytes behind 77 cross-section fixups; the selected hot portions
+totaled 21,749 bytes.  The macro object selected three fragments totaling 444
+cold bytes and seven cross fixups.  An earlier form retained 4,585 tokenizer
+cold bytes until unreachable post-`noreturn` tails were removed.  A provisional
+PA38 property covered O2/O3 isolation, size and EH/weak guards, serialized MIR,
+debug locations, ELF section and relocation structure, separate unwind
+metadata, and hot and throwing behavior.  It passed the focused check and the
+complete 45/45 PA38 suite.  An earlier clean all-32 prototype inception also
+matched every object and its final compiler.
+
+The performance gate did not support retention.  Three output-exact hot-TU
+ABBA blocks measured candidate/baseline at 1.02286x wall and 1.01198x user
+time.  One full 32-way requested-O1 ABBA block compiled the identical current
+220-object workload and final binary.  Self candidate/baseline means were
+0.99695x wall and 0.99374x aggregate CPU.  The same-source GCC-O3 producer
+control was 0.99239x wall and 0.99875x CPU, making the normalized result
+1.00459x wall and 0.99498x CPU.  Thus the only normalized improvement was
+about 0.50% CPU, below D2's 1% threshold, while normalized wall and the hot
+oracle moved in the wrong direction.  The linked candidate also added 30,192
+`.text` bytes after including the implementation.  The implementation,
+statistics, provisional PA38 README text, property fixture, and checker were
+removed together.  Cold partitioning should not be retried without profile or
+linker support that distinguishes dynamically cold edges more accurately than
+structural `noreturn` reachability.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -2801,6 +2840,7 @@ Fill one row for every retained or rejected dose.
 | D1.repeat-stable-O2 | promote repeat-stable query reuse to O2 | none; rejected before contract movement | macro visits 609 functions but finds zero stable queries, signatures, or reuses | static rejection; added scan has no output benefit | direct O2 stats deterministic; threshold restored | rejected; remains O3-only |
 | D1.zero-bounded-O2 | promote the zero-bounded signed-range fold to O2 | none; existing O3 contract remains | tokenizer -8 text bytes; fixed-point O2 producer +32 text bytes | 1.01304x wall / 1.01235x CPU versus addressed-slot O2 | exact fixed point and 219-object outputs; threshold restored | rejected; scan/layout cost exceeds the tiny O2 population |
 | D1.addressed-boolean-terminal-O2 | reuse three bounded O3 reductions at O2 | PA37 README and role/behavior properties now require O2/O3; brittle exact fixture replaced by post-inlining property; PA38 contract unchanged | fixed-point O2 `.text` 7,961,170 to 7,885,106 (-76,064); final 219-object O1/O2/O3 outputs deterministic | fixed O1 self 0.955405x/0.962863x wall/CPU, normalized 1.078510x/1.091429x; fixed O2 self 0.945069x/0.963116x, normalized 1.068937x/1.086273x; O3 no-erosion 0.98255x/0.99683x | PA37 187/187; PA38 45/45; 5,470/5,470; debug/round-trip and LowIR/file audits clean; self and GCC O2/O3 exact | retained; raw O2 floor cleared, normalized parity still open |
+| D2.cold-partition | group structurally raising O3 MIR behind a serialized suffix and emit eligible strong fragments in `.text.unlikely` | provisional PA38 README and structural/ELF/unwind/debug/behavior property passed, then removed with the rejected feature; PA37 unchanged | tokenizer 9 fragments/3,408 cold bytes/77 cross fixups; macro 3/444/7; linked producer +30,192 `.text` | hot wall/user +2.29%/+1.20%; full self wall/CPU -0.30%/-0.63%; GCC -0.76%/-0.12%; normalized +0.46% wall/-0.50% CPU | focused property and PA38 45/45 clean; earlier all-32 prototype inception exact; all timed O1 outputs exact | rejected; misses the 1% normalized gate and regresses both normalized wall and the hot oracle |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
