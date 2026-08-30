@@ -1714,6 +1714,30 @@ compiler: O2 is exact at
 and O3 is exact at
 `bd2fa645d3ca089f7cab634d37c5287cd34af5d8173e25d918717ffb74db3e95`.
 
+### Rejected O3 trivial Boolean-diamond dose
+
+The residual profile motivated a narrower recheck of the earlier acyclic
+Boolean-phi rejection.  The dose was limited to O3 and to an exact two-arm
+diamond: both arms contain only a jump to the merge, have the same sole
+predecessor, contribute opposite constant `u8` Boolean values to a one-use
+phi, and the phi immediately controls a branch.  O1 retained its original
+LowIR and byte-exact output; O3 bypassed the arms and phi and branched on the
+original condition.
+
+The dose removed the hot token move constructor's spilled Boolean temporary,
+reduced that function from 258 to 230 bytes, and reduced the complete O3
+producer by 11,956 text bytes.  On the fixed O1 hot TU, output remained exact
+and Callgrind fell from 4,447,750,256 to 4,410,495,809 instructions (-0.84%).
+This local evidence did not survive the representative builds.  The complete
+O1 workload was CPU-flat (candidate/baseline 1.00065x by mean and 1.00001x by
+paired median) while wall was 1.0104x by mean.  The complete requested-O3
+workload regressed to 1.00149x mean CPU and 1.00195x paired-median CPU; wall
+was 1.00373x by mean.  Every O1 lane produced the same 219-object manifest and
+final compiler, and each O3 side was internally deterministic.  The
+prototype was restored without student-contract or test movement.  This is
+another case where a real hot-path instruction reduction is insufficient in
+the presence of whole-program layout and build-wide optimizer costs.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -1757,6 +1781,7 @@ Fill one row for every retained or rejected dose.
 | D.repeat-readonly-call | preserve repeat-stable query availability across direct internal call-free read-only helpers | none; rejected before contract movement | four more query reuses; tokenizer -48 text bytes; producer +1,348; hot Ir -0.273% | self O1 paired median +0.033% wall/+0.050% CPU; GCC +0.668%/+0.102%; normalized -0.631%/-0.052% | exact 219-object manifest and final output in all valid self/GCC lanes; two contaminated GCC blocks rejected whole and replaced | rejected; raw throughput is not in the intended direction and normalized CPU gain is negligible |
 | D.block-local-save | eliminate a callee-saved color whose disjoint ranges are all confined to individual blocks | PA38 README plus O2/O3 level-isolation, structural, bounded-stats, and behavioral properties; PA37 unchanged | hot clone 219 to 203 bytes and three to two saves; producer -2,924 text bytes; hot Ir -1.7247%; frozen O2 exact and O3 -55 text bytes | O1 workload CPU -0.57%, normalized -0.69%, wall within +0.60%; O3 workload -1.44% wall/-0.74% CPU, normalized -1.65%/-0.93% | 45/45; 5,471/5,471 full report; debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.medium-copy-chunks | select direct chunks for weakly aligned fixed 33--64-byte copies at O2+ | PA38 README plus O0/O1 isolation, O2/O3 structure/stats/encoding/replay/behavior property; PA29 O0 guard retained | hot constructor 215 to 258 bytes and loses fixed-tail `rep movsb`; producer +6,708 text; hot Ir -2.9409%; O1 requested output exact | O1 workload -1.52% wall/-0.82% CPU, normalized -1.89%/-0.84%; O3 workload -0.53%/-0.66%, normalized -0.41%/-0.75% | 45/45; 5,471/5,471 full report; debug/round-trip clean; zero-fatal audit; all-32 O2/O3 inception exact | retained in this checkpoint |
+| D.trivial-bool-diamond | bypass an exact O3 two-arm constant-Boolean phi diamond | none; rejected before contract movement | token move constructor 258 to 230 bytes; producer -11,956 text bytes; hot Ir -0.84%; O1 output exact | O1 CPU 1.00065x mean/1.00001x paired median; O3 CPU 1.00149x/1.00195x and wall 1.00373x mean | deterministic 219-object O1 manifest/final output and deterministic O3 outputs; prototype removed | rejected; local instruction saving does not survive representative O3 cost/layout |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
