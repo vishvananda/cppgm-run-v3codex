@@ -2827,6 +2827,64 @@ PA37/PA38 debug and object-roundtrip lanes pass, the LowIR audit remains clean,
 and the PA39 file audit has zero fatal findings and the established 32
 warnings.
 
+### Rejected O3 fast-prefix partial inlining
+
+The next D4 profile exposed a narrow partial-inlining opportunity in the
+tokenizer: a small side-effect-free fast-return prefix guarded a cyclic slow
+body, and sixteen natural-loop calls could share one outlined slow definition.
+The prototype was deliberately bounded to one callee per translation unit, a
+16-instruction prefix, a 96-instruction complete body, sixteen sites, one
+bailout edge, no EH or object/slot results, and a single shared slow clone.
+Provisional PA37 and PA38 properties covered level isolation, structural
+selection and guards, bounded statistics, serialized replay, shared-slow
+native lowering, the retained backedge, and behavior.  They passed without
+matching complete LowIR or MIR program text.
+
+The first implementation lived in `inline_o1.cpp`.  Although the pass fired
+only in `pp_tokenizer.cpp`, that source placement changed unrelated O3 code
+generation for the existing inliner: `Inliner::inline_call` shrank from
+`0x40ee` to `0x3044` bytes.  A six-pair requested-O1 screen then regressed
+normalized aggregate CPU by about 0.5% despite improving the hot compile by
+1.12%.  Moving the pass to a final, separately linked translation unit,
+replacing the generic clone machinery with a prefix-only remapper, processing
+sites in reverse traversal order instead of instantiating `std::sort`, and
+placing extension statistics after all established `Stats` fields restored
+`inline_o1.o` byte-for-byte.  This was a useful destructive-interference
+check: it removed the accidental same-TU O3 inlining/layout change without
+changing the transformation or its dose.
+
+The isolated fixed point was exact between G1 and G2 at compiler hash
+`39330777891b1d1e43a34ae8cc10ba51218e76a4c78e6a161e9a47e8c35d7a64`.
+Its text was 8,685,944 bytes versus D4's 8,637,928.  The hot requested-O1
+compile remained output-exact and fell from 4,145,805,467 to 4,099,256,470
+Callgrind instructions: a 1.1228% reduction.  A 24-site dose was slightly
+worse than the retained 16-site experiment, so additional duplication was
+not a plausible remedy.
+
+The complete workload contradicted the hot oracle.  Three position-balanced
+32-way pairs over the current 220-object requested-O1 workload measured self
+mean wall/aggregate CPU at 28.360/812.250 seconds for D4 and
+29.807/820.720 seconds for the isolated candidate, ratios of 1.051011x and
+1.010428x.  Same-revision GCC-O3 producer controls moved from
+18.207/503.087 to 18.000/502.193 seconds, ratios of 0.988649x and 0.998224x.
+The normalized result was therefore 1.063078x wall and 1.012225x aggregate
+CPU.  Every pair contained the same 220 objects, every object matched between
+producers, and every lane had manifest
+`5b6ea59b767b3b6964a79afc9168cd1953b3dea4a5dce362bf3756c1e50db658`
+and final hash
+`27a21ff02a13ccb0e2d5bfc5e6bfdd3c76e4d706a1929e12c0c2ed2b7ddb5dce`.
+
+The remaining loss is not evidence that the retained framed/frameless layout
+rules are semantically wrong: restoring the pre-existing inliner object did
+not restore end-to-end throughput.  It is evidence that the copied-prefix
+text and resulting producer-wide code placement/cache behavior outweigh the
+local instruction saving across the source distribution.  Padding one object
+or special-casing its link order would be a benchmark-sensitive workaround,
+not a justified optimizer improvement.  The implementation, statistics,
+source-set addition, provisional README text, fixtures, and checkers were all
+removed.  Revisit this shape only with a materially lower-growth encoding or
+profile/linker support that demonstrates a representative full-workload win.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -2896,6 +2954,7 @@ Fill one row for every retained or rejected dose.
 | D1.addressed-boolean-terminal-O2 | reuse three bounded O3 reductions at O2 | PA37 README and role/behavior properties now require O2/O3; brittle exact fixture replaced by post-inlining property; PA38 contract unchanged | fixed-point O2 `.text` 7,961,170 to 7,885,106 (-76,064); final 219-object O1/O2/O3 outputs deterministic | fixed O1 self 0.955405x/0.962863x wall/CPU, normalized 1.078510x/1.091429x; fixed O2 self 0.945069x/0.963116x, normalized 1.068937x/1.086273x; O3 no-erosion 0.98255x/0.99683x | PA37 187/187; PA38 45/45; 5,470/5,470; debug/round-trip and LowIR/file audits clean; self and GCC O2/O3 exact | retained; raw O2 floor cleared, normalized parity still open |
 | D2.cold-partition | group structurally raising O3 MIR behind a serialized suffix and emit eligible strong fragments in `.text.unlikely` | provisional PA38 README and structural/ELF/unwind/debug/behavior property passed, then removed with the rejected feature; PA37 unchanged | tokenizer 9 fragments/3,408 cold bytes/77 cross fixups; macro 3/444/7; linked producer +30,192 `.text` | hot wall/user +2.29%/+1.20%; full self wall/CPU -0.30%/-0.63%; GCC -0.76%/-0.12%; normalized +0.46% wall/-0.50% CPU | focused property and PA38 45/45 clean; earlier all-32 prototype inception exact; all timed O1 outputs exact | rejected; misses the 1% normalized gate and regresses both normalized wall and the hot oracle |
 | D4.final-transfer-region | clean cloned `noreturn` continuations, reuse an acyclic source home at its exact final phi transfer, and recolor complete connected source-live regions | PA37/PA38 READMEs plus role-, liveness-, level-, guard-, replay-, and behavior-based properties | `Next` frame 240 to 208 bytes, preserves -2, body 4,264 to 4,157 bytes; producer -14,928 `.text`; hot Ir -1.8031% | full self wall/CPU 0.997131x/0.992809x; GCC CPU 1.008088x; normalized CPU 0.984844x and normalized Ir 0.982027x; normalized wall intentionally unclaimed | PA37 187/187; PA38 45/45; 5,470/5,470 full report; debug/round-trip clean; zero-fatal audit; 219-object G2/G3 exact | retained; general three-layer movement family clears the deterministic and normalized CPU gates |
+| D.fast-prefix-partial | copy one bounded pure fast-return prefix at hot loop calls and share one cyclic slow clone | provisional PA37/PA38 structural, level, guard, stats, replay, native, and behavior properties passed, then were removed with the rejected feature | isolated `inline_o1.o` exact; hot Ir -1.1228%; producer +48,016 text bytes; 16 sites beat the 24-site dose | self wall/CPU 1.051011x/1.010428x; GCC 0.988649x/0.998224x; normalized 1.063078x/1.012225x | exact G1/G2; all three 220-object self/GCC pairs and final compiler exact; implementation and contract movement removed | rejected; representative normalized CPU regresses despite the local deterministic saving |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
