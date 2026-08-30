@@ -230,10 +230,11 @@ running optimizing transforms.
   branch selector; retain the merge when its value is shared, when the `phi`
   carries state around the loop, or when successor `phi` inputs or exceptional
   control would need repair;
-  at `-O3`, an acyclic two-arm branch whose otherwise empty arms select the
-  opposite `u8` Boolean constants for a single-use `phi` immediately consumed
-  by a branch may bypass those arms and the Boolean merge; preserve the diamond
-  at lower optimization levels, and do not apply this bypass when an arm
+  at `-O2` and `-O3`, an acyclic two-arm branch whose otherwise empty arms
+  select the opposite `u8` Boolean constants for a single-use `phi`
+  immediately consumed by a branch may bypass those arms and the Boolean
+  merge; preserve the diamond at `-O0` and `-O1`, and do not apply this bypass
+  when an arm
   performs work, the selected values are not exactly Boolean opposites, the
   merged value is shared, or exceptional edges and successor `phi` inputs
   cannot be repaired safely; other independently safe CFG simplifications may
@@ -588,12 +589,12 @@ predecessor, is an exceptional-handler target, compares a different typed
 value, or removing the untaken edge would require phi repair.  `-O1` and
 `-O2` retain these downstream comparisons.
 
-At the end of `-O3`, a two-input scalar phi used only to produce a return may
-be moved back onto its two incoming edges.  Each predecessor must jump
-directly to the phi block, and the value between the phi and return may pass
-through no more than three `convert`, `cmp`, or `unary` instructions.  Those
-small, side-effect-free calculations are copied onto the incoming edges so
-the join and its return can disappear.  A two-input `u8` or `i64` phi used
+At the end of `-O2` and `-O3`, a two-input scalar phi used only to produce a
+return may be moved back onto its two incoming edges.  Each predecessor must
+jump directly to the phi block, and the value between the phi and return may
+pass through no more than three `convert`, `cmp`, or `unary` instructions.
+Those small, side-effect-free calculations are copied onto the incoming edges
+so the join and its return can disappear.  A two-input `u8` or `i64` phi used
 only as a branch condition may be moved in the same way when at least one
 branch destination is a direct return.
 
@@ -601,8 +602,8 @@ Keep the join when the phi value is shared, the terminal scalar chain is
 longer than three instructions, control is loop-carried, an exceptional
 region is present, either incoming edge is not a direct jump, or moving a
 branch would require successor-phi repair.  The final cleanup performs no
-more than four successful terminal-phi cleanup rounds per function.  `-O1`
-and `-O2` do not perform this terminal return threading.
+more than four successful terminal-phi cleanup rounds per function.  `-O0`
+and `-O1` do not perform this terminal return threading.
 
 General slot-value forwarding beyond complete eligible-slot promotion remains
 an `-O2` responsibility. At `-O1`, a live load whose value is consumed along
@@ -781,16 +782,18 @@ and hand the resulting scalar slot to the ordinary promotion pass. A
 union/find over complete `copyobj` edges lets connected temporary objects share
 one observed scalar type without string keys or repeated instruction scans.
 
-At `-O3`, extend that complete-use proof to ordinary scalar slots whose address
-was materialized. Follow only typed `addr`, pointer `copy`, and zero-offset
-`index` chains. Canonicalize complete, type-compatible, nonvolatile loads,
-stores, exact whole-slot copies, and exact whole-slot zero initialization back
-to direct slot operations, then let ordinary slot promotion construct SSA.
-Keep the slot when its pointer escapes, an address step is nonzero or variable,
-an access is volatile, an access covers only part of the slot, or observed
-scalar types disagree. `-O0` through `-O2` retain the addressed scalar form.
-Candidate, promoted-slot, memory-rewrite, and copy-rewrite accounting remains
-bounded by dense slot and instruction scans.
+At `-O2` and `-O3`, extend that complete-use proof to ordinary scalar slots
+whose address was materialized. Follow only typed `addr`, pointer `copy`, and
+zero-offset `index` chains. Canonicalize complete, type-compatible,
+nonvolatile loads, stores, exact whole-slot copies, and exact whole-slot zero
+initialization back to direct slot operations, then let ordinary slot
+promotion construct SSA. This includes a supported pointer store exposed by
+inlining a helper before the recovery pass. Keep the slot when its pointer
+escapes, an address step is nonzero or variable, an access is volatile, an
+access covers only part of the slot, or observed scalar types disagree. `-O0`
+and `-O1` retain the addressed scalar form. Candidate, promoted-slot,
+memory-rewrite, and copy-rewrite accounting remains bounded by dense slot and
+instruction scans.
 
 For redundant-load elimination, derive compact location identities from the
 typed `addr` and `index` operations. Sparse memory versions placed through the

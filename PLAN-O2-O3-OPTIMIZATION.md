@@ -112,7 +112,7 @@ and `e4670c488cd40ceec44dcffbbc0a2a115db1c427360ff341175e234e78b84975`.
 The fixed matrix work root was removed after every exact lane, and no stale
 benchmark or profiler process remained.
 
-### Current retained checkpoint
+### Pre-D1 retained checkpoint
 
 The current checkpoint is commit `5e644a0e`, after the retained addressed-
 scalar-slot promotion.  A fresh direct O1-producer versus O3-producer
@@ -166,6 +166,72 @@ new evidence is structural: GCC often has *more total code* for a function
 while keeping far less of it in the hot fragment.  The next plan increment
 therefore prioritizes hot/cold partitioning and fast-arm exposure over another
 generic code-size pass or another whole-body inlining threshold sweep.
+
+### Current D1 O2-promotion checkpoint
+
+The low-growth O3 promotion screen is complete. Repeat-stable query reuse does
+no useful O2 work on the current compiler: the macro translation unit visits
+609 functions but discovers no eligible query or reuse, so that scan remains
+O3-only. The zero-bounded signed-range fold also remains O3-only. At O2 it
+changed only the tokenizer's local object by eight text bytes, grew the fixed-
+point compiler by 32 text bytes, and measured 1.01304x wall / 1.01235x
+aggregate CPU against the addressed-slot baseline.
+
+Three existing bounded transformations do pay at O2 and are now retained
+there: complete-use addressed-scalar-slot recovery, one acyclic constant-
+Boolean diamond fold per function, and bounded terminal scalar-phi movement.
+The addressed-slot promotion reduces the fixed-point O2 compiler from
+7,961,170 to 7,903,218 text bytes. The Boolean fold reduces it to 7,893,122
+bytes, and terminal-phi movement reduces the final compiler to 7,885,106
+bytes. Thus the retained combination is 76,064 text bytes smaller than the
+pre-D1 O2 compiler. Component screens used separate fixed-point producers;
+the Boolean dose was about 1.8% wall-positive and 0.4% CPU-positive across its
+two full blocks, while terminal movement was about 1.4% wall / 3.0% CPU
+positive over the Boolean producer. A four-block hot compile was output-exact
+and supported the Boolean wall direction without claiming more than a close
+CPU result.
+
+Fresh same-revision, position-balanced 32-way blocks give:
+
+| Fixed workload | Producer ratio | Wall | Aggregate CPU |
+| --- | --- | ---: | ---: |
+| O1 | self O2/O1 | 0.955405x | 0.962863x |
+| O1 | GCC O2/O1 | 0.885857x | 0.882203x |
+| O1 | normalized | 1.078510x | 1.091429x |
+| O2 | self O2/O1 | 0.945069x | 0.963116x |
+| O2 | GCC O2/O1 | 0.884120x | 0.886624x |
+| O2 | normalized | 1.068937x | 1.086273x |
+| O3 | self O3/O1 | 0.887352x | 0.900661x |
+| O3 | GCC O3/O1 | 0.850509x | 0.846506x |
+| O3 | normalized | 1.043319x | 1.063975x |
+
+The raw D1 O2 floor is now clear on both workloads; normalized O2 parity is
+not yet reached. O3 is not eroded: against the prior O3 producer, the new O3
+producer is 0.98255x wall / 0.99683x CPU and emits the identical requested-O3
+result. The present O3 compiler is about 11.3% faster by wall and 9.9% faster
+by aggregate CPU than the same-revision O1 compiler. The 20% stretch target
+therefore still needs about 10 CPU percentage points, while the normalized
+CPU gap is about 6.4%.
+
+All fixed workloads contain 219 objects. Their manifest/final hashes are:
+
+- O1: `936856f460923a63d428a84aa5c9e3d44668ed62cd8c558b96d82946727bd6d9`
+  / `2be2df24e16fc24953de269dab22f77cbe70c05f6f1aedf26b354cad3d45326c`;
+- O2: `1cdd15c62077ef4d699d5eab395b9072832fcfee8f26c5686874bc067e108d8e`
+  / `a0fd80d621c39bcdeb5321c20ec0084a13010e60f56d67a35b52920513c842f6`;
+- O3: `792e4fc16bc7dcf46814da424f9f49654c64764ef42c0582ff3e405f3394ce4b`
+  / `9e8a1758a3be984657034698a2cf0e9885acd52aedcfed2880461ffffdce22c1`.
+
+Each self compiler reproduces its fixed point exactly, and the corresponding
+GCC O2/O3 producers emit the same 219 objects and final compiler. PA37 now
+states O2/O3 behavior and uses role-based structural, bounded-stat,
+serialization, native, and behavior properties rather than complete-program
+matching. The stale exact O2 fixture that prescribed a retained addressed
+slot was replaced by a property covering the same post-inlining store. PA37
+passes 187/187, PA38 passes 45/45, and the through-PA38 report passes
+5,470/5,470. PA37/PA38 debug and object-roundtrip lanes pass, the LowIR
+contract audit is clean, and the PA39 file audit retains zero fatal findings
+and the established 32 warnings.
 
 ## Starting pipeline census and attribution baseline
 
@@ -558,10 +624,11 @@ the ledger contains measured dispositions for the candidates capable of that
 scale.  A missed stretch goal is recorded honestly; it is not converted into
 a weaker post-hoc metric.
 
-### Current continuation order after `D.addressed-scalar-slot`
+### Current continuation order after the D1 O2-promotion screen
 
 The initial O3 inversion and the 0.95 intermediate target are now cleared.
-The next work must address the remaining O2 floor and the 0.80 O3 target
+The D1 candidates have dispositions, but normalized O2 parity remains open.
+The next work must address that remaining O2 floor and the 0.80 O3 target
 without repeating the many threshold, whole-body-inline, alignment, and local
 peephole experiments already closed by the ledger.
 
@@ -2731,6 +2798,9 @@ Fill one row for every retained or rejected dose.
 | D.zero-bounded-range | combine a private O3 `x < 0` / `x > C` signed rejection chain into one unsigned bound | PA37 README plus O0--O2 isolation, structural guards, phi repair, replay, and behavior property; PA38 unchanged | `AppendUTF8` 0x773 to 0x76b; tokenizer -16 text; G2 producer +3,760 text implementation cost | O1 Ir -0.1989%, normalized -0.2001%; O3 Ir -0.1971%, normalized -0.1950%; clean full O1 wall/CPU -3.75%/-0.71%, O3 -1.46%/-0.15% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; all 219 G2/G3 objects and final hash exact | retained; prefilter and no redundant cleanup preserve raw O3 direction |
 | D.dynamic-small-copy | use direct chunks for runtime copy sizes up to 16 bytes, retaining `rep movsb` otherwise | none; rejected before contract movement | hot token move 206 to 302 bytes; move self cost 156.00M to 181.91M Ir | hot requested-O3 Ir +0.6238%; native flat/slower | PA38 45/45 during experiment; G2/G3 exact; prototype removed | rejected; dispatch and footprint outweigh small-copy saving |
 | D.addressed-scalar-slot | recover complete nonescaping scalar slots whose derived addresses have only safe uses | PA37 README plus positive/negative, level-isolation, bounded-stats, replay, and behavior property; PA38 unchanged | hot token move 206 to 185 bytes and frameless; final producer -56,288 `.text`; O0--O2 output exact | O1 self -3.17% wall/-1.26% CPU, normalized -4.85%/-1.33%; O3 self -0.94%/-1.04%, normalized -1.61%/-1.16%; hot normalized Ir -1.738% | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip and audits clean; all 219 G1/G2 objects and final exact | retained in this checkpoint |
+| D1.repeat-stable-O2 | promote repeat-stable query reuse to O2 | none; rejected before contract movement | macro visits 609 functions but finds zero stable queries, signatures, or reuses | static rejection; added scan has no output benefit | direct O2 stats deterministic; threshold restored | rejected; remains O3-only |
+| D1.zero-bounded-O2 | promote the zero-bounded signed-range fold to O2 | none; existing O3 contract remains | tokenizer -8 text bytes; fixed-point O2 producer +32 text bytes | 1.01304x wall / 1.01235x CPU versus addressed-slot O2 | exact fixed point and 219-object outputs; threshold restored | rejected; scan/layout cost exceeds the tiny O2 population |
+| D1.addressed-boolean-terminal-O2 | reuse three bounded O3 reductions at O2 | PA37 README and role/behavior properties now require O2/O3; brittle exact fixture replaced by post-inlining property; PA38 contract unchanged | fixed-point O2 `.text` 7,961,170 to 7,885,106 (-76,064); final 219-object O1/O2/O3 outputs deterministic | fixed O1 self 0.955405x/0.962863x wall/CPU, normalized 1.078510x/1.091429x; fixed O2 self 0.945069x/0.963116x, normalized 1.068937x/1.086273x; O3 no-erosion 0.98255x/0.99683x | PA37 187/187; PA38 45/45; 5,470/5,470; debug/round-trip and LowIR/file audits clean; self and GCC O2/O3 exact | retained; raw O2 floor cleared, normalized parity still open |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

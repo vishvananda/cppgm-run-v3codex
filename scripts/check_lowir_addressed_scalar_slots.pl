@@ -62,7 +62,7 @@ sub check_positive_shapes
 			die "$test: $label retained the recoverable slot in $name\n"
 				if $has_value_slot || $has_value_address;
 		} else {
-			die "$test: $label recovered the O3-only slot in $name\n"
+			die "$test: $label recovered the O2 scalar slot in $name\n"
 				if !$has_value_slot || !$has_value_address;
 		}
 	}
@@ -73,7 +73,7 @@ sub check_positive_shapes
 		die "$test: $label retained the complete local scalar copy\n"
 			if $has_copy_slots || $has_bulk_copy;
 	} else {
-		die "$test: $label changed the O3-only scalar-copy baseline\n"
+		die "$test: $label changed the lower-level scalar-copy baseline\n"
 			if !$has_copy_slots || !$has_bulk_copy;
 	}
 }
@@ -113,7 +113,7 @@ if(scalar(@ARGV) != 3)
 }
 
 my ($app, $driver, $root) = @ARGV;
-my @tests = collect_tests($root, qr/o3-addressed-scalar-slot.*\.t$/);
+my @tests = collect_tests($root, qr/addressed-scalar-slot.*\.t$/);
 die "No addressed-scalar-slot tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -126,32 +126,35 @@ for my $test (@tests)
 			run_optimizer($app, $test, $directory, $level, $level);
 	}
 
-	for my $level ('O0', 'O1', 'O2') {
+	for my $level ('O0', 'O1') {
 		check_positive_shapes($test, $outputs{$level}, $level, 0);
-		die "$test: $level reported the O3-only recovery\n"
+		die "$test: $level reported the O2 addressed-slot recovery\n"
 			if stat_value($test, $stats{$level},
 				'addressed_scalars_promoted') != 0;
 	}
-	check_positive_shapes($test, $outputs{O3}, 'O3', 1);
-	check_guard_shapes($test, $outputs{O3}, 'O3');
+	for my $level ('O2', 'O3') {
+		check_positive_shapes($test, $outputs{$level}, $level, 1);
+		check_guard_shapes($test, $outputs{$level}, $level);
 
-	my $candidates = stat_value(
-		$test, $stats{O3}, 'addressed_scalar_candidates');
-	my $promoted = stat_value(
-		$test, $stats{O3}, 'addressed_scalars_promoted');
-	my $memory = stat_value(
-		$test, $stats{O3}, 'addressed_scalar_memory_rewrites');
-	my $copies = stat_value(
-		$test, $stats{O3}, 'addressed_scalar_copies_rewritten');
-	die "$test: addressed-scalar stats are empty or unbounded\n"
-		if !$promoted || !$memory || !$copies ||
-		   $promoted > $candidates || $candidates > 64 ||
-		   $memory > $candidates * 8 || $copies > $candidates * 2;
+		my $candidates = stat_value(
+			$test, $stats{$level}, 'addressed_scalar_candidates');
+		my $promoted = stat_value(
+			$test, $stats{$level}, 'addressed_scalars_promoted');
+		my $memory = stat_value(
+			$test, $stats{$level}, 'addressed_scalar_memory_rewrites');
+		my $copies = stat_value(
+			$test, $stats{$level}, 'addressed_scalar_copies_rewritten');
+		die "$test: $level addressed-scalar stats are empty or unbounded\n"
+			if !$promoted || !$memory || !$copies ||
+			   $promoted > $candidates || $candidates > 64 ||
+			   $memory > $candidates * 8 || $copies > $candidates * 2;
 
-	my ($replay_path, $replay, $replay_stats) = run_optimizer(
-		$app, $paths{O3}, $directory, 'O3-replay', 'O3');
-	check_positive_shapes($test, $replay, 'serialized O3 replay', 1);
-	check_guard_shapes($test, $replay, 'serialized O3 replay');
+		my ($replay_path, $replay, $replay_stats) = run_optimizer(
+			$app, $paths{$level}, $directory, "$level-replay", $level);
+		check_positive_shapes(
+			$test, $replay, "serialized $level replay", 1);
+		check_guard_shapes($test, $replay, "serialized $level replay");
+	}
 
 	for my $level ('O2', 'O3') {
 		my $executable = "$directory/behavior-$level";

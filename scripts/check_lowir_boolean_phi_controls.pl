@@ -93,28 +93,32 @@ for my $test (@tests)
 			if direct_phi_branch_count($body) != 1;
 	}
 
-	for my $level_body (['O0', $o0], ['O1', $o1], ['O2', $o2])
+	for my $level_body (['O0', $o0], ['O1', $o1])
 	{
 		my ($level, $output) = @$level_body;
 		my $body = function_body($test, $output,
 			'fold_acyclic_boolean_diamond');
-		die "$test: $level did not preserve the O3 acyclic Boolean diamond\n"
+		die "$test: $level did not preserve the O2 acyclic Boolean diamond\n"
 			if direct_phi_branch_count($body) != 1;
 	}
-	my $o3_fold = function_body($test, $o3,
-		'fold_acyclic_boolean_diamond');
-	die "$test: O3 did not bypass the private acyclic Boolean diamond\n"
-		if direct_phi_branch_count($o3_fold) != 0;
-	my $shared_body = function_body($test, $o3,
-		'retain_shared_acyclic_diamond');
-	die "$test: O3 incorrectly bypassed a shared acyclic Boolean value\n"
-		if direct_phi_branch_count($shared_body) != 1;
-	my $effectful_body = function_body($test, $o3,
-		'retain_effectful_acyclic_diamond');
-	die "$test: O3 discarded work from a Boolean-diamond arm\n"
-		if $effectful_body !~ /\bcall void \@observe\(/;
+	for my $level_body (['O2', $o2], ['O3', $o3])
+	{
+		my ($level, $output) = @$level_body;
+		my $fold = function_body($test, $output,
+			'fold_acyclic_boolean_diamond');
+		die "$test: $level did not bypass the private acyclic Boolean diamond\n"
+			if direct_phi_branch_count($fold) != 0;
+		my $shared_body = function_body($test, $output,
+			'retain_shared_acyclic_diamond');
+		die "$test: $level incorrectly bypassed a shared acyclic Boolean value\n"
+			if direct_phi_branch_count($shared_body) != 1;
+		my $effectful_body = function_body($test, $output,
+			'retain_effectful_acyclic_diamond');
+		die "$test: $level discarded work from a Boolean-diamond arm\n"
+			if $effectful_body !~ /\bcall void \@observe\(/;
+	}
 
-	for my $behavior (['O1', $o1_path], ['O3', $o3_path])
+	for my $behavior (['O1', $o1_path], ['O2', $o2_path], ['O3', $o3_path])
 	{
 		my ($level, $lowir_path) = @$behavior;
 		my $executable = "$directory/behavior-$level";

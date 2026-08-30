@@ -2207,7 +2207,7 @@ void optimize_function_bodies(
     }
     bool object_slots_changed = level >= 1 &&
       scalar_replace_aggregate_slots(&program, &function, stats);
-    const FunctionPass object_promotion = level >= 3 ?
+    const FunctionPass object_promotion = level >= 2 ?
       promote_small_objects_with_addressed_scalars : promote_small_objects;
     if(level >= 1 && timed_function_pass(object_promotion, &function,
         stats, &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis))
@@ -2549,8 +2549,9 @@ void finish_optimizer_pipeline(
   // final O1 load-reuse pass has exposed their shared SSA value.  Restrict the
   // repeated CFG proof to callers that an inlining wave actually changed.
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
-    if(level >= 3) {
+    if(level >= 3)
       fold_zero_bounded_signed_branch(&program.functions[i], stats);
+    if(level >= 2) {
       if(fold_trivial_boolean_phi_diamond(&program.functions[i], stats)) {
         lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
         timed_function_pass(simplify_values, &program.functions[i], stats,
@@ -2559,6 +2560,8 @@ void finish_optimizer_pipeline(
         timed_dce(&program.functions[i], boundaries, stats, &dce_scratch);
         timed_cfg(&program.functions[i], stats, &cfg_scratch, &analysis);
       }
+    }
+    if(level >= 2) {
       for(std::size_t round = 0; round < 4; ++round) {
         if(!timed_terminal_phi_returns(&program.functions[i], stats)) break;
         if(round == 3 && stats) ++stats->o3_terminal_phi_round_cap_hits;
