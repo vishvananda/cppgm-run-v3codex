@@ -2954,6 +2954,42 @@ internally deterministic at its expected G1 or G2 hash.  The prototype was
 removed.  Because the behavior is rejected, no PA38 README or property test
 was added; PA37 was unaffected throughout.
 
+### Rejected complete scalar-home callee-save promotion
+
+A new tokenizer-only oracle made the next native screen substantially faster.
+It links the accepted self-O3 and same-revision GCC-O3 `pp_tokenizer` objects
+against one common entry object, feeds both the same 634,463-byte preprocessed
+compiler corpus, and requires output hash
+`90db88a91d3942b657347250f3c18dd90ccb14e20ba4dd0f5edece1e06a58352`.
+Native execution takes about 0.07 seconds and instruction-address Callgrind
+takes about five seconds.  The accepted self and GCC controls retire
+444,824,631 and 278,905,697 instructions respectively.  This is now the first
+screen for tokenizer-path native experiments; retained candidates still need
+the full fixed workload and same-source normalized controls.
+
+The residual profile showed the translated scalar in
+`TranslationCursor::Next` sharing one physical frame home across three phi
+identities and being read repeatedly on the common ASCII path.  A bounded O3
+prototype selected at most one compiler-created scalar home per function,
+required at least eight complete scalar load/store/compare references, rejected
+debug-visible, volatile, address-observed, non-scalar, and mixed-type homes,
+rewrote every physical-home reference rather than one predecessor path, and
+used an otherwise unmentioned callee-saved register.  Rewriting the complete
+home avoided the unsound predecessor-transfer assumption from the rejected
+acyclic merge-phi experiment and preserved values uniformly across calls.
+
+The result was output-exact but decisively negative.  The tokenizer `.text`
+grew from 28,949 to 29,095 bytes, and `Next` grew from 4,157 to 4,217 bytes.
+Total oracle instructions rose from 444,824,631 to 448,205,534 (+0.7601%),
+while `Next` alone rose from 38,878,635 to 41,343,637 (+6.3393%).  The
+2,465,002-instruction increase is almost exactly four instructions per one of
+the 616,072 calls: changing frame operands to register operands did not remove
+the existing moves or comparisons, while the extra save, restore, and stack
+alignment work ran on every call.  The prototype was removed without README
+or property movement.  A successor must eliminate transfers or use a bounded
+call-free caller-saved segment; complete-home callee-save promotion is not a
+useful retry.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3026,6 +3062,7 @@ Fill one row for every retained or rejected dose.
 | D.fast-prefix-partial | copy one bounded pure fast-return prefix at hot loop calls and share one cyclic slow clone | provisional PA37/PA38 structural, level, guard, stats, replay, native, and behavior properties passed, then were removed with the rejected feature | isolated `inline_o1.o` exact; hot Ir -1.1228%; producer +48,016 text bytes; 16 sites beat the 24-site dose | self wall/CPU 1.051011x/1.010428x; GCC 0.988649x/0.998224x; normalized 1.063078x/1.012225x | exact G1/G2; all three 220-object self/GCC pairs and final compiler exact; implementation and contract movement removed | rejected; representative normalized CPU regresses despite the local deterministic saving |
 | D.cyclic-dead-parameter | reclaim a dead incoming parameter register in a cycle only when neither the parameter nor a register-backed deferred address can be replayed from that cycle | none; rejected behavior was not moved into PA38 | `FindChild` 48 to 45 MIR and 177 to 166 bytes; corrected fixed-point producer -6,348 `.text`; O0/O1 representative outputs exact | O1 wall/CPU 0.98499x/1.00252x; O3 wall/CPU 1.05614x/1.01239x | initial G2 crash diagnosed as a replayed deferred address; corrected all-32 G1/G2 exact at 219 objects and final hash `874c5fba...` | rejected and removed; representative O3 regresses despite the local allocation win |
 | D.dynamic-index-takeover | reuse a final-use dynamic-index base only for a short, repeated-use, call-free range after allocation fails | none; rejected behavior was not moved into PA38; PA37 unchanged | `FindEntry` 84 to 80 MIR, frame 32 to 16, one save removed; narrowed six-TU screen changed only two `program.cpp` functions; fixed-point producer +756 `.text` | O1 normalized wall/CPU 1.05185x/1.00801x; O3 raw self 1.01325x/1.00613x and normalized 0.99478x/1.00110x | O0/O1 MIR exact; 219 G2/G3 objects and final hash `608dd02b...` exact | rejected and removed; local frame win does not improve normalized CPU or raw throughput |
+| D.complete-scalar-home | replace every load/store/compare of one heavily reused compiler scalar frame home with an unused callee-saved register | none; rejected behavior was not moved into PA38; PA37 unchanged | tokenizer `.text` 28,949 to 29,095; `Next` 4,157 to 4,217 bytes; output exact | tokenizer oracle 444,824,631 to 448,205,534 Ir (+0.7601%); `Next` 38,878,635 to 41,343,637 (+6.3393%) | five-second instruction-address oracle exact; full workload unwarranted; prototype removed | rejected; four instructions/call of save/restore/alignment tax outweigh unchanged move count |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
