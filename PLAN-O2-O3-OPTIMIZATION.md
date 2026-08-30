@@ -3124,6 +3124,43 @@ unaffected.  The profile's large repeated-instruction attribution reflects
 the accounting of compact string operations, not a demonstrated native-time
 opportunity.
 
+### Rejected shared-loop wrapper ownership
+
+The residual self/GCC comparison showed opposite identifier-predicate
+ownership.  The self compiler had flattened the small initial-character
+wrapper into `Lexer::Run` while retaining the shared binary-search loop as a
+call; GCC instead retained a 201-byte initial-character helper and localized
+both searches inside it.  This was distinct from the rejected broad shared-
+loop and loop-wrapper inlining doses: an O3-only prototype selected an
+internal acyclic wrapper of at most 64 instructions with at least two direct
+uses, exactly two calls to the same shared non-hinted loop of at most 64
+instructions, and no other calls.  It localized the two loops into the
+wrapper and then treated the now-cyclic wrapper as an ordinary shared loop so
+it would not be duplicated into its larger callers.
+
+The prototype produced exactly the intended general shape on the tokenizer.
+`IsIdentifierInitial` reappeared as a 192-byte helper, close to GCC's
+201-byte body; `Lexer::Run` fell by 172 bytes, while the complete tokenizer
+object grew by 108 text bytes.  Three large caller copies became calls to the
+single owned wrapper, and `IsIdentifierBody` continued to share the general
+range helper.  A fresh 32-way self build completed in 17.94 seconds.  Across
+the full producer population the candidate grew 2,816 text bytes and 16 data
+bytes.
+
+Both generated producers emitted the exact same fixed-O1 hot object at
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`.
+Twenty position-balanced software `task-clock` observations per side averaged
+866.160 ms for baseline and 869.011 ms for candidate, an aggregate ratio of
+1.00329x.  The ten balanced-block ratios averaged 1.00337x, and the unpaired
+medians were 864.125 and 867.515 ms.  Thus matching GCC's ownership choice in
+isolation is slightly slower on our backend and increases the producer
+footprint; it does not clear the 1% retention gate.
+
+The prototype was removed before full-workload or inception escalation.  No
+PA37 README or property test was added for rejected behavior; PA38 was
+unaffected.  A successor needs a code-generation improvement inside the
+range search or its call sites rather than another ownership-only retry.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3201,6 +3238,7 @@ Fill one row for every retained or rejected dose.
 | D.guarded-frame-store | sink one exact temporary frame definition below the only scalar-guard arm that dominates all later reloads | none; rejected behavior was not moved into PA38; PA37 unchanged | tokenizer -16 text bytes; `Next` -12; producer +17,952; isolated producer +15,680 and one workload object | hot Ir -0.3940%, normalized -0.395%; 12-pair normalized medians +1.030% wall/+0.406% CPU; isolated raw CPU median +0.13% | inline G1/G2 exact at 219 objects; isolated G1/G2 exact at 220; prototypes removed | rejected; local instruction saving loses to representative normalized cache/layout behavior |
 | D.correlated-constant-group | specialize all correlated constant/global parameters within one four-site O3 call group | none; rejected behavior was not moved into PA37; PA38 unchanged | four E1-table calls lose two arguments; 74-byte clone; tokenizer +26 text bytes | exact fast oracle +236,392 Ir (+0.0531%); specialized helper path itself +472,764 Ir | immediate deterministic rejection; prototype removed before fixed point | rejected; parameter removal does not simplify the binary-search loop |
 | D.copy80 | select direct vector chunks for exact 80-byte O2+ copies | none; rejected behavior was not moved into PA38; PA37 unchanged | deque swap 241 to 372 bytes; macro object +176 text; producer +3,892 text | 20 observations/side: aggregate task-clock 0.99915x; pair mean 0.99916x, median 0.99989x; warm pair mean 1.00051x | exact generated object; fresh 32-way candidate self compiler; prototype removed before full/inception gate | rejected; native CPU is flat while code grows |
+| D.shared-loop-owner | localize two calls to one shared loop inside a multiply-used acyclic wrapper, then preserve that cyclic wrapper | none; rejected behavior was not moved into PA37; PA38 unchanged | retained 192-byte identifier wrapper; `Run` -172 bytes; tokenizer +108 text; producer +2,816 text/+16 data | 20 observations/side: aggregate task-clock 1.00329x; balanced-block mean 1.00337x; medians 864.125/867.515 ms | exact fixed-O1 hot object; fresh 32-way self compiler; prototype removed before full/inception gate | rejected; GCC-like ownership alone is slightly slower on this backend |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
