@@ -2885,6 +2885,38 @@ source-set addition, provisional README text, fixtures, and checkers were all
 removed.  Revisit this shape only with a materially lower-growth encoding or
 profile/linker support that demonstrates a representative full-workload win.
 
+### Rejected cyclic dead-parameter register reclamation
+
+The residual O3 semantic-analysis profile exposed a genuine register-allocation
+loss in `Analyzer::FindChild`: after the incoming node parameter's last
+preheader use, its register remained unavailable throughout a loop.  A bounded
+O2/O3 prototype allowed a dead incoming parameter to be reclaimed in a cyclic
+block only when the current block could not reach any direct use of that
+parameter.  The target function fell from 48 to 45 MIR instructions, from five
+loop frame operands to two, and from 177 to 166 native bytes.
+
+The first fixed-point attempt correctly found that direct parameter uses were
+not a sufficient proof.  `index_symbol_labels` retained a deferred `%source +
+112` address that was replayed in its loop; reclaiming `%source` therefore made
+G2 crash in that function.  No fixture was changed.  The corrected proof kept
+the allocator's sticky carrier mark and scanned for deferred addresses whose
+use blocks remained reachable from the current cycle.  It rejected the ELF
+case while retaining all six analyzer reclaims.  O0 and O1 representative
+objects remained byte-exact.  A fresh 32-way bootstrap then matched all 219 G1
+and G2 objects and the final compiler at
+`874c5fba5e8584c838412f7964711ecee3f16759e2d253da3c40d5a236cbda82`;
+the candidate was 6,348 `.text` bytes smaller than D4.
+
+Representative throughput rejected even the corrected implementation.  In
+one position-balanced requested-O1 block, candidate/baseline was 0.98499x wall
+but 1.00252x aggregate CPU.  In the requested-O3 block it was 1.05614x wall
+and 1.01239x aggregate CPU.  Each side was internally deterministic: the O1
+lanes shared all 219 objects and final output, while the O3 baseline and
+candidate each reproduced their respective manifest and final hashes.  The
+reachable-address scan and the producer-wide layout change therefore cost more
+than the small local spill saving.  The implementation was removed, and no
+PA38 README or property test was added for rejected behavior.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -2955,6 +2987,7 @@ Fill one row for every retained or rejected dose.
 | D2.cold-partition | group structurally raising O3 MIR behind a serialized suffix and emit eligible strong fragments in `.text.unlikely` | provisional PA38 README and structural/ELF/unwind/debug/behavior property passed, then removed with the rejected feature; PA37 unchanged | tokenizer 9 fragments/3,408 cold bytes/77 cross fixups; macro 3/444/7; linked producer +30,192 `.text` | hot wall/user +2.29%/+1.20%; full self wall/CPU -0.30%/-0.63%; GCC -0.76%/-0.12%; normalized +0.46% wall/-0.50% CPU | focused property and PA38 45/45 clean; earlier all-32 prototype inception exact; all timed O1 outputs exact | rejected; misses the 1% normalized gate and regresses both normalized wall and the hot oracle |
 | D4.final-transfer-region | clean cloned `noreturn` continuations, reuse an acyclic source home at its exact final phi transfer, and recolor complete connected source-live regions | PA37/PA38 READMEs plus role-, liveness-, level-, guard-, replay-, and behavior-based properties | `Next` frame 240 to 208 bytes, preserves -2, body 4,264 to 4,157 bytes; producer -14,928 `.text`; hot Ir -1.8031% | full self wall/CPU 0.997131x/0.992809x; GCC CPU 1.008088x; normalized CPU 0.984844x and normalized Ir 0.982027x; normalized wall intentionally unclaimed | PA37 187/187; PA38 45/45; 5,470/5,470 full report; debug/round-trip clean; zero-fatal audit; 219-object G2/G3 exact | retained; general three-layer movement family clears the deterministic and normalized CPU gates |
 | D.fast-prefix-partial | copy one bounded pure fast-return prefix at hot loop calls and share one cyclic slow clone | provisional PA37/PA38 structural, level, guard, stats, replay, native, and behavior properties passed, then were removed with the rejected feature | isolated `inline_o1.o` exact; hot Ir -1.1228%; producer +48,016 text bytes; 16 sites beat the 24-site dose | self wall/CPU 1.051011x/1.010428x; GCC 0.988649x/0.998224x; normalized 1.063078x/1.012225x | exact G1/G2; all three 220-object self/GCC pairs and final compiler exact; implementation and contract movement removed | rejected; representative normalized CPU regresses despite the local deterministic saving |
+| D.cyclic-dead-parameter | reclaim a dead incoming parameter register in a cycle only when neither the parameter nor a register-backed deferred address can be replayed from that cycle | none; rejected behavior was not moved into PA38 | `FindChild` 48 to 45 MIR and 177 to 166 bytes; corrected fixed-point producer -6,348 `.text`; O0/O1 representative outputs exact | O1 wall/CPU 0.98499x/1.00252x; O3 wall/CPU 1.05614x/1.01239x | initial G2 crash diagnosed as a replayed deferred address; corrected all-32 G1/G2 exact at 219 objects and final hash `874c5fba...` | rejected and removed; representative O3 regresses despite the local allocation win |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
