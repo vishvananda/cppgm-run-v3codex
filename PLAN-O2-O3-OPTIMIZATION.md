@@ -2,7 +2,7 @@
 
 Status: executing
 
-Date: 2026-08-29
+Date: 2026-08-30
 
 ## Objective
 
@@ -78,8 +78,8 @@ workload.  The normalized loss is larger: about 20% on the O1 workload and
 detrimental, but this matrix does not say which pass or interaction is at
 fault.
 
-At the current post-D.loop-priority-inline checkpoint, the inversion remains
-removed and O3 now has a meaningful raw lead.  Three order-rotated all-32
+At the earlier post-D.loop-priority-inline checkpoint, the inversion remained
+removed and O3 had a meaningful raw lead.  Three order-rotated all-32
 lanes per cell give these producer medians:
 
 | Producer | O1 workload | O3 workload |
@@ -112,10 +112,66 @@ and `e4670c488cd40ceec44dcffbbc0a2a115db1c427360ff341175e234e78b84975`.
 The fixed matrix work root was removed after every exact lane, and no stale
 benchmark or profiler process remained.
 
-## What changes above O1 today
+### Current retained checkpoint
 
-The attribution work must preserve the separation between the LowIR pipeline
-and the native pipeline.
+The current checkpoint is commit `5e644a0e`, after the retained addressed-
+scalar-slot promotion.  A fresh direct O1-producer versus O3-producer
+comparison used the same requested-O3 219-object workload, three balanced
+32-way blocks, and six samples per producer.  Fresh same-source GCC O1 and O3
+controls used the same workload and ordering discipline:
+
+| Producer | Mean wall | Mean aggregate CPU | O3/O1 |
+| --- | ---: | ---: | ---: |
+| `S_13` | 31.588 s | 906.662 s | control |
+| `S_33` | 29.027 s | 819.812 s | 0.918905x / 0.904209x |
+| `G_13` | 21.083 s | 591.527 s | control |
+| `G_33` | 17.927 s | 500.553 s | 0.850277x / 0.846206x |
+
+O3 is therefore about 8.1% faster by wall time and 9.6% faster by aggregate
+CPU than the current O1-produced compiler.  The raw floor is decisively met,
+but GCC gains about 15.0--15.4% over the same producer-level transition.  The
+normalized O3/O1 ratios are consequently 1.080713x wall and 1.068545x CPU:
+our O3 improvement still trails GCC's by about 6.9--8.1%.  Reaching the raw
+20% target requires another 11.9 percentage points of wall improvement from
+the present O3 result; the normalized target is stricter and must continue to
+use fresh same-revision controls.
+
+Both self producers emitted identical requested-O3 results: manifest
+`4e1206ae289fd6cb76cb84fc159edbb7a1d1c4823297c6d50e504b9d57eea3ec`
+and final compiler
+`3d72f8607d98a33a3eba55adde272138ea983ba870a6fd1b29978a24a78bdefa`.
+The exact current O1 fixed-point producer hashes
+`5170138047eab3cb6f016cbef2297fb95f1e83f2e4544bf36bff861219cf7920`;
+all 219 G1/G2 objects and the final compiler matched.  Benchmark reports are
+`/tmp/v3-o23-current-s1-s3-o3-full-abba.txt` and
+`/tmp/v3-o23-current-g1-g3-o3-full-abba.txt`.  These paths are evidence roots,
+not repository dependencies.
+
+The current requested-O3 hot compile retires 4,225,444,281 Callgrind
+instructions in the self compiler versus 2,423,904,398 in the same-source
+GCC-O3 compiler.  Inclusive caller counts and linked-symbol sizes identify
+the following residuals:
+
+| Region | Self evidence | GCC evidence | Interpretation |
+| --- | ---: | ---: | --- |
+| `Lexer::Peek(0)` specialized query | 383.23M flat instructions; 18.09M calls; 203-byte body | 110.32M; 7.31M surviving calls; 145-byte hot body plus 76-byte cold body | largest exposed call/fast-path gap |
+| `Lexer::Run` | 573.91M; 9,491-byte body | 403.42M; 5,497-byte hot body plus 1,520-byte cold body | very large merged hot region |
+| `TranslationCursor::Next` | 549.49M; 4,264-byte body | 445.21M; 2,145-byte hot body plus 3,832-byte cold body | GCC's total body is larger, but its hot part is half the size |
+| `AppendUTF8` | 174.50M; 1,814-byte body | 123.44M; 1,242-byte hot body plus 76-byte cold body | residual scalar/control-flow work |
+| `MacroProcessor::AddSourceToken` | 109.46M; 1,245-byte body | 62.71M; 645-byte hot body plus 262-byte cold body | another hot/cold and movement candidate |
+
+Flat costs are not summed as independent opportunities because GCC has
+inlined and partitioned different portions of the same call paths.  The key
+new evidence is structural: GCC often has *more total code* for a function
+while keeping far less of it in the hot fragment.  The next plan increment
+therefore prioritizes hot/cold partitioning and fast-arm exposure over another
+generic code-size pass or another whole-body inlining threshold sweep.
+
+## Starting pipeline census and attribution baseline
+
+The initial attribution work preserved the separation between the LowIR
+pipeline and the native pipeline.  This section records the starting
+`fca27131` state; the execution ledger records every later retained addition.
 
 ### LowIR O2 additions
 
@@ -142,7 +198,7 @@ graph is built before ordinary inlining, then reused after the program has
 changed.  The plan must determine whether this is merely conservative or
 whether stale use/body summaries lead to poor clone and argument decisions.
 
-### LowIR O3 addition
+### LowIR O3 addition at plan start
 
 O3 adds bounded full unrolling of eligible constant-trip loops.  It otherwise
 uses the O2 LowIR work and the common late-inline/pruning tail.  A historical
@@ -167,7 +223,7 @@ The framed/frameless interaction must also be crossed explicitly: an
 optimization that helps framed functions but harms the frameless population
 is destructive interference, not a net O2 win.
 
-### Native O3 addition
+### Native O3 addition at plan start
 
 There is no O3-only MIR rewrite.  PA38 specifies that O3 carries PA37's O3
 LowIR through the O2 machine path.  Therefore any O3-only difference is caused
@@ -217,10 +273,10 @@ the recorded experiment and exact PID; never kill an unrelated user process.
 The retained deterministic attribution oracle is one O1 compile of the hot
 `preprocessor.cpp` translation unit under Cachegrind.  It completes in about
 one minute with the self producer, preserves an exact output hash, and is used
-only after the native hot-TU screen has shortlisted a candidate.  On the
-current sources, self O1 and O3 execute 5,196,654,174 and 5,181,114,513
+only after the native hot-TU screen has shortlisted a candidate.  At the
+initial baseline, self O1 and O3 executed 5,196,654,174 and 5,181,114,513
 instructions respectively, only a 0.299% reduction.  Same-source GCC O1 and
-O3 execute 2,952,710,945 and 2,424,753,931 instructions, a 17.88% reduction.
+O3 executed 2,952,710,945 and 2,424,753,931 instructions, a 17.88% reduction.
 GCC's change is distributed across whitespace scanning, decoding, range and
 identifier checks, literal scanning, vector growth, UTF-8 append, and macro
 operator checks; it is broad interprocedural simplification, not one isolated
@@ -235,7 +291,8 @@ For each timing window:
   implementation generated by a compiler that contains it); do not judge the
   candidate's producer-code benefit until G2 has self-applied the change, and
   require G2/G3 equality before retention;
-- use `-j32` and `INCEPTION_BUILD_JOBS=32` for compiler and inception builds;
+- use `-j32`, `INCEPTION_BUILD_JOBS=32`, and
+  `INCEPTION_OBJECT_BUILD_JOBS=32` for compiler and inception builds;
 - balance run order and record wall, aggregate CPU, and maximum RSS;
 - record medians, paired ratios, and all samples, not only favorable samples;
 - extend close results rather than discarding individual outliers;
@@ -464,9 +521,8 @@ O1.
 
 ## Phase D: build a meaningfully stronger O3
 
-Current O3 has only bounded full unrolling, so removing the inversion is
-unlikely to reach 20% by itself.  Select O3 work from the refreshed dynamic
-profile, in this order:
+At plan start O3 had only bounded full unrolling, so removing the inversion
+could not reach 20% by itself.  The initial candidate order was:
 
 1. an O3-specific, pressure-aware inlining dose for hot/hinted or
    definition-removing call classes, followed immediately by the existing
@@ -480,7 +536,7 @@ profile, in this order:
    benchmark, typed MIR representation, and PA37/PA38 contract justify the
    implementation cost.
 
-Inlining is first because prior GCC ablation evidence found it dominant on
+Inlining was first because prior GCC ablation evidence found it dominant on
 compiler code, while mature O1-to-O3 controls gain substantially.  However,
 old rejected inline doses are not accepted on reputation: re-evaluate them
 under the corrected same-revision self/GCC metric and the current post-inline
@@ -501,6 +557,149 @@ profiled cost until the 0.80 raw and normalized stretch targets are reached or
 the ledger contains measured dispositions for the candidates capable of that
 scale.  A missed stretch goal is recorded honestly; it is not converted into
 a weaker post-hoc metric.
+
+### Current continuation order after `D.addressed-scalar-slot`
+
+The initial O3 inversion and the 0.95 intermediate target are now cleared.
+The next work must address the remaining O2 floor and the 0.80 O3 target
+without repeating the many threshold, whole-body-inline, alignment, and local
+peephole experiments already closed by the ledger.
+
+#### D0. Refresh the current O2 row and controls
+
+Before another code change, rebuild `S_1`, `S_2`, `S_3`, `G_1`, `G_2`, and
+`G_3` from commit `5e644a0e` and run fixed O1, O2, and O3 workloads.  Run
+Clang O1/O2/O3 producers on fixed O1 and O3 workloads.  The current direct
+S1/S3 and G1/G3 O3-workload result above is reusable, but the O2 row is older
+than several retained O3 and common-native changes and must not be inferred
+from it.  Record raw and normalized wall/CPU ratios, exact manifests, final
+hashes, producer `.text`, optimizer time, and the requested-level cost.
+
+This refresh decides whether O2 first needs code quality, pass-cost work, or
+both.  It also supplies the same-revision denominator for every promotion
+experiment below.
+
+#### D1. Promote low-growth O3 winners to O2 where they pay
+
+O2 should first reuse proven general transformations rather than acquire a
+new speculative pass family.  Screen the retained O3 changes individually at
+O2, ordered by demonstrated dynamic saving and low output growth:
+
+1. repeat-stable query reuse;
+2. complete-use addressed-scalar-slot promotion;
+3. zero-bounded range and trivial Boolean-diamond simplification; and
+4. terminal scalar-phi/return movement.
+
+Do not initially promote grouped cloning, loop-priority inlining, or another
+growth transform.  A promoted feature must keep its existing structural proof
+and budgets, improve both raw and normalized O2, and not erode O3.  Its PA37
+property test and README must be revised from O2 isolation to O2/O3 behavior;
+the test must continue to identify roles and behavior rather than exact
+program text.  If a feature's compile-time scan cost cancels its generated-
+code saving at O2, leave it O3-only and record that disposition.
+
+The D1 exit is `P_b(2:1) < 1.00` and `N_b(2:1) <= 1.00` on fixed O1 and O2
+workloads.  Continue toward the earlier 0.95 Phase-C goal only with retained
+features that improve O3 as well.
+
+#### D2. Partition structurally cold native regions
+
+This is the highest-upside new O3 candidate.  GCC's
+`TranslationCursor::Next` has a 2,145-byte hot fragment and a 3,832-byte cold
+fragment, whereas our 4,264 bytes remain in one text region.  The same pattern
+appears in `Lexer::Run`, `AppendUTF8`, `Peek`, and `AddSourceToken`.  This is
+not another function-alignment sweep: stronger 32/64-byte alignment was
+already rejected, and padding cannot pack hot fragments together.
+
+Proceed in four bounded steps:
+
+1. census, for every O3 function, bytes and edges in blocks structurally cold
+   because they raise, resume, or call a serialized `noreturn` boundary;
+2. prototype cold-fragment emission using facts already present in serialized
+   MIR, placing eligible fragments in a cold executable section while keeping
+   explicit relocations between hot and cold fragments;
+3. preserve symbol identity, local labels, debug locations, FDE/LSDA ranges,
+   COMDAT/weak grouping, unwind behavior, and linker reachability; and
+4. gate partitioning on a minimum cold-byte saving, a bounded number of
+   cross-fragment edges, representable relative branches, and a per-object
+   section/relocation budget.
+
+Prefer deriving the decision from existing MIR `noreturn`, throw, resume, and
+CFG facts.  Add no LowIR field merely to carry a native layout preference.  If
+native replay cannot reconstruct a required fact, first prove that the
+smallest explicit MIR addition is necessary and serializable.  Report hot and
+cold bytes, fragments, cross edges, long-branch expansions, EH skips,
+analysis bytes, and elapsed time.
+
+The earliest owning contract is PA38: a student-facing high-level description
+and structural/behavioral checks for hot/cold section placement, cross-section
+control transfer, ordinary and throwing behavior, debug replay, and negative
+EH/COMDAT/budget guards.  O0--O2 stay byte-exact during the first O3 screen.
+Only after O3 retention should an O2 dose be measured under D1's rules.
+
+This candidate advances only if hot-text footprint falls materially and a
+complete 32-way block improves by at least 1% normalized CPU or corroborating
+wall time.  A change that only renames or reorders sections without reducing
+the executed footprint is rejected.
+
+#### D3. Inline only proven fast arms and share the slow body
+
+If D2 makes cold separation useful, evaluate a source-independent partial-
+inlining transform for internal scalar queries with a small, side-effect-free
+fast arm and one shared refill/error arm.  Inline the guard and fast return at
+selected hot call sites, but keep exactly one out-of-line slow body.  This is
+materially different from the rejected experiments:
+
+- `D.group-header-inline` duplicated the complete loop-shaped clone; and
+- `D.group-fast-sibling` left the fast wrapper out of line.
+
+The new form is worth testing only if it reduces calls *and* exposes repeated
+field loads to ordinary caller cleanup without duplicating refill, throw, or
+EH regions.  Require an internal nonrecursive callee, a bounded acyclic fast
+arm, exact argument/result types, no observable address identity, a single
+shared slow entry, explicit per-site/per-caller/per-unit growth limits, and a
+post-transform cleanup census.  Select sites from structural loop and call
+facts, never from function names or source locations.
+
+PA37 owns the partial-inline property if retained.  Its checks must cover the
+fast positive shape, the surviving shared slow path, unlike calls, mutation
+and volatile guards, serialized replay, bounded statistics, and behavior.
+The primary outcome is fewer dynamic calls and hot instructions with no added
+spill, save, frame, or hot-text regression.  Do not retain it for call-count
+movement alone.
+
+#### D4. Re-profile cursor, string, and token movement after the layout change
+
+After D2/D3, take a new inclusive profile before selecting another rewrite.
+Prioritize the remaining regions by whole-program avoidable instructions,
+not their flat symbol totals.  For each of `TranslationCursor::Next`,
+`AppendUTF8`, and `AddSourceToken`, compare self and GCC at instruction/basic-
+block granularity and record:
+
+- executed loads, stores, copies, calls, conditional branches, and backedges;
+- hot-fragment bytes and fallthrough/jump structure;
+- frames, spills, callee saves, and call-crossing live ranges; and
+- the concrete LowIR-to-MIR sequence responsible for the largest delta.
+
+Choose one general instruction family whose measured upper bound is at least
+1% of the complete workload.  Re-evaluate an old rejected local improvement
+only when D2/D3 has materially changed the condition that caused its
+rejection.  For example, a formerly layout-negative copy fusion may be
+retested after hot/cold partitioning; a cold divide removal with no dynamic
+benefit may not.  This rule prevents cycling through the ledger.
+
+#### D5. Allocation or SIMD only with a demonstrated residual population
+
+If the remaining cost is movement across calls or joins, add live-range
+splitting or region-local allocation only for the measured population and
+cross it against framed/frameless layout.  If it is repeated adjacent typed
+scalar work, build an SLP census first and add SIMD only when MIR can express
+the operation, alignment and alias proofs are serialized, and the compiler
+workload has enough dynamic instances to clear the 1% screen.  Neither family
+is a default final phase merely because mature compilers implement it.
+
+At every step, G2 is the code-quality candidate and G3 must be its exact fixed
+point.  A G1-only win is diagnostic evidence, not a retention result.
 
 ## Correctness and verification cadence
 
@@ -556,11 +755,13 @@ RUN_ROOT=/dev/shm/v3-o23-<phase>-<commit>
 
 /usr/bin/time -v make -C pa39 -j32 cppgm++-self \
   INCEPTION_OBJ_ROOT_BASE="$RUN_ROOT" \
-  INCEPTION_BUILD_JOBS=32
+  INCEPTION_BUILD_JOBS=32 \
+  INCEPTION_OBJECT_BUILD_JOBS=32
 
 /usr/bin/time -v make -C pa39 -j32 compare-cppgm++-inception \
   INCEPTION_OBJ_ROOT_BASE="$RUN_ROOT" \
-  INCEPTION_BUILD_JOBS=32
+  INCEPTION_BUILD_JOBS=32 \
+  INCEPTION_OBJECT_BUILD_JOBS=32
 ```
 
 Time self construction separately from inception.  Require every current
