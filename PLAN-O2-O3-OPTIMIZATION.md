@@ -2052,6 +2052,70 @@ final compilers are exact at
 fresh O2 G1/G2 is exact at
 `58424d56c9c3a64101514eac5f68265f4ac3d11814fdfa1b85d87d7379d25ca9`.
 
+### D.adjacent-integer-normalizations O2+ MIR cleanup retained
+
+The next retained native dose removes integer representation work whose proof
+is already local in final MIR.  At O2 and O3, a narrow integer load followed
+immediately on the same virtual register by a same-width sign or zero
+normalization selects the corresponding signed or unsigned load.  Two
+adjacent normalizations on the same register are also combined when the later
+width subsumes the earlier one, when their signedness agrees, or when the
+first operation zero-extends and therefore proves the value nonnegative.
+The pass is deliberately block-local and adjacent.  It does not cross an
+instruction or remove a narrow sign extension followed by a wider zero
+extension, since that chain can change the represented value.  Removed source
+locations are retained on the surviving instruction.  O0 and O1 do not run
+the pass.
+
+This is a PA38 native-MIR contract rather than a PA37 LowIR addition.  The
+PA38 README describes the source-independent proof, and its new course
+control checks signedness selection, both safe chain forms, the value-changing
+and intervening-instruction guards, O0/O1 isolation, debug-location survival,
+driver replay, native encoding, and generated behavior.  The checker matches
+roles and structural relationships with register-agnostic expressions; it
+does not compare a complete MIR dump, compiler output, exact register names,
+or object bytes.  PA37 remains unchanged because the serialized LowIR surface
+is unchanged.
+
+On the fixed hot preprocessing TU, final MIR falls from 6,480 to 6,419
+instructions and object `.text` falls from 29,749 to 29,605 bytes.  The O3
+producer falls from 7,981,538 to 7,972,210 `.text` bytes (-9,328), while its
+fixed requested-O1 output remains exact at
+`d9dbe51e6b5848711ff72e7b27fef7f5bd638a352db0ea19c20efbc2ae74a41e`.
+Callgrind falls from 4,377,937,136 to 4,341,389,715 instructions (-0.8348%).
+The common-path same-source GCC control changes only +0.0051%, so the
+instruction result is also approximately -0.84% after normalization.
+
+Six clean, balanced 32-way blocks over the complete requested-O1 workload
+produce one exact 219-object manifest and final compiler per side.  Self mean
+wall/CPU ratios are 0.98344x/0.99420x; paired-median ratios are
+0.98213x/0.99346x.  The same-source GCC mean ratios are
+0.99813x/0.99956x and paired medians are 0.99379x/0.99832x.  The resulting
+normalized gain is 1.17% wall and 0.49% CPU by paired median, or 1.47% wall
+and 0.54% CPU by means.  Thus the improvement is not merely work added to the
+GCC-built control, and both raw self metrics remain favorable.
+
+A dedicated reporting counter was tested and rejected separately.  Although
+it did not affect the generated hot object, it added 160 producer text bytes
+and introduced consecutive slow tails in the representative 32-way workload,
+including a block with about 1.17% more aggregate CPU.  Removing that counter
+restored the exact pre-counter GCC seed and the measured retained fixed point.
+The general rewrite count plus structural and behavioral property checks are
+sufficient observability without paying that compiler-layout cost.
+
+The final counter-free gates pass PA29 291/291, PA38 45/45, and the report
+through PA38 5,471/5,471.  PA37/PA38 debug and object-round-trip lanes pass,
+and the PA39 file audit remains at zero fatal findings and the established 32
+warnings.
+Two fresh frozen compiles reproduce the exact hot-object hash above.  Fresh
+all-32 O2 and O3 inception trees each match all 219 objects and their final
+compiler.  Under the fixed measurement roots, O2 is exact at
+`cb26b76270761c53eca9cfcf3e5ecd851b43ea17a8c23701c850a40bc27b50fa`
+and O3 is exact at
+`0ec21c5fb19205f3726953dae144256cc33e36de926cee09435ce17566de12e2`;
+their complete self/inception gates take 49.37 and 48.46 seconds respectively
+with 32 build and object workers.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -2108,6 +2172,7 @@ Fill one row for every retained or rejected dose.
 | D.parameter-index-remat | rematerialize constant indexes from incoming pointer parameters instead of keeping their address homes | none; rejected at static screen | two pointer homes removed, but hot token move remains 258 bytes/five saves/framed; hot source object about +1.9 KiB | no timing warranted | deterministic MIR/object screen; prototype removed | rejected; address homes are not the ranges forcing the frame |
 | D.copy-preserve-broad | preserve pointer carriers for every bounded fixed and unused dynamic copy | none; rejected before contract movement | initial form mis-modeled destructive address setup and crashed its G2 compiler; corrected broad form added 2.765M Ir to an unrelated string-copy body | broad total Ir -0.184%, but unrelated offsets obscured the local saving | failing G2 and narrowed safety proof retained as diagnostic evidence; broad prototype removed | rejected; proof and population were too broad |
 | D.composite-copy-preserve | preserve incoming address carriers across a bounded direct-parameter copy and a later unused builtin copy in the same O3 composite move | PA38 README plus O0--O2 isolation, structural pressure/frame-address, negative-call, driver-replay, and behavior property | hot token move 258 to 234 bytes, five to four saves, frame 64 to 48; producer +5,904 `.text`; hot Ir -0.23337%, normalized -0.24056% | O3 workload -0.69% wall/-0.64% CPU, paired CPU -0.65%; final O1 block -3.41% wall/-1.06% CPU and output-exact | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; all-32 O2 G1/G2 and O3 G1/G2/G3 exact | retained in this checkpoint |
+| D.adjacent-integer-normalizations | combine adjacent O2+ integer normalizations and select signed/unsigned narrow loads in final MIR | PA38 README plus O0/O1 isolation, safe-chain and negative-guard structure, debug, replay, encoding, and behavior property; PA37 unchanged | hot MIR -61, object `.text` -144; O3 producer -9,328 `.text`; hot Ir -0.8348%; O1 output exact | self paired median -1.79% wall/-0.65% CPU; GCC -0.62%/-0.17%; normalized -1.17%/-0.49%; dedicated stats counter rejected after layout regression | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; frozen exact; all-32 O2/O3 inception exact | retained in this checkpoint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

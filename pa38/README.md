@@ -283,6 +283,15 @@ semantic-preserving rewrites where safe:
   paths agree. The PA29 O0 and PA38 O1 paths keep their compact
   string-operation encoding, and copies larger than 64 bytes retain the
   compact fallback
+- collapse adjacent integer-normalization instructions when the later
+  normalization provably subsumes the earlier result. A narrow scalar load
+  immediately followed on the same register by a same-width sign or zero
+  extension may instead select the corresponding signed or unsigned load.
+  A repeated extension with the same signedness is redundant, and a wider
+  extension is redundant after a narrower zero extension because the value
+  is already nonnegative. Do not cross an intervening instruction, and retain
+  a narrower sign extension followed by a wider zero extension because it
+  changes the represented value. O0 and O1 retain their established MIR
 - in a function with no conditional branch, improve block layout by following
   unconditional jump traces so likely successors become natural fallthrough
   blocks; preserve the established order in functions with conditional
@@ -429,7 +438,12 @@ N3485 source-language clauses.
   layout. A weakly aligned medium-copy control checks O0/O1 isolation, the
   serialized O2/O3 encoding choice, bounded statistics, direct native chunks,
   compact oversized fallback, and generated behavior without fixing scratch
-  registers or complete instruction sequences. An O3 composite-move control
+  registers or complete instruction sequences. An adjacent integer-
+  normalization control checks O0/O1 isolation, load signedness selection,
+  subsumed signed and unsigned chains, the sign-to-zero-extension and
+  intervening-instruction guards, driver replay, and
+  generated behavior without fixing register names or a complete MIR dump.
+  An O3 composite-move control
   also permits a bounded object copy directly between incoming parameter
   addresses to preserve those carriers. If the same function later discards
   the result of the recognized memory-copy builtin, that dynamic copy may use

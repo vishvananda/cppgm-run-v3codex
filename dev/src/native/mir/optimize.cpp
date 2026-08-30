@@ -1035,6 +1035,95 @@ void retain_debug(const MirInstruction & removed, MirInstruction * survivor)
   }
 }
 
+const lowir_model::LowType * normalized_load_type(
+    const MirInstruction & normalization)
+{
+  if(normalization.opcode != MirInstruction::MI_SEXT &&
+     normalization.opcode != MirInstruction::MI_ZEXT)
+    return 0;
+  const bool sign = normalization.opcode == MirInstruction::MI_SEXT;
+  switch(lowir_model::lowir_type_bit_width(normalization.type)) {
+  case 8:
+    return &lowir_model::builtin_lowir_type(
+      sign ? lowir_model::LTK_I8 : lowir_model::LTK_U8);
+  case 16:
+    return &lowir_model::builtin_lowir_type(
+      sign ? lowir_model::LTK_I16 : lowir_model::LTK_U16);
+  case 32:
+    return &lowir_model::builtin_lowir_type(
+      sign ? lowir_model::LTK_I32 : lowir_model::LTK_U32);
+  default:
+    return 0;
+  }
+}
+
+bool same_normalized_register(const MirInstruction & producer,
+                              const MirInstruction & normalization)
+{
+  return !producer.operands.empty() &&
+    producer.operands[0].kind == MirOperand::OP_REG &&
+    normalization.operands.size() == 1 &&
+    normalization.operands[0].kind == MirOperand::OP_REG &&
+    producer.operands[0].reg == normalization.operands[0].reg;
+}
+
+// A narrow load and its immediately following extension are one x86 load.
+// Likewise, zero-extending from a narrower integer range already proves that
+// a subsequent wider signed normalization cannot change the value.  Keep the
+// proof block-local and adjacent so no register-liveness reasoning is needed.
+void combine_adjacent_integer_normalizations(MirFunction & function,
+                                             Stats * stats)
+{
+  for(std::size_t block_index = 0;
+      block_index < function.blocks.size(); ++block_index) {
+    std::vector<MirInstruction> & instructions =
+      function.blocks[block_index].instructions;
+    std::size_t kept = 0;
+    for(std::size_t index = 0; index < instructions.size(); ++index) {
+      MirInstruction instruction = std::move(instructions[index]);
+      if(kept != 0 && same_normalized_register(
+           instructions[kept - 1], instruction)) {
+        MirInstruction & producer = instructions[kept - 1];
+        const lowir_model::LowType * load_type =
+          normalized_load_type(instruction);
+        if(producer.opcode == MirInstruction::MI_LOAD && load_type &&
+           lowir_model::lowir_type_bit_width(producer.type) ==
+             lowir_model::lowir_type_bit_width(instruction.type)) {
+          producer.type = *load_type;
+          retain_debug(instruction, &producer);
+          if(stats) ++stats->rewrites;
+          continue;
+        }
+        const bool producer_normalizes =
+          producer.opcode == MirInstruction::MI_SEXT ||
+          producer.opcode == MirInstruction::MI_ZEXT;
+        if(producer_normalizes &&
+           (instruction.opcode == MirInstruction::MI_SEXT ||
+            instruction.opcode == MirInstruction::MI_ZEXT)) {
+          const std::size_t producer_width =
+            lowir_model::lowir_type_bit_width(producer.type);
+          const std::size_t result_width =
+            lowir_model::lowir_type_bit_width(instruction.type);
+          if(result_width <= producer_width) {
+            retain_debug(producer, &instruction);
+            producer = std::move(instruction);
+            if(stats) ++stats->rewrites;
+            continue;
+          }
+          if(producer.opcode == instruction.opcode ||
+             producer.opcode == MirInstruction::MI_ZEXT) {
+            retain_debug(instruction, &producer);
+            if(stats) ++stats->rewrites;
+            continue;
+          }
+        }
+      }
+      instructions[kept++] = std::move(instruction);
+    }
+    instructions.resize(kept);
+  }
+}
+
 bool debug_ranges_use_frame_offset(const MirFunction & function,
                                    long long offset)
 {
@@ -1452,7 +1541,10 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
   // and native encoding all consume the same return fact.  O0 remains the
   // preserved PA29 representation.
   make_scalar_float_returns_explicit(function, stats);
-  if(level >= 2) select_medium_copy_chunks(function, stats);
+  if(level >= 2) {
+    select_medium_copy_chunks(function, stats);
+    combine_adjacent_integer_normalizations(function, stats);
+  }
   if(level >= 2) trace_layout(function, stats);
   forward_adjacent_single_use_frame_compares(function, stats);
   std::vector<std::vector<bool> > preserve(function.blocks.size());

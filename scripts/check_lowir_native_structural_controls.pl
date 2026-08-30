@@ -87,7 +87,7 @@ if (scalar(@ARGV) != 3)
 
 my ($app, $driver, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks|composite-copy-pointer-preservation).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks|composite-copy-pointer-preservation|adjacent-integer-normalizations).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -99,7 +99,7 @@ for my $test (@tests)
 	my $level = $test =~
 		/(?:o3-large-function-alignment|composite-copy-pointer-preservation)/
 		? '-O3' : $test =~
-		/(?:conditional-fallthrough-layout|deferred-carrier-lifetime-reset|call-result-plan-reservation)/
+		/(?:conditional-fallthrough-layout|deferred-carrier-lifetime-reset|call-result-plan-reservation|adjacent-integer-normalizations)/
 		? '-O2' : '-O1';
 	my $status = run_command_capture(
 		cmd => [$app, $level, '--dump-machine-ir', $mir_path,
@@ -220,6 +220,136 @@ for my $test (@tests)
 			die "$test: O3 driver $symbol lost its dynamic native copy\n"
 				if read_file($disassembly) !~ /\brep\s+movs/;
 		}
+		next;
+	}
+	if ($test =~ /adjacent-integer-normalizations/) {
+		my %level_mir;
+		for my $request (['O0', '-O0'], ['O1', '-O1'],
+			['O2', '-O2'], ['O3', '-O3']) {
+			my ($name, $requested_level) = @$request;
+			my $level_mir = "$directory/$name.mir";
+			my $level_program = "$directory/$name.program";
+			my $level_stderr = "$directory/$name.compile.stderr";
+			$status = run_command_capture(
+				cmd => [$app, $requested_level, '--dump-machine-ir', $level_mir,
+					'-o', $level_program, $test],
+				stdout => "$directory/$name.compile.stdout",
+				stderr => $level_stderr,
+				timeout => 30,
+			);
+			die "$test: $requested_level native compile failed\n" .
+				read_file($level_stderr) if $status != 0;
+			$run_status = run_command_capture(
+				cmd => [$level_program],
+				stdout => "$directory/$name.program.stdout",
+				stderr => "$directory/$name.program.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level generated program failed with status " .
+				"$run_status\n" if $run_status != 0;
+			$level_mir{$name} = read_file($level_mir);
+		}
+
+		for my $name (qw(O0 O1)) {
+			my $load = function_body(
+				$test, $level_mir{$name}, 'reinterpreted_unsigned_load');
+			die "$test: $name lost the adjacent signed-load normalization baseline\n"
+				if $load !~
+					/^\s+load\.i8\s+(\w+),[^\n]*\n\s+zext\.i8\s+\1[^\n]*$/m;
+			my $signed_load = function_body(
+				$test, $level_mir{$name}, 'reinterpreted_signed_load');
+			die "$test: $name lost the adjacent unsigned-load normalization baseline\n"
+				if $signed_load !~
+					/^\s+load\.u8\s+(\w+),[^\n]*\n\s+sext\.i8\s+\1[^\n]*$/m;
+			my $zero_chain = function_body(
+				$test, $level_mir{$name}, 'zero_then_signed_wider');
+			die "$test: $name lost the zero-then-signed baseline chain\n"
+				if $zero_chain !~
+					/^\s+zext\.i8\s+(\w+)[^\n]*\n\s+sext\.i32\s+\1[^\n]*$/m;
+			my $signed_chain = function_body(
+				$test, $level_mir{$name}, 'signed_then_signed_wider');
+			die "$test: $name lost the repeated signed baseline chain\n"
+				if $signed_chain !~
+					/^\s+sext\.i8\s+(\w+)[^\n]*\n\s+sext\.i32\s+\1[^\n]*$/m;
+		}
+
+		for my $name (qw(O2 O3)) {
+			my $load = function_body(
+				$test, $level_mir{$name}, 'reinterpreted_unsigned_load');
+			die "$test: $name did not select an unsigned narrow load\n"
+				if $load !~ /^\s+load\.u8\s+\w+,[^\n]*!dbg\(/m;
+			die "$test: $name retained the subsumed load normalization\n"
+				if $load =~
+					/^\s+load\.i8\s+(\w+),[^\n]*\n\s+zext\.i8\s+\1[^\n]*$/m;
+			my $signed_load = function_body(
+				$test, $level_mir{$name}, 'reinterpreted_signed_load');
+			die "$test: $name did not select a signed narrow load\n"
+				if $signed_load !~ /^\s+load\.i8\s+\w+,[^\n]*!dbg\(/m;
+			die "$test: $name retained the subsumed signed-load normalization\n"
+				if $signed_load =~
+					/^\s+load\.u8\s+(\w+),[^\n]*\n\s+sext\.i8\s+\1[^\n]*$/m;
+			my $zero_chain = function_body(
+				$test, $level_mir{$name}, 'zero_then_signed_wider');
+			die "$test: $name retained a wider normalization after zero extension\n"
+				if $zero_chain =~
+					/^\s+zext\.i8\s+(\w+)[^\n]*\n\s+sext\.i32\s+\1[^\n]*$/m;
+			die "$test: $name lost debug metadata on the zero-extension survivor\n"
+				if $zero_chain !~ /^\s+zext\.i8\s+\w+[^\n]*!dbg\(/m;
+			my $signed_chain = function_body(
+				$test, $level_mir{$name}, 'signed_then_signed_wider');
+			die "$test: $name retained a repeated signed normalization\n"
+				if $signed_chain =~
+					/^\s+sext\.i8\s+(\w+)[^\n]*\n\s+sext\.i32\s+\1[^\n]*$/m;
+			die "$test: $name lost debug metadata on the sign-extension survivor\n"
+				if $signed_chain !~ /^\s+sext\.i8\s+\w+[^\n]*!dbg\(/m;
+			my $signed_guard = function_body(
+				$test, $level_mir{$name}, 'signed_then_unsigned_guard');
+			die "$test: $name removed a value-changing signed-to-unsigned chain\n"
+				if $signed_guard !~
+					/^\s+sext\.i8\s+(\w+)\n\s+zext\.i32\s+\1$/m;
+			my $intervening = function_body(
+				$test, $level_mir{$name}, 'intervening_use_guard');
+			die "$test: $name crossed an intervening observable store\n"
+				if $intervening !~
+					/^\s+zext\.i8\s+(\w+)\n\s+store\.u32\s+[^\n]*,\s*\1\n\s+sext\.i32\s+\1$/m;
+		}
+
+		my $driver_input = "$directory/test.lowir";
+		copy($test, $driver_input) or
+			die "$test: unable to prepare driver replay: $!\n";
+		my $object = "$directory/driver-O2.o";
+		$status = run_command_capture(
+			cmd => [$driver, '-c', '-O2', '-o', $object, $driver_input],
+			stdout => "$directory/driver.compile.stdout",
+			stderr => "$directory/driver.compile.stderr",
+			timeout => 30,
+		);
+		die "$test: O2 driver replay failed\n" .
+			read_file("$directory/driver.compile.stderr") if $status != 0;
+		my $disassembly = "$directory/load.disassembly";
+		$status = run_command_capture(
+			cmd => ['objdump', '-d', '-Mintel',
+				'--disassemble=reinterpreted_unsigned_load', $object],
+			stdout => $disassembly,
+			stderr => "$disassembly.stderr",
+			timeout => 30,
+		);
+		die "$test: O2 driver normalization disassembly failed\n"
+			if $status != 0;
+		die "$test: O2 driver did not encode the selected unsigned load\n"
+			if read_file($disassembly) !~ /\bmovzx\s+\w+,BYTE PTR \[/;
+		my $signed_disassembly = "$directory/signed-load.disassembly";
+		$status = run_command_capture(
+			cmd => ['objdump', '-d', '-Mintel',
+				'--disassemble=reinterpreted_signed_load', $object],
+			stdout => $signed_disassembly,
+			stderr => "$signed_disassembly.stderr",
+			timeout => 30,
+		);
+		die "$test: O2 signed driver normalization disassembly failed\n"
+			if $status != 0;
+		die "$test: O2 driver did not encode the selected signed load\n"
+			if read_file($signed_disassembly) !~ /\bmovsx\s+\w+,BYTE PTR \[/;
 		next;
 	}
 	if ($test =~ /medium-copy-direct-chunks/) {
