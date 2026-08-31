@@ -408,6 +408,9 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " ipa_specialized_clones=" << stats.ipa_specialized_clones
 		 << " ipa_cloned_instructions=" << stats.ipa_cloned_instructions
 		 << " ipa_clone_budget_skips=" << stats.ipa_clone_budget_skips
+		 << " ipa_table_prefilter_clones="
+		 << stats.ipa_table_prefilter_clones
+		 << " ipa_table_prefilter_calls=" << stats.ipa_table_prefilter_calls
 		 << " ipa_peak_analysis_bytes=" << stats.ipa_peak_analysis_bytes
 		 << " repeat_stable_function_visits="
 		 << stats.repeat_stable_function_visits

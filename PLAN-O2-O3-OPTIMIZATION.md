@@ -3515,6 +3515,68 @@ Further work should target loop/body instructions or a general live-range
 split with a substantially larger static ceiling, not add more call-arm
 special cases.
 
+### Retained private structured-table lower-bound prefilter
+
+The next source-diverse residual was a repeated binary search over one private
+structured integer table.  Four calls shared the table address and count but
+varied the search key.  The earlier correlated-constant prototype established
+that merely removing those two parameters made this path slower.  The retained
+O3 dose therefore lowers the ordinary eight-call specialization threshold to
+four only when specializing the correlated arguments also enables a proven
+dynamic shortcut: a key below the minimum table item must return zero without
+entering the search.
+
+The proof is deliberately independent of compiler source names and of the
+observed fixture.  It accepts only an initialized internal table of positive
+same-typed signed scalar literals, proves that the table address and its copy
+aliases are used only at one target parameter, rejects object/export/TLS and
+relocation aliases, and rejects stores, conversions, indirect uses, other
+calls, volatility, and observable operations in the clone.  A monotone
+multiple analysis admits only loads at offsets aligned to the table element
+width.  Abstract CFG traversal then forces signed comparisons between the key
+and those table loads under `key < minimum`, explores both sides of unknown
+branches, and requires every reachable return to be literal zero.  The entry
+edge may bypass to an existing standalone zero-return block only after all of
+those conditions hold.  A failed privacy, alignment, CFG, or return proof
+restores the ordinary eight-call threshold and profitability rule.
+
+PA37 now describes that student-facing contract.  Its new role-based control
+derives the selected clone from the redirected call population, derives the
+minimum from the structured global, and checks the reduced signature,
+table-read role, entry predicate, standalone false return, unlike-table call,
+escaped-table rejection, and unaligned-load rejection.  It also checks
+O0--O2 isolation, bounded stats (one clone and four calls), serialized replay,
+and native behavior.  It does not match the complete generated program or a
+generated clone name.
+
+The final deterministic complete-TU oracle retained the exact object hash
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+Self-O3 Callgrind instructions fell from 4,152,374,237 to 4,083,375,532
+(`0.983383313x`, -1.661669%).  Rebuilding the same source with the GCC-O3
+producer moved from 2,425,032,747 to 2,425,304,853 (`1.000112207x`,
++0.011221%), so the normalized result is `0.983272982x` (-1.672702%).
+The implementation adds 30,108 producer text bytes and 624 data bytes.
+
+Four endpoint-balanced 32-way native blocks, eight observations per side,
+kept the requested-O3 raw result in the close-result band: aggregate self wall
+and CPU were `1.001894x` and `1.000413x`.  One GCC block was visibly host
+contaminated, so its aggregate normalized result is not evidence.  The robust
+block medians were self `0.996832x` wall / `1.000581x` CPU, GCC `1.005232x` /
+`1.000726x`, and normalized `0.991643x` / `0.999856x`.  Thus no native O3 CPU
+win is claimed; retention rests on the output-exact deterministic normalized
+gain with no reproducible raw-throughput regression.  The O1 workload,
+although the feature is inactive in generated code, remained exact and its
+aggregate normalized wall/CPU ratios were `0.984375x`/`0.997927x`.
+
+Fresh explicit-32-way G1, G2, and G3 builds each completed all 220 objects and
+converged to final compiler hash
+`140951ada1e274935e588ad1d5392051022f77f627dbccb0d5e6e5ece3220a38`.
+PA37 passed 187/187, PA38 passed 45/45, and the through-PA38 report passed
+5,470/5,470.  The PA37/PA38 debug and round-trip lanes were clean; the
+frontend-source-set, LowIR-contract, and compiler-layout audits also passed.
+The aggregate debug target still exposes unrelated stale PA13 fixture diffs,
+which this optimization does not change.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3602,6 +3664,7 @@ Fill one row for every retained or rejected dose.
 | D.nonescaping-slot-alias | do not let a proven nonescaping local-slot store invalidate unknown-pointer load availability at O2/O3 | none; rejected behavior was not moved into PA37; PA38 unchanged | hot macro LowIR -1,805 bytes; spelling probe loses loop-invariant begin/size/mask reloads; producer -2,088 text; 219-object G1/G2 complete | complete hot Ir 0.999360211x (-0.063979%); native G1 neutral and G2 samples inconclusive | PA38 45/45; exact hot object; all-32 G1/G2 completed; prototype removed before full/G3 gate | rejected; sound generic improvement is dynamically far below the 1% retention floor |
 | D.complete-leaf-save | recolor a leaf only when all callee-saved colors and their defining moves can disappear | none; rejected behavior was not moved into PA38; PA37 unchanged | range helper frame 16 to zero, 72 to 63 bytes; G2 producer +1,056 text/+16 data; 219-object G1/G2 complete | tokenizer Ir 0.998034479x; `Run` flat 0.993655072x; complete hot Ir 0.998121212x (-0.187879%) | PA38 45/45; exact tokenizer and hot outputs; all-32 G1/G2 completed; prototype removed before full/G3 gate | rejected; eliminating all leaf call overhead remains far below the 1% retention floor |
 | D.conditional-call-carriers | coalesce complete parameter colors into caller-saved carriers and preserve them only inside repeated bypassable call arms | none; rejected behavior was not moved into PA38; PA37 unchanged | `AppendUTF8` saves 5 to 3, body 1,814 to 2,011 bytes; tokenizer +204 text; region extension cannot prove the other three colors | tokenizer Ir 444,824,631 to 443,561,255 (`0.997159834x`, -0.284017%) | exact tokenizer output; five-second oracle; prototype and temporary MIR identity removed before full/inception gate | rejected; safe path-local carrier preservation is far below the 1% floor |
+| D.private-table-prefilter | correlate four private structured-table calls only when specialization also proves a below-minimum false-return shortcut | PA37 README plus role-based positive, unlike-table, escape, alignment, level, bounded-stats, replay, and behavior properties; PA38 unchanged | four calls lose table/count arguments and gain one entry bound; producer +30,108 text/+624 data; O0--O2 workload output exact | complete hot self Ir `0.983383x`, GCC `1.000112x`, normalized `0.983273x`; O3 native self CPU `1.000413x`, normalized block-median CPU `0.999856x` | PA37 187/187; PA38 45/45; 5,470/5,470; PA37/38 debug/round-trip and three zero-fatal audits clean; all-32 220-object G1/G2/G3 exact | retained; deterministic normalized gain is 1.67% with representative raw O3 in the close-result band |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

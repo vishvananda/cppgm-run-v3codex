@@ -231,6 +231,8 @@ struct Stats
   std::size_t ipa_specialized_clones = 0;
   std::size_t ipa_cloned_instructions = 0;
   std::size_t ipa_clone_budget_skips = 0;
+  std::size_t ipa_table_prefilter_clones = 0;
+  std::size_t ipa_table_prefilter_calls = 0;
   std::size_t ipa_peak_analysis_bytes = 0;
   std::size_t repeat_stable_function_visits = 0;
   std::size_t repeat_stable_functions = 0;

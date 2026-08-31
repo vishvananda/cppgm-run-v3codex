@@ -3,6 +3,7 @@
 #include "lowir/analysis/function.h"
 #include "lowir/optimize/inline_o1.h"
 #include "lowir/optimize/pipeline.h"
+#include "lowir/optimize/private_table_prefilter.h"
 #include "lowir/optimize/scalar_rules.h"
 #include "lowir/optimize/unreachable.h"
 
@@ -305,6 +306,45 @@ struct GroupSelection
   lowir_model::SymbolId replacement;
   std::vector<unsigned char> removed;
 };
+
+std::size_t minimum_group_calls(const LowirProgram & program,
+                                const Operand & value)
+{
+  return structured_internal_integer_table(program, value) ? 4 :
+    kO3MinimumGroupedCalls;
+}
+
+void collect_correlated_group_arguments(
+    const LowirProgram & program, const InlineCallGraph & call_graph,
+    std::size_t selected_target, std::size_t selected_parameter,
+    const Operand & selected_value,
+    std::vector<ArgumentAgreement> * agreements)
+{
+  agreements->assign(agreements->size(), ArgumentAgreement());
+  for(std::size_t caller = 0; caller < program.functions.size(); ++caller) {
+    const Function & function = program.functions[caller];
+    const DirectGlobalAliases aliases = direct_global_aliases(function);
+    for(std::size_t block = 0; block < function.blocks.size(); ++block)
+      for(std::size_t index = 0;
+          index < function.blocks[block].instructions.size(); ++index) {
+        const Instruction & call = function.blocks[block].instructions[index];
+        if(direct_target(call, call_graph) != selected_target ||
+           selected_parameter >= call.args.size() ||
+           !same_argument(
+             normalize_direct_global(call.args[selected_parameter], aliases),
+             selected_value))
+          continue;
+        if(call.args.size() != agreements->size()) return;
+        for(std::size_t argument = 0; argument < call.args.size(); ++argument)
+          update_agreement(
+            &(*agreements)[argument],
+            normalize_direct_global(call.args[argument], aliases));
+      }
+  }
+  for(std::size_t parameter = 0; parameter < agreements->size(); ++parameter)
+    if((*agreements)[parameter].state == AS_UNSEEN)
+      (*agreements)[parameter].state = AS_DIFFERENT;
+}
 
 bool count_constant_group(std::vector<ConstantGroup> * groups,
                           std::size_t parameter,
@@ -629,6 +669,7 @@ std::size_t specialize_o3_constant_groups(
 
   for(std::size_t caller = 0; caller < function_count; ++caller) {
     const Function & function = program.functions[caller];
+    const DirectGlobalAliases aliases = direct_global_aliases(function);
     for(std::size_t block = 0; block < function.blocks.size(); ++block)
       for(std::size_t index = 0;
           index < function.blocks[block].instructions.size(); ++index) {
@@ -652,16 +693,19 @@ std::size_t specialize_o3_constant_groups(
           continue;
         }
         for(std::size_t argument = 0;
-            argument < instruction.args.size(); ++argument)
-          if(instruction.args[argument].kind == Operand::OP_INTEGER &&
-             instruction.args[argument].has_int_value &&
+            argument < instruction.args.size(); ++argument) {
+          const Operand grouped =
+            normalize_direct_global(instruction.args[argument], aliases);
+          if(((grouped.kind == Operand::OP_INTEGER && grouped.has_int_value) ||
+              structured_internal_integer_table(program, grouped)) &&
              removable_parameter(callee.params[argument]))
             if(!count_constant_group(
-                 &groups[target], argument, instruction.args[argument]) &&
+                 &groups[target], argument, grouped) &&
                !group_limit_reached[target]) {
               group_limit_reached[target] = 1;
               if(stats) ++stats->ipa_clone_budget_skips;
             }
+        }
       }
   }
 
@@ -693,7 +737,7 @@ std::size_t specialize_o3_constant_groups(
     const ConstantGroup * best = 0;
     for(std::size_t group = 0; group < groups[function].size(); ++group) {
       const ConstantGroup & candidate = groups[function][group];
-      if(candidate.calls < kO3MinimumGroupedCalls ||
+      if(candidate.calls < minimum_group_calls(program, candidate.value) ||
          candidate.calls == direct_calls[function])
         continue;
       if(!best || candidate.calls > best->calls) best = &candidate;
@@ -706,10 +750,16 @@ std::size_t specialize_o3_constant_groups(
     const std::size_t baseline_instructions = instruction_count(baseline);
     Function clone = target;
     std::vector<ArgumentAgreement> agreements(clone.params.size());
-    for(std::size_t parameter = 0; parameter < agreements.size(); ++parameter)
-      agreements[parameter].state = AS_DIFFERENT;
-    agreements[best->parameter].state = AS_UNIFORM;
-    agreements[best->parameter].value = best->value;
+    if(structured_internal_integer_table(program, best->value))
+      collect_correlated_group_arguments(
+        program, call_graph, function, best->parameter, best->value,
+        &agreements);
+    else {
+      for(std::size_t parameter = 0; parameter < agreements.size(); ++parameter)
+        agreements[parameter].state = AS_DIFFERENT;
+      agreements[best->parameter].state = AS_UNIFORM;
+      agreements[best->parameter].value = best->value;
+    }
     std::vector<unsigned char> removed(clone.params.size(), 0);
     if(!specialize_function(
          &clone, &agreements[0], agreements.size(), &removed[0],
@@ -717,13 +767,30 @@ std::size_t specialize_o3_constant_groups(
       continue;
     if(cleanup && cleanup->run)
       cleanup->run(&clone, 0, cleanup->context);
+    const lowir_model::GlobalDefinition * grouped_table =
+      structured_internal_integer_table(program, best->value);
+    const bool private_table = grouped_table &&
+      private_call_table(
+        program, call_graph, grouped_table->symbol, function,
+        best->parameter);
+    bool guarded_table = false;
+    if(private_table) {
+      std::vector<unsigned char> fixed_parameters(agreements.size(), 0);
+      for(std::size_t parameter = 0; parameter < agreements.size(); ++parameter)
+        fixed_parameters[parameter] =
+          agreements[parameter].state == AS_UNIFORM;
+      guarded_table = add_private_table_lower_prefilter(
+        &clone, *grouped_table, fixed_parameters);
+    }
+    if(best->calls < kO3MinimumGroupedCalls && !guarded_table)
+      continue;
     const std::size_t clone_instructions = instruction_count(clone);
     const std::size_t saved = baseline_instructions > clone_instructions ?
       baseline_instructions - clone_instructions : 0;
     const std::size_t minimum_saved =
       clone_instructions / best->calls +
       (clone_instructions % best->calls != 0);
-    if(saved < minimum_saved)
+    if(saved < minimum_saved && !guarded_table)
       continue;
     if(clones.size() == kO3MaximumGroupedClones ||
        clone_instructions >
@@ -748,12 +815,17 @@ std::size_t specialize_o3_constant_groups(
       ++stats->ipa_specialized_clones;
       stats->ipa_cloned_instructions += clone_instructions;
       ++stats->ipa_functions_changed;
+      if(guarded_table) {
+        ++stats->ipa_table_prefilter_clones;
+        stats->ipa_table_prefilter_calls += best->calls;
+      }
     }
   }
 
   std::size_t rewritten_calls = 0;
   for(std::size_t caller = 0; caller < function_count; ++caller) {
     Function & function = program.functions[caller];
+    const DirectGlobalAliases aliases = direct_global_aliases(function);
     for(std::size_t block = 0; block < function.blocks.size(); ++block)
       for(std::size_t index = 0;
           index < function.blocks[block].instructions.size(); ++index) {
@@ -764,7 +836,9 @@ std::size_t specialize_o3_constant_groups(
           continue;
         const GroupSelection & selection = selections[target];
         if(selection.parameter >= call.args.size() ||
-           !same_argument(call.args[selection.parameter], selection.value))
+           !same_argument(
+             normalize_direct_global(call.args[selection.parameter], aliases),
+             selection.value))
           continue;
         const std::size_t old_arguments = call.args.size();
         bool caller_needs_cleanup = false;

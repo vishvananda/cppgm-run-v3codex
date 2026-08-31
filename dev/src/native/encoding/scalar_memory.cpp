@@ -193,9 +193,9 @@ bool emit_small_copy_bytes(
   const bool frame_sided =
     destination_operand.kind == mir_model::MirOperand::OP_FRAME ||
     source_operand.kind == mir_model::MirOperand::OP_FRAME;
-  // Direct chunks avoid string-operation setup for small copies.  The PA29
-  // default also uses the wider range when naturally word-aligned.  PA38 O2+
-  // may explicitly select the same unaligned-safe chunks for a weakly aligned
+  // Direct chunks avoid string-operation setup for small copies.  The base
+  // policy also uses the wider range when naturally word-aligned.  At O2+
+  // selection may request the same unaligned-safe chunks for a weakly aligned
   // medium copy; copies above 64 bytes stay on the compact fallback.
   const bool direct_chunks = bytes <= 32 ||
     (bytes <= 64 &&

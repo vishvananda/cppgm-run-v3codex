@@ -562,6 +562,30 @@ at most 24 clones and 1,536 cloned LowIR instructions per translation unit.
 Budget exhaustion skips later candidates in deterministic function order.
 `-O1` and `-O2` do not perform mixed-group cloning.
 
+As an O3-only extension of that same bounded transformation, four or more
+calls may form a group around the direct address of one initialized internal
+structured integer table.  Collect every other argument that is uniform
+within that table group, specialize those correlated arguments together, and
+remove the parameters made dead by the substitutions.  The lower four-call
+threshold is permitted only when the resulting clone also admits a proven
+table-bound prefilter; otherwise the ordinary eight-call profitability rule
+still applies.
+
+The table address must be private to the selected parameter at direct calls to
+that target.  An object alias, relocation, store, conversion, indirect use, or
+call to another target makes it ineligible.  Every table item must be a
+positive literal of one common signed scalar type.  The specialized clone
+must contain only nonvolatile loads, scalar calculations, phis, branches, and
+returns, and every load used by the proof must have an address aligned to an
+actual table item.  If abstractly taking `key < minimum table item` through
+that CFG can reach only a standalone literal-zero return, the clone entry may
+branch directly to that return before entering the search.  Unknown branches
+must be explored on both sides; a possible nonzero return or observable
+operation rejects the prefilter.  Calls using another table remain on the
+original target.  This extension shares the existing one-group-per-target,
+24-clone, and 1,536-cloned-instruction limits, and `-O0` through `-O2` retain
+the original call population.
+
 After the final `-O3` scalar and control-flow cleanup, an internal scalar
 query may also be proven repeat-stable.  Its entry must reach a two-way guard
 through only acyclic, nonvolatile scalar work.  One guard successor must be an
