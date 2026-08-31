@@ -22,7 +22,7 @@ namespace
 {
 
 const char kMagic[] = "CPPGMOBJ";
-const std::uint32_t kVersion = 3;
+const std::uint32_t kVersion = 4;
 const std::uint64_t kMaxObjectElements = UINT64_C(1) << 28;
 
 class BinaryWriter
@@ -479,6 +479,7 @@ void WriteInstruction(BinaryWriter& out, const lowir_model::Instruction& value,
 		WriteOperand(out, value.args[i], program, &function);
 	out.Bool(value.call_returns_void);
 	out.Bool(value.has_call_signature);
+	out.Bool(value.copy_elision_candidate);
 	WriteParameters(out, value.call_params, program);
 	WriteType(out, value.call_return_type);
 	WriteBoundary(out, value.call_boundary);
@@ -520,6 +521,7 @@ lowir_model::Instruction ReadInstruction(BinaryReader& in,
 		value.args[i] = ReadOperand(in, program.strings);
 	value.call_returns_void = in.Bool();
 	value.has_call_signature = in.Bool();
+	value.copy_elision_candidate = in.Bool();
 	value.call_params = ReadParameters(in, program.strings);
 	value.call_return_type = ReadType(in);
 	value.call_boundary = ReadBoundary(in);

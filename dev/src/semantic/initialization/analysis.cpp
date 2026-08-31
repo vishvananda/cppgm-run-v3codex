@@ -91,6 +91,25 @@ std::uint32_t Analyzer::BuildClassValueConstructorAction(TypeId type,
 		program_->types.RemoveTopCv(EffectiveType(type));
 	dump_.nodes[action].trivial_special_member_action =
 		constructor.trivial_special_member && !materialized_conversion_result;
+	// Preserve the source-language permission instead of changing O0
+	// execution.  A later LowIR pass may merge the temporary and destination,
+	// but only after the serialized call and lifetime shape prove safe.
+	const DumpNode& materialized = dump_.nodes[converted_source.node];
+	if ((constructor.special_member == SPECIAL_MEMBER_COPY_CONSTRUCTOR ||
+		 constructor.special_member == SPECIAL_MEMBER_MOVE_CONSTRUCTOR) &&
+		materialized.kind == DUMP_TEMPORARY_OBJECT &&
+		!materialized.reference_call_materialization &&
+		materialized.first_edge != kNoDumpEdge &&
+		dump_.edges[materialized.first_edge].next == kNoDumpEdge)
+	{
+		const DumpNode& recipe = dump_.nodes[
+			dump_.edges[materialized.first_edge].child];
+		if (recipe.kind == DUMP_CONDITIONAL_EXPRESSION &&
+			recipe.category == VALUE_PRVALUE &&
+			program_->types.RemoveTopCv(EffectiveType(recipe.type)) ==
+			program_->types.RemoveTopCv(EffectiveType(type)))
+			dump_.nodes[action].copy_elision_candidate = true;
+	}
 	dump_.Add(action, converted_source.node);
 	std::vector<ExpressionInfo> constexpr_arguments(1, converted_source);
 	for (std::size_t a = 1; a < function_type.parameter_count; ++a)

@@ -249,6 +249,7 @@ void write_call(std::ostream & out, const Instruction & ins,
     write_operand(out, ins.args[i], program, function);
   }
   out << ')';
+  if(ins.copy_elision_candidate) out << " [elision=copy]";
   if(ins.has_call_signature) {
     out << " as ";
     write_parameters(out, ins.call_params, program);

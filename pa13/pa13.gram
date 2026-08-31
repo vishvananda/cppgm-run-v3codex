@@ -154,7 +154,7 @@ rvalue-instruction:
 	KW_ATOMIC_EXCHANGE type value OP_COMMA value OP_COMMA integer-literal
 	KW_ATOMIC_COMPARE_EXCHANGE type value OP_COMMA value OP_COMMA value
 	OP_COMMA integer-literal OP_COMMA integer-literal
-	KW_CALL type callee OP_LPAREN argument-list OP_RPAREN call-signature?
+	KW_CALL type callee OP_LPAREN argument-list OP_RPAREN call-metadata? call-signature?
 	KW_EXCEPTION type
 	KW_EXCEPTION_SELECTOR type
 
@@ -174,7 +174,10 @@ atomic-signal-fence-instruction:
 	KW_ATOMIC_SIGNAL_FENCE integer-literal
 
 call-void-instruction:
-	KW_CALL KW_VOID callee OP_LPAREN argument-list OP_RPAREN call-signature?
+	KW_CALL KW_VOID callee OP_LPAREN argument-list OP_RPAREN call-metadata? call-signature?
+
+call-metadata:
+	OP_LSQUARE TT_IDENTIFIER OP_ASS TT_IDENTIFIER OP_RSQUARE
 
 call-signature:
 	KW_AS OP_LPAREN parameter-list OP_RPAREN OP_ARROW type function-metadata?

@@ -8,6 +8,7 @@
 #include "lowir/analysis/function_reachability.h"
 #include "lowir/optimize/full_unroll_o3.h"
 #include "lowir/optimize/inline_o1.h"
+#include "lowir/optimize/copy_elision.h"
 #include "lowir/analysis/inline.h"
 #include "lowir/optimize/interprocedural_specialization.h"
 #include "lowir/optimize/loops.h"
@@ -2676,6 +2677,9 @@ void optimize(LowirProgram & program, int level, Stats * stats, const InlinePoli
     }
     return;
   }
+  if(level >= 2)
+    for(std::size_t i = 0; i < program.functions.size(); ++i)
+      coalesce_copy_elision_candidates(&program.functions[i], stats);
   OptimizerSession session(program);
   FunctionBoundaries & boundaries = session.boundaries;
   SimplifyScratch & simplify_arena = session.simplify;

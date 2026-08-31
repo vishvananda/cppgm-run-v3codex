@@ -893,6 +893,13 @@ private:
       do out.args.push_back(operand()); while(accept(","));
       expect(")");
     }
+    if(peek() == "[") {
+      const Metadata items = metadata();
+      if(items.size() != 1 || items[0].first != "elision" ||
+         items[0].second != "copy")
+        throw ParseError("invalid call metadata");
+      out.copy_elision_candidate = true;
+    }
     if(accept("as")) {
       out.has_call_signature = true;
       expect("("); out.call_params = parameter_list(); expect(")");
@@ -900,6 +907,8 @@ private:
       SymbolMetadata unused;
       apply_symbol_metadata(metadata(), unused, &out.call_boundary, 0, true);
     }
+    if(out.copy_elision_candidate && out.has_call_signature)
+      throw ParseError("copy elision requires a direct call");
   }
 
   void parse_void_instruction(Instruction & out)
@@ -1510,6 +1519,10 @@ private:
       functions_.find(operand_spelling(ins.first));
     const bool direct = ins.first.kind == Operand::OP_GLOBAL && found != functions_.end();
     if(!direct && !ins.has_call_signature) throw ParseError("indirect call requires signature");
+    if(ins.copy_elision_candidate &&
+       (!direct || !ins.call_returns_void || ins.args.size() < 2))
+      throw ParseError(
+        "copy elision requires a direct void call with destination and source");
     if(ins.has_call_signature) {
       validate_parameters(ins.call_params, ins.call_return_type);
       if(!same_lowir_type(ins.call_return_type, ins.type))

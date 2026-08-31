@@ -3933,6 +3933,67 @@ unwarranted.  The O3 policy prototype and its scratch compilers were removed;
 do not revisit a global late-inline cap without a new source-diverse dynamic
 population or a selective proof that clears the gate.
 
+### Retained conditional-prvalue transfer elision
+
+The next residual attributed 46.75 million flat self instructions to
+`MacroProcessor::AddSourceToken` beyond the same-source GCC implementation.
+Its conditional `Token` prvalue was first constructed in a 104-byte staging
+slot, then moved into the named local and destroyed.  Both host compilers
+construct the two conditional arms directly in the named local.  A general
+frontend/lowering ceiling therefore extended the existing temporary-storage
+elision machinery to a same-type conditional prvalue selected for copy or
+move construction.  It redirected both arms into the final destination and
+removed the outer transfer and temporary destruction; it did not inspect a
+source name, class name, or program spelling.
+
+The ceiling was broad enough to self-apply but remained bounded in the current
+compiler.  G1 changed only the two implementation objects.  G2 and G3 were
+byte-identical at compiler hash
+`6bed2c2acfed126f0cea6dad35fdfc467db238fe2548a40b645ae693a5d0e49a`;
+29 of 220 final objects differed from the accepted compiler, including the
+two implementation objects, so 27 ordinary workload objects contained at
+least one eligible transfer.  Linked text fell from 8,643,316 to 8,628,224
+bytes (-15,092).  In `AddSourceToken`, optimized LowIR fell from 248 to 205
+lines and the native body fell from 1,245 to about 899 bytes.
+
+The deterministic ceiling clears the ordinary performance threshold.  On the
+same requested-O3 complete-TU compile, self Callgrind fell from
+3,987,039,512 to 3,940,638,858 instructions (`0.988362128x`, -1.163787%).
+The same-source GCC control moved from 2,425,787,225 to 2,425,821,160
+(`1.000013989x`, +0.001399%), giving a normalized `0.988348302x`
+(-1.165170%) result.  Baseline and candidate self/GCC producers all emitted
+the same object hash
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+
+The initial prototype was rejected because it changed frontend O0 execution
+and left no serialized fact that could justify changing observable calls and
+lifetime operations during LowIR replay.  That rejection identified the
+missing boundary rather than a bad optimization.  The retained design adds a
+narrow PA13 call-site permission, `[elision=copy]`.  PA17 emits it only on the
+outer copy/move construction from a private same-type conditional prvalue,
+while O0 retains and executes the distinct transfer and cleanup.  O1 preserves
+the marker.  O2/O3 consume it only after a typed LowIR proof establishes two
+or more predecessor producers into the same private source, complete source
+use closure, dominance of the destination and source addresses, and either an
+ordinary matched cleanup or the exact protected transfer/cleanup region.
+
+This makes direct source compilation and serialized O0 replay carry the same
+permission and keeps unmarked arbitrary LowIR calls fully observable.  PA13
+positive/negative controls validate the metadata surface, PA17 checks the
+source-to-LowIR relationship and O0 behavior, and PA37 checks level isolation,
+positive ordinary/EH consumption, an unmarked control, an escaping-source
+and pre-transfer destination-observation guards, bounded stats, replay, and
+behavior without exact complete-program matching.  Direct source objects and
+objects produced from serialized O0 LowIR match at O0 through O3.  The PA13,
+PA17, and PA37 focused properties pass; the full through-PA38 report is clean
+at 5,471/5,471, PA37/PA38 debug and round-trip lanes pass, the LowIR/ownership/
+layout audits pass, and the file audit remains at zero fatal findings and the
+established 32 warnings.  On the current accepted producer, the contract-
+backed candidate reduces `AddSourceToken` from 373 to 297 optimized LowIR
+lines and from 1,245 to 899 native text bytes; the complete macro object falls
+454 text bytes.  The earlier Callgrind result remains the retention hypothesis
+until the contract-backed fixed-point candidate is remeasured.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3990,6 +4051,7 @@ Fill one row for every retained or rejected dose.
 | D.copy-preserve-broad | preserve pointer carriers for every bounded fixed and unused dynamic copy | none; rejected before contract movement | initial form mis-modeled destructive address setup and crashed its G2 compiler; corrected broad form added 2.765M Ir to an unrelated string-copy body | broad total Ir -0.184%, but unrelated offsets obscured the local saving | failing G2 and narrowed safety proof retained as diagnostic evidence; broad prototype removed | rejected; proof and population were too broad |
 | D.composite-copy-preserve | preserve incoming address carriers across a bounded direct-parameter copy and a later unused builtin copy in the same O3 composite move | PA38 README plus O0--O2 isolation, structural pressure/frame-address, negative-call, driver-replay, and behavior property | hot token move 258 to 234 bytes, five to four saves, frame 64 to 48; producer +5,904 `.text`; hot Ir -0.23337%, normalized -0.24056% | O3 workload -0.69% wall/-0.64% CPU, paired CPU -0.65%; final O1 block -3.41% wall/-1.06% CPU and output-exact | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; all-32 O2 G1/G2 and O3 G1/G2/G3 exact | retained in this checkpoint |
 | D.adjacent-integer-normalizations | combine adjacent O2+ integer normalizations and select signed/unsigned narrow loads in final MIR | PA38 README plus O0/O1 isolation, safe-chain and negative-guard structure, debug, replay, encoding, and behavior property; PA37 unchanged | hot MIR -61, object `.text` -144; O3 producer -9,328 `.text`; hot Ir -0.8348%; O1 output exact | self paired median -1.79% wall/-0.65% CPU; GCC -0.62%/-0.17%; normalized -1.17%/-0.49%; dedicated stats counter rejected after layout regression | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; frozen exact; all-32 O2/O3 inception exact | retained in this checkpoint |
+| D.conditional-copy-elision | serialize conditional-prvalue copy/move elision permission and consume it after a private-slot/CFG/lifetime proof | PA13/PA17/PA37 README plus syntax rejection, source emission, O0/O1 isolation, ordinary/EH positive, unmarked/source-escape/destination-observation negative, stats, replay, fixed point, and behavior properties | `AddSourceToken` 373 to 297 optimized LowIR lines and 1,245 to 899 native bytes; macro object -454 text bytes; complete fixed-point census pending | direct prototype self Ir -1.1638%, GCC +0.0014%, normalized -1.1652%; contract-backed remeasure pending | 5,471/5,471; PA37/38 debug/round-trip and all audits clean; zero-fatal file audit | implementation retained pending fixed-point performance |
 | D.transient-swap-staging | remove a complete write-only transient local and its first overwritten copy from an adjacent three-copy object swap | none; rejected before contract movement; a retained form would require positive/negative PA37 properties plus unrelated-call-argument survival | two real 80-byte swap populations simplified; macro body -115 native bytes; self producer +9,072 text bytes; hot Ir -0.6710% | self mean wall/CPU -0.20%/-0.05%; GCC +0.36%/-0.26%; normalized wall -0.56% but CPU +0.21%; paired normalized CPU effectively flat | corrected candidate exact on hot output and all 219 full-workload objects/final; initial self-move bug diagnosed without fixture changes; prototype removed | rejected; dynamic instruction saving did not clear the normalized close-result CPU gate |
 | D.merge-phi-register | reuse the exact local-phi interval proof for acyclic O2/O3 merge phis | none; rejected before contract movement | G1 +256 text and O1 output exact; G2 self-applied to -74,224 text but changed O1 MIR/object despite exact LowIR | G1 hot Ir +0.0012%; G2 performance invalidated by miscompile | O0 exact; G2 repeat deterministic; G2-to-G3 failed across unrelated TUs; prototype removed | rejected as unsound; predecessor transfers need a stronger proof |
 | D.terminal-address-load | fold a terminal `lea`/load/return into one representable indexed load | none; rejected before contract movement | two hot returns each -1 MIR/-3 bytes; G2 producer +1,952 text; hot Ir -0.4422%; O1 output exact | self wall/CPU 1.01030x/0.99976x; GCC 0.99918x/0.99882x; normalized 1.0111x/1.0009x | PA38 45/45; exact 219-object manifest/final; G1/G2 distinction verified; prototype removed | rejected; deterministic saving is normalized-flat and wall-negative |
@@ -4028,6 +4090,7 @@ Fill one row for every retained or rejected dose.
 | D.compared-reference-selection | replace a private compared pointer selection and selected reload with a scalar phi of the values already loaded | none; rejected before contract movement | `AddSourceToken` -6 MIR/-26 bytes; macro object -4,112 text; G1 linked compiler -152,644 text including implementation | self Ir `0.997859x`, GCC `1.000691x`, normalized `0.997170x`; native hot wall/user `1.00585x`/`1.01250x` | deterministic self/GCC hot output; explicit-32-way 221-object G1; prototype removed before G2 | rejected; mostly cold size reduction and strength reduction remain below the 1% gate and regress native CPU |
 | D.retained-division-result | preserve the architectural quotient/remainder identity after machine copy forwarding so existing constant-division encoding still applies | none; rejected before contract movement | static `div`/`idiv` 4,823 to 407; hot loop uses magic division; `AnnotateParentheses` +20 bytes; linked producer +93,188 text | self Ir `1.006774x`, GCC `0.999908x`, normalized `1.006867x`; native hot wall/user/CPU `1.005780x`/`1.007150x`/`1.008729x` | PA38 45/45; deterministic candidate self/GCC hot object; explicit-32-way 220-object G1; prototype removed before G2 | rejected; broad strength reduction increases retired work, footprint, and measured hardware CPU |
 | D.hint40-O3 | lower only the default O3 late hinted-nonleaf cap from 48 to 40 while preserving explicit overrides | none; rejected before contract movement | hot token push becomes a 56-byte wrapper; G2 linked producer -304,292 text bytes; O1 hot output exact | self Ir `0.999018x`, GCC `0.999267x`, normalized `0.999752x`; native normalized paired medians `0.994755x` wall/`0.996894x` user | exact self/GCC O3 hot object; explicit-32-way G1/G2; stopped before G3 and removed | rejected; large static shrink yields only 0.025% normalized Ir and sub-1% native gains |
+| D.conditional-prvalue-transfer | construct both arms of a same-type conditional class prvalue directly in the final copy/move destination | none; rejected because the needed permission cannot be hidden from serialized LowIR | G2/G3 exact; 29/220 objects changed, 27 nonimplementation; producer -15,092 text; `AddSourceToken` 1,245 to about 899 bytes | self Ir `0.988362x`, GCC `1.000014x`, normalized `0.988348x`; gap 1.643606x to 1.624456x | identical self/GCC hot object; explicit-32-way G1/G2/G3; PA17 O0 incompatibility reproduced; prototype removed | rejected; optional C++11 elision is not an O0 correctness fix, while hidden O3 metadata would violate PA37 replay |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

@@ -205,6 +205,7 @@ struct DumpNode
 	bool runtime_call_demand_scanned : 1;
 	bool class_argument_staging : 1;
 	bool elided_temporary_storage : 1;
+	bool copy_elision_candidate : 1;
 	bool variadic_class_argument : 1;
 	bool direct_return_slot : 1;
 	bool declaration_only : 1;
@@ -283,6 +284,7 @@ struct DumpNode
 		  pending_runtime_call_demand(false),
 		  runtime_call_demand_scanned(false),
 		  class_argument_staging(false), elided_temporary_storage(false),
+		  copy_elision_candidate(false),
 		  variadic_class_argument(false),
 		  direct_return_slot(false), declaration_only(false),
 		  unwind_only(false), exception_handler_exit(false),

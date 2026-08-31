@@ -123,6 +123,15 @@ the two constructor parameters versus the assignment-operator control, or the
 ordering and identity of construction, selected use, and destruction within
 one full expression. The lifetime reducer is also compiled and executed.
 
+When a same-type conditional class prvalue is materialized in a private
+temporary and then selected for copy or move construction into its final
+complete-object destination, PA17 records the standard source-language
+permission on that outer direct call as `[elision=copy]`.  This is serialized
+optimization information, not an O0 elision: the emitted O0 LowIR retains the
+distinct temporary, transfer call, and normal/exceptional destruction.  The
+focused control checks those relationships and executes the O0 behavior
+without prescribing complete generated LowIR text.
+
 For supported indirect return-by-value cases, PA17 may also lower an eligible top-level
 named local directly in `%ret` instead of building a separate local object and then
 copying or moving it into the return destination. That direct return-slot form is part of
@@ -312,6 +321,9 @@ PA17 supports the following in addition to the PA16 subset:
   cv-combined glvalue operands, lvalue/prvalue conversion, and destruction of a
   containing branch temporary only after its selected member result has been
   materialized
+- serialized `[elision=copy]` permission on the outer copy/move construction
+  from a private same-type conditional prvalue, while retaining its ordinary
+  O0 transfer and cleanup
 - equal temporary-destruction suffixes in the same full-expression and unwind
   context use shared LowIR cleanup continuations, including conditional
   lifetime guards where the guarded object identity is the same

@@ -161,6 +161,7 @@ Required metadata families:
   `keep_alias`, `prefer_local`, and global `storage`
 - function `object_root`, `force_inline`, `inline_hint`, and `no_inline`
 - function `arity`, `effects`, `unwind`, and `return`
+- direct void-call `elision=copy` permission
 - parameter `pass` and `alias`
 - index `projection`
 - function and instruction `!dbg(file, line, column)` locations with positive
@@ -279,7 +280,8 @@ Reject structurally malformed LowIR, including:
 - undefined temporaries, slots, globals, functions, or blocks where PA13
   requires a definition
 - invalid metadata values
-- symbol-boundary metadata attached to an instruction or call site
+- symbol-boundary metadata attached to an instruction or call site; the
+  direct-call `elision=copy` permission is the sole call-site metadata family
 - zero line or column values in function or instruction debug locations
 - more than one `tls_for` wrapper for the same thread-local global
 - parameter metadata that is not legal for the parameter type

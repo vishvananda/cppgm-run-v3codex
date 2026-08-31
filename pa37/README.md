@@ -433,6 +433,17 @@ running optimizing transforms.
 `-O2` must include all `-O1` scalar cleanup and additionally support these
 conservative memory, loop, and interprocedural transforms:
 
+- consuming a PA13 `[elision=copy]` direct-call permission only when every
+  ordinary predecessor of the transfer merge contains exactly one complete
+  producer for the same private source slot, the source address has no other
+  use except the marked transfer and its matched normal/exceptional cleanup,
+  and both source and destination definitions dominate every redirected
+  producer, with no destination observation before the transfer; redirect
+  those producer destinations, remove the transfer and
+  source cleanup, and remove an exact transfer-only EH region when present;
+  preserve the call and permission at `-O0`/`-O1`, when the marker is absent,
+  when the source escapes, or when any CFG, dominance, use, or EH condition is
+  not proved
 - hoisting a direct global or nonescaping direct-slot load only when no store,
   call, atomic operation, or other memory effect in the loop can change the
   loaded object

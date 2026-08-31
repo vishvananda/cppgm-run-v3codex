@@ -72,7 +72,7 @@ if(scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:constructor-alias-boundaries|enclosing-temporary-lifetime|out-of-class-move-assignment-boundary)\.cpp$/);
+	qr/(?:constructor-alias-boundaries|enclosing-temporary-lifetime|out-of-class-move-assignment-boundary|conditional-copy-elision-permission)\.cpp$/);
 die "No PA17 survivor-property tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -125,6 +125,28 @@ for my $test (@tests)
 		die "$test: out-of-class move assignment did not retain its " .
 			"declared rvalue-reference ABI identity\n"
 			if !defined($assignment);
+		compile_and_run($app, $test, $directory, $path);
+		next;
+	}
+	if($test =~ /conditional-copy-elision-permission/) {
+		my $main = function_body($test, $lowir, 'main');
+		my ($callee, $destination, $source) = $main =~
+			/^\s+call void \@(\w+)\((%\w+), (%\w+)\) \[elision=copy\]$/m;
+		die "$test: conditional class prvalue did not emit copy-elision permission\n"
+			if !defined($source) || $destination eq $source;
+		my $marker = index($main, "[elision=copy]");
+		my $before = substr($main, 0, $marker);
+		my $after = substr($main, $marker);
+		my @blocks = $before =~ /^\s*block \^(\w+):/mg;
+		die "$test: permitted transfer is not in a merge block\n" if !@blocks;
+		my $merge = $blocks[-1];
+		my $incoming = () = $before =~ /^\s+jump \^\Q$merge\E$/mg;
+		my $producers = () = $before =~
+			/^\s+call void \@\w+\(\Q$source\E(?:,|\))/mg;
+		die "$test: conditional operands do not independently construct the source temporary\n"
+			if $incoming < 2 || $producers < 2;
+		die "$test: O0 permission removed the ordinary source cleanup\n"
+			if $after !~ /^\s+call void \@\w+\(\Q$source\E\)$/m;
 		compile_and_run($app, $test, $directory, $path);
 		next;
 	}

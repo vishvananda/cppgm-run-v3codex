@@ -444,6 +444,10 @@ struct Instruction
   // A volatile access is observable behavior: passes may not remove, merge,
   // reorder, or forward it, and its storage may not be promoted away.
   bool volatile_access = false;
+  // The source producer has established that this direct copy/move
+  // construction may be omitted under the source-language copy-elision
+  // rules.  Omission is conservative; O0 executes the ordinary call.
+  bool copy_elision_candidate = false;
   bool has_eh_selector = false;
   long long eh_selector = 0;
   IndexProjectionKind index_projection = IPK_NONE;

@@ -292,13 +292,17 @@ struct Instruction
 	// Volatile accesses are observable behavior: no pass may remove, merge,
 	// reorder, or forward them, and their slots may not be promoted away.
 	bool volatile_access;
+	// Serialized source-language permission for a later LowIR copy-elision
+	// pass.  It never changes the ordinary O0 meaning of the call.
+	bool copy_elision_candidate;
 
 	explicit Instruction(Kind kind_value)
 		: dest(kNoLowId), extra_first(kNoLowId), extra_count(0),
 		  virtual_base_argument_count(0),
 		  target(kNoLowId), alternate(kNoLowId), kind(kind_value),
 		  op(LOW_OP_NONE), projection(INDEX_PROJECTION_NONE), atomic_order(0),
-		  atomic_failure_order(0), indirect(false), volatile_access(false) {}
+		  atomic_failure_order(0), indirect(false), volatile_access(false),
+		  copy_elision_candidate(false) {}
 };
 
 inline bool IsTerminator(const Instruction& instruction)

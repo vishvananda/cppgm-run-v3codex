@@ -846,6 +846,20 @@ sub parse_lowir_call_signature_suffix
 	return (1, \%signature);
 }
 
+sub parse_lowir_call_suffix
+{
+	my ($suffix) = @_;
+	my $copy_elision = 0;
+	if ($suffix =~ s/^\s+\[\s*elision\s*=\s*copy\s*\]//)
+	{
+		$copy_elision = 1;
+	}
+	my ($ok, $signature) = parse_lowir_call_signature_suffix($suffix);
+	return ($ok, $signature) if !$ok;
+	$signature->{copy_elision} = $copy_elision;
+	return (1, $signature);
+}
+
 sub split_lowir_args
 {
 	my ($arg_text) = @_;
@@ -1136,9 +1150,11 @@ sub validate_lowir_instruction
 		my ($dst, $ret_type, $callee, $arg_text, $suffix) = ($1, $2, $3, $4, $5);
 		my @args = split_lowir_args($arg_text);
 		validate_lowir_operand($_, $state, $errors, "$context call \@$callee") for @args;
-		my ($sig_ok, $call_sig) = parse_lowir_call_signature_suffix($suffix);
+		my ($sig_ok, $call_sig) = parse_lowir_call_suffix($suffix);
 		push @$errors, "$context call \@$callee has invalid signature metadata: $call_sig"
 			if !$sig_ok;
+		push @$errors, "$context value-returning call \@$callee cannot carry copy-elision permission"
+			if $sig_ok && $call_sig->{copy_elision};
 		if (exists($state->{function_symbols}{$callee}))
 		{
 			my $sig = $state->{signatures}{$callee};
@@ -1201,9 +1217,16 @@ sub validate_lowir_instruction
 		my ($callee, $arg_text, $suffix) = ($1, $2, $3);
 		my @args = split_lowir_args($arg_text);
 		validate_lowir_operand($_, $state, $errors, "$context call \@$callee") for @args;
-		my ($sig_ok, $call_sig) = parse_lowir_call_signature_suffix($suffix);
+		my ($sig_ok, $call_sig) = parse_lowir_call_suffix($suffix);
 		push @$errors, "$context call \@$callee has invalid signature metadata: $call_sig"
 			if !$sig_ok;
+		push @$errors, "$context copy-elision call \@$callee needs destination and source arguments"
+			if $sig_ok && $call_sig->{copy_elision} && scalar(@args) < 2;
+		push @$errors, "$context copy-elision permission cannot carry an explicit call signature"
+			if $sig_ok && $call_sig->{copy_elision} && $call_sig->{has_signature};
+		push @$errors, "$context copy-elision permission requires a direct function call"
+			if $sig_ok && $call_sig->{copy_elision} &&
+			   !exists($state->{function_symbols}{$callee});
 		if (exists($state->{function_symbols}{$callee}))
 		{
 			my $sig = $state->{signatures}{$callee};
@@ -1266,9 +1289,11 @@ sub validate_lowir_instruction
 		validate_lowir_pointer_operand($callee, $state, $errors, "$context indirect call");
 		my @args = split_lowir_args($arg_text);
 		validate_lowir_operand($_, $state, $errors, "$context indirect call") for @args;
-		my ($sig_ok, $call_sig) = parse_lowir_call_signature_suffix($suffix);
+		my ($sig_ok, $call_sig) = parse_lowir_call_suffix($suffix);
 		push @$errors, "$context indirect call has invalid signature metadata: $call_sig"
 			if !$sig_ok;
+		push @$errors, "$context indirect call cannot carry copy-elision permission"
+			if $sig_ok && $call_sig->{copy_elision};
 		push @$errors, "$context indirect call requires explicit call signature"
 			if !$sig_ok || !$call_sig->{has_signature};
 		if ($sig_ok && $call_sig->{has_signature})
@@ -1296,9 +1321,11 @@ sub validate_lowir_instruction
 		validate_lowir_pointer_operand($1, $state, $errors, "$context indirect call");
 		my @args = split_lowir_args($2);
 		validate_lowir_operand($_, $state, $errors, "$context indirect call") for @args;
-		my ($sig_ok, $call_sig) = parse_lowir_call_signature_suffix($3);
+		my ($sig_ok, $call_sig) = parse_lowir_call_suffix($3);
 		push @$errors, "$context indirect call has invalid signature metadata: $call_sig"
 			if !$sig_ok;
+		push @$errors, "$context indirect call cannot carry copy-elision permission"
+			if $sig_ok && $call_sig->{copy_elision};
 		push @$errors, "$context indirect call requires explicit call signature"
 			if !$sig_ok || !$call_sig->{has_signature};
 		if ($sig_ok && $call_sig->{has_signature})
@@ -2848,6 +2875,11 @@ sub canonicalize_lowir_generated_root_annotations_for_compare
 sub canonicalize_lowir_pair_for_compare
 {
 	my ($ref_data, $my_data) = @_;
+	# Source-language copy-elision permission is verified by PA17/PA37
+	# structural controls.  Older exact O0 fixtures intentionally remain a
+	# baseline for the ordinary call and lifetime behavior.
+	$ref_data =~ s/\s+\[\s*elision\s*=\s*copy\s*\]//g;
+	$my_data =~ s/\s+\[\s*elision\s*=\s*copy\s*\]//g;
 	$ref_data =~ s/\bpass\s*=\s*reference\b/pass=by_address/g;
 	$ref_data = canonicalize_lowir_tls_accesses_for_compare($ref_data);
 	$my_data = canonicalize_lowir_tls_accesses_for_compare($my_data);

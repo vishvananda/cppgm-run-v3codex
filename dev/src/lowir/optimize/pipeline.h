@@ -328,6 +328,10 @@ struct Stats
   std::size_t cold_sunk_definitions = 0;
   std::size_t duplicate_block_loads_removed = 0;
   std::size_t staged_copies_forwarded = 0;
+  std::size_t copy_elision_candidates = 0;
+  std::size_t copy_elisions = 0;
+  std::size_t copy_elision_producers = 0;
+  std::size_t copy_elision_eh_regions = 0;
   std::size_t unreachable_terminator_blocks = 0;
   std::size_t unreachable_edges_removed = 0;
   std::uint64_t inline_nanoseconds = 0;

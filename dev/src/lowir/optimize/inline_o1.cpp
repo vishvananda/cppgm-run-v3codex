@@ -880,6 +880,10 @@ private:
                  bool caller_loop = false)
   {
     if(target == kNoFunction) return false;
+    // The call is the durable source-language elision boundary.  Keep it
+    // intact until the dedicated object-identity pass either consumes it or
+    // deliberately leaves it for a later optimization run.
+    if(call.copy_elision_candidate) return false;
     const bool loop_priority = loop_priority_only_ &&
       target == loop_priority_target_ && caller == loop_priority_caller_ &&
       !loop_priority_done_;

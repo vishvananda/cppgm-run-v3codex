@@ -533,6 +533,7 @@ void AdaptInstruction(const Instruction& source,
 		target.source_type = AdaptType(source.source_type);
 	target.op = AdaptOperation(source.op);
 	target.volatile_access = source.volatile_access;
+	target.copy_elision_candidate = source.copy_elision_candidate;
 	AdaptOperand(source.first, program, function, values, literals, telemetry,
 		&target.first);
 	AdaptOperand(source.second, program, function, values, literals, telemetry,

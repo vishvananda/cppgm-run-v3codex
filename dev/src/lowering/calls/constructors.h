@@ -324,6 +324,7 @@ protected:
 		}
 		Instruction call = derived.DirectCallInstruction(
 			derived.function_symbols_[action.binding], LowVoid());
+		call.copy_elision_candidate = action.copy_elision_candidate;
 		derived.AttachCallArguments(&call, arguments, references);
 		if (derived.full_expression_cleanup_active_ &&
 			!derived.program_.bindings[action.binding].nonthrowing)

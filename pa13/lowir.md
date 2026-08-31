@@ -1097,6 +1097,7 @@ epilogue. This is the stable LowIR lowering for source builtins such as
 %t = call <type> @function(<arg-list>)
 %t = call <type> <callee-value>(<arg-list>) as (<param-list>) -> <type>
 call void @function(<arg-list>)
+call void @function(<destination>, <source>, ...) [elision=copy]
 call void <callee-value>(<arg-list>) as (<param-list>) -> void
 ```
 
@@ -1106,6 +1107,15 @@ stable LowIR surface because the callee operand alone does not describe the
 semantic boundary. That call signature may also carry call-boundary metadata
 such as `arity=variadic`, `effects=readonly`, `unwind=no`, or `return=noreturn`
 when needed.
+
+`[elision=copy]` is a source-language permission on a direct `void` call with
+at least destination and source arguments.  It says that an optimizing stage
+may omit this copy/move construction and redirect the complete construction
+of its private source temporary into the destination when the serialized
+control-flow and lifetime uses prove that rewrite safe.  It is not a command
+to erase the call: an `-O0` consumer executes the call and all ordinary source
+cleanup exactly as written.  The permission is invalid on value-returning or
+indirect calls and does not classify an unmarked call by its symbol spelling.
 
 ### Terminators
 

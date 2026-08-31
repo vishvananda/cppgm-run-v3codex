@@ -531,6 +531,10 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " duplicate_block_loads_removed="
 		 << stats.duplicate_block_loads_removed
 		 << " staged_copies_forwarded=" << stats.staged_copies_forwarded
+		 << " copy_elision_candidates=" << stats.copy_elision_candidates
+		 << " copy_elisions=" << stats.copy_elisions
+		 << " copy_elision_producers=" << stats.copy_elision_producers
+		 << " copy_elision_eh_regions=" << stats.copy_elision_eh_regions
 		 << " unreachable_terminator_blocks="
 		 << stats.unreachable_terminator_blocks
 		 << " unreachable_edges_removed=" << stats.unreachable_edges_removed
