@@ -3577,6 +3577,52 @@ frontend-source-set, LowIR-contract, and compiler-layout audits also passed.
 The aggregate debug target still exposes unrelated stale PA13 fixture diffs,
 which this optimization does not change.
 
+### Current Clang residual and rejected bounded same-root alias refinement
+
+A fresh current-source Clang 21.1.8 O3 control completed all 220 objects with
+explicit 32-way construction.  On the same complete source compile, all three
+producers emitted object hash
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+The retained self compiler retires 4,083,375,532 Callgrind instructions,
+Clang retires 3,021,056,729, and GCC retires 2,425,304,853.  Current self is
+therefore `1.351638x` Clang and `1.683655x` GCC; Clang itself is `1.245640x`
+GCC.  This rules out treating a single GCC-only lowering choice as the whole
+remaining explanation.
+
+The buffered zero-index query remains the clearest common structural gap.
+Self has 38 static calls to its 203-byte specialized helper; that helper runs
+18,094,496 times, with another 1,007,402 calls to the 319-byte generic body.
+Clang keeps one 248-byte body and records 21,099,249 surviving calls, while
+GCC's dominant 145-byte hot / 76-byte cold clone records 7,314,471 calls.
+Inlining changes attribution of the slow cursor calls, so these call counts
+are not independent savings, but they show that both better body formation
+and better fast-path exposure remain relevant.  They also explain why the
+previous copied-prefix prototype was directionally correct locally even
+though its code growth lost on the complete workload.
+
+One concrete body discrepancy was a reload of a queue count after stores to
+bounded, disjoint elements derived from the same base.  A general prototype
+carried relative address ranges through nonnegative literal, `and`, add,
+multiply, and shift indexes, invalidated an available load for different
+unknown roots or overlapping ranges, and admitted the refinement only in O3
+functions of at most 96 LowIR instructions.  The bound avoided the broad
+form's destructive live-range interference: the tokenizer object shrank 50
+text bytes, the specialized query shrank from 203 to 193 bytes, and no hot
+tokenizer function grew.  Standalone tokenizer output remained exact at
+`90db88a91d3942b657347250f3c18dd90ccb14e20ba4dd0f5edece1e06a58352`,
+while its Callgrind count fell from 444,824,631 to 434,874,083
+(`0.977630x`, -2.236960%).
+
+That promising isolated result was still too narrow in the complete compile.
+A fresh 32-way G1 completed all 220 objects, but the complete source compile
+moved only from 4,083,375,532 to 4,075,533,961 instructions (`0.998080x`,
+-0.192036%).  The candidate producer also grew 4,812 text bytes for the range
+and alias machinery.  It missed the 1% deterministic floor by a wide margin,
+so the address-range analysis, API extension, and bounded policy were removed
+before README/property movement, G2/G3, full timing, or inception.  A future
+memory refinement must affect a much larger source-diverse population; this
+queue-count reload is not a sufficient next win by itself.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3665,6 +3711,7 @@ Fill one row for every retained or rejected dose.
 | D.complete-leaf-save | recolor a leaf only when all callee-saved colors and their defining moves can disappear | none; rejected behavior was not moved into PA38; PA37 unchanged | range helper frame 16 to zero, 72 to 63 bytes; G2 producer +1,056 text/+16 data; 219-object G1/G2 complete | tokenizer Ir 0.998034479x; `Run` flat 0.993655072x; complete hot Ir 0.998121212x (-0.187879%) | PA38 45/45; exact tokenizer and hot outputs; all-32 G1/G2 completed; prototype removed before full/G3 gate | rejected; eliminating all leaf call overhead remains far below the 1% retention floor |
 | D.conditional-call-carriers | coalesce complete parameter colors into caller-saved carriers and preserve them only inside repeated bypassable call arms | none; rejected behavior was not moved into PA38; PA37 unchanged | `AppendUTF8` saves 5 to 3, body 1,814 to 2,011 bytes; tokenizer +204 text; region extension cannot prove the other three colors | tokenizer Ir 444,824,631 to 443,561,255 (`0.997159834x`, -0.284017%) | exact tokenizer output; five-second oracle; prototype and temporary MIR identity removed before full/inception gate | rejected; safe path-local carrier preservation is far below the 1% floor |
 | D.private-table-prefilter | correlate four private structured-table calls only when specialization also proves a below-minimum false-return shortcut | PA37 README plus role-based positive, unlike-table, escape, alignment, level, bounded-stats, replay, and behavior properties; PA38 unchanged | four calls lose table/count arguments and gain one entry bound; producer +30,108 text/+624 data; O0--O2 workload output exact | complete hot self Ir `0.983383x`, GCC `1.000112x`, normalized `0.983273x`; O3 native self CPU `1.000413x`, normalized block-median CPU `0.999856x` | PA37 187/187; PA38 45/45; 5,470/5,470; PA37/38 debug/round-trip and three zero-fatal audits clean; all-32 220-object G1/G2/G3 exact | retained; deterministic normalized gain is 1.67% with representative raw O3 in the close-result band |
+| D.bounded-relative-alias | preserve exact field loads across bounded disjoint stores from the same unknown base, only in small O3 functions | none; rejected behavior was not moved into PA37; PA38 unchanged | tokenizer -50 text, specialized query 203 to 193 bytes, no hot-function growth; producer +4,812 text | tokenizer Ir `0.977630x`; complete hot Ir `0.998080x` (-0.192036%) | exact tokenizer behavior; one all-32 220-object G1; prototype removed before G2/full/inception | rejected; bounded form avoids destructive interference but its complete-workload population is far below the 1% floor |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
