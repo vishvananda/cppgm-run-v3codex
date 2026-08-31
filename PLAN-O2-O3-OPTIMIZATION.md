@@ -3283,6 +3283,58 @@ removed.  No PA37/PA38 README or property was retained for rejected behavior;
 a future attempt needs a substantially smaller generic formulation or a
 broader population that clears the complete-workload threshold.
 
+### Rejected final exception-chain inlining and constant-phi closure
+
+The remaining tokenizer profile attributed 84.7 million instructions to the
+istream-buffer iterator construction used by `main`.  An initial O3-only
+prototype let the final definition-removing inline wave expand arbitrary EH
+bodies.  Its G1 compiler built, but G1 could not build G2: it inlined a
+212-instruction hashtable assignment body into an ordinary caller and native
+lowering reported a protected-region state mismatch.  This was a real failed
+safety proof, not a fixture discrepancy, and the broad form was discarded.
+
+The corrected experiment admitted only a two-link chain: one discardable
+single-use EH helper could move into a weak, inline-preferred, acyclic, void,
+fixed-arity wrapper of at most 32 instructions, and that wrapper could then
+move to its sole direct use.  Existing caller, callee, and translation-unit
+budgets still bounded the combined expansion.  A final constant-phi closure
+then recognized phi dependency components whose only external inputs were one
+identical scalar literal or global address, allowing ordinary cleanup and
+slot promotion to consume the newly exposed state.  Large standalone EH
+bodies remained blocked.  The narrow form compiled exception-heavy
+`elf_writer.cpp`, and its first G2/G3 pair matched all 219 objects and the
+linked compiler at hash
+`0a9face0f29c9fa7b6f4eb0ba36837e9db6b974019ea094112bca24abfa29ef2`.
+
+The local result was substantial and exact.  Optimized tokenizer LowIR fell
+from 2,431 to 2,336 lines, tokenizer text fell from 45,100 to 44,843 bytes,
+and the no-cache tokenizer oracle fell from 444,824,631 to 434,802,113
+instructions (`0.977469x`, or -2.2531%).  Nevertheless, the representative
+O1 producer-quality screen rejected it.  Three all-32 ABBA blocks matched the
+same 219-object manifest and final compiler in every lane, but mean self wall
+and aggregate CPU ratios were `1.004680x` and `1.002509x`.  The same-source GCC
+control ratios were `0.999543x` and `0.999264x`, producing normalized losses of
+0.514% wall and 0.325% CPU.
+
+An isolation revision allocated and populated the two EH eligibility tables
+only in the final O3 wave.  It improved the exact hot native O1 compile by
+0.902% paired user time, proving that disabled O1 bookkeeping had leaked from
+the first form.  The complete workload still regressed: mean wall/CPU were
+`1.009041x`/`1.003272x`, paired medians were
+`1.012677x`/`1.003314x`, and five of six CPU pairs favored the baseline while
+the sixth was flat.  All lanes matched manifest
+`368c4bcf0ad17a110d2dc7b3370380bc2e9034420422bb9929a785b4d377dd65`
+and final hash
+`9f24fe2a572348ed127b9f143f5e6e0bbc01f65f9a7837f7d9219672d73c6871`.
+
+Both narrow forms were removed.  No PA37/PA38 README or property was added for
+rejected behavior.  The result is useful evidence that this specific library
+wrapper exposes a real missed optimization, but an EH-specific inliner plus a
+general phi-component solver adds too much producer footprint and unfavorable
+whole-program layout.  A successor needs a materially smaller existing-pass
+extension or a broader population; the tokenizer result alone is not a reason
+to retain the contract.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3364,6 +3416,7 @@ Fill one row for every retained or rejected dose.
 | D.query-family-fast | carry a general query's fast-return postcondition to later zero-index calls and reload through a generated helper | none; rejected behavior was not moved into PA37; PA38 unchanged | unsafe ceiling removed 6.60M dynamic full calls and -2.425% hot Ir; corrected helper redirected 19 static calls, tokenizer +51 text, producer +12,096 text/+16 data | unsafe ceiling -1.74% task-clock but invalid; corrected 20-observation aggregate 1.00937x and all ten blocks slower | corrected tiny/hot outputs exact; join bug reproduced and fixed in prototype; all code removed before full/inception gate | rejected; safe guard elimination is slower and the apparent win required unsound cached-value reuse |
 | D.query-family-inline-fast | prove a general query's nonzero postcondition, reload through a bounded helper, and force-inline only its fast arm | none; drafted PA37 property and README were removed with rejected behavior; PA38 unchanged | 12 full calls redirected; hot Ir -0.993%; producer +25,996 text; O1 output exact | hot task-clock 0.98771x; O1 normalized wall/CPU 0.99726x/0.99935x; O3 normalized 1.00325x/0.99759x | focused property, PA37 187/187, PA38 45/45, 5,470/5,470, debug/round-trip, zero-fatal audit, and exact G1/G2/G3 before removal | rejected; full O3 wall direction failed and 0.24% normalized CPU is too small for the proof/code-size cost |
 | D.equality-set-bitmask | replace a private four-plus integer equality OR with direct control and lower a bounded same-target switch through a 64-bit membership test | none; rejected behavior was not moved into PA37/PA38 | tokenizer -75 LowIR lines, `Run` -160 native bytes; compact producer +20,288 text; hot Ir -0.6646% normalized | initial full wall/CPU 1.00632x/1.00033x; compact ABBA 1.00211x/0.99808x | exact tokenizer/hot output, exact G1/G2 and common 219-object manifest/final; prototype removed | rejected; 0.19% full CPU gain and unfavorable wall do not repay a 16-KiB matcher/new native surface |
+| D.final-eh-chain | move one discardable EH helper through a small unique weak wrapper, then close identical-constant phi dependencies | none; rejected behavior was not moved into PA37/PA38 | tokenizer 2,431 to 2,336 LowIR lines and -257 text bytes; initial narrow G2/G3 exact; isolated implementation still enlarged the producer | hot Ir -2.2531%; first normalized wall/CPU +0.514%/+0.325%; isolated full wall/CPU +0.904%/+0.327% | broad form failed G2 EH validation; narrow G2/G3 exact; both three-block 219-object screens exact; prototypes removed | rejected; strong local saving does not survive representative producer throughput |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
