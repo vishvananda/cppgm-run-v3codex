@@ -3414,6 +3414,37 @@ property-test movement and before representative timing.  A useful successor
 must prevent this interference for a broader proven population, or combine it
 with a loop transformation whose complete-workload upper bound exceeds 1%.
 
+### Rejected nonescaping-slot alias refinement
+
+The next self/GCC residual screen found 44.8 million flat instructions in
+`SpellingTable::FindPosition`, a helper which GCC absorbs into its caller.  In
+the self-generated O3 LowIR, each collision iteration reloaded the begin and
+end pointers of an unchanged `vector<unsigned>`, recomputed its size and mask,
+and repeated a string-length load.  The late memory-GVN analysis already knew
+that the intervening bookkeeping stores targeted nonescaping local slots, but
+its unknown-memory version treated every store as a barrier whenever any
+unknown-pointer load existed in the function.
+
+An O2/O3-only prototype stopped such proven nonescaping-slot stores from
+advancing the unknown-pointer version.  This is a sound generic alias
+refinement: an external unknown pointer cannot name a local slot whose address
+never escapes.  It removed the probe-loop begin load, all five repeated
+size/mask instructions, and repeated object-length loads; the optimized macro
+LowIR shrank 1,805 bytes.  PA38 remained 45/45, a 32-way G1/G2 compiler build
+completed with all 219 objects, the complete hot output stayed byte-exact at
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`,
+and G2 compiler text shrank 2,088 bytes.
+
+The deterministic complete-TU result was too small to retain.  Callgrind fell
+from 4,152,374,237 to 4,149,717,594 instructions (`0.999360211x`, or
+-0.063979%).  First-generation native timing was neutral, as expected before
+the candidate optimized its own hot paths; the G2 sub-second wall samples were
+noisy and did not establish a throughput win.  The alias rule and its new pass
+parameter were removed before README/property movement and before full timing
+or G3 escalation.  A future memory-SSA refinement needs a broader population
+or must combine with an existing transformation to clear the 1% deterministic
+gate.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3498,6 +3529,7 @@ Fill one row for every retained or rejected dose.
 | D.dense-jump-table | lower bounded dense six-plus-case O3 switches through a relative native table | none; rejected behavior was not moved into PA38; PA37 unchanged | intended 7-way and 10-way switches selected; `IsOperator` +52 bytes; producer -824 text bytes | hot Ir 0.999422x (-0.0578%); `IsOperator` flat -0.465%; tokenizer negative control +0.0077% | PA38 45/45; valid serialized MIR and generated compiler; stopped before full workload/inception | rejected; GCC's larger win comes from caller constant propagation, while the fixed table scarcely improves the generic switch |
 | D.final-eh-chain | move one discardable EH helper through a small unique weak wrapper, then close identical-constant phi dependencies | none; rejected behavior was not moved into PA37/PA38 | tokenizer 2,431 to 2,336 LowIR lines and -257 text bytes; initial narrow G2/G3 exact; isolated implementation still enlarged the producer | hot Ir -2.2531%; first normalized wall/CPU +0.514%/+0.325%; isolated full wall/CPU +0.904%/+0.327% | broad form failed G2 EH validation; narrow G2/G3 exact; both three-block 219-object screens exact; prototypes removed | rejected; strong local saving does not survive representative producer throughput |
 | D.predefinition-phi-spill | protect a reserved planned phi home from eviction before its first definition at O2/O3 | none; rejected behavior was not moved into PA38; PA37 unchanged | fast fill cursor regains residency; helper 396 to 379 bytes; `program.o` +48 text; producer +3,392 text; 219-object G2/G3 exact | helper flat Ir -2.685%; complete hot Ir 0.9999347x (-0.0065%) | PA38 45/45; exact hot object and all-32 fixed point; prototype removed before full timing | rejected; genuine O3 load-lifetime interference, but complete-workload dose is far below 1% |
+| D.nonescaping-slot-alias | do not let a proven nonescaping local-slot store invalidate unknown-pointer load availability at O2/O3 | none; rejected behavior was not moved into PA37; PA38 unchanged | hot macro LowIR -1,805 bytes; spelling probe loses loop-invariant begin/size/mask reloads; producer -2,088 text; 219-object G1/G2 complete | complete hot Ir 0.999360211x (-0.063979%); native G1 neutral and G2 samples inconclusive | PA38 45/45; exact hot object; all-32 G1/G2 completed; prototype removed before full/G3 gate | rejected; sound generic improvement is dynamically far below the 1% retention floor |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
