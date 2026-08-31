@@ -3478,6 +3478,43 @@ closes complete leaf save elimination as an independent explanation of the
 large O3 gap; a future allocator change needs to eliminate work inside the hot
 loops rather than only their per-call prologue and epilogue.
 
+### Rejected conditional-call carrier preservation
+
+Instruction-address attribution showed that every common `AppendUTF8` entry
+paid five callee-save pushes and pops even though its ten string-growth calls
+sit in bypassable conditional arms.  An O3-only final-MIR prototype recognized
+only functions with at least four exact branch/call/join diamonds, used
+completed physical-register liveness, and rewrote a complete callee-saved
+color uniformly across both sides of every join.  A unique defining move from
+an incoming ABI carrier could be coalesced.  When that caller-saved carrier
+crossed a call arm, the prototype stored it at the beginning of that arm and
+reloaded it immediately after the call; the bypass path retained the same
+register without a transfer.  Dynamic-stack, host-EH, and debug functions were
+excluded.  This avoided the predecessor-local phi assumption that made the
+earlier merge-phi allocation experiment unsound.
+
+The proof eliminated the two complete parameter-carrier colors: `rbx` folded
+back into incoming `rdi`, `r15` folded back into incoming `rsi`, and
+`AppendUTF8` fell from five to three saved registers.  The path-local homes and
+repeated cold-arm stores/reloads enlarged its native body from 1,814 to 2,011
+bytes and tokenizer `.text` by 204 bytes.  The standalone tokenizer remained
+byte-exact at
+`90db88a91d3942b657347250f3c18dd90ccb14e20ba4dd0f5edece1e06a58352`.
+Its Callgrind count fell from 444,824,631 to 443,561,255 instructions
+(`0.997159834x`, or -0.284017%).
+
+A second completed-liveness probe split disjoint source-live regions and
+allowed the same guarded preservation inside eligible call arms.  It could
+not prove a caller-saved placement for `r12`, `r13`, or `r14`; conflicts in
+ordinary blocks, rather than the call arms alone, keep those colors live.
+Thus the safe measured form is also the useful ceiling for this bounded
+approach.  Because the five-second tokenizer oracle isolates the target path
+and the saving is far below 1%, the prototype and its temporary MIR identity
+were removed before README/property movement, full timing, or inception.
+Further work should target loop/body instructions or a general live-range
+split with a substantially larger static ceiling, not add more call-arm
+special cases.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3564,6 +3601,7 @@ Fill one row for every retained or rejected dose.
 | D.predefinition-phi-spill | protect a reserved planned phi home from eviction before its first definition at O2/O3 | none; rejected behavior was not moved into PA38; PA37 unchanged | fast fill cursor regains residency; helper 396 to 379 bytes; `program.o` +48 text; producer +3,392 text; 219-object G2/G3 exact | helper flat Ir -2.685%; complete hot Ir 0.9999347x (-0.0065%) | PA38 45/45; exact hot object and all-32 fixed point; prototype removed before full timing | rejected; genuine O3 load-lifetime interference, but complete-workload dose is far below 1% |
 | D.nonescaping-slot-alias | do not let a proven nonescaping local-slot store invalidate unknown-pointer load availability at O2/O3 | none; rejected behavior was not moved into PA37; PA38 unchanged | hot macro LowIR -1,805 bytes; spelling probe loses loop-invariant begin/size/mask reloads; producer -2,088 text; 219-object G1/G2 complete | complete hot Ir 0.999360211x (-0.063979%); native G1 neutral and G2 samples inconclusive | PA38 45/45; exact hot object; all-32 G1/G2 completed; prototype removed before full/G3 gate | rejected; sound generic improvement is dynamically far below the 1% retention floor |
 | D.complete-leaf-save | recolor a leaf only when all callee-saved colors and their defining moves can disappear | none; rejected behavior was not moved into PA38; PA37 unchanged | range helper frame 16 to zero, 72 to 63 bytes; G2 producer +1,056 text/+16 data; 219-object G1/G2 complete | tokenizer Ir 0.998034479x; `Run` flat 0.993655072x; complete hot Ir 0.998121212x (-0.187879%) | PA38 45/45; exact tokenizer and hot outputs; all-32 G1/G2 completed; prototype removed before full/G3 gate | rejected; eliminating all leaf call overhead remains far below the 1% retention floor |
+| D.conditional-call-carriers | coalesce complete parameter colors into caller-saved carriers and preserve them only inside repeated bypassable call arms | none; rejected behavior was not moved into PA38; PA37 unchanged | `AppendUTF8` saves 5 to 3, body 1,814 to 2,011 bytes; tokenizer +204 text; region extension cannot prove the other three colors | tokenizer Ir 444,824,631 to 443,561,255 (`0.997159834x`, -0.284017%) | exact tokenizer output; five-second oracle; prototype and temporary MIR identity removed before full/inception gate | rejected; safe path-local carrier preservation is far below the 1% floor |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
