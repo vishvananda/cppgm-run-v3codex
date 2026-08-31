@@ -3283,6 +3283,45 @@ removed.  No PA37/PA38 README or property was retained for rejected behavior;
 a future attempt needs a substantially smaller generic formulation or a
 broader population that clears the complete-workload threshold.
 
+### Rejected bounded dense jump-table lowering
+
+The refreshed self/GCC profile attributed 77.3 million flat instructions to
+the macro processor's generic `IsOperator` query.  GCC emitted four
+constant-propagated caller variants and used a jump table in the remaining
+seven-way character switch, while self retained one large generic function
+with a linear compare chain.  Readonly-address caller specialization had
+already been rejected above, so a distinct O3 native experiment tested only
+the general switch-lowering hypothesis.
+
+The prototype retained a switch as one serialized MIR operation when it had
+at least six nonnegative immediate cases, a range of at most 64 values, and
+at least 25% density.  It emitted an unsigned range guard followed by a
+relative-offset table and indirect transfer, used only encoder-reserved
+scratch registers, and left O0--O2, host-EH functions, sparse switches, and
+all other control flow unchanged.  The intended 7-way macro query and a
+dense 10-way switch were selected.  The macro query grew from 846 to 898
+bytes because its 28-entry table outweighed the removed comparisons.  The
+complete generated producer nevertheless shrank 824 text bytes through
+secondary self-application effects.
+
+The encoding and control-flow model were sound in the focused screen:
+`make test-pa38` remained 45/45, the optimized MIR exposed the bounded table
+without matching complete program text, and the generated compiler completed
+the hot translation.  The standalone tokenizer was an intentional negative
+control: its hot function was unchanged and its no-cache Callgrind count moved
+only from 444,824,631 to 444,858,987 (+0.0077%).
+
+The full hot requested-O3 compile also rejected the hypothesis.  Output
+changed only by the intended native switch encoding, while Callgrind fell
+from 4,152,374,237 to 4,149,972,172 instructions (`0.999422x`, or -0.0578%).
+The flat `IsOperator` cost fell only from 77,325,557 to 76,966,148
+instructions (-0.465%).  Common early cases make the existing short chain
+competitive with the fixed table setup; GCC's much larger result depends on
+propagating each literal spelling at its caller, not on jump-table selection
+alone.  This deterministic saving is far below the 1% escalation threshold,
+so the MIR opcode and encoder surface were removed before PA38 contract or
+property movement and before a full workload or inception build.
+
 ### Rejected final exception-chain inlining and constant-phi closure
 
 The remaining tokenizer profile attributed 84.7 million instructions to the
@@ -3416,6 +3455,7 @@ Fill one row for every retained or rejected dose.
 | D.query-family-fast | carry a general query's fast-return postcondition to later zero-index calls and reload through a generated helper | none; rejected behavior was not moved into PA37; PA38 unchanged | unsafe ceiling removed 6.60M dynamic full calls and -2.425% hot Ir; corrected helper redirected 19 static calls, tokenizer +51 text, producer +12,096 text/+16 data | unsafe ceiling -1.74% task-clock but invalid; corrected 20-observation aggregate 1.00937x and all ten blocks slower | corrected tiny/hot outputs exact; join bug reproduced and fixed in prototype; all code removed before full/inception gate | rejected; safe guard elimination is slower and the apparent win required unsound cached-value reuse |
 | D.query-family-inline-fast | prove a general query's nonzero postcondition, reload through a bounded helper, and force-inline only its fast arm | none; drafted PA37 property and README were removed with rejected behavior; PA38 unchanged | 12 full calls redirected; hot Ir -0.993%; producer +25,996 text; O1 output exact | hot task-clock 0.98771x; O1 normalized wall/CPU 0.99726x/0.99935x; O3 normalized 1.00325x/0.99759x | focused property, PA37 187/187, PA38 45/45, 5,470/5,470, debug/round-trip, zero-fatal audit, and exact G1/G2/G3 before removal | rejected; full O3 wall direction failed and 0.24% normalized CPU is too small for the proof/code-size cost |
 | D.equality-set-bitmask | replace a private four-plus integer equality OR with direct control and lower a bounded same-target switch through a 64-bit membership test | none; rejected behavior was not moved into PA37/PA38 | tokenizer -75 LowIR lines, `Run` -160 native bytes; compact producer +20,288 text; hot Ir -0.6646% normalized | initial full wall/CPU 1.00632x/1.00033x; compact ABBA 1.00211x/0.99808x | exact tokenizer/hot output, exact G1/G2 and common 219-object manifest/final; prototype removed | rejected; 0.19% full CPU gain and unfavorable wall do not repay a 16-KiB matcher/new native surface |
+| D.dense-jump-table | lower bounded dense six-plus-case O3 switches through a relative native table | none; rejected behavior was not moved into PA38; PA37 unchanged | intended 7-way and 10-way switches selected; `IsOperator` +52 bytes; producer -824 text bytes | hot Ir 0.999422x (-0.0578%); `IsOperator` flat -0.465%; tokenizer negative control +0.0077% | PA38 45/45; valid serialized MIR and generated compiler; stopped before full workload/inception | rejected; GCC's larger win comes from caller constant propagation, while the fixed table scarcely improves the generic switch |
 | D.final-eh-chain | move one discardable EH helper through a small unique weak wrapper, then close identical-constant phi dependencies | none; rejected behavior was not moved into PA37/PA38 | tokenizer 2,431 to 2,336 LowIR lines and -257 text bytes; initial narrow G2/G3 exact; isolated implementation still enlarged the producer | hot Ir -2.2531%; first normalized wall/CPU +0.514%/+0.325%; isolated full wall/CPU +0.904%/+0.327% | broad form failed G2 EH validation; narrow G2/G3 exact; both three-block 219-object screens exact; prototypes removed | rejected; strong local saving does not survive representative producer throughput |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
