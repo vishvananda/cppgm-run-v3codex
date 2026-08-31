@@ -645,7 +645,6 @@ std::size_t specialize_o3_constant_groups(
   std::vector<unsigned char> invalid_shape(function_count, 0);
   std::vector<unsigned char> group_limit_reached(function_count, 0);
   std::vector<std::vector<ConstantGroup> > groups(function_count);
-
   for(std::size_t global = 0; global < program.globals.size(); ++global) {
     mark_reference(program.globals[global].init_operand, call_graph, &escaped);
     for(std::size_t item = 0;
@@ -666,7 +665,6 @@ std::size_t specialize_o3_constant_groups(
     const std::size_t target = call_graph.definition_by_symbol[symbol];
     if(target != InlineCallGraph::no_function()) escaped[target] = 1;
   }
-
   for(std::size_t caller = 0; caller < function_count; ++caller) {
     const Function & function = program.functions[caller];
     const DirectGlobalAliases aliases = direct_global_aliases(function);
@@ -708,7 +706,6 @@ std::size_t specialize_o3_constant_groups(
         }
       }
   }
-
   std::vector<unsigned char> used_symbol_names(program.strings.size() + 1, 0);
   for(std::size_t symbol = 0; symbol < program.symbol_names.size(); ++symbol)
     used_symbol_names[program.symbol_names[symbol]] = 1;
@@ -718,7 +715,6 @@ std::size_t specialize_o3_constant_groups(
   std::size_t cloned_instructions = 0;
   std::vector<std::size_t> parameter_by_value;
   std::vector<unsigned char> used_parameters;
-
   for(std::size_t function = 0; function < function_count; ++function) {
     const Function & target = program.functions[function];
     const std::size_t target_instructions = instruction_count(target);
@@ -733,7 +729,6 @@ std::size_t specialize_o3_constant_groups(
        target.boundary.arity != lowir_model::CAM_FIXED ||
        target_instructions > kO3MaximumGroupedTargetInstructions)
       continue;
-
     const ConstantGroup * best = 0;
     for(std::size_t group = 0; group < groups[function].size(); ++group) {
       const ConstantGroup & candidate = groups[function][group];
@@ -743,7 +738,6 @@ std::size_t specialize_o3_constant_groups(
       if(!best || candidate.calls > best->calls) best = &candidate;
     }
     if(!best) continue;
-
     Function baseline = target;
     if(cleanup && cleanup->run)
       cleanup->run(&baseline, 0, cleanup->context);
@@ -798,7 +792,6 @@ std::size_t specialize_o3_constant_groups(
       if(stats) ++stats->ipa_clone_budget_skips;
       continue;
     }
-
     GroupSelection & selection = selections[function];
     selection.active = true;
     selection.parameter = best->parameter;
@@ -821,7 +814,6 @@ std::size_t specialize_o3_constant_groups(
       }
     }
   }
-
   std::size_t rewritten_calls = 0;
   for(std::size_t caller = 0; caller < function_count; ++caller) {
     Function & function = program.functions[caller];
