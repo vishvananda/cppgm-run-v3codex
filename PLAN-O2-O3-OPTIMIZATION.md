@@ -3201,6 +3201,52 @@ No PA37 README or property test was added for rejected behavior; PA38 was
 unaffected.  A future retry would need a sound memory-value proof strong
 enough to recover the scalar reuse itself, not merely a postcondition helper.
 
+### Rejected force-inlined query-family fast arm
+
+A stricter successor to the out-of-line helper proved when a general query's
+normal return establishes that the exact occupancy storage is nonzero.  It
+required an unsigned `occupancy <= index` refill loop, a nonvolatile load,
+and every normal return to be dominated either by the loop's false edge or by
+a nonzero test of a reload from the identical address.  The intervening path
+could contain only pure scalar work and nonvolatile loads.  A grouped
+zero-index clone then supplied a bounded helper which reloaded the current
+head, and existing force-inline replay removed the helper call and refill
+guard.  Facts were intersected at joins and cleared by ordinary memory
+barriers.  This avoided the unsound cached-value assumption in the first
+prototype.
+
+The prototype exposed and corrected an experiment-local meet bug: clearing
+an exact result at a join while retaining one predecessor's fast fact could
+make the generated tokenizer loop.  Intersecting the two facts independently
+restored exact behavior.  A property control covered the positive structural
+proof, mutating early return, changed receiver, store, one-predecessor join,
+O0--O2 isolation, bounded statistics, force-inline replay, and native
+behavior.  The implementation was split into bounded helpers until the file
+audit again had zero fatal findings.  Because the optimization failed its
+performance gate, neither that implementation nor its PA37 contract was
+retained.
+
+The final audit-clean compiler grew 25,996 text bytes.  Twenty exact-output
+software `task-clock` observations per side improved the hot O1 compile from
+864.178 to 853.560 ms (`0.98771x`), and Callgrind fell from 4,152,374,237 to
+4,111,150,753 instructions (`0.99007x`).  Same-source GCC Callgrind was flat
+at `1.000034x`, so the normalized hot instruction ratio was about `0.99004x`.
+The complete workloads did not preserve that magnitude.  Four clean,
+order-balanced O1 blocks measured self at `1.00000x` wall / `0.99727x` CPU
+and GCC at `1.00275x` / `0.99792x`, only `0.99726x` / `0.99935x` normalized.
+Two order-balanced O3 blocks measured self at `1.00435x` wall / `0.99765x`
+CPU and GCC at `1.00109x` / `1.00006x`, approximately `1.00325x` /
+`0.99759x` normalized.  Thus O3 CPU improved only 0.24% after normalization,
+wall regressed 0.33%, and the paired wall direction was unfavorable.  G1,
+G2, and G3 were exact at the 219-object manifest
+`acf5f80f9a56ec61072d5d50c42533a6b1347f047b943fbfddb7c59d4e9b4b2c`
+and final hash
+`314a6e0f848bdec2a0ed116f5c95bd514d4acee2a8b7f7a004a3bef732faa1a5`.
+
+The dose was removed.  A future query-family retry needs a broader fast-arm
+population or materially smaller proof implementation; another layout-only
+variation of this single family is below the complete-workload threshold.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3280,6 +3326,7 @@ Fill one row for every retained or rejected dose.
 | D.copy80 | select direct vector chunks for exact 80-byte O2+ copies | none; rejected behavior was not moved into PA38; PA37 unchanged | deque swap 241 to 372 bytes; macro object +176 text; producer +3,892 text | 20 observations/side: aggregate task-clock 0.99915x; pair mean 0.99916x, median 0.99989x; warm pair mean 1.00051x | exact generated object; fresh 32-way candidate self compiler; prototype removed before full/inception gate | rejected; native CPU is flat while code grows |
 | D.shared-loop-owner | localize two calls to one shared loop inside a multiply-used acyclic wrapper, then preserve that cyclic wrapper | none; rejected behavior was not moved into PA37; PA38 unchanged | retained 192-byte identifier wrapper; `Run` -172 bytes; tokenizer +108 text; producer +2,816 text/+16 data | 20 observations/side: aggregate task-clock 1.00329x; balanced-block mean 1.00337x; medians 864.125/867.515 ms | exact fixed-O1 hot object; fresh 32-way self compiler; prototype removed before full/inception gate | rejected; GCC-like ownership alone is slightly slower on this backend |
 | D.query-family-fast | carry a general query's fast-return postcondition to later zero-index calls and reload through a generated helper | none; rejected behavior was not moved into PA37; PA38 unchanged | unsafe ceiling removed 6.60M dynamic full calls and -2.425% hot Ir; corrected helper redirected 19 static calls, tokenizer +51 text, producer +12,096 text/+16 data | unsafe ceiling -1.74% task-clock but invalid; corrected 20-observation aggregate 1.00937x and all ten blocks slower | corrected tiny/hot outputs exact; join bug reproduced and fixed in prototype; all code removed before full/inception gate | rejected; safe guard elimination is slower and the apparent win required unsound cached-value reuse |
+| D.query-family-inline-fast | prove a general query's nonzero postcondition, reload through a bounded helper, and force-inline only its fast arm | none; drafted PA37 property and README were removed with rejected behavior; PA38 unchanged | 12 full calls redirected; hot Ir -0.993%; producer +25,996 text; O1 output exact | hot task-clock 0.98771x; O1 normalized wall/CPU 0.99726x/0.99935x; O3 normalized 1.00325x/0.99759x | focused property, PA37 187/187, PA38 45/45, 5,470/5,470, debug/round-trip, zero-fatal audit, and exact G1/G2/G3 before removal | rejected; full O3 wall direction failed and 0.24% normalized CPU is too small for the proof/code-size cost |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
