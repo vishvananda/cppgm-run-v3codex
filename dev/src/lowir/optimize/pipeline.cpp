@@ -2570,6 +2570,15 @@ void finish_optimizer_pipeline(
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     if(level >= 3)
       fold_zero_bounded_signed_branch(&program.functions[i], stats);
+    if(level >= 3 &&
+       fold_forwarded_boolean_phi_branch(&program.functions[i], stats)) {
+      lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
+      timed_function_pass(simplify_values, &program.functions[i], stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+        &simplify_arena);
+      timed_dce(&program.functions[i], boundaries, stats, &dce_scratch);
+      timed_cfg(&program.functions[i], stats, &cfg_scratch, &analysis);
+    }
     if(level >= 2) {
       if(fold_trivial_boolean_phi_diamond(&program.functions[i], stats)) {
         lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);

@@ -20,6 +20,12 @@ bool fold_boolean_phi_branch(
 // pipeline dose; ordinary CFG cleanup retains its loop-oriented policy.
 bool fold_trivial_boolean_phi_diamond(
   lowir_model::Function * function, Stats * stats);
+// Thread an exact Boolean value through an i64-phi/u8-trunc forwarding pair
+// into its consuming branch.  The incoming values must be comparison results
+// or literal zero/one, so bypassing the truncation preserves truth semantics.
+// This is an O3-only late CFG cleanup.
+bool fold_forwarded_boolean_phi_branch(
+  lowir_model::Function * function, Stats * stats);
 bool fold_edge_known_branches(
   lowir_model::Function * function, Stats * stats);
 bool fold_edge_known_branches(

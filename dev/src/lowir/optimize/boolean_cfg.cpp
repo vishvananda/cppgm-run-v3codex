@@ -55,6 +55,20 @@ bool has_direct_boolean_phi_branch(const Function & function)
   return false;
 }
 
+bool has_forwarded_boolean_phi_branch(const Function & function)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    if(instructions.size() == 3 &&
+       instructions[0].kind == Instruction::IK_PHI &&
+       instructions[1].kind == Instruction::IK_CONVERT &&
+       instructions[2].kind == Instruction::IK_JUMP)
+      return true;
+  }
+  return false;
+}
+
 bool has_zero_bounded_signed_branch_candidate(const Function & function)
 {
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
@@ -941,6 +955,163 @@ bool fold_trivial_boolean_phi_diamond(Function * function, Stats * stats)
     return true;
   }
   return false;
+}
+
+bool fold_forwarded_boolean_phi_branch(Function * function, Stats * stats)
+{
+  if(!has_forwarded_boolean_phi_branch(*function)) return false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t instruction = 0;
+        instruction < function->blocks[block].instructions.size();
+        ++instruction)
+      if(cleanup_is_eh_instruction(
+           function->blocks[block].instructions[instruction].kind))
+        return false;
+  bool changed = false;
+  // Every successful iteration bypasses and removes the merge and its
+  // continuation, so the repeated analysis is bounded by half the original
+  // block population.
+  for(;;) {
+    const std::vector<std::size_t> uses = value_uses(*function);
+    const Graph graph = build_graph(*function, stats);
+    const lowir_analysis::DominatorTree dom =
+      lowir_analysis::dominators(graph, stats);
+    std::vector<const Instruction *> definitions(function->value_names.size(), 0);
+    for(std::size_t block = 0; block < function->blocks.size(); ++block)
+      for(std::size_t instruction = 0;
+          instruction < function->blocks[block].instructions.size();
+          ++instruction) {
+        const Instruction & candidate =
+          function->blocks[block].instructions[instruction];
+        if(candidate.dest.valid() && candidate.dest < definitions.size())
+          definitions[candidate.dest] = &candidate;
+      }
+
+    bool rewritten = false;
+    for(std::size_t merge = 0;
+        merge < function->blocks.size() && !rewritten; ++merge) {
+      const Block & merge_block = function->blocks[merge];
+      if(merge_block.instructions.size() != 3 ||
+         merge_block.instructions[0].kind != Instruction::IK_PHI ||
+         merge_block.instructions[1].kind != Instruction::IK_CONVERT ||
+         merge_block.instructions[2].kind != Instruction::IK_JUMP ||
+         graph.eh_targets[static_cast<std::uint32_t>(merge_block.id)])
+        continue;
+      const Instruction phi = merge_block.instructions[0];
+      const Instruction convert = merge_block.instructions[1];
+      const Instruction forward = merge_block.instructions[2];
+      if(!phi.dest.valid() || !convert.dest.valid() ||
+         phi.type.kind != lowir_model::LTK_I64 ||
+         convert.op.kind != LowOperation::LOP_TRUNC ||
+         convert.type.kind != lowir_model::LTK_U8 ||
+         convert.first.kind != Operand::OP_TEMP ||
+         convert.first.value != phi.dest ||
+         phi.dest >= uses.size() || uses[phi.dest] != 1 ||
+         convert.dest >= uses.size() || uses[convert.dest] != 1 ||
+         phi.args.size() < 4 || phi.args.size() % 2 != 0 ||
+         forward.first.kind != Operand::OP_LABEL)
+        continue;
+      const std::size_t continuation = graph.find(forward.first.block);
+      if(continuation == static_cast<std::size_t>(-1) ||
+         continuation == merge ||
+         graph.predecessors[continuation].size() != 1 ||
+         graph.predecessors[continuation][0] != merge ||
+         graph.eh_targets[static_cast<std::uint32_t>(
+           function->blocks[continuation].id)])
+        continue;
+      const Block & continuation_block = function->blocks[continuation];
+      if(continuation_block.instructions.size() != 1 ||
+         continuation_block.instructions[0].kind != Instruction::IK_BRANCH)
+        continue;
+      const Instruction branch = continuation_block.instructions[0];
+      if(branch.first.kind != Operand::OP_TEMP ||
+         branch.first.value != convert.dest ||
+         branch.second.kind != Operand::OP_LABEL ||
+         branch.third.kind != Operand::OP_LABEL ||
+         branch.second.block == merge_block.id ||
+         branch.third.block == merge_block.id ||
+         branch.second.block == continuation_block.id ||
+         branch.third.block == continuation_block.id ||
+         graph.predecessors[merge].size() != phi.args.size() / 2 ||
+         block_has_phi(*function, graph, branch.second) ||
+         block_has_phi(*function, graph, branch.third))
+        continue;
+
+      struct IncomingRewrite
+      {
+        std::size_t predecessor;
+        Operand value;
+      };
+      std::vector<IncomingRewrite> rewrites;
+      rewrites.reserve(graph.predecessors[merge].size());
+      bool safe = true;
+      for(std::size_t incoming = 0;
+          incoming < graph.predecessors[merge].size(); ++incoming) {
+        const std::size_t predecessor = graph.predecessors[merge][incoming];
+        const Block & predecessor_block = function->blocks[predecessor];
+        Operand value;
+        if(predecessor == merge || predecessor_block.instructions.empty() ||
+           dom.dominates(merge, predecessor) ||
+           graph.eh_targets[
+             static_cast<std::uint32_t>(predecessor_block.id)] ||
+           !direct_phi_incoming(phi, predecessor_block.id, &value)) {
+          safe = false;
+          break;
+        }
+        if(value.kind == Operand::OP_INTEGER) {
+          if(!value.has_int_value ||
+             (value.int_value != 0 && value.int_value != 1)) {
+            safe = false;
+            break;
+          }
+        } else if(value.kind == Operand::OP_TEMP) {
+          const std::uint32_t id = value.value;
+          if(id >= definitions.size() || !definitions[id] ||
+             definitions[id]->kind != Instruction::IK_CMP) {
+            safe = false;
+            break;
+          }
+        } else {
+          safe = false;
+          break;
+        }
+        const Instruction & terminal = predecessor_block.instructions.back();
+        if(terminal.kind != Instruction::IK_JUMP ||
+           terminal.first.kind != Operand::OP_LABEL ||
+           terminal.first.block != merge_block.id) {
+          safe = false;
+          break;
+        }
+        rewrites.push_back(IncomingRewrite{predecessor, value});
+      }
+      if(!safe) continue;
+
+      for(std::size_t rewrite = 0; rewrite < rewrites.size(); ++rewrite) {
+        Instruction & terminal =
+          function->blocks[rewrites[rewrite].predecessor].instructions.back();
+        const lowir_model::InstructionDebugLocation old_debug =
+          terminal.debug_location;
+        const Operand value = rewrites[rewrite].value;
+        terminal = Instruction();
+        if(value.kind == Operand::OP_INTEGER) {
+          terminal.kind = Instruction::IK_JUMP;
+          terminal.first = value.int_value ? branch.second : branch.third;
+          terminal.debug_location = old_debug;
+        } else {
+          terminal.kind = Instruction::IK_BRANCH;
+          terminal.first = value;
+          terminal.second = branch.second;
+          terminal.third = branch.third;
+          terminal.debug_location = branch.debug_location;
+        }
+        if(stats) ++stats->rewrites;
+      }
+      remove_unreachable_blocks(function, stats);
+      changed = rewritten = true;
+    }
+    if(!rewritten) break;
+  }
+  return changed;
 }
 
 bool thread_terminal_phi_returns(Function * function, Stats * stats)

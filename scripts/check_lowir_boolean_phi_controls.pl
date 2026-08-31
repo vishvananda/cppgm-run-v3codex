@@ -61,6 +61,38 @@ sub direct_phi_branch_count
 	return $count;
 }
 
+sub forwarded_boolean_phi_count
+{
+	my ($body) = @_;
+	my %blocks;
+	while ($body =~
+		/(?:^|\n)  block \^([A-Za-z0-9_]+):\n(.*?)(?=\n  block \^|\n\}|\z)/sg)
+	{
+		my ($label, $text) = ($1, $2);
+		my @instructions = grep { length($_) }
+			map { s/^\s+//r } split(/\n/, $text);
+		$blocks{$label} = \@instructions;
+	}
+	my $count = 0;
+	for my $instructions (values %blocks)
+	{
+		next if scalar(@$instructions) != 3;
+		next if $instructions->[0] !~
+			/^%([A-Za-z0-9_]+) = phi i64 /;
+		my $wide = $1;
+		next if $instructions->[1] !~
+			/^%([A-Za-z0-9_]+) = convert trunc u8 i64 %\Q$wide\E$/;
+		my $narrow = $1;
+		next if $instructions->[2] !~ /^jump \^([A-Za-z0-9_]+)$/;
+		my $continuation_label = $1;
+		my $continuation = $blocks{$continuation_label};
+		next if !defined($continuation) || !@$continuation;
+		++$count if $continuation->[-1] =~
+			/^branch %\Q$narrow\E, \^[A-Za-z0-9_]+, \^[A-Za-z0-9_]+$/;
+	}
+	return $count;
+}
+
 if (scalar(@ARGV) != 3)
 {
 	die "Usage: check_lowir_boolean_phi_controls.pl " .
@@ -118,7 +150,33 @@ for my $test (@tests)
 			if $effectful_body !~ /\bcall void \@observe\(/;
 	}
 
-	for my $behavior (['O1', $o1_path], ['O2', $o2_path], ['O3', $o3_path])
+	for my $level_body (['O0', $o0], ['O1', $o1], ['O2', $o2])
+	{
+		my ($level, $output) = @$level_body;
+		my $body = function_body($test, $output,
+			'fold_forwarded_boolean');
+		die "$test: $level did not preserve the forwarded Boolean chain\n"
+			if forwarded_boolean_phi_count($body) != 1;
+	}
+	my $o3_forwarded = function_body($test, $o3,
+		'fold_forwarded_boolean');
+	die "$test: O3 did not thread the forwarded Boolean decision\n"
+		if forwarded_boolean_phi_count($o3_forwarded) != 0;
+	die "$test: O3 discarded incoming-edge work while threading the decision\n"
+		if $o3_forwarded !~ /\bcall void \@observe\(73\)/;
+	die "$test: O3 did not branch on the incoming comparison result\n"
+		if $o3_forwarded !~ /branch %positive, \^hit, \^miss/;
+	for my $retained ('retain_shared_forwarded_boolean',
+		'retain_non_boolean_forwarded', 'retain_successor_phi',
+		'retain_cyclic_forwarded_boolean', 'retain_eh_forwarded_boolean')
+	{
+		my $body = function_body($test, $o3, $retained);
+		die "$test: O3 incorrectly threaded $retained\n"
+			if forwarded_boolean_phi_count($body) != 1;
+	}
+
+	for my $behavior (['O0', $o0_path], ['O1', $o1_path],
+		['O2', $o2_path], ['O3', $o3_path])
 	{
 		my ($level, $lowir_path) = @$behavior;
 		my $executable = "$directory/behavior-$level";
@@ -142,5 +200,5 @@ for my $test (@tests)
 	}
 }
 
-print "loop-local Boolean-phi controls: PASS (" . scalar(@tests) . "/" .
+print "Boolean-phi controls: PASS (" . scalar(@tests) . "/" .
 	scalar(@tests) . ")\n";

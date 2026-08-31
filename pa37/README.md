@@ -247,6 +247,16 @@ running optimizing transforms.
   integer types differ, either comparison result is shared, exceptional
   control targets the private upper block, or a rejection `phi` distinguishes
   the original edges;
+  at `-O3`, an `i64` `phi` whose inputs are comparison results or the literal
+  Boolean values zero and one, followed only by a truncation to `u8`, a
+  forwarding edge, and a branch on that truncated value, may put the decision
+  directly on each incoming edge; preserve the forwarding form at lower
+  levels and retain it when either forwarding result is shared, an input is
+  not proven Boolean, exceptional control enters the forwarding region, the
+  region is cyclic, or moving the branch would require changing successor
+  `phi` inputs;
+  calls and other work already performed on an incoming edge must remain in
+  place before its new decision;
   successor `phi` inputs on an otherwise safe moved edge must continue to name
   the actual predecessor;
   straight-line merging must preserve the

@@ -3741,6 +3741,71 @@ debug and object-roundtrip lanes pass, including the new location assertions;
 the LowIR-contract, compiler-layout, rename-manifest, frontend-source-set, and
 semantic/lowering/native owner audits are all clean.
 
+### D.forwarded-boolean-control bounded O3 decision forwarding retained
+
+The post-memory-cleanup residual moved the largest shared gap back into
+`Lexer::Run`: the retained self compiler spent about 573 million flat
+instructions there, versus 403 million for GCC and 488 million for Clang.
+Instruction-address inspection found a repeated source-independent lowering
+shape in the named-operator path.  Comparison results and literal Boolean
+values were first widened through an `i64` phi, truncated to `u8`, forwarded
+through a one-instruction block, and only then branched on.  The generated
+machine code materialized and spilled the intermediate Boolean even though
+each incoming edge already carried the complete decision.
+
+The retained O3-only cleanup moves that final decision onto each incoming
+edge.  It accepts only the exact private `i64 phi -> trunc u8 -> jump ->
+branch` chain, requires every phi input to be a comparison result or literal
+zero/one, requires the phi and truncation to have one use, and requires each
+incoming block to end in the merge jump.  It preserves preceding calls and
+other work on the incoming edge.  Shared intermediate values, non-Boolean
+inputs, successor phis, a cyclic forwarding region, and functions containing
+EH instructions retain the original form.  Every successful iteration removes
+the merge and forwarding blocks, bounding repeated analysis by half the
+original block population.  The pass uses existing serialized LowIR facts and
+adds no contract field or native-only side channel.
+
+PA37 now describes the property and its safety boundary.  The role-based
+control proves O0--O2 isolation, the O3 positive rewrite, the surviving
+incoming effect and comparison decision, and native behavior at every level.
+It also has relationship-based negative cases for sharing, a value such as
+256 whose `u8` truncation changes truth, successor phis, a backedge through
+the forwarding merge, and an active EH region.  The checker recognizes the
+local instruction/block relationship rather than matching the complete
+program or generated names.
+
+The five-second tokenizer oracle retains output hash
+`90db88a91d3942b657347250f3c18dd90ccb14e20ba4dd0f5edece1e06a58352`.
+Its text falls 272 bytes, `Lexer::Run` falls 170 bytes, and Callgrind falls
+from 432,481,075 to 426,592,567 instructions (`0.986384357x`, -1.361564%).
+The source-diverse complete-TU oracle retains object hash
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+Self instructions fall from 4,035,367,233 to 3,987,039,512
+(`0.988023960x`, -1.197604%).  The same-source GCC producer moves from
+2,425,637,731 to 2,425,787,225 (`1.000061631x`, +0.006163%), giving a
+normalized `0.987963071x` result (-1.203693%).
+
+The implementation adds 13,836 object-text bytes in `boolean_cfg.o` and
+`pipeline.o`.  Across the other 46 changed compiler objects, self-application
+removes 8,425 text bytes, so the complete producer grows only 5,411 object
+text bytes and 5,424 linked text bytes.  Three balanced explicit-32-way
+native blocks corroborate the deterministic result.  On the fixed O1
+workload, aggregate candidate/baseline wall, user CPU, and total CPU are
+`0.987361x`, `0.989658x`, and `0.989975x`.  On the requested-O3 workload they
+are `0.979446x`, `0.988956x`, and `0.989050x`.  Every O1 lane emits the same
+220-object manifest `61dc227d...8eac` and final compiler `7e8e4683...68b1`.
+The O3 baseline and candidate outputs are each internally deterministic; the
+candidate reproduces manifest `cc72de07...3954` and fixed-point compiler
+`0f0d476b...bd3b0`.
+
+The PA37 suite passes 187/187 and the through-PA38 report passes
+5,470/5,470.  PA37/PA38 debug and object-roundtrip lanes, the LowIR-contract,
+compiler-layout, rename-manifest, frontend-source-set, and owner audits pass.
+The PA39 file audit passes with its established warnings after the pre-existing
+248-line specialization function was restored to the 240-line limit in the
+separate whitespace-only commit `7afc2156`.  Fresh 32-way self/inception
+comparison matches all 220 objects and the final candidate compiler exactly.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3832,6 +3897,7 @@ Fill one row for every retained or rejected dose.
 | D.bounded-relative-alias | preserve exact field loads across bounded disjoint stores from the same unknown base, only in small O3 functions | none; rejected behavior was not moved into PA37; PA38 unchanged | tokenizer -50 text, specialized query 203 to 193 bytes, no hot-function growth; producer +4,812 text | tokenizer Ir `0.977630x`; complete hot Ir `0.998080x` (-0.192036%) | exact tokenizer behavior; one all-32 220-object G1; prototype removed before G2/full/inception | rejected; bounded form avoids destructive interference but its complete-workload population is far below the 1% floor |
 | D.shared-acyclic-child-owner | localize exactly two calls to a shared small hinted child inside a single-use large acyclic hinted wrapper, then preserve that wrapper | none; rejected behavior was not moved into PA37/PA38 | `Run` -1,860 bytes, new wrapper 3,865 bytes, tokenizer +1,600 text; producer +8,320 text/+32 data | tokenizer Ir `0.979058x`; complete hot Ir `1.000353x` (+0.035262%) | exact tokenizer/hot outputs; one explicit-32-way 220-object G1; prototype removed before G2/full/inception | rejected; isolated ownership win becomes a source-diverse regression |
 | D.common-path-memory | combine same-object adjacent i64 transfers and allocation-stage variants into one direct 16-byte copy, and retest exact guarded private-stage sinking as a complementary dose | PA38 README plus O0--O2 isolation, relationship/behavior, later-use and other negative proofs, debug-location, replay, and encoding properties; no complete-program or fixed-register matching | `Next` 4,157 to 4,085 bytes; tokenizer -128 total text; 220-object producer -30,883 text; linked compiler -30,144 text | complete self Ir `0.988239x`, GCC `1.000182x`, normalized `0.988059x`; O1 native wall/CPU `0.987640x`/`0.993938x`; O3 CPU aggregate/median `0.994389x`/`0.992869x`, wall inconclusive | PA38 45/45; 5,470/5,470; PA37/38 debug and round-trip clean; all audits clean; 220-object G2/G3 and final hash exact | retained; combined source-diverse gain supersedes the earlier isolated guarded-store rejection |
+| D.forwarded-boolean-control | move an exact private Boolean phi/trunc/forwarding decision onto its incoming edges | PA37 README plus O0--O2 isolation, local relationship, incoming-effect, sharing, non-Boolean, successor-phi, cycle, EH, replay, and behavior properties | tokenizer -272 text and `Run` -170; 46 nonimplementation objects -8,425 text; complete producer net +5,411 object/+5,424 linked text | tokenizer Ir `0.986384x`; complete self `0.988024x`, GCC `1.000062x`, normalized `0.987963x`; O1 native wall/CPU `0.987361x`/`0.989975x`; O3 `0.979446x`/`0.989050x` | PA37 187/187; 5,470/5,470 through report; debug/round-trip and all audits clean; all-32 220-object self/inception exact | retained; source-diverse normalized saving clears 1% and both native workloads corroborate it |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
