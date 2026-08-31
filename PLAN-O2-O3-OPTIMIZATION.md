@@ -3110,6 +3110,7 @@ macro-processor hypothesis.
 The faster native oracle compiled `preprocessor.cpp` with the generated
 baseline and candidate compilers.  All outputs were byte-exact at
 `fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+
 Twenty position-balanced software `task-clock` observations per side averaged
 866.454 ms for baseline and 865.714 ms for candidate.  The ten pair ratios
 had mean 0.99916x and median 0.99989x; excluding the first cold pair changed
@@ -3991,8 +3992,52 @@ layout audits pass, and the file audit remains at zero fatal findings and the
 established 32 warnings.  On the current accepted producer, the contract-
 backed candidate reduces `AddSourceToken` from 373 to 297 optimized LowIR
 lines and from 1,245 to 899 native text bytes; the complete macro object falls
-454 text bytes.  The earlier Callgrind result remains the retention hypothesis
-until the contract-backed fixed-point candidate is remeasured.
+454 text bytes.
+
+The contract-backed all-32 O3 self/inception build is an exact 221-object fixed
+point.  Both manifests hash to
+`428812e573ea2c40954daa5bb766feca9d4a20de49d986a9e1debbc52641b8ed`
+and both linked compilers hash to
+`0c2517b8ec6dde228eef87e8c68bf32cbaf54ee1f5db128e3d224cca0ce3a8aa`.
+The additional pass implementation makes the linked fixed-point compiler
+2,652 text bytes larger than the prior 8,643,316-byte compiler even though
+ordinary affected objects shrink; this implementation cost is included in
+the performance result rather than hidden by the local census.
+
+The deterministic remeasurement reproduces the ceiling.  The contract-backed
+self compiler retires 3,941,156,570 instructions, `0.988491977x` of the prior
+3,987,039,512.  Same-revision GCC retires 2,425,766,269, `0.999991361x` of
+the prior 2,425,787,225.  The normalized result is `0.988500517x`, a 1.14995%
+gain, and the absolute self/GCC gap falls from `1.643606443x` to
+`1.624705818x`.  The same current input and output hash under Clang retires
+3,021,593,393 instructions, placing self at `1.304331x` of Clang.  Self, GCC,
+and Clang all emit the exact hot object at
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+
+Three order-balanced complete 32-way O3 workload pairs corroborate the
+deterministic result.  Self user-CPU ratios are `0.988709x`, `0.989953x`, and
+`0.991827x`, with paired median `0.989953x` and aggregate `0.990162x`.
+Same-source old/current GCC ratios are `1.005709x`, `1.000626x`, and
+`0.995007x`, with paired median `1.000626x` and aggregate `1.000439x`.
+Therefore normalized user CPU is `0.989334x` by paired median and `0.989727x`
+in aggregate.  Normalized wall is `0.967865x` by paired median and
+`0.977086x` in aggregate, but the CPU result is the primary native claim.
+
+The residual is broad enough that the next experiment must not mistake flat
+symbol ownership for savings.  Inclusive phase boundaries attribute about
+934 million of the remaining 1.515 billion self/GCC instruction gap to
+preprocessing, 436 million to parsing, 44 million to semantic/lowering work,
+79 million to optimized-LowIR/native preparation, and the remainder to driver
+overhead.  The largest visible family is the specialized `Peek(0)` query:
+self makes about 18.22 million out-of-line calls and attributes 391 million
+exclusive instructions to the generated group clones, while GCC leaves about
+7.44 million out-of-line query calls.  This is evidence for a broader
+interprocedural value/postcondition opportunity, not a license to restore the
+rejected helper-only or force-inline variants.  Those variants already showed
+that guard removal without a sound reusable scalar value, or a narrow
+25-KiB proof implementation, does not survive the complete workload.  A
+successor must prove the head value survives bounded append-only mutations or
+find a broader, cheaper population before it is timed.
 
 Fill one row for every retained or rejected dose.
 
@@ -4051,7 +4096,7 @@ Fill one row for every retained or rejected dose.
 | D.copy-preserve-broad | preserve pointer carriers for every bounded fixed and unused dynamic copy | none; rejected before contract movement | initial form mis-modeled destructive address setup and crashed its G2 compiler; corrected broad form added 2.765M Ir to an unrelated string-copy body | broad total Ir -0.184%, but unrelated offsets obscured the local saving | failing G2 and narrowed safety proof retained as diagnostic evidence; broad prototype removed | rejected; proof and population were too broad |
 | D.composite-copy-preserve | preserve incoming address carriers across a bounded direct-parameter copy and a later unused builtin copy in the same O3 composite move | PA38 README plus O0--O2 isolation, structural pressure/frame-address, negative-call, driver-replay, and behavior property | hot token move 258 to 234 bytes, five to four saves, frame 64 to 48; producer +5,904 `.text`; hot Ir -0.23337%, normalized -0.24056% | O3 workload -0.69% wall/-0.64% CPU, paired CPU -0.65%; final O1 block -3.41% wall/-1.06% CPU and output-exact | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; all-32 O2 G1/G2 and O3 G1/G2/G3 exact | retained in this checkpoint |
 | D.adjacent-integer-normalizations | combine adjacent O2+ integer normalizations and select signed/unsigned narrow loads in final MIR | PA38 README plus O0/O1 isolation, safe-chain and negative-guard structure, debug, replay, encoding, and behavior property; PA37 unchanged | hot MIR -61, object `.text` -144; O3 producer -9,328 `.text`; hot Ir -0.8348%; O1 output exact | self paired median -1.79% wall/-0.65% CPU; GCC -0.62%/-0.17%; normalized -1.17%/-0.49%; dedicated stats counter rejected after layout regression | PA29 291/291; PA38 45/45; 5,471/5,471; debug/round-trip and zero-fatal audit clean; frozen exact; all-32 O2/O3 inception exact | retained in this checkpoint |
-| D.conditional-copy-elision | serialize conditional-prvalue copy/move elision permission and consume it after a private-slot/CFG/lifetime proof | PA13/PA17/PA37 README plus syntax rejection, source emission, O0/O1 isolation, ordinary/EH positive, unmarked/source-escape/destination-observation negative, stats, replay, fixed point, and behavior properties | `AddSourceToken` 373 to 297 optimized LowIR lines and 1,245 to 899 native bytes; macro object -454 text bytes; complete fixed-point census pending | direct prototype self Ir -1.1638%, GCC +0.0014%, normalized -1.1652%; contract-backed remeasure pending | 5,471/5,471; PA37/38 debug/round-trip and all audits clean; zero-fatal file audit | implementation retained pending fixed-point performance |
+| D.conditional-copy-elision | serialize conditional-prvalue copy/move elision permission and consume it after a private-slot/CFG/lifetime proof | PA13/PA17/PA37 README plus syntax rejection, source emission, O0/O1 isolation, ordinary/EH positive, unmarked/source-escape/destination-observation negative, stats, replay, fixed point, and behavior properties | `AddSourceToken` 373 to 297 optimized LowIR lines and 1,245 to 899 native bytes; macro object -454 text bytes; exact 221-object fixed point; linked implementation cost +2,652 text bytes | self/GCC normalized Ir `0.988501x`; gap `1.643606x` to `1.624706x`; current self/Clang `1.304331x`; normalized full O3 CPU paired/aggregate `0.989334x`/`0.989727x` | 5,471/5,471; PA37/38 debug/round-trip and all audits clean; zero-fatal file audit; self/inception manifest and final exact; three balanced self/GCC pairs | retained; serialized contract reproduces the deterministic win and clears 1% normalized native CPU |
 | D.transient-swap-staging | remove a complete write-only transient local and its first overwritten copy from an adjacent three-copy object swap | none; rejected before contract movement; a retained form would require positive/negative PA37 properties plus unrelated-call-argument survival | two real 80-byte swap populations simplified; macro body -115 native bytes; self producer +9,072 text bytes; hot Ir -0.6710% | self mean wall/CPU -0.20%/-0.05%; GCC +0.36%/-0.26%; normalized wall -0.56% but CPU +0.21%; paired normalized CPU effectively flat | corrected candidate exact on hot output and all 219 full-workload objects/final; initial self-move bug diagnosed without fixture changes; prototype removed | rejected; dynamic instruction saving did not clear the normalized close-result CPU gate |
 | D.merge-phi-register | reuse the exact local-phi interval proof for acyclic O2/O3 merge phis | none; rejected before contract movement | G1 +256 text and O1 output exact; G2 self-applied to -74,224 text but changed O1 MIR/object despite exact LowIR | G1 hot Ir +0.0012%; G2 performance invalidated by miscompile | O0 exact; G2 repeat deterministic; G2-to-G3 failed across unrelated TUs; prototype removed | rejected as unsound; predecessor transfers need a stronger proof |
 | D.terminal-address-load | fold a terminal `lea`/load/return into one representable indexed load | none; rejected before contract movement | two hot returns each -1 MIR/-3 bytes; G2 producer +1,952 text; hot Ir -0.4422%; O1 output exact | self wall/CPU 1.01030x/0.99976x; GCC 0.99918x/0.99882x; normalized 1.0111x/1.0009x | PA38 45/45; exact 219-object manifest/final; G1/G2 distinction verified; prototype removed | rejected; deterministic saving is normalized-flat and wall-negative |
@@ -4090,7 +4135,7 @@ Fill one row for every retained or rejected dose.
 | D.compared-reference-selection | replace a private compared pointer selection and selected reload with a scalar phi of the values already loaded | none; rejected before contract movement | `AddSourceToken` -6 MIR/-26 bytes; macro object -4,112 text; G1 linked compiler -152,644 text including implementation | self Ir `0.997859x`, GCC `1.000691x`, normalized `0.997170x`; native hot wall/user `1.00585x`/`1.01250x` | deterministic self/GCC hot output; explicit-32-way 221-object G1; prototype removed before G2 | rejected; mostly cold size reduction and strength reduction remain below the 1% gate and regress native CPU |
 | D.retained-division-result | preserve the architectural quotient/remainder identity after machine copy forwarding so existing constant-division encoding still applies | none; rejected before contract movement | static `div`/`idiv` 4,823 to 407; hot loop uses magic division; `AnnotateParentheses` +20 bytes; linked producer +93,188 text | self Ir `1.006774x`, GCC `0.999908x`, normalized `1.006867x`; native hot wall/user/CPU `1.005780x`/`1.007150x`/`1.008729x` | PA38 45/45; deterministic candidate self/GCC hot object; explicit-32-way 220-object G1; prototype removed before G2 | rejected; broad strength reduction increases retired work, footprint, and measured hardware CPU |
 | D.hint40-O3 | lower only the default O3 late hinted-nonleaf cap from 48 to 40 while preserving explicit overrides | none; rejected before contract movement | hot token push becomes a 56-byte wrapper; G2 linked producer -304,292 text bytes; O1 hot output exact | self Ir `0.999018x`, GCC `0.999267x`, normalized `0.999752x`; native normalized paired medians `0.994755x` wall/`0.996894x` user | exact self/GCC O3 hot object; explicit-32-way G1/G2; stopped before G3 and removed | rejected; large static shrink yields only 0.025% normalized Ir and sub-1% native gains |
-| D.conditional-prvalue-transfer | construct both arms of a same-type conditional class prvalue directly in the final copy/move destination | none; rejected because the needed permission cannot be hidden from serialized LowIR | G2/G3 exact; 29/220 objects changed, 27 nonimplementation; producer -15,092 text; `AddSourceToken` 1,245 to about 899 bytes | self Ir `0.988362x`, GCC `1.000014x`, normalized `0.988348x`; gap 1.643606x to 1.624456x | identical self/GCC hot object; explicit-32-way G1/G2/G3; PA17 O0 incompatibility reproduced; prototype removed | rejected; optional C++11 elision is not an O0 correctness fix, while hidden O3 metadata would violate PA37 replay |
+| D.conditional-prvalue-transfer-prototype | construct both arms of a same-type conditional class prvalue directly in the final copy/move destination | initial prototype had no serialized permission; its rejection established the PA13 boundary now owned by `D.conditional-copy-elision` | G2/G3 exact; 29/220 objects changed, 27 nonimplementation; producer -15,092 text; `AddSourceToken` 1,245 to about 899 bytes | self Ir `0.988362x`, GCC `1.000014x`, normalized `0.988348x`; gap 1.643606x to 1.624456x | identical self/GCC hot object; explicit-32-way G1/G2/G3; PA17 O0 incompatibility reproduced; prototype removed | superseded by retained contract-backed `D.conditional-copy-elision`; this row records why the hidden-metadata form was rejected |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
