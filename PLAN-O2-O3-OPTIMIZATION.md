@@ -3806,6 +3806,51 @@ The PA39 file audit passes with its established warnings after the pre-existing
 separate whitespace-only commit `7afc2156`.  Fresh 32-way self/inception
 comparison matches all 220 objects and the final candidate compiler exactly.
 
+### Rejected late compared-reference selection scalarization
+
+The next residual investigation began in `MacroProcessor::AddSourceToken`,
+whose self flat cost was 109.46 million instructions versus 62.71 million for
+GCC.  Its final O3 LowIR implemented each inlined `std::max` by loading two
+scalars for the comparison, selecting one of their addresses through a
+two-input pointer phi, and then loading the selected scalar again.  One
+selected address named an ordinary scalar reference temporary, so the pointer
+phi also prevented addressed-slot recovery and left a constant division result
+in a frame slot.  This was a general LowIR relationship, not a source-name or
+program-content opportunity.
+
+An O3-only prototype recognized an exact compare/branch, two private empty
+arms, pointer phi/copy/load merge, and reused the already loaded values in a
+new scalar phi.  It required nonvolatile equal-typed scalar loads, one-use
+pointer carriers, and the exact two-predecessor diamond; it moved no memory
+operation.  Late addressed-slot and ordinary slot promotion then removed the
+newly unblocked reference temporaries.  In `AddSourceToken`, MIR fell from 225
+to 219 instructions, scalar loads/stores fell from 46/40 to 44/40, the body
+fell from 1,245 to 1,219 bytes, and the first division by 104 became the
+existing multiplication-based constant-divisor sequence rather than `idiv`.
+The macro object lost 4,112 text bytes.  Across the complete compiler, the
+prototype plus its new implementation produced 221 objects and reduced linked
+text from 8,643,316 to 8,490,672 bytes (-152,644).
+
+The source-diverse dynamic result was much smaller.  On the same requested-O3
+hot compile, self Callgrind moved from 3,987,039,512 to 3,978,503,118
+instructions (`0.997858964x`, -0.214104%).  The same-source GCC control moved
+from 2,425,787,225 to 2,427,463,992 (`1.000691226x`, +0.069123%), for a
+normalized `0.997169695x` (-0.283031%) result.  Candidate self and GCC emitted
+the same object at hash
+`bd986cf1180cb4973bed91fd66e18b31d59f52dc5234b9ba1196c75187d7abc4`.
+The named hot functions, including `AddSourceToken`, retained their exact flat
+instruction totals: the longer constant-divisor sequence offset the removed
+loads and stores under the instruction-count oracle.
+
+Three balanced native ABBA blocks, six observations per side, then rejected
+the dose decisively: candidate/baseline was `1.00585x` wall and `1.01250x`
+user CPU, with every block nonpositive for user time.  A fresh G1 build used
+explicit 32-way object compilation; G2 and contract movement were unwarranted
+after both the normalized deterministic threshold and native direction
+failed.  The prototype and its scratch build were removed.  Large cold text
+reduction and exposing an existing strength reduction are not sufficient when
+representative generated-compiler throughput regresses.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3898,6 +3943,7 @@ Fill one row for every retained or rejected dose.
 | D.shared-acyclic-child-owner | localize exactly two calls to a shared small hinted child inside a single-use large acyclic hinted wrapper, then preserve that wrapper | none; rejected behavior was not moved into PA37/PA38 | `Run` -1,860 bytes, new wrapper 3,865 bytes, tokenizer +1,600 text; producer +8,320 text/+32 data | tokenizer Ir `0.979058x`; complete hot Ir `1.000353x` (+0.035262%) | exact tokenizer/hot outputs; one explicit-32-way 220-object G1; prototype removed before G2/full/inception | rejected; isolated ownership win becomes a source-diverse regression |
 | D.common-path-memory | combine same-object adjacent i64 transfers and allocation-stage variants into one direct 16-byte copy, and retest exact guarded private-stage sinking as a complementary dose | PA38 README plus O0--O2 isolation, relationship/behavior, later-use and other negative proofs, debug-location, replay, and encoding properties; no complete-program or fixed-register matching | `Next` 4,157 to 4,085 bytes; tokenizer -128 total text; 220-object producer -30,883 text; linked compiler -30,144 text | complete self Ir `0.988239x`, GCC `1.000182x`, normalized `0.988059x`; O1 native wall/CPU `0.987640x`/`0.993938x`; O3 CPU aggregate/median `0.994389x`/`0.992869x`, wall inconclusive | PA38 45/45; 5,470/5,470; PA37/38 debug and round-trip clean; all audits clean; 220-object G2/G3 and final hash exact | retained; combined source-diverse gain supersedes the earlier isolated guarded-store rejection |
 | D.forwarded-boolean-control | move an exact private Boolean phi/trunc/forwarding decision onto its incoming edges | PA37 README plus O0--O2 isolation, local relationship, incoming-effect, sharing, non-Boolean, successor-phi, cycle, EH, replay, and behavior properties | tokenizer -272 text and `Run` -170; 46 nonimplementation objects -8,425 text; complete producer net +5,411 object/+5,424 linked text | tokenizer Ir `0.986384x`; complete self `0.988024x`, GCC `1.000062x`, normalized `0.987963x`; O1 native wall/CPU `0.987361x`/`0.989975x`; O3 `0.979446x`/`0.989050x` | PA37 187/187; 5,470/5,470 through report; debug/round-trip and all audits clean; all-32 220-object self/inception exact | retained; source-diverse normalized saving clears 1% and both native workloads corroborate it |
+| D.compared-reference-selection | replace a private compared pointer selection and selected reload with a scalar phi of the values already loaded | none; rejected before contract movement | `AddSourceToken` -6 MIR/-26 bytes; macro object -4,112 text; G1 linked compiler -152,644 text including implementation | self Ir `0.997859x`, GCC `1.000691x`, normalized `0.997170x`; native hot wall/user `1.00585x`/`1.01250x` | deterministic self/GCC hot output; explicit-32-way 221-object G1; prototype removed before G2 | rejected; mostly cold size reduction and strength reduction remain below the 1% gate and regress native CPU |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
