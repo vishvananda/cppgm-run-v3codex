@@ -3247,6 +3247,42 @@ The dose was removed.  A future query-family retry needs a broader fast-arm
 population or materially smaller proof implementation; another layout-only
 variation of this single family is below the complete-workload threshold.
 
+### Rejected bounded integer equality-set lowering
+
+The next source-diverse structural screen found repeated acyclic
+short-circuit `x == C` chains which ultimately selected one of two control
+successors.  An O3-only LowIR prototype recognized at least four distinct
+integer constants on one typed SSA selector, required private pure compare
+and connector blocks with no exceptional control, repaired moved phi edges,
+and replaced the Boolean materialization with an existing LowIR `switch`.
+The first switch-only form regressed the tokenizer from 444,824,631 to
+445,751,354 Callgrind instructions because generic native switch lowering
+materialized every constant in a register.
+
+A paired PA38 prototype lowered bounded same-target switches spanning at most
+64 values to one range check, a 64-bit mask, `bt`, and two branches.  Combining
+both layers removed 75 optimized LowIR lines from the tokenizer, reduced
+`Lexer::Run` by 160 native bytes, and reduced tokenizer Callgrind to
+442,183,990 instructions (`0.994064x`).  On the complete hot translation unit,
+self Callgrind fell from 4,152,374,237 to 4,124,775,988 (`0.993354x`) while the
+same-source GCC control was effectively flat at `1.000068x`, for a normalized
+instruction ratio of `0.993286x`.  Output was exact throughout.  These results
+confirmed the local code-generation opportunity but did not meet the plan's
+1% complete-workload gate.
+
+The initial general matcher added 25,032 text bytes to the self producer.  A
+narrower direct-control implementation preserved the exact optimized output
+and reduced that growth to 20,288 bytes, but its self-applied matcher alone
+was still 16,281 bytes.  Four stable 32-way requested-O1 samples per side for
+the initial form measured `1.00632x` wall / `1.00033x` aggregate CPU.  A fresh
+ABBA block for the compact form measured `1.00211x` wall / `0.99808x` CPU,
+with an exact common 219-object manifest and final compiler.  Thus a 0.67%
+hot instruction saving became only a 0.19% full CPU improvement while wall
+remained unfavorable.  The proof machinery and native opcode surface were
+removed.  No PA37/PA38 README or property was retained for rejected behavior;
+a future attempt needs a substantially smaller generic formulation or a
+broader population that clears the complete-workload threshold.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3327,6 +3363,7 @@ Fill one row for every retained or rejected dose.
 | D.shared-loop-owner | localize two calls to one shared loop inside a multiply-used acyclic wrapper, then preserve that cyclic wrapper | none; rejected behavior was not moved into PA37; PA38 unchanged | retained 192-byte identifier wrapper; `Run` -172 bytes; tokenizer +108 text; producer +2,816 text/+16 data | 20 observations/side: aggregate task-clock 1.00329x; balanced-block mean 1.00337x; medians 864.125/867.515 ms | exact fixed-O1 hot object; fresh 32-way self compiler; prototype removed before full/inception gate | rejected; GCC-like ownership alone is slightly slower on this backend |
 | D.query-family-fast | carry a general query's fast-return postcondition to later zero-index calls and reload through a generated helper | none; rejected behavior was not moved into PA37; PA38 unchanged | unsafe ceiling removed 6.60M dynamic full calls and -2.425% hot Ir; corrected helper redirected 19 static calls, tokenizer +51 text, producer +12,096 text/+16 data | unsafe ceiling -1.74% task-clock but invalid; corrected 20-observation aggregate 1.00937x and all ten blocks slower | corrected tiny/hot outputs exact; join bug reproduced and fixed in prototype; all code removed before full/inception gate | rejected; safe guard elimination is slower and the apparent win required unsound cached-value reuse |
 | D.query-family-inline-fast | prove a general query's nonzero postcondition, reload through a bounded helper, and force-inline only its fast arm | none; drafted PA37 property and README were removed with rejected behavior; PA38 unchanged | 12 full calls redirected; hot Ir -0.993%; producer +25,996 text; O1 output exact | hot task-clock 0.98771x; O1 normalized wall/CPU 0.99726x/0.99935x; O3 normalized 1.00325x/0.99759x | focused property, PA37 187/187, PA38 45/45, 5,470/5,470, debug/round-trip, zero-fatal audit, and exact G1/G2/G3 before removal | rejected; full O3 wall direction failed and 0.24% normalized CPU is too small for the proof/code-size cost |
+| D.equality-set-bitmask | replace a private four-plus integer equality OR with direct control and lower a bounded same-target switch through a 64-bit membership test | none; rejected behavior was not moved into PA37/PA38 | tokenizer -75 LowIR lines, `Run` -160 native bytes; compact producer +20,288 text; hot Ir -0.6646% normalized | initial full wall/CPU 1.00632x/1.00033x; compact ABBA 1.00211x/0.99808x | exact tokenizer/hot output, exact G1/G2 and common 219-object manifest/final; prototype removed | rejected; 0.19% full CPU gain and unfavorable wall do not repay a 16-KiB matcher/new native surface |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
