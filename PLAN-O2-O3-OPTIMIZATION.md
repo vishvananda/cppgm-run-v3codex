@@ -3654,6 +3654,93 @@ before README/property movement, G2/G3, native timing, or inception.  The
 result reinforces that GCC-like ownership in one tokenizer path is not itself
 a source-diverse O3 win on this backend.
 
+### D.common-path-memory bounded O3 MIR cleanup retained
+
+The next compiler comparison found two small but complementary memory shapes
+in the residual `TranslationCursor::Next` path.  One was a pair of adjacent
+64-bit field transfers which GCC and Clang combine into one vector transfer.
+The other was the private frame stage immediately before a null guard which
+the earlier isolated guarded-store experiment removed.  The guarded-store
+dose alone had been rejected: its local and deterministic savings were real,
+but too small to survive the representative normalized timing gate.  Retesting
+it together with the adjacent transfers changes that decision without
+weakening the earlier evidence; the combined source-diverse saving is large
+enough to retain and every measured native CPU block is favorable.
+
+The retained O3-only MIR pass recognizes two exact same-block copy forms.  The
+first is four adjacent nonvolatile scalar load/store instructions.  The second
+is the allocation-produced eight-instruction form in which each scalar passes
+through its own private frame stage.  Both require one common address base,
+adjacent source and destination offsets, and disjoint complete 16-byte source
+and destination ranges.  They become one pointer-preserving, direct-chunk
+16-byte copy using the encoder's reserved vector scratch.  The staged proof
+counts every use of the logical frame binding, accepts either compiler
+temporaries or uniquely identified explicit source slots, rejects an ambiguous
+coalesced offset, escape, extra use, volatility, and debug-variable range, and
+preserves the merged instruction's source location.  Direct non-indexed memory
+ranges are therefore now an explicitly supported fixed-copy MIR operand; this
+does not add anything to serialized LowIR.
+
+The companion guard cleanup remains deliberately narrower than ordinary store
+sinking.  It accepts only the exact load/store/reload/test/conditional block
+tail and a one- or two-block direct fallthrough chain.  The stage must have one
+unambiguous private binding, all remaining references must be nonvolatile
+loads in the one consuming block, every path into that block must be the
+proved single predecessor, and the defining carrier must remain intact.  The
+test then reads the carrier directly, the store moves to the beginning of the
+consuming arm, and the bypass does neither frame operation.  Observable,
+escaped, ambiguous, parameter, and debug-variable homes are unchanged.
+
+PA38 now describes these relationships as student-facing behavior.  Its new
+control checks direct and explicitly staged positive forms, overlap,
+different-base, volatile, multiply-used-stage, volatile-guard, and
+escaping-guard negatives, a later scalar-carrier reuse guard, and both taken
+and bypass behavior at O0 through O3.  The later-use control was added during
+review and reproduced a real bad-code failure before the completed liveness
+proof was required.  The property checker derives bases, offsets, frame homes,
+control-flow arms, and encodings from the emitted MIR; it neither matches a
+complete MIR program nor prescribes physical registers.  It also replays the
+fixture through the public driver, verifies the two-load/two-store vector
+encoding, and requires fused and moved instructions to retain source
+locations.  O0, O1, and O2 continue to expose the scalar/eager forms.
+
+Against accepted commit `938a172e`, the tokenizer object falls from 30,066 to
+29,938 total text bytes and `TranslationCursor::Next` falls from 4,157 to
+4,085 bytes.  Across the complete 220-object O3 producer, aggregate object
+text falls from 9,492,237 to 9,461,354 bytes (-30,883), and the linked compiler
+text falls from 8,668,036 to 8,637,892 (-30,144).  The complete source compile
+retains object hash
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+Self Callgrind falls from 4,083,375,532 to 4,035,350,012 instructions
+(`0.988238770x`, -1.176123%).  The same-source GCC control moves from
+2,425,304,853 to 2,425,746,438 (`1.000182074x`), giving a normalized
+`0.988058870x` (-1.194113%) result.
+
+Balanced explicit-32-way native blocks corroborate the deterministic CPU
+direction.  On the fixed O1 workload, the three-block aggregate
+candidate/baseline wall and CPU are `0.987640x` and `0.993938x`; the individual
+CPU ratios are `0.999037x`, `0.993295x`, and `0.989471x`, and all object and
+final hashes are exact within each pair.  The requested-O3 window was extended
+from three to five blocks after one candidate wall observation rose to 32.37
+seconds without a corresponding CPU rise.  All five CPU ratios remain
+favorable at `0.991806x`, `0.992869x`, `0.998982x`, `0.991536x`, and
+`0.996748x`; aggregate CPU is `0.994389x` and block-median CPU is `0.992869x`.
+The contaminated aggregate wall ratio is `1.017896x`, block-median wall is
+`1.005164x`, and removing only the disclosed 32.37-second observation leaves
+wall effectively flat at `1.002309x`.  No native wall win is claimed.
+Retention rests on the 1.19% output-exact normalized instruction reduction,
+with consistent native aggregate CPU support.
+
+A compiler produced by the accepted checkpoint intentionally differs from
+the first candidate-produced generation because explicit source slots make
+the optimization newly self-applicable.  Starting from the current candidate,
+all 220 G2/G3 objects and the final compilers are byte-exact at hash
+`9c133b78b881cfbebc8763db847dc56612a55ce69c514a5ca375a0767d93d53b`.
+PA38 passes 45/45 and the through-PA38 report passes 5,470/5,470.  PA37/PA38
+debug and object-roundtrip lanes pass, including the new location assertions;
+the LowIR-contract, compiler-layout, rename-manifest, frontend-source-set, and
+semantic/lowering/native owner audits are all clean.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3744,6 +3831,7 @@ Fill one row for every retained or rejected dose.
 | D.private-table-prefilter | correlate four private structured-table calls only when specialization also proves a below-minimum false-return shortcut | PA37 README plus role-based positive, unlike-table, escape, alignment, level, bounded-stats, replay, and behavior properties; PA38 unchanged | four calls lose table/count arguments and gain one entry bound; producer +30,108 text/+624 data; O0--O2 workload output exact | complete hot self Ir `0.983383x`, GCC `1.000112x`, normalized `0.983273x`; O3 native self CPU `1.000413x`, normalized block-median CPU `0.999856x` | PA37 187/187; PA38 45/45; 5,470/5,470; PA37/38 debug/round-trip and three zero-fatal audits clean; all-32 220-object G1/G2/G3 exact | retained; deterministic normalized gain is 1.67% with representative raw O3 in the close-result band |
 | D.bounded-relative-alias | preserve exact field loads across bounded disjoint stores from the same unknown base, only in small O3 functions | none; rejected behavior was not moved into PA37; PA38 unchanged | tokenizer -50 text, specialized query 203 to 193 bytes, no hot-function growth; producer +4,812 text | tokenizer Ir `0.977630x`; complete hot Ir `0.998080x` (-0.192036%) | exact tokenizer behavior; one all-32 220-object G1; prototype removed before G2/full/inception | rejected; bounded form avoids destructive interference but its complete-workload population is far below the 1% floor |
 | D.shared-acyclic-child-owner | localize exactly two calls to a shared small hinted child inside a single-use large acyclic hinted wrapper, then preserve that wrapper | none; rejected behavior was not moved into PA37/PA38 | `Run` -1,860 bytes, new wrapper 3,865 bytes, tokenizer +1,600 text; producer +8,320 text/+32 data | tokenizer Ir `0.979058x`; complete hot Ir `1.000353x` (+0.035262%) | exact tokenizer/hot outputs; one explicit-32-way 220-object G1; prototype removed before G2/full/inception | rejected; isolated ownership win becomes a source-diverse regression |
+| D.common-path-memory | combine same-object adjacent i64 transfers and allocation-stage variants into one direct 16-byte copy, and retest exact guarded private-stage sinking as a complementary dose | PA38 README plus O0--O2 isolation, relationship/behavior, later-use and other negative proofs, debug-location, replay, and encoding properties; no complete-program or fixed-register matching | `Next` 4,157 to 4,085 bytes; tokenizer -128 total text; 220-object producer -30,883 text; linked compiler -30,144 text | complete self Ir `0.988239x`, GCC `1.000182x`, normalized `0.988059x`; O1 native wall/CPU `0.987640x`/`0.993938x`; O3 CPU aggregate/median `0.994389x`/`0.992869x`, wall inconclusive | PA38 45/45; 5,470/5,470; PA37/38 debug and round-trip clean; all audits clean; 220-object G2/G3 and final hash exact | retained; combined source-diverse gain supersedes the earlier isolated guarded-store rejection |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

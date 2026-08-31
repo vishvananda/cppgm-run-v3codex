@@ -370,6 +370,31 @@ recoloring cycles. O1 and O2 retain the existing whole-function policy. With
 `machine_opt_block_recolor_registers`, and
 `machine_opt_block_recolor_blocks`; all three remain zero below O3.
 
+O3 also performs two bounded common-path memory rewrites after register
+liveness is complete:
+
+- Two adjacent, nonvolatile 64-bit field transfers within one block may become
+  one direct 16-byte copy when both source fields and both destination fields
+  are adjacent ranges of the same base object and the complete 16-byte source
+  and destination ranges do not overlap. The scalar transfers may be direct,
+  or each may pass through a distinct private frame stage whose binding has
+  exactly that store and reload and is not debug-visible. The resulting fixed
+  copy keeps its direct base-plus-offset operands and does not consume those
+  pointer carriers. Different or unproved bases, overlapping or nonadjacent
+  ranges, volatile accesses, an escaping or multiply used stage, and any
+  intervening instruction or later scalar-carrier use retain scalar
+  transfers. O0 through O2 retain the scalar form
+- When a scalar load is immediately stored to a private frame stage, reloaded
+  only to drive a zero guard, and all remaining uses of that binding are
+  nonvolatile reloads in the sole one- or two-block fallthrough arm, O3 may
+  test the defining register and move the store to the beginning of that
+  consuming arm. Every block on the path must have one direct predecessor and
+  must leave the carrier intact. A bypass therefore performs no eager frame
+  traffic, while the consuming arm still receives the original representation
+  before any reload. A debug-visible, volatile, escaping, multiply written,
+  externally reachable, carrier-clobbering, or otherwise unproved stage is not
+  moved. O0 through O2 retain the eager store and guard reload
+
 After final O3 machine cleanup, a function containing at least 64 MIR
 instructions requests 16-byte native entry alignment. Smaller functions and
 all functions at O2 and below retain the two-byte minimum needed by the
@@ -455,6 +480,13 @@ N3485 source-language clauses.
   subsumed signed and unsigned chains, the sign-to-zero-extension and
   intervening-instruction guards, driver replay, and
   generated behavior without fixing register names or a complete MIR dump.
+  An O3 common-path memory control checks O0/O1/O2 isolation, direct and
+  private-stage adjacent-field copies, disjoint-range and same-base proofs,
+  overlap/different-base/volatile/multi-use and later-scalar-use guards,
+  delayed materialization of a guarded private stage, volatile and
+  escaping-stage guards, object encoding, driver replay, and behavior. It
+  compares operand roles, frame-use relationships, and native vector-transfer
+  counts without fixing physical registers or matching a complete MIR dump.
   An O3 composite-move control
   also permits a bounded object copy directly between incoming parameter
   addresses to preserve those carriers. If the same function later discards

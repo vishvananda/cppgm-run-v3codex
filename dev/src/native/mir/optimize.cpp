@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -1107,6 +1108,334 @@ bool same_normalized_register(const MirInstruction & producer,
     producer.operands[0].reg == normalization.operands[0].reg;
 }
 
+bool simple_dereference(const MirOperand & operand)
+{
+  return operand.kind == MirOperand::OP_DEREF && !operand.has_index;
+}
+
+bool adjacent_offsets(long long first, long long second)
+{
+  return first <= std::numeric_limits<long long>::max() - 8 &&
+    second == first + 8;
+}
+
+bool disjoint_sixteen_byte_ranges(long long left, long long right)
+{
+  if(left <= right)
+    return left <= std::numeric_limits<long long>::max() - 16 &&
+      left + 16 <= right;
+  return right <= std::numeric_limits<long long>::max() - 16 &&
+    right + 16 <= left;
+}
+
+bool definitions_dead_after(const MirFunction & function,
+                            const MirBlock & block, std::size_t after,
+                            RegisterMask definitions,
+                            RegisterMask live_out)
+{
+  RegisterMask live = live_out;
+  for(std::size_t index = block.instructions.size(); index > after; --index) {
+    const MirInstruction & instruction = block.instructions[index - 1];
+    RegisterMask uses = instruction_uses(instruction, true);
+    if(instruction.opcode == MirInstruction::MI_RET &&
+       instruction.operands.empty() &&
+       function.return_type.kind == lowir_model::LTK_VOID)
+      uses &= ~(gpr_bit(XR_RAX) | gpr_bit(XR_RDX));
+    live = (live & ~instruction_defs(instruction)) |
+      uses;
+  }
+  return !(live & definitions);
+}
+
+const Liveness & ensure_copy_liveness(
+    const MirFunction & function, const ControlFlow & cfg, Stats * stats,
+    std::size_t analysis_base_bytes, Liveness * liveness, bool * ready)
+{
+  if(!*ready) {
+    *liveness = compute_liveness(
+      function, cfg, stats, analysis_base_bytes);
+    *ready = true;
+  }
+  return *liveness;
+}
+
+bool debug_ranges_use_frame_offset(const MirFunction & function,
+                                   long long offset);
+
+// Compiler temporaries carry their frame-binding identity directly.  Source
+// slots predate that MIR annotation, so recover an identity only when one
+// unique frame binding owns the exact offset.  This lets the same
+// use-census proof cover private explicit stages without treating a raw frame
+// offset as an alias guarantee.
+class FrameUseCensus
+{
+ public:
+  explicit FrameUseCensus(const MirFunction & function)
+    : uses_(function.frame_bindings.size() + 1, 0)
+  {
+    for(std::size_t index = 0; index < function.frame_bindings.size(); ++index)
+      bindings_by_offset_.push_back(std::make_pair(
+        function.frame_bindings[index].offset,
+        static_cast<std::uint32_t>(index + 1)));
+    std::sort(bindings_by_offset_.begin(), bindings_by_offset_.end());
+    for(std::size_t block = 0; block < function.blocks.size(); ++block)
+      for(std::size_t instruction = 0;
+          instruction < function.blocks[block].instructions.size();
+          ++instruction)
+        for(std::size_t operand = 0;
+            operand < function.blocks[block].instructions[instruction].
+              operands.size(); ++operand) {
+          const std::uint32_t id = binding(
+            function.blocks[block].instructions[instruction].
+              operands[operand]);
+          if(id != 0 && id < uses_.size()) ++uses_[id];
+        }
+  }
+
+  std::uint32_t binding(const MirOperand & operand) const
+  {
+    if(operand.kind != MirOperand::OP_FRAME) return 0;
+    if(operand.frame_binding != 0) return operand.frame_binding;
+    const std::pair<long long, std::uint32_t> key =
+      std::make_pair(operand.offset, static_cast<std::uint32_t>(0));
+    const std::vector<std::pair<long long, std::uint32_t> >::const_iterator
+      found = std::lower_bound(
+        bindings_by_offset_.begin(), bindings_by_offset_.end(), key);
+    if(found == bindings_by_offset_.end() ||
+       found->first != operand.offset) return 0;
+    const std::vector<std::pair<long long, std::uint32_t> >::const_iterator
+      next = found + 1;
+    return next == bindings_by_offset_.end() ||
+      next->first != operand.offset ?
+      found->second : 0;
+  }
+
+  std::size_t uses(std::uint32_t binding) const
+  {
+    return binding < uses_.size() ? uses_[binding] : 0;
+  }
+
+ private:
+  std::vector<std::pair<long long, std::uint32_t> > bindings_by_offset_;
+  std::vector<std::size_t> uses_;
+};
+
+// Two adjacent scalar load/store pairs from disjoint ranges of the same
+// object can use the encoder's reserved vector scratch.  Requiring one base
+// register makes the non-alias proof independent of source-language types;
+// requiring the exact four-instruction window avoids any register-liveness or
+// scheduling question.  Completed MIR liveness must also prove that the
+// removed scalar carrier definitions are dead after the window.
+void fuse_adjacent_scalar_copy_pairs(MirFunction & function,
+                                     const ControlFlow & cfg,
+                                     std::size_t analysis_base_bytes,
+                                     Liveness * liveness,
+                                     bool * liveness_ready,
+                                     Stats * stats)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    std::vector<MirInstruction> & instructions =
+      function.blocks[block].instructions;
+    std::size_t kept = 0;
+    for(std::size_t index = 0; index < instructions.size();) {
+      if(instructions.size() - index >= 4) {
+        MirInstruction & first_load = instructions[index];
+        MirInstruction & first_store = instructions[index + 1];
+        MirInstruction & second_load = instructions[index + 2];
+        MirInstruction & second_store = instructions[index + 3];
+        if(first_load.opcode == MirInstruction::MI_LOAD &&
+           first_store.opcode == MirInstruction::MI_STORE &&
+           second_load.opcode == MirInstruction::MI_LOAD &&
+           second_store.opcode == MirInstruction::MI_STORE &&
+           first_load.type.kind == lowir_model::LTK_I64 &&
+           first_store.type.kind == lowir_model::LTK_I64 &&
+           second_load.type.kind == lowir_model::LTK_I64 &&
+           second_store.type.kind == lowir_model::LTK_I64 &&
+           !first_load.volatile_access && !first_store.volatile_access &&
+           !second_load.volatile_access && !second_store.volatile_access &&
+           first_load.operands.size() == 2 &&
+           first_store.operands.size() == 2 &&
+           second_load.operands.size() == 2 &&
+           second_store.operands.size() == 2 &&
+           first_load.operands[0].kind == MirOperand::OP_REG &&
+           first_store.operands[1].kind == MirOperand::OP_REG &&
+           second_load.operands[0].kind == MirOperand::OP_REG &&
+           second_store.operands[1].kind == MirOperand::OP_REG &&
+           first_load.operands[0].reg == first_store.operands[1].reg &&
+           second_load.operands[0].reg == second_store.operands[1].reg &&
+           simple_dereference(first_load.operands[1]) &&
+           simple_dereference(first_store.operands[0]) &&
+           simple_dereference(second_load.operands[1]) &&
+           simple_dereference(second_store.operands[0]) &&
+           first_load.operands[1].reg == second_load.operands[1].reg &&
+           first_store.operands[0].reg == second_store.operands[0].reg &&
+           first_load.operands[1].reg == first_store.operands[0].reg &&
+           first_load.operands[0].reg != first_load.operands[1].reg &&
+           second_load.operands[0].reg != first_load.operands[1].reg &&
+           adjacent_offsets(first_load.operands[1].offset,
+                            second_load.operands[1].offset) &&
+           adjacent_offsets(first_store.operands[0].offset,
+                            second_store.operands[0].offset) &&
+           disjoint_sixteen_byte_ranges(first_load.operands[1].offset,
+                                        first_store.operands[0].offset) &&
+           definitions_dead_after(
+             function, function.blocks[block], index + 4,
+             instruction_defs(first_load) | instruction_defs(second_load),
+             ensure_copy_liveness(
+               function, cfg, stats, analysis_base_bytes,
+               liveness, liveness_ready).out[block])) {
+          MirInstruction copy;
+          copy.opcode = MirInstruction::MI_COPY_BYTES;
+          copy.byte_count = 16;
+          copy.byte_alignment = 1;
+          copy.copy_encoding = MirInstruction::MBC_DIRECT_CHUNKS;
+          copy.copy_preserves_pointers = true;
+          copy.operands.push_back(first_store.operands[0]);
+          copy.operands.push_back(first_load.operands[1]);
+          copy.debug_location = first_load.debug_location;
+          copy.has_source_position = first_load.has_source_position;
+          copy.source_position = first_load.source_position;
+          retain_debug(first_store, &copy);
+          retain_debug(second_load, &copy);
+          retain_debug(second_store, &copy);
+          instructions[kept++] = std::move(copy);
+          index += 4;
+          if(stats) stats->rewrites += 3;
+          continue;
+        }
+      }
+      if(kept != index)
+        instructions[kept] = std::move(instructions[index]);
+      ++kept;
+      ++index;
+    }
+    instructions.resize(kept);
+  }
+}
+
+bool staged_i64_copy(const std::vector<MirInstruction> & instructions,
+                     std::size_t start,
+                     const FrameUseCensus & frame_uses,
+                     const MirFunction & function,
+                     MirOperand * source, MirOperand * destination)
+{
+  if(start > instructions.size() || instructions.size() - start < 4)
+    return false;
+  const MirInstruction & load = instructions[start];
+  const MirInstruction & stage_store = instructions[start + 1];
+  const MirInstruction & stage_load = instructions[start + 2];
+  const MirInstruction & store = instructions[start + 3];
+  if(load.opcode != MirInstruction::MI_LOAD ||
+     stage_store.opcode != MirInstruction::MI_STORE ||
+     stage_load.opcode != MirInstruction::MI_LOAD ||
+     store.opcode != MirInstruction::MI_STORE ||
+     load.type.kind != lowir_model::LTK_I64 ||
+     stage_store.type.kind != lowir_model::LTK_I64 ||
+     stage_load.type.kind != lowir_model::LTK_I64 ||
+     store.type.kind != lowir_model::LTK_I64 ||
+     load.volatile_access || stage_store.volatile_access ||
+     stage_load.volatile_access || store.volatile_access ||
+     load.operands.size() != 2 || stage_store.operands.size() != 2 ||
+     stage_load.operands.size() != 2 || store.operands.size() != 2 ||
+     load.operands[0].kind != MirOperand::OP_REG ||
+     stage_store.operands[0].kind != MirOperand::OP_FRAME ||
+     stage_store.operands[1].kind != MirOperand::OP_REG ||
+     stage_load.operands[0].kind != MirOperand::OP_REG ||
+     stage_load.operands[1].kind != MirOperand::OP_FRAME ||
+     store.operands[1].kind != MirOperand::OP_REG ||
+     load.operands[0].reg != stage_store.operands[1].reg ||
+     stage_load.operands[0].reg != store.operands[1].reg ||
+     stage_store.operands[0].offset != stage_load.operands[1].offset ||
+     !simple_dereference(load.operands[1]) ||
+     !simple_dereference(store.operands[0]))
+    return false;
+  const std::uint32_t binding = frame_uses.binding(stage_store.operands[0]);
+  if(binding == 0 ||
+     binding != frame_uses.binding(stage_load.operands[1]) ||
+     frame_uses.uses(binding) != 2 ||
+     binding > function.frame_bindings.size() ||
+     (function.frame_bindings[binding - 1].kind !=
+        mir_model::MirFrameBinding::FB_TEMP &&
+      function.frame_bindings[binding - 1].kind !=
+        mir_model::MirFrameBinding::FB_SLOT) ||
+     debug_ranges_use_frame_offset(
+       function, function.frame_bindings[binding - 1].offset))
+    return false;
+  *source = load.operands[1];
+  *destination = store.operands[0];
+  return true;
+}
+
+// Allocation can leave the same scalar copies in an adjacent store/reload
+// staging form.  The binding-identity census proves each stage is private to
+// its one transfer, so the same disjoint-range vector copy is valid without
+// the cross-block analysis used by the earlier rejected copy experiment.
+void fuse_staged_adjacent_scalar_copy_pairs(MirFunction & function,
+                                            const ControlFlow & cfg,
+                                            std::size_t analysis_base_bytes,
+                                            Liveness * liveness,
+                                            bool * liveness_ready,
+                                            Stats * stats)
+{
+  const FrameUseCensus frame_uses(function);
+
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    std::vector<MirInstruction> & instructions =
+      function.blocks[block].instructions;
+    std::size_t kept = 0;
+    for(std::size_t index = 0; index < instructions.size();) {
+      MirOperand first_source;
+      MirOperand first_destination;
+      MirOperand second_source;
+      MirOperand second_destination;
+      if(staged_i64_copy(instructions, index, frame_uses, function,
+                         &first_source, &first_destination) &&
+         staged_i64_copy(instructions, index + 4, frame_uses, function,
+                         &second_source, &second_destination) &&
+         first_source.reg == second_source.reg &&
+         first_destination.reg == second_destination.reg &&
+         first_source.reg == first_destination.reg &&
+         adjacent_offsets(first_source.offset, second_source.offset) &&
+         adjacent_offsets(first_destination.offset,
+                          second_destination.offset) &&
+         disjoint_sixteen_byte_ranges(first_source.offset,
+                                      first_destination.offset) &&
+         definitions_dead_after(
+           function, function.blocks[block], index + 8,
+           instruction_defs(instructions[index]) |
+             instruction_defs(instructions[index + 2]) |
+             instruction_defs(instructions[index + 4]) |
+             instruction_defs(instructions[index + 6]),
+           ensure_copy_liveness(
+             function, cfg, stats, analysis_base_bytes,
+             liveness, liveness_ready).out[block])) {
+        MirInstruction copy;
+        copy.opcode = MirInstruction::MI_COPY_BYTES;
+        copy.byte_count = 16;
+        copy.byte_alignment = 1;
+        copy.copy_encoding = MirInstruction::MBC_DIRECT_CHUNKS;
+        copy.copy_preserves_pointers = true;
+        copy.operands.push_back(first_destination);
+        copy.operands.push_back(first_source);
+        copy.debug_location = instructions[index].debug_location;
+        copy.has_source_position = instructions[index].has_source_position;
+        copy.source_position = instructions[index].source_position;
+        for(std::size_t removed = 1; removed < 8; ++removed)
+          retain_debug(instructions[index + removed], &copy);
+        instructions[kept++] = std::move(copy);
+        index += 8;
+        if(stats) stats->rewrites += 7;
+        continue;
+      }
+      if(kept != index)
+        instructions[kept] = std::move(instructions[index]);
+      ++kept;
+      ++index;
+    }
+    instructions.resize(kept);
+  }
+}
+
 // A narrow load and its immediately following extension are one x86 load.
 // Likewise, zero-extending from a narrower integer range already proves that
 // a subsequent wider signed normalization cannot change the value.  Keep the
@@ -1178,6 +1507,132 @@ bool debug_ranges_use_frame_offset(const MirFunction & function,
         return true;
     }
   return false;
+}
+
+bool block_defines_register(const MirBlock & block, X64Register reg)
+{
+  const RegisterMask bit = gpr_bit(reg);
+  for(std::size_t instruction = 0;
+      instruction < block.instructions.size(); ++instruction)
+    if(instruction_defs(block.instructions[instruction]) & bit) return true;
+  return false;
+}
+
+// A guarded optional tail may be the only user of a compiler-created scalar
+// stage.  Keep the defining register through an exact null test and sink the
+// stage into the direct fallthrough chain which contains every later reload.
+// The bypass then avoids both the store and its immediate test reload, while
+// the taken tail retains the original frame representation before any use or
+// register clobber.
+void sink_guarded_frame_stores(MirFunction & function,
+                               const ControlFlow & cfg, Stats * stats)
+{
+  if(function.frame_bindings.empty()) return;
+  const FrameUseCensus frame_uses(function);
+
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    std::vector<MirInstruction> & instructions =
+      function.blocks[block].instructions;
+    if(instructions.size() < 5) continue;
+    const std::size_t start = instructions.size() - 5;
+    MirInstruction & definition = instructions[start];
+    MirInstruction & store = instructions[start + 1];
+    MirInstruction & reload = instructions[start + 2];
+    MirInstruction & test = instructions[start + 3];
+    MirInstruction & branch = instructions[start + 4];
+    if(definition.opcode != MirInstruction::MI_LOAD ||
+       definition.volatile_access || definition.operands.size() != 2 ||
+       definition.operands[0].kind != MirOperand::OP_REG ||
+       store.opcode != MirInstruction::MI_STORE || store.volatile_access ||
+       store.operands.size() != 2 ||
+       store.operands[0].kind != MirOperand::OP_FRAME ||
+       store.operands[1].kind != MirOperand::OP_REG ||
+       store.operands[1].reg != definition.operands[0].reg ||
+       reload.opcode != MirInstruction::MI_LOAD || reload.volatile_access ||
+       reload.operands.size() != 2 ||
+       reload.operands[0].kind != MirOperand::OP_REG ||
+       reload.operands[1].kind != MirOperand::OP_FRAME ||
+       reload.operands[1].offset != store.operands[0].offset ||
+       test.opcode != MirInstruction::MI_TEST || test.operands.size() != 2 ||
+       test.operands[0].kind != MirOperand::OP_REG ||
+       test.operands[1].kind != MirOperand::OP_REG ||
+       test.operands[0].reg != reload.operands[0].reg ||
+       test.operands[1].reg != reload.operands[0].reg ||
+       branch.opcode != MirInstruction::MI_JCC ||
+       branch.operands.size() != 1 ||
+       definition.type != store.type || store.type != reload.type ||
+       lowir_model::lowir_type_bit_width(reload.type) !=
+         lowir_model::lowir_type_bit_width(test.type))
+      continue;
+    const std::uint32_t binding = frame_uses.binding(store.operands[0]);
+    if(binding == 0 || binding != frame_uses.binding(reload.operands[1]) ||
+       frame_uses.uses(binding) < 3 ||
+       binding > function.frame_bindings.size() ||
+       (function.frame_bindings[binding - 1].kind !=
+          mir_model::MirFrameBinding::FB_TEMP &&
+        function.frame_bindings[binding - 1].kind !=
+          mir_model::MirFrameBinding::FB_SLOT) ||
+       debug_ranges_use_frame_offset(
+         function, function.frame_bindings[binding - 1].offset))
+      continue;
+
+    const X64Register carrier = definition.operands[0].reg;
+    std::size_t target = function.blocks.size();
+    for(std::size_t distance = 1; distance <= 2; ++distance) {
+      const std::size_t candidate = block + distance;
+      if(candidate >= function.blocks.size() ||
+         cfg.predecessors[candidate].size() != 1 ||
+         cfg.predecessors[candidate][0] != candidate - 1 ||
+         std::find(cfg.successors[candidate - 1].begin(),
+                   cfg.successors[candidate - 1].end(), candidate) ==
+           cfg.successors[candidate - 1].end())
+        break;
+      bool mentions_binding = false;
+      bool valid_binding_uses = true;
+      for(std::size_t item = 0;
+          item < function.blocks[candidate].instructions.size(); ++item)
+        for(std::size_t operand = 0;
+            operand < function.blocks[candidate].instructions[item].
+              operands.size(); ++operand) {
+          const MirOperand & value =
+            function.blocks[candidate].instructions[item].operands[operand];
+          if(frame_uses.binding(value) != binding) continue;
+          mentions_binding = true;
+          valid_binding_uses = valid_binding_uses &&
+            function.blocks[candidate].instructions[item].opcode ==
+              MirInstruction::MI_LOAD && operand == 1;
+        }
+      if(!valid_binding_uses) break;
+      if(mentions_binding) {
+        target = candidate;
+        break;
+      }
+      if(block_defines_register(function.blocks[candidate], carrier)) break;
+    }
+    if(target == function.blocks.size()) continue;
+
+    std::size_t accounted = 2;
+    for(std::size_t item = 0;
+        item < function.blocks[target].instructions.size(); ++item)
+      for(std::size_t operand = 0;
+          operand < function.blocks[target].instructions[item].operands.size();
+          ++operand) {
+        const MirOperand & value =
+          function.blocks[target].instructions[item].operands[operand];
+        if(frame_uses.binding(value) == binding) ++accounted;
+      }
+    if(accounted != frame_uses.uses(binding)) continue;
+
+    MirInstruction sunk_store = store;
+    test.operands[0].reg = carrier;
+    test.operands[1].reg = carrier;
+    retain_debug(reload, &test);
+    instructions.erase(instructions.begin() + start + 1,
+                       instructions.begin() + start + 3);
+    function.blocks[target].instructions.insert(
+      function.blocks[target].instructions.begin(), std::move(sunk_store));
+    if(stats) stats->rewrites += 2;
+  }
 }
 
 // A value selected into a temporary frame home can still be sitting intact in
@@ -1623,6 +2078,20 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
       local_liveness = compute_liveness(
         function, cfg, stats, persistent_analysis_storage);
     }
+  }
+  if(level >= 3) {
+    const ControlFlow final_cfg = build_control_flow(
+      function, stats, persistent_analysis_storage);
+    sink_guarded_frame_stores(function, final_cfg, stats);
+    Liveness copy_liveness;
+    bool copy_liveness_ready = false;
+    fuse_adjacent_scalar_copy_pairs(
+      function, final_cfg, persistent_analysis_storage,
+      &copy_liveness, &copy_liveness_ready, stats);
+    copy_liveness_ready = false;
+    fuse_staged_adjacent_scalar_copy_pairs(
+      function, final_cfg, persistent_analysis_storage,
+      &copy_liveness, &copy_liveness_ready, stats);
   }
   if(level >= 2 || recolored || block_recolored)
     finalize_frame(function, stats);

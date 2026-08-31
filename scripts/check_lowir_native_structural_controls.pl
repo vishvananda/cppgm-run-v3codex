@@ -34,6 +34,14 @@ sub frame_offset
 	return undef;
 }
 
+sub named_frame_offset
+{
+	my ($body, $name) = @_;
+	return $1 if $body =~
+		/^\s+(?:temp \%|slot \$)\Q$name\E -> \[rbp([+-]\d+)\]/m;
+	return undef;
+}
+
 sub block_body
 {
 	my ($body, $label) = @_;
@@ -85,9 +93,9 @@ if (scalar(@ARGV) != 3)
 	die "Usage: check_lowir_native_structural_controls.pl <lowir2native> <cppgm++> <test-or-directory>\n";
 }
 
-my ($app, $driver, $root) = @ARGV;
+	my ($app, $driver, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks|composite-copy-pointer-preservation|selected-parameter-index-home|adjacent-integer-normalizations).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks|composite-copy-pointer-preservation|selected-parameter-index-home|adjacent-integer-normalizations|o3-common-path-memory).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -97,7 +105,7 @@ for my $test (@tests)
 	my $mir_path = "$directory/test.mir";
 	my $program = "$directory/test.program";
 	my $level = $test =~
-		/(?:o3-large-function-alignment|composite-copy-pointer-preservation)/
+		/(?:o3-large-function-alignment|composite-copy-pointer-preservation|o3-common-path-memory)/
 		? '-O3' : $test =~
 		/(?:conditional-fallthrough-layout|deferred-carrier-lifetime-reset|call-result-plan-reservation|adjacent-integer-normalizations)/
 		? '-O2' : '-O1';
@@ -119,6 +127,162 @@ for my $test (@tests)
 	die "$test: generated program failed with status $run_status\n" if $run_status != 0;
 
 	my $mir = read_file($mir_path);
+	if ($test =~ /o3-common-path-memory/) {
+		my %level_mir;
+		for my $request (['O0', '-O0'], ['O1', '-O1'],
+			['O2', '-O2'], ['O3', '-O3']) {
+			my ($name, $requested_level) = @$request;
+			my $level_mir = "$directory/$name.mir";
+			my $level_program = "$directory/$name.program";
+			$status = run_command_capture(
+				cmd => [$app, $requested_level, '--dump-machine-ir',
+					$level_mir, '-o', $level_program, $test],
+				stdout => "$directory/$name.compile.stdout",
+				stderr => "$directory/$name.compile.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level native compile failed\n" .
+				read_file("$directory/$name.compile.stderr") if $status != 0;
+			$run_status = run_command_capture(
+				cmd => [$level_program],
+				stdout => "$directory/$name.program.stdout",
+				stderr => "$directory/$name.program.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level generated program failed with status " .
+				"$run_status\n" if $run_status != 0;
+			$level_mir{$name} = read_file($level_mir);
+		}
+
+		for my $name (qw(O0 O1 O2)) {
+			my $direct = function_body(
+				$test, $level_mir{$name}, 'copy_adjacent_fields');
+			die "$test: $name unexpectedly fused adjacent scalar fields\n"
+				if $direct =~ /^\s+copy_bytes 16x1,/m;
+			die "$test: $name lost the adjacent scalar-copy baseline\n"
+				if scalar(() = $direct =~ /^\s+load\.i64\b/mg) < 2 ||
+				   scalar(() = $direct =~ /^\s+store\.i64\b/mg) < 2;
+
+			my $staged = function_body(
+				$test, $level_mir{$name}, 'copy_through_private_stages');
+			die "$test: $name unexpectedly fused private scalar stages\n"
+				if $staged =~ /^\s+copy_bytes 16x1,/m;
+			my $first_home = named_frame_offset($staged, 'first_stage');
+			my $second_home = named_frame_offset($staged, 'second_stage');
+			die "$test: $name lost the two private-stage controls\n"
+				if !defined($first_home) || !defined($second_home) ||
+				   $first_home eq $second_home ||
+				   $staged !~ /^\s+store\.i64 \[rbp\Q$first_home\E\],/m ||
+				   $staged !~ /^\s+load\.i64 \w+, \[rbp\Q$first_home\E\](?:\s|$)/m ||
+				   $staged !~ /^\s+store\.i64 \[rbp\Q$second_home\E\],/m ||
+				   $staged !~ /^\s+load\.i64 \w+, \[rbp\Q$second_home\E\](?:\s|$)/m;
+
+			my $guard = function_body(
+				$test, $level_mir{$name}, 'guarded_private_stage');
+			my $home = named_frame_offset($guard, 'stage');
+			my $entry = block_body($guard, 'entry');
+			die "$test: $name lost the guarded private stage\n"
+				if !defined($home) || !defined($entry) ||
+				   $entry !~
+					/^\s+load\.ptr (\w+),[^\n]*\n\s+store\.ptr \[rbp\Q$home\E\], \1[^\n]*\n\s+load\.ptr \w+, \[rbp\Q$home\E\](?:\s|$)/m;
+		}
+
+		for my $symbol (qw(copy_adjacent_fields
+			copy_through_private_stages)) {
+			my $body = function_body($test, $level_mir{O3}, $symbol);
+			my @copies = $body =~
+				/^\s+(copy_bytes 16x1,[^\n]+)$/mg;
+			die "$test: O3 did not form exactly one direct 16-byte copy in $symbol\n"
+				if scalar(@copies) != 1;
+			my ($destination_reg, $destination_offset,
+				$source_reg, $source_offset) = $copies[0] =~
+				/copy_bytes 16x1, \[(\w+)([+-]\d+)?\], \[(\w+)([+-]\d+)?\]/;
+			die "$test: O3 copy in $symbol lost same-object direct ranges\n"
+				if !defined($destination_reg) || !defined($source_reg) ||
+				   $destination_reg ne $source_reg;
+			$destination_offset = 0 if !defined($destination_offset);
+			$source_offset = 0 if !defined($source_offset);
+			die "$test: O3 copy in $symbol did not keep disjoint 16-byte ranges\n"
+				if abs($destination_offset - $source_offset) < 16;
+			die "$test: O3 copy in $symbol lost its direct, pointer-preserving encoding\n"
+				if $copies[0] !~ /\[encoding=direct_chunks\]/ ||
+				   $copies[0] !~ /\[preserve_pointers\]/;
+			die "$test: O3 copy in $symbol lost the fused source location\n"
+				if $copies[0] !~ /!dbg\(common_path\.cpp, \d+, 5\)$/;
+		}
+
+		for my $symbol (qw(copy_overlap_guard copy_different_bases
+			copy_volatile_guard copy_reused_scalar_guard
+			copy_shared_stage_guard)) {
+			my $body = function_body($test, $level_mir{O3}, $symbol);
+			die "$test: O3 fused unsafe or unproved scalar copies in $symbol\n"
+				if $body =~ /^\s+copy_bytes 16x1,/m;
+		}
+
+		my $guard = function_body(
+			$test, $level_mir{O3}, 'guarded_private_stage');
+		my $home = named_frame_offset($guard, 'stage');
+		my $entry = block_body($guard, 'entry');
+		my $consume = block_body($guard, 'consume');
+		my $bypass = block_body($guard, 'bypass');
+		die "$test: O3 lost the guarded-stage relationship\n"
+			if !defined($home) || !defined($entry) ||
+			   !defined($consume) || !defined($bypass);
+		my ($carrier) = $entry =~
+			/^\s+load\.ptr (\w+),[^\n]*\n\s+test\.(?:i64|ptr) \1, \1[^\n]*$/m;
+		die "$test: O3 did not compare the defining carrier directly\n"
+			if !defined($carrier);
+		die "$test: O3 direct guard test lost its source location\n"
+			if $entry !~
+				/^\s+test\.(?:i64|ptr) \Q$carrier\E, \Q$carrier\E !dbg\(common_path\.cpp, 55, 5\)$/m;
+		die "$test: O3 still materialized the private stage before the guard\n"
+			if $entry =~ /\[rbp\Q$home\E\]/;
+		die "$test: O3 did not materialize the stage on the sole consuming arm\n"
+			if $consume !~
+				/^\s+store\.ptr \[rbp\Q$home\E\], \Q$carrier\E !dbg\(common_path\.cpp, 53, 5\)\n\s+load\.ptr \w+, \[rbp\Q$home\E\] !dbg\(common_path\.cpp, 61, 5\)$/m;
+		die "$test: O3 materialized the private stage on the bypass arm\n"
+			if $bypass =~ /\[rbp\Q$home\E\]/;
+
+		for my $symbol (qw(guarded_volatile_stage guarded_escaping_stage)) {
+			my $body = function_body($test, $level_mir{O3}, $symbol);
+			my $guard_home = named_frame_offset($body, 'stage');
+			my $guard_entry = block_body($body, 'entry');
+			die "$test: O3 sank an observable or escaping stage in $symbol\n"
+				if !defined($guard_home) || !defined($guard_entry) ||
+				   $guard_entry !~
+					/^\s+store\.ptr \[rbp\Q$guard_home\E\], \w+\n\s+load\.ptr \w+, \[rbp\Q$guard_home\E\]/m;
+		}
+
+		my $driver_input = "$directory/test.lowir";
+		copy($test, $driver_input) or
+			die "$test: unable to prepare driver replay: $!\n";
+		my $object = "$directory/driver-O3.o";
+		$status = run_command_capture(
+			cmd => [$driver, '-c', '-O3', '-o', $object, $driver_input],
+			stdout => "$directory/driver.compile.stdout",
+			stderr => "$directory/driver.compile.stderr",
+			timeout => 30,
+		);
+		die "$test: O3 driver replay failed\n" .
+			read_file("$directory/driver.compile.stderr") if $status != 0;
+		for my $symbol (qw(copy_adjacent_fields
+			copy_through_private_stages)) {
+			my $disassembly = "$directory/$symbol.disassembly";
+			$status = run_command_capture(
+				cmd => ['objdump', '-d', '-Mintel',
+					"--disassemble=$symbol", $object],
+				stdout => $disassembly,
+				stderr => "$disassembly.stderr",
+				timeout => 30,
+			);
+			die "$test: O3 driver $symbol disassembly failed\n"
+				if $status != 0;
+			my $code = read_file($disassembly);
+			die "$test: O3 driver $symbol did not encode one vector transfer\n"
+				if scalar(() = $code =~ /\bmovdqu\b/g) != 2;
+		}
+		next;
+	}
 	if ($test =~ /composite-copy-pointer-preservation/) {
 		my %level_mir;
 		for my $request (['O0', '-O0'], ['O1', '-O1'],

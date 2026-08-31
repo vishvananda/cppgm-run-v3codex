@@ -209,6 +209,8 @@ bool emit_small_copy_bytes(
   }
   const auto side_base = [&](const mir_model::MirOperand & operand) {
     if(operand.kind == mir_model::MirOperand::OP_REG) return operand.reg;
+    if(operand.kind == mir_model::MirOperand::OP_DEREF &&
+       !operand.has_index) return operand.reg;
     if(operand.kind != mir_model::MirOperand::OP_FRAME || !function)
       throw std::logic_error(
         "small native copy requires register or frame operands");
@@ -216,7 +218,8 @@ bool emit_small_copy_bytes(
   };
   const auto side_offset = [&](const mir_model::MirOperand & operand) {
     return operand.kind == mir_model::MirOperand::OP_FRAME ?
-      actual_frame_offset(*function, operand.offset) : 0ll;
+      actual_frame_offset(*function, operand.offset) :
+      operand.kind == mir_model::MirOperand::OP_DEREF ? operand.offset : 0ll;
   };
   const X64Register destination = side_base(destination_operand);
   const X64Register source = side_base(source_operand);
