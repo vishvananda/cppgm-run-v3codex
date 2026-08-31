@@ -3374,6 +3374,46 @@ whole-program layout.  A successor needs a materially smaller existing-pass
 extension or a broader population; the tokenizer result alone is not a reason
 to retain the contract.
 
+### Rejected pre-definition planned-phi spill protection
+
+The refreshed self/GCC residual attributed 26.2 million flat instructions to
+`std::vector<unsigned>::_M_fill_append`, versus 6.36 million in GCC.  Comparing
+the current O1 and O3 MIR exposed direct destructive interference between two
+otherwise useful optimizations.  O3's load reuse keeps the vector end pointer
+live across the fast/slow split.  That transient preserved-register pressure
+causes the reactive allocator to evict the already-reserved fast-loop cursor
+before its first incoming edge.  The eviction stores the old, not-yet-defined
+register contents and redirects all later phi transfers through a frame home.
+O1's shorter load lifetime leaves the cursor resident.  This explains one
+surprising O3 regression beyond the previously recorded pass-cost and layout
+effects: reducing loads in LowIR can lengthen a native live range enough to
+undo a retained loop-residency win.
+
+A narrow O2/O3 prototype made a planned phi home ineligible for reactive
+spilling only before the phi's linear definition.  The pressure-producing
+value then used the existing direct-to-frame fallback; initialized phi homes,
+ordinary planned values, O0/O1, EH rules, and spill safety were unchanged.
+The intended fast fill loop recovered register residency, removed its
+per-iteration pointer load/store/update, and shrank `_M_fill_append` from 396
+to 379 bytes.  PA38 remained 45/45.  Fresh outer/inner/object-32-way candidate
+builds reached an exact 219-object fixed point: G2 and G3 shared manifest
+`beac56a1442c711d7507b765ba4ff51291428afb355fd150545398bf3b5744fd`
+and final compiler hash
+`60afc1b2699cc973e9a4cc981e2409373486fae35c42e35a79404264541ecba9`.
+
+The deterministic complete hot-TU screen rejected retention.  Baseline and
+candidate emitted the exact object hash
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`,
+but total Callgrind instructions moved only from 4,152,374,237 to
+4,152,103,265 (`0.9999347x`, -0.0065%).  The target helper improved from
+26,215,525 to 25,511,530 flat instructions (-2.685%), showing that the restored
+loop shape is real but dynamically too small.  Other code-shape displacement
+offset part of that saving: `program.o` grew 48 text bytes and the fixed-point
+compiler grew 3,392 text bytes.  The prototype was removed before README or
+property-test movement and before representative timing.  A useful successor
+must prevent this interference for a broader proven population, or combine it
+with a loop transformation whose complete-workload upper bound exceeds 1%.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3457,6 +3497,7 @@ Fill one row for every retained or rejected dose.
 | D.equality-set-bitmask | replace a private four-plus integer equality OR with direct control and lower a bounded same-target switch through a 64-bit membership test | none; rejected behavior was not moved into PA37/PA38 | tokenizer -75 LowIR lines, `Run` -160 native bytes; compact producer +20,288 text; hot Ir -0.6646% normalized | initial full wall/CPU 1.00632x/1.00033x; compact ABBA 1.00211x/0.99808x | exact tokenizer/hot output, exact G1/G2 and common 219-object manifest/final; prototype removed | rejected; 0.19% full CPU gain and unfavorable wall do not repay a 16-KiB matcher/new native surface |
 | D.dense-jump-table | lower bounded dense six-plus-case O3 switches through a relative native table | none; rejected behavior was not moved into PA38; PA37 unchanged | intended 7-way and 10-way switches selected; `IsOperator` +52 bytes; producer -824 text bytes | hot Ir 0.999422x (-0.0578%); `IsOperator` flat -0.465%; tokenizer negative control +0.0077% | PA38 45/45; valid serialized MIR and generated compiler; stopped before full workload/inception | rejected; GCC's larger win comes from caller constant propagation, while the fixed table scarcely improves the generic switch |
 | D.final-eh-chain | move one discardable EH helper through a small unique weak wrapper, then close identical-constant phi dependencies | none; rejected behavior was not moved into PA37/PA38 | tokenizer 2,431 to 2,336 LowIR lines and -257 text bytes; initial narrow G2/G3 exact; isolated implementation still enlarged the producer | hot Ir -2.2531%; first normalized wall/CPU +0.514%/+0.325%; isolated full wall/CPU +0.904%/+0.327% | broad form failed G2 EH validation; narrow G2/G3 exact; both three-block 219-object screens exact; prototypes removed | rejected; strong local saving does not survive representative producer throughput |
+| D.predefinition-phi-spill | protect a reserved planned phi home from eviction before its first definition at O2/O3 | none; rejected behavior was not moved into PA38; PA37 unchanged | fast fill cursor regains residency; helper 396 to 379 bytes; `program.o` +48 text; producer +3,392 text; 219-object G2/G3 exact | helper flat Ir -2.685%; complete hot Ir 0.9999347x (-0.0065%) | PA38 45/45; exact hot object and all-32 fixed point; prototype removed before full timing | rejected; genuine O3 load-lifetime interference, but complete-workload dose is far below 1% |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
