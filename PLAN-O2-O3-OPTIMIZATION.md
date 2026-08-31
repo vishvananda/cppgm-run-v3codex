@@ -3851,6 +3851,51 @@ failed.  The prototype and its scratch build were removed.  Large cold text
 reduction and exposing an existing strength reduction are not sufficient when
 representative generated-compiler throughput regresses.
 
+### Rejected retained-result constant-division expansion
+
+The next shared GCC/Clang residual exposed a metric-sensitive general gap.
+The accepted self compiler contains 4,823 static scalar `div`/`idiv` sites,
+versus 556 in GCC and 1,172 in Clang.  In the hot parenthesis-annotation loop,
+`vector<Token>::size()` performs `idiv 104` on every iteration while both host
+compilers use a multiplication-based constant-divisor sequence.  The native
+encoder already implements signed and unsigned magic division, but recognizes
+only a division followed by an explicit result move or return.  Machine copy
+propagation can forward the architectural `rax`/`rdx` result into its consumer
+and delete that move, leaving the encoder unable to tell quotient from
+remainder.
+
+An O2/O3-only prototype retained the selected quotient or remainder register
+as a second MIR division operand, protected that fixed metadata from local
+alias rewriting, and let the existing encoder consume it when a late constant
+setup was visible.  A first narrower form marked only results whose original
+home was already the architectural result register; a fresh G1 proved that
+later forwarding was the common case, so the corrected form marked every
+scalar division result.  No LowIR operation or source-program special case was
+added.  PA38 remained 45/45.
+
+The corrected form reduced static hardware division sites from 4,823 to 407
+and replaced the intended hot `idiv 104`.  `AnnotateParentheses` nevertheless
+grew from 549 to 569 bytes, and the complete linked producer grew from
+8,643,316 to 8,736,504 text bytes (+93,188), because thousands of compact
+hardware divisions became longer multiply/shift sequences.  Candidate self
+and GCC producers emitted the same hot object at hash
+`f120712339f98ce1e372d2e4431c57394b5ee6161e42c893958bb4bac42d94fb`.
+
+The deterministic and hardware screens both rejected retention.  Self
+Callgrind rose from 3,987,039,512 to 4,014,046,895 instructions
+(`1.006773794x`, +0.677379%), while the same-source GCC control moved from
+2,425,787,225 to 2,425,563,383 (`0.999907724x`, -0.009228%), for a normalized
+`1.006866703x` regression.  The target loop itself rose from 62,870,618 to
+67,328,718 flat instructions.  Because one hardware division can cost more
+cycles than several retired instructions, a six-block ABBA native screen was
+also required rather than relying on Callgrind alone.  Across twelve
+observations per side, candidate/baseline was `1.005780x` wall, `1.007150x`
+user CPU, and `1.008729x` aggregate CPU.  Thus the longer sequences are slower
+on the actual workload as well as under the instruction oracle.  The MIR
+extension and scratch compiler were removed before contract or test movement;
+do not retry broad constant-division expansion without a narrower population
+selected by measured hardware benefit.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3944,6 +3989,7 @@ Fill one row for every retained or rejected dose.
 | D.common-path-memory | combine same-object adjacent i64 transfers and allocation-stage variants into one direct 16-byte copy, and retest exact guarded private-stage sinking as a complementary dose | PA38 README plus O0--O2 isolation, relationship/behavior, later-use and other negative proofs, debug-location, replay, and encoding properties; no complete-program or fixed-register matching | `Next` 4,157 to 4,085 bytes; tokenizer -128 total text; 220-object producer -30,883 text; linked compiler -30,144 text | complete self Ir `0.988239x`, GCC `1.000182x`, normalized `0.988059x`; O1 native wall/CPU `0.987640x`/`0.993938x`; O3 CPU aggregate/median `0.994389x`/`0.992869x`, wall inconclusive | PA38 45/45; 5,470/5,470; PA37/38 debug and round-trip clean; all audits clean; 220-object G2/G3 and final hash exact | retained; combined source-diverse gain supersedes the earlier isolated guarded-store rejection |
 | D.forwarded-boolean-control | move an exact private Boolean phi/trunc/forwarding decision onto its incoming edges | PA37 README plus O0--O2 isolation, local relationship, incoming-effect, sharing, non-Boolean, successor-phi, cycle, EH, replay, and behavior properties | tokenizer -272 text and `Run` -170; 46 nonimplementation objects -8,425 text; complete producer net +5,411 object/+5,424 linked text | tokenizer Ir `0.986384x`; complete self `0.988024x`, GCC `1.000062x`, normalized `0.987963x`; O1 native wall/CPU `0.987361x`/`0.989975x`; O3 `0.979446x`/`0.989050x` | PA37 187/187; 5,470/5,470 through report; debug/round-trip and all audits clean; all-32 220-object self/inception exact | retained; source-diverse normalized saving clears 1% and both native workloads corroborate it |
 | D.compared-reference-selection | replace a private compared pointer selection and selected reload with a scalar phi of the values already loaded | none; rejected before contract movement | `AddSourceToken` -6 MIR/-26 bytes; macro object -4,112 text; G1 linked compiler -152,644 text including implementation | self Ir `0.997859x`, GCC `1.000691x`, normalized `0.997170x`; native hot wall/user `1.00585x`/`1.01250x` | deterministic self/GCC hot output; explicit-32-way 221-object G1; prototype removed before G2 | rejected; mostly cold size reduction and strength reduction remain below the 1% gate and regress native CPU |
+| D.retained-division-result | preserve the architectural quotient/remainder identity after machine copy forwarding so existing constant-division encoding still applies | none; rejected before contract movement | static `div`/`idiv` 4,823 to 407; hot loop uses magic division; `AnnotateParentheses` +20 bytes; linked producer +93,188 text | self Ir `1.006774x`, GCC `0.999908x`, normalized `1.006867x`; native hot wall/user/CPU `1.005780x`/`1.007150x`/`1.008729x` | PA38 45/45; deterministic candidate self/GCC hot object; explicit-32-way 220-object G1; prototype removed before G2 | rejected; broad strength reduction increases retired work, footprint, and measured hardware CPU |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
