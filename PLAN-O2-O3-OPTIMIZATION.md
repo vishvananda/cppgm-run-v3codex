@@ -4039,6 +4039,78 @@ that guard removal without a sound reusable scalar value, or a narrow
 successor must prove the head value survives bounded append-only mutations or
 find a broader, cheaper population before it is timed.
 
+### Retained multi-group readonly-string specialization
+
+The next preprocessing residual revisited readonly-address specialization
+under a materially different population and implementation cost from the
+earlier rejected `D.address-group` dose.  That prototype cloned only the
+largest repeated address group through a separate path: twelve rewritten
+calls reduced the hot deterministic count by just 0.143%, while the complete
+32-way CPU result was flat.  The retained form reuses the existing bounded
+mixed-group specializer and considers independent readonly-string values for
+the same target.  It therefore amortizes one analysis and one call rewrite
+path across the complete source-diverse population instead of paying new
+machinery for one address.
+
+The final PA37 rule accepts the direct address of an internal, structured,
+NUL-terminated `storage=readonly` byte global.  It folds only exact
+nonvolatile `i8`/`u8` loads reached through copies and constant indexes,
+preserves signed-byte interpretation, and repairs every surviving phi edge
+after a literal branch or switch is decided.  EH-bearing targets are skipped.
+Externally replaceable, writable, unterminated, volatile, dynamically indexed,
+and dynamically supplied cases retain the original path.  A clone must fold
+at least one serialized byte load and satisfy the existing complete-clone
+payoff inequality; one call is sufficient only when that inequality pays.
+At most twelve string groups are selected for one target, within the existing
+24-clone/1,536-instruction translation-unit budgets.  O0 through O2 are
+unchanged.  This consumes existing PA13 structured-global facts and adds no
+new LowIR field or native-only preparation fact.
+
+A three-group dose was deliberately stopped before contract movement.  Its
+deterministic normalized improvement was only about 0.917%, and its complete
+32-way aggregate result was just -0.36% user and -0.25% total CPU.  Expanding
+to all profitable bounded groups found eight `MacroProcessor::IsOperator`
+spellings, rewrote 56 static calls, and created eight 11-instruction clones
+(88 cloned instructions total).  The optimized macro LowIR grew by only 1,227
+serialized bytes while its native text fell by 688 bytes.  The generic body
+remains whenever unlike calls survive; in the measured macro population all
+groups pay, so later reachability removes it.  The final fixed-point compiler
+text is 8,662,216 bytes, 16,248 bytes above the prior accepted compiler
+because the implementation cost is retained in the measurement;
+self-application still shrinks the bootstrap compiler by 632 text bytes.
+
+On the same requested-O3 deterministic translation-unit compile, the final
+self compiler moves from 3,941,156,570 to 3,882,420,398 retired instructions
+(`0.985096717x`, -1.490328%).  Fresh same-source GCC moves from 2,425,766,269
+to 2,425,799,473 (`1.000013688x`, +0.001369%), so the normalized result is
+`0.985083233x` (-1.491677%) and the absolute self/GCC gap falls from
+`1.624705818x` to `1.600470460x`.  Fresh Clang is effectively exact at
+3,021,591,668 versus 3,021,593,393 instructions; the self/Clang gap falls from
+`1.304330549x` to `1.284892475x`.  All four hot outputs hash to
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+
+Two order-reversed complete 32-way pairs confirm the broader result.  Candidate
+versus baseline user-CPU ratios are `0.983761x` and `0.993604x`; total-CPU
+ratios are `0.984788x` and `0.994414x`.  Their aggregate ratios are
+`0.976414x` wall, `0.988666x` user, and `0.989585x` total CPU.  Both candidate
+lanes reproduce the same 221-object manifest and final compiler, as do both
+baseline lanes.  The candidate is an exact 221-object G2/G3 fixed point at
+manifest
+`e1cd90956c5b4fc939e4b42f5ba641e152c7cd1e28c9f9130786ee481032b2b3`
+and compiler
+`858b9ea20e151c3b8dd33f8818638eba567643633f3da3ffd68c466a4bd3db6c`.
+
+PA37 documents the general rule and adds level-isolation, multi-group,
+serialized-byte, signed-byte, phi-repair, profitability, external/mutable/
+unterminated/dynamic/volatile/indexed negative, replay, and behavior
+properties without matching a complete emitted program.  PA37 is 188/188,
+PA38 is 45/45, and the cumulative through-PA38 report is 5,471/5,471.
+PA37/PA38 debug and object-roundtrip lanes pass, and the file audit has zero
+fatal findings with 31 advisory findings.  The aggregate debug command still
+reproduces pre-existing PA13 reference drift (the accepted prior compiler
+emits the same current output); it is not caused by this O3-only increment.
+The retained implementation, contract, and test commit is `85bac3e1`.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4062,6 +4134,8 @@ Fill one row for every retained or rejected dose.
 | D.group-late | clone one profitable repeated integer-constant group after all inline waves and consume its edge equality | PA37 README plus level-isolation, structural, replay, and behavior property | hot Ir -2.019%; 69 calls redirected; clone 43 vs generic 57 LowIR instructions; O3 producer +28,416 text bytes | self -0.44% wall/-0.58% CPU; same-source GCC paired CPU +0.19%; normalized CPU -0.79%; wall normalization inconclusive | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; O3 inception exact | retained in this checkpoint |
 | D.loop-shared | revisit qualified shared loop bodies in a separate final O3 inline wave | none; rejected before contract movement | range helper and five calls removed; tokenizer +694 text bytes; three hot callers enlarged | clean repeat +2.83% wall/+1.07% CPU | exact six-lane output; candidate removed | rejected; call removal did not pay for duplicated loop state |
 | D.address-group | specialize repeated direct readonly byte-string addresses and fold clone-local byte control | none; rejected before contract movement | 12 calls redirected; clone 73/393 vs generic 150/893 LowIR instructions/native bytes; O3 producer +18,544 text bytes; hot Ir -0.143% | hot CPU +0.15%; full 32-way CPU +0.033%, wall +1.56% | exact hot and six-lane full output; candidate removed | rejected; local saving did not pay for machinery/footprint |
+| D.readonly-string-groups-3 | reuse the retained grouped specializer for the three most frequent readonly-string values | none; stopped before contract movement | three independent clones; deterministic output exact | normalized hot Ir -0.917%; full aggregate user -0.36%, total CPU -0.25% | exact hot and repeated full-build outputs; dose superseded | rejected at this breadth; complete-workload gain missed the 0.5% close-result threshold |
+| D.readonly-string-groups | specialize every profitable bounded internal readonly-string group and fold exact serialized bytes | PA37 README plus O0-O2 isolation, multi-group structure, signed-byte/phi/replay/behavior positives, and replaceable/writable/unterminated/dynamic/volatile/indexed negatives | 56 calls, eight clones/88 instructions; macro LowIR +1,227 bytes, macro text -688; fixed-point producer +16,248 text vs prior accepted | self Ir `0.985097x`; GCC `1.000014x`; normalized `0.985083x`; gap `1.624706x` to `1.600470x`; full aggregate wall/user/CPU `0.976414x`/`0.988666x`/`0.989585x` | PA37 188/188; PA38 45/45; 5,471/5,471; PA37/38 debug/round-trip clean; zero-fatal audit; 221-object G2/G3 exact | retained in `85bac3e1`; broader reuse clears deterministic and complete-workload gates |
 | D.call-plan | keep reactive call results out of future cyclic spans and grant a cyclic call result after its completed arguments retire | PA38 README plus O2/O1 register-agnostic structural/behavioral control | `Run` -181 MIR, scalar loads/stores -89/-77, frame homes -3; tokenizer -234 `.text`; O3 producer +292 text bytes; O1 object exact; unrelated EH/branch fixtures exact | O1 workload +0.11% wall/-0.40% CPU; GCC CPU -0.21%; normalized CPU -0.18%; O3 workload -1.42% wall/-0.30% CPU, five of six pairs favorable | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; frozen O2/O3 exact; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.epilogue | share repeated optimized return sequences, with broad and bounded variants | none; rejected before contract movement | broad: `Run` -161 native instructions and -23 physical epilogues; O3 producer -94,192 text bytes; bounded variants -17,928/-16,120 bytes | broad O1 user +1.5%; return-bounded +0.26%; bounded/excluded O3 CPU +0.32% and wall +1.5% | exact-output all-32 screens; all variants removed | rejected; taken return branches cost more than duplicate bytes |
 | D.copy-pair | fuse staged adjacent 64-bit predecessor loads/successor stores into one vector copy | none; rejected before contract movement | clone -3 MIR/-8 bytes; generic -8 bytes; tokenizer -22 text bytes; producer +8,744 text bytes | twelve-lane hot TU +4.1% wall/user, every candidate lane slower | exact hot outputs; candidate removed | rejected; exposed entry-address sensitivity |
