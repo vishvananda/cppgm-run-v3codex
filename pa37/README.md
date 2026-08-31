@@ -577,11 +577,13 @@ for the complete clone.  Redirect only the matching calls and remove scalar
 parameters made dead by substitution.  The unlike calls and original target
 remain unchanged.
 
-This grouped specialization considers at most one constant group per target,
-tracks at most 64 distinct parameter/value groups for that target, and creates
-at most 24 clones and 1,536 cloned LowIR instructions per translation unit.
-Budget exhaustion skips later candidates in deterministic function order.
-`-O1` and `-O2` do not perform mixed-group cloning.
+This grouped specialization considers at most one integer or table group per
+target, tracks at most 64 distinct parameter/value groups for that target,
+and creates at most 24 clones and 1,536 cloned LowIR instructions per
+translation unit.  The readonly-string extension below is the only form that
+may select additional groups for one target.  Budget exhaustion skips later
+candidates in deterministic function order.  `-O1` and `-O2` do not perform
+mixed-group cloning.
 
 As an O3-only extension of that same bounded transformation, four or more
 calls may form a group around the direct address of one initialized internal
@@ -606,6 +608,28 @@ operation rejects the prefilter.  Calls using another table remain on the
 original target.  This extension shares the existing one-group-per-target,
 24-clone, and 1,536-cloned-instruction limits, and `-O0` through `-O2` retain
 the original call population.
+
+As a second O3-only extension, a call group may use the direct address of an
+internal `storage=readonly` structured byte string whose first NUL is present
+in its serialized initializer.  An eligible EH-free target may contain at
+most 192 LowIR instructions.  After substituting that address into a clone,
+fold a nonvolatile `i8` or `u8` load only when copies and constant `index`
+operations identify its exact serialized byte.  Signed `i8` loads preserve
+their sign.  Literal branches and switches exposed by those loads may be
+folded, but every surviving phi must retain exactly its surviving predecessor
+inputs.  Mutable, thread-local, externally replaceable, unterminated, volatile,
+non-byte, dynamically indexed, and dynamically supplied storage keeps its
+ordinary load and call path.  Targets containing exception-handling
+instructions are not eligible for this extension.
+
+Each readonly-string clone must fold at least one such byte load.  Even a
+single matching call may be selected, but only when the instructions removed
+from the ordinarily cleaned target pay for the complete specialized clone at
+that call count.  At least one unlike direct call must remain on the original
+target.  Select at most twelve readonly-string groups per target, in addition
+to the existing translation-unit limits of 24 clones and 1,536 cloned
+instructions.  `-O0` through `-O2` retain the original call population and do
+not perform this extension.
 
 After the final `-O3` scalar and control-flow cleanup, an internal scalar
 query may also be proven repeat-stable.  Its entry must reach a two-way guard
