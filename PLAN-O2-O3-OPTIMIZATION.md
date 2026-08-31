@@ -3445,6 +3445,39 @@ or G3 escalation.  A future memory-SSA refinement needs a broader population
 or must combine with an existing transformation to clear the 1% deterministic
 gate.
 
+### Rejected complete leaf save elimination
+
+The 94.7-million-instruction `IsInRanges` residual exposed a more specific
+version of the earlier rejected whole-color leaf recoloring.  That earlier
+dose removed only one of five saves in a framed constructor and paid all
+remaining frame overhead.  The new O3-only prototype instead required every
+callee-saved color in a leaf to have a conflict-free caller-saved replacement.
+It also admitted the exact defining register move when boundary liveness
+proved that recoloring would coalesce it, then removed the resulting identity.
+Partial leaf changes and all O0--O2 output remained excluded.
+
+The intended binary-search helper became completely save-free: its frame fell
+from 16 to zero bytes, `r15` returned to its incoming `rdx` carrier, its setup
+move disappeared, and the body shrank from 72 to 63 bytes.  PA38 remained
+45/45.  The standalone tokenizer oracle retained output hash
+`90db88a91d3942b657347250f3c18dd90ccb14e20ba4dd0f5edece1e06a58352`
+and fell from 444,824,631 to 443,950,319 instructions (`0.998034479x`, or
+-0.196552%).  Fresh 32-way G1/G2 builds completed with all 219 objects.  The
+G2 producer grew 1,056 text bytes and 16 data bytes, while both producers
+emitted the exact complete hot object hash
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+
+The source-diverse complete-TU count was still only a 0.187879% win:
+4,152,374,237 to 4,144,572,806 instructions (`0.998121212x`).  `Lexer::Run`
+itself fell 3,641,411 flat instructions (`0.993655072x`), so the intended hot
+effect was real, but native timing was indistinguishable at the sub-second
+screen and the deterministic total missed the 1% gate by a wide margin.  The
+leaf policy, defining-move coalescing exception, and identity cleanup were
+removed before README/property movement, full timing, or G3 escalation.  This
+closes complete leaf save elimination as an independent explanation of the
+large O3 gap; a future allocator change needs to eliminate work inside the hot
+loops rather than only their per-call prologue and epilogue.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3530,6 +3563,7 @@ Fill one row for every retained or rejected dose.
 | D.final-eh-chain | move one discardable EH helper through a small unique weak wrapper, then close identical-constant phi dependencies | none; rejected behavior was not moved into PA37/PA38 | tokenizer 2,431 to 2,336 LowIR lines and -257 text bytes; initial narrow G2/G3 exact; isolated implementation still enlarged the producer | hot Ir -2.2531%; first normalized wall/CPU +0.514%/+0.325%; isolated full wall/CPU +0.904%/+0.327% | broad form failed G2 EH validation; narrow G2/G3 exact; both three-block 219-object screens exact; prototypes removed | rejected; strong local saving does not survive representative producer throughput |
 | D.predefinition-phi-spill | protect a reserved planned phi home from eviction before its first definition at O2/O3 | none; rejected behavior was not moved into PA38; PA37 unchanged | fast fill cursor regains residency; helper 396 to 379 bytes; `program.o` +48 text; producer +3,392 text; 219-object G2/G3 exact | helper flat Ir -2.685%; complete hot Ir 0.9999347x (-0.0065%) | PA38 45/45; exact hot object and all-32 fixed point; prototype removed before full timing | rejected; genuine O3 load-lifetime interference, but complete-workload dose is far below 1% |
 | D.nonescaping-slot-alias | do not let a proven nonescaping local-slot store invalidate unknown-pointer load availability at O2/O3 | none; rejected behavior was not moved into PA37; PA38 unchanged | hot macro LowIR -1,805 bytes; spelling probe loses loop-invariant begin/size/mask reloads; producer -2,088 text; 219-object G1/G2 complete | complete hot Ir 0.999360211x (-0.063979%); native G1 neutral and G2 samples inconclusive | PA38 45/45; exact hot object; all-32 G1/G2 completed; prototype removed before full/G3 gate | rejected; sound generic improvement is dynamically far below the 1% retention floor |
+| D.complete-leaf-save | recolor a leaf only when all callee-saved colors and their defining moves can disappear | none; rejected behavior was not moved into PA38; PA37 unchanged | range helper frame 16 to zero, 72 to 63 bytes; G2 producer +1,056 text/+16 data; 219-object G1/G2 complete | tokenizer Ir 0.998034479x; `Run` flat 0.993655072x; complete hot Ir 0.998121212x (-0.187879%) | PA38 45/45; exact tokenizer and hot outputs; all-32 G1/G2 completed; prototype removed before full/G3 gate | rejected; eliminating all leaf call overhead remains far below the 1% retention floor |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
