@@ -3896,6 +3896,43 @@ extension and scratch compiler were removed before contract or test movement;
 do not retry broad constant-division expansion without a narrower population
 selected by measured hardware benefit.
 
+### Rejected lower O3 late hinted-nonleaf cap
+
+The next residual check asked whether the shipped late hinted-nonleaf limit
+was still too permissive after the retained layout and cleanup changes.  The
+hot `vector<Token>::push_back` was 769 bytes in the accepted self producer
+versus a 603-byte GCC implementation, and its inclusive self/GCC difference
+was about 37.1 million instructions, or 0.93% of the complete self workload.
+A public `hint-late-cap` sweep showed that 40, rather than the shipped 48,
+changed this instantiation into a 56-byte wrapper with an out-of-line
+reallocation path.  The prototype therefore changed only the default O3 cap
+to 40; O1 and O2 retained 48, and an explicit user override still won.
+
+Two generations were built with explicit 32-way object compilation.  The G2
+linked producer shrank from 8,643,316 to 8,339,024 text bytes (-3.52%), and
+the fixed-O1 hot output remained byte-exact.  The requested-O3 hot object
+changed as expected, but candidate self and GCC producers emitted exactly the
+same object at
+`f9ec8d5080a4a1e4702ed594d1eb6e0a4c139cc917a30b1a40ad3b658396cfb7`.
+This demonstrates that the dose changed generated code rather than exploiting
+a producer mismatch.
+
+The complete source-diverse counter result was nevertheless nearly flat.
+Self Callgrind moved from 3,987,039,512 to 3,983,125,692 instructions
+(`0.999018364x`, -0.098164%), while the same-source GCC control moved from
+2,425,787,225 to 2,424,007,938 (`0.999266512x`, -0.073349%).  The normalized
+result was only `0.999751671x`, a 0.024833% improvement.  In six native ABBA
+blocks, the self paired medians improved 1.459% wall and 0.311% user CPU, but
+the GCC control also improved 0.939% wall and was flat in user CPU.  The
+corresponding normalized gains were only 0.525% wall and 0.311% user CPU.
+
+This misses the plan's 1% complete-workload gate by a wide margin despite the
+large static shrink, consistent with the measured sub-1% dynamic upper bound
+of the motivating call family.  G3, contract, and test movement were
+unwarranted.  The O3 policy prototype and its scratch compilers were removed;
+do not revisit a global late-inline cap without a new source-diverse dynamic
+population or a selective proof that clears the gate.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -3990,6 +4027,7 @@ Fill one row for every retained or rejected dose.
 | D.forwarded-boolean-control | move an exact private Boolean phi/trunc/forwarding decision onto its incoming edges | PA37 README plus O0--O2 isolation, local relationship, incoming-effect, sharing, non-Boolean, successor-phi, cycle, EH, replay, and behavior properties | tokenizer -272 text and `Run` -170; 46 nonimplementation objects -8,425 text; complete producer net +5,411 object/+5,424 linked text | tokenizer Ir `0.986384x`; complete self `0.988024x`, GCC `1.000062x`, normalized `0.987963x`; O1 native wall/CPU `0.987361x`/`0.989975x`; O3 `0.979446x`/`0.989050x` | PA37 187/187; 5,470/5,470 through report; debug/round-trip and all audits clean; all-32 220-object self/inception exact | retained; source-diverse normalized saving clears 1% and both native workloads corroborate it |
 | D.compared-reference-selection | replace a private compared pointer selection and selected reload with a scalar phi of the values already loaded | none; rejected before contract movement | `AddSourceToken` -6 MIR/-26 bytes; macro object -4,112 text; G1 linked compiler -152,644 text including implementation | self Ir `0.997859x`, GCC `1.000691x`, normalized `0.997170x`; native hot wall/user `1.00585x`/`1.01250x` | deterministic self/GCC hot output; explicit-32-way 221-object G1; prototype removed before G2 | rejected; mostly cold size reduction and strength reduction remain below the 1% gate and regress native CPU |
 | D.retained-division-result | preserve the architectural quotient/remainder identity after machine copy forwarding so existing constant-division encoding still applies | none; rejected before contract movement | static `div`/`idiv` 4,823 to 407; hot loop uses magic division; `AnnotateParentheses` +20 bytes; linked producer +93,188 text | self Ir `1.006774x`, GCC `0.999908x`, normalized `1.006867x`; native hot wall/user/CPU `1.005780x`/`1.007150x`/`1.008729x` | PA38 45/45; deterministic candidate self/GCC hot object; explicit-32-way 220-object G1; prototype removed before G2 | rejected; broad strength reduction increases retired work, footprint, and measured hardware CPU |
+| D.hint40-O3 | lower only the default O3 late hinted-nonleaf cap from 48 to 40 while preserving explicit overrides | none; rejected before contract movement | hot token push becomes a 56-byte wrapper; G2 linked producer -304,292 text bytes; O1 hot output exact | self Ir `0.999018x`, GCC `0.999267x`, normalized `0.999752x`; native normalized paired medians `0.994755x` wall/`0.996894x` user | exact self/GCC O3 hot object; explicit-32-way G1/G2; stopped before G3 and removed | rejected; large static shrink yields only 0.025% normalized Ir and sub-1% native gains |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
