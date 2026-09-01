@@ -724,7 +724,8 @@ Append one row for each retained or rejected increment:
 | E6c | integrated typed-LowIR adapter | lowering-model identity, bounds, operation, CFG, EH, and presentation invariants used a generic logic base inside adapter loops | LowIR-domain internal failures through the existing shared cold boundary; successful checks unchanged | PA15 source-to-LowIR plus PA37 optimizer and PA38 native consumers | successful frozen remains 0; generic logic sites -23 | -1,280 text, -16 EH header, -72 unwind, -180 exception table | frozen 0.450/0.450 s; full O1 -0.39%, O3 -0.09% CPU | PA15 121/121; PA37 190/190; PA38 45/45; through-PA38 5,477/5,477; 222 O1/O3 objects and 32-way inception exact | `9ab20e02` | retained |
 | E7a | LowIR analyses and optimizer invariants | invocation rejection, call-graph/CFG/SSA corruption, and inliner shape contradictions shared generic logic/runtime bases in hot optimizer owners | invalid inline overrides use typed invocation failure; true optimizer invariants use one cold optimizer-domain boundary; ordinary optimization rejection remains status flow | PA37 invocation, structural, optimization-level, inlining, specialization, and generated-behavior controls | successful frozen remains 0; generic logic/runtime sites -23/-3 | -2,048 text, +32 rodata, +16 EH header, -8 unwind, -240 exception table | frozen 0.450/0.450 s and paired -0.55%; full O1 -0.18%, repeated O3 +0.39% CPU (neutral) | PA37 190/190; through-PA37 5,432/5,432; audits pass; frozen and 222 O1/O3 objects exact | `7e9450a0` | retained |
 | E7b | integrated compiler driver | invocation, source-token, file/library transport, compiler-object rejection, and unreachable driver states shared generic bases; missing-option helper returned a generic exception object | cold driver invocation/I/O/source/internal boundaries plus compiler-object input type; file-kind and library-path probes remain non-exception status flow | PA30 object/compile/link failures and PA36 hosted compile/link behavior | successful frozen remains 0; generic logic/runtime sites -23/-22; generic return helper -1 | -3,968 text, +32 rodata, +40 EH header, +176 unwind, -212 exception table | frozen 0.450/0.450 s; paired +0.56% (neutral) | PA30 179/179; PA36 1/1; through-PA36 5,242/5,242; invalid option/missing input/unwritable output fail; audits and frozen object exact | `181b1270` | retained |
-| E7c | lowering core, typed IR, reachability, identity, rendering, and presentation | source/transport failures, fixed-ID ceilings, and graph/identity/render contradictions shared generic bases in hot LowIR construction owners | typed lowering invocation/I/O/source/resource/internal failures through one cold boundary; successful construction checks unchanged | PA15 typed source-to-LowIR structure and cumulative LowIR contracts | successful frozen remains 0; generic logic/runtime sites -55/-22 | -832 text, +32 rodata, +152 EH header, +336 unwind, -3,680 exception table | cumulative frozen baseline/candidate user 0.445/0.450 s; paired +0.01% (neutral) | PA15 121/121; through-PA15 1,203/1,203; audits and frozen object exact | pending | retained |
+| E7c | lowering core, typed IR, reachability, identity, rendering, and presentation | source/transport failures, fixed-ID ceilings, and graph/identity/render contradictions shared generic bases in hot LowIR construction owners | typed lowering invocation/I/O/source/resource/internal failures through one cold boundary; successful construction checks unchanged | PA15 typed source-to-LowIR structure and cumulative LowIR contracts | successful frozen remains 0; generic logic/runtime sites -55/-22 | -832 text, +32 rodata, +152 EH header, +336 unwind, -3,680 exception table | cumulative frozen baseline/candidate user 0.445/0.450 s; paired +0.01% (neutral) | PA15 121/121; through-PA15 1,203/1,203; audits and frozen object exact | `071ecc3a` | retained |
+| E7d | lowering ABI fact construction and symbol mangling | semantic recipe/identity invariants, checked cache capacity, and unsupported source representation shared generic bases in a per-symbol hot owner | lowering-domain internal/resource/source failures through the existing cold boundary; optional owner/substitution probes remain Boolean | PA14 ABI spelling plus PA15 source-to-LowIR ABI metadata | successful frozen remains 0; generic logic/runtime sites -68/-5 | -1,920 text, -32 rodata, -16 EH header, -136 unwind, -764 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA14 117/117; PA15 121/121; through-PA15 1,203/1,203; frozen object exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1655,6 +1656,32 @@ E7a/E7b prefix, reproduce object hash `8545fec6...`, and give baseline/candidate
 user medians 0.445/0.450 seconds with a paired +0.01% result.  This is neutral,
 while the exception-table reduction confirms that the cold boundary removes
 EH duplication from the hot lowering owners without returned-status overhead.
+
+### E7d execution record
+
+ABI lowering builds typed facts and symbol identities for nearly every emitted
+entity, but its generic failures are not search misses.  All 68 logic sites
+guard retained semantic paths, template recipes, context ownership, argument
+ranges, and typed ABI node invariants.  Of five runtime sites, the type-fact
+cache ceiling is a lowering resource limit, dependent/non-fundamental ABI
+states are internal phase/type contradictions, and unsupported complex or
+remaining ABI source types are terminal lowering source failures.  Existing
+Boolean probes for builtin types, class-template owners, substitutions, and
+optional contexts remain non-exceptional.
+
+The successful frozen compile records zero throws.  The generic audit falls by
+68 logic and five runtime sites, with the ABI mangling owner leaving the
+generic-file inventory, to 620/394/101.  Against E7c, `.text` changes
+6,497,510 -> 6,495,590, `.rodata` 214,560 -> 214,528, `.eh_frame_hdr`
+51,668 -> 51,652, `.eh_frame` 322,552 -> 322,416, and
+`.gcc_except_table` 134,704 -> 133,940.
+
+PA14 passes 117/117, PA15 passes 121/121, and through-PA15 passes
+1,203/1,203.  Four cumulative frozen A/B/B/A blocks reproduce object hash
+`8545fec6...`; baseline and candidate user medians tie at 0.450 seconds and the
+paired ratio is exactly neutral.  The smaller hot owner and EH tables therefore
+retain the typed cold form without adding a status result to every mangling
+call.
 
 ## Initial code map
 

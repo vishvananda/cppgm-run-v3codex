@@ -3,11 +3,11 @@
 #include "abi/itanium/abi_mangle.h"
 #include "lowering/ir/model.h"
 #include "lowering/objects/polymorphism.h"
+#include "lowering/support/errors.h"
 #include "semantic/presentation/lambdas.h"
 
 #include <limits>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,7 +33,7 @@ bool MakeBuiltinAbiType(const semantic::Program& program, const TypeRecord& sour
 	{
 		if (source.dependent_bound_parameter != kNoTemplateParameter ||
 			source.bound == 0)
-			throw std::runtime_error("dependent _BitInt has no ABI encoding");
+			ThrowLoweringInternal("dependent _BitInt has no ABI encoding");
 		result->kind = ABI_TYPE_BUILTIN;
 		result->builtin_type = source.bitint_unsigned ?
 			ABI_BUILTIN_TYPE_UNSIGNED_BITINT : ABI_BUILTIN_TYPE_BITINT;
@@ -44,7 +44,7 @@ bool MakeBuiltinAbiType(const semantic::Program& program, const TypeRecord& sour
 	{
 		const TypeRecord& element = program.types.Get(source.child);
 		if (element.kind != TYPE_FUNDAMENTAL)
-			throw std::runtime_error("complex ABI element is not fundamental");
+			ThrowLoweringInternal("complex ABI element is not fundamental");
 		result->kind = ABI_TYPE_BUILTIN;
 		switch (element.fundamental)
 		{
@@ -58,7 +58,7 @@ bool MakeBuiltinAbiType(const semantic::Program& program, const TypeRecord& sour
 			result->builtin_type = ABI_BUILTIN_TYPE_COMPLEX_LONG_DOUBLE;
 			return true;
 		default:
-			throw std::runtime_error("unsupported complex ABI element type");
+			ThrowLoweringSource("unsupported complex ABI element type");
 		}
 	}
 	if (source.kind != TYPE_FUNDAMENTAL) return false;
@@ -100,12 +100,12 @@ void AppendTypedFact(abi_mangle::AbiTypedCase* facts,
 		return;
 	case ABI_FACT_RECORD_TARGET:
 		if (facts->has_target)
-			throw std::logic_error("production ABI case has two targets");
+			ThrowLoweringInternal("production ABI case has two targets");
 		facts->target = std::move(record->target);
 		facts->has_target = true;
 		return;
 	}
-	throw std::logic_error("invalid production ABI fact record");
+	ThrowLoweringInternal("invalid production ABI fact record");
 }
 
 void AppendFunctionAbiTagFacts(const semantic::Program& program,
@@ -116,7 +116,7 @@ void AppendFunctionAbiTagFacts(const semantic::Program& program,
 	if (binding.abi_tag_count == 0) return;
 	if (binding.abi_tag_begin > program.abi_tags.size() ||
 		binding.abi_tag_count > program.abi_tags.size() - binding.abi_tag_begin)
-		throw std::logic_error("invalid function ABI tag fact range");
+		ThrowLoweringInternal("invalid function ABI tag fact range");
 	for (std::size_t i = 0; i < binding.abi_tag_count; ++i)
 	{
 		AbiFactRecord tag;
@@ -136,7 +136,7 @@ void AppendComponentAbiTagFacts(const semantic::Program& program,
 	using namespace abi_mangle;
 	if (entity.abi_tag_begin > program.abi_tags.size() ||
 		entity.abi_tag_count > program.abi_tags.size() - entity.abi_tag_begin)
-		throw std::logic_error("invalid component ABI tag fact range");
+		ThrowLoweringInternal("invalid component ABI tag fact range");
 	for (std::size_t i = 0; i < entity.abi_tag_count; ++i)
 	{
 		AbiFactRecord tag;
@@ -341,13 +341,13 @@ class AbiFactBuilder
 		if (recipe)
 		{
 			if (program_.function_template_abi_recipes.empty())
-				throw std::logic_error("ABI type argument recipe has no owner");
+				ThrowLoweringInternal("ABI type argument recipe has no owner");
 			const FunctionTemplateAbiRecipe* begin =
 				&program_.function_template_abi_recipes[0];
 			const std::ptrdiff_t offset = recipe - begin;
 			if (offset < 0 || static_cast<std::size_t>(offset) >=
 				program_.function_template_abi_recipes.size())
-				throw std::logic_error("ABI type argument recipe is invalid");
+				ThrowLoweringInternal("ABI type argument recipe is invalid");
 			recipe_id = static_cast<FunctionTemplateAbiRecipeId>(offset);
 		}
 		return TypeArgumentCacheKey(type, function_id, recipe_id);
@@ -396,7 +396,7 @@ class AbiFactBuilder
 			RehashTypeArguments(type_argument_cache_slots_.size() * 2);
 		if (type_argument_cache_.size() >=
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many ABI type argument facts");
+			ThrowLoweringResourceLimit("too many ABI type argument facts");
 		const std::size_t mask = type_argument_cache_slots_.size() - 1;
 		std::size_t slot = TypeArgumentCacheHash(key) & mask;
 		while (type_argument_cache_slots_[slot] != 0)
@@ -417,7 +417,7 @@ class AbiFactBuilder
 		std::size_t begin, std::size_t end)
 	{
 		if (begin >= end || end > path.size())
-			throw std::logic_error("invalid semantic ABI path range");
+			ThrowLoweringInternal("invalid semantic ABI path range");
 		resolved_path_scratch_.clear();
 		resolved_path_scratch_.reserve(end - begin);
 		for (std::size_t i = begin; i < end; ++i)
@@ -470,7 +470,7 @@ class AbiFactBuilder
 	{
 		if (begin > program_.abi_tags.size() ||
 			count > program_.abi_tags.size() - begin)
-			throw std::logic_error("invalid ABI tag fact range");
+			ThrowLoweringInternal("invalid ABI tag fact range");
 		for (std::size_t i = 0; i < count; ++i)
 			destination->presentation_names.push_tag_resolved(
 				ResolveName(program_.abi_tags[begin + i]));
@@ -574,7 +574,7 @@ public:
 		  type_argument_cache_slots_(32, 0)
 	{
 		if (!context_)
-			throw std::logic_error("typed ABI builder has no graph context");
+			ThrowLoweringInternal("typed ABI builder has no graph context");
 	}
 
 	std::size_t AddTypeArgument(semantic::TypeId type,
@@ -588,7 +588,7 @@ public:
 		if (cached) return *cached;
 		++next_argument_;
 		if (!context_)
-			throw std::logic_error("typed ABI argument has no graph context");
+			ThrowLoweringInternal("typed ABI argument has no graph context");
 		AbiTemplateArgument argument;
 		argument.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
 		argument.type = MakeType(type, function, recipe);
@@ -602,7 +602,7 @@ public:
 		using namespace abi_mangle;
 		using namespace semantic;
 		if (source == kNoBinding || source >= program_.bindings.size())
-			throw std::logic_error("ABI template argument entity is invalid");
+			ThrowLoweringInternal("ABI template argument entity is invalid");
 		source = program_.bindings[source].canonical;
 		const BindingRecord& binding = program_.bindings[source];
 		++next_argument_;
@@ -612,7 +612,7 @@ public:
 			entity.kind = ABI_ENTITY_FACT_FUNCTION;
 			entity.function.kind = ABI_FUNCTION_TARGET_PATH;
 			if (binding.name == 0)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function ABI entity has no semantic name");
 			SetPath(&entity.function, binding.owner, binding.name);
 			const TypeRecord& function = program_.types.Get(binding.type);
@@ -626,7 +626,7 @@ public:
 		{
 			entity.kind = ABI_ENTITY_FACT_VARIABLE;
 			if (binding.name == 0)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"variable ABI entity has no semantic name");
 			SetPath(&entity.function, binding.owner, binding.name);
 			entity.internal_linkage =
@@ -645,7 +645,7 @@ public:
 		using namespace abi_mangle;
 		using namespace semantic;
 		if (argument >= program_.template_arguments.size())
-			throw std::logic_error("ABI template argument index is invalid");
+			ThrowLoweringInternal("ABI template argument index is invalid");
 		if (argument >= program_.canonical_template_arguments.size() ||
 			program_.canonical_template_arguments[argument].kind ==
 				TEMPLATE_ARGUMENT_TYPE)
@@ -722,7 +722,7 @@ public:
 			if (nonstatic_member)
 			{
 				if (value.member_owner >= program_.entities.size())
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"ABI member entity owner is invalid");
 				target.kind = ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY;
 				target.type = MakeType(
@@ -734,7 +734,7 @@ public:
 				{
 					const TypeRecord& member_type = program_.types.Get(value.type);
 					if (member_type.kind != TYPE_FUNCTION)
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"ABI member function entity is not callable");
 					target.member_function_const =
 						(member_type.cv & CV_CONST) != 0;
@@ -771,7 +771,7 @@ public:
 						kNoFunctionTemplateAbiRecipe ||
 						value.function_template_abi_recipe >=
 							program_.function_template_abi_recipes.size())
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"ABI member function template has no canonical recipe");
 					const FunctionTemplateAbiRecipe& member_recipe =
 						program_.function_template_abi_recipes[
@@ -780,19 +780,19 @@ public:
 					const std::size_t count = value.template_argument_count;
 					if (first > program_.template_arguments.size() ||
 						count > program_.template_arguments.size() - first)
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"ABI member function template argument range is invalid");
 					if ((member_recipe.template_parameter_pack &&
 						 member_recipe.template_parameter_count == 0) ||
 						(!member_recipe.template_parameter_pack &&
 						 count != member_recipe.template_parameter_count))
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"ABI member function template argument shape is invalid");
 					const std::size_t fixed = member_recipe.template_parameter_pack ?
 						member_recipe.template_parameter_count - 1 :
 						member_recipe.template_parameter_count;
 					if (fixed > count)
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"ABI member function template pack range is invalid");
 					for (std::size_t i = 0; i < fixed; ++i)
 						target.argument_refs.push_resolved(AddTemplateArgument(
@@ -878,7 +878,7 @@ public:
 		using namespace abi_mangle;
 		if (first > program_.template_arguments.size() ||
 			count > program_.template_arguments.size() - first)
-			throw std::logic_error("ABI template argument pack range is invalid");
+			ThrowLoweringInternal("ABI template argument pack range is invalid");
 		++next_argument_;
 		AbiTemplateArgument argument_pack;
 		argument_pack.kind = ABI_TEMPLATE_ARGUMENT_PACK;
@@ -909,11 +909,11 @@ public:
 		using namespace abi_mangle;
 		using namespace semantic;
 		if (binding == kNoBinding || binding >= program_.bindings.size())
-			throw std::logic_error("local ABI type has no function context");
+			ThrowLoweringInternal("local ABI type has no function context");
 		const BindingRecord& function = program_.bindings[binding];
 		const TypeRecord& type = program_.types.Get(function.type);
 		if (type.kind != TYPE_FUNCTION)
-			throw std::logic_error("local ABI context is not a function");
+			ThrowLoweringInternal("local ABI context is not a function");
 		const std::size_t identity = next_argument_++;
 		AbiLocalContext context_fact;
 		if (function.member_owner != kNoEntity &&
@@ -1011,7 +1011,7 @@ public:
 		AbiFunctionTarget& target = context_fact.function;
 		target.kind = ABI_FUNCTION_TARGET_PATH;
 		if (function.name == 0)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"function ABI local context has no semantic name");
 		SetPath(&target, function.owner, function.name);
 		const FunctionTemplateAbiRecipe* recipe = 0;
@@ -1020,7 +1020,7 @@ public:
 		{
 			if (function.function_template_abi_recipe >=
 				program_.function_template_abi_recipes.size())
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"local ABI context template recipe is invalid");
 			recipe = &program_.function_template_abi_recipes[
 				function.function_template_abi_recipe];
@@ -1028,19 +1028,19 @@ public:
 		if (function.template_argument_count != 0)
 		{
 			if (recipe == 0)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function template specialization has no canonical recipe");
 			const std::size_t first = function.template_argument_begin;
 			const std::size_t count = function.template_argument_count;
 			if (first > program_.template_arguments.size() ||
 				count > program_.template_arguments.size() - first)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"local ABI context template arguments are invalid");
 			const std::size_t fixed = recipe &&
 				recipe->template_parameter_pack ?
 				recipe->template_parameter_count - 1 : count;
 			if (fixed > count)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"local ABI context template pack is invalid");
 			for (std::size_t i = 0; i < fixed; ++i)
 			{
@@ -1092,7 +1092,7 @@ public:
 					recipe_type->parameter_count;
 				source = i < fixed ? i : fixed;
 				if (source >= recipe_type->parameter_count)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"local ABI context parameter recipe is invalid");
 				pack_expansion = recipe->function_parameter_pack && i >= fixed;
 				if (pack_expansion || UsesFunctionTemplateParameter(
@@ -1148,7 +1148,7 @@ public:
 		if (first > program_.template_arguments.size() ||
 			function->template_argument_count >
 				program_.template_arguments.size() - first)
-			throw std::logic_error("function template ABI argument range is invalid");
+			ThrowLoweringInternal("function template ABI argument range is invalid");
 		for (std::size_t i = 0; i < function->template_argument_count; ++i)
 		{
 			const std::size_t argument = first + i;
@@ -1221,7 +1221,7 @@ public:
 			parameter >=
 				program_.function_template_abi_function_parameter_types.size() -
 					recipe.function_parameter_type_begin)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"function template ABI parameter recipe is invalid");
 		return program_.function_template_abi_function_parameter_types[
 			recipe.function_parameter_type_begin + parameter];
@@ -1235,7 +1235,7 @@ public:
 		using namespace semantic;
 		if (expression == kNoFunctionTemplateAbiExpression ||
 			expression >= program_.function_template_abi_expressions.size())
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"function template ABI expression recipe is invalid");
 		const FunctionTemplateAbiExpression& source =
 			program_.function_template_abi_expressions[expression];
@@ -1282,7 +1282,7 @@ public:
 		{
 			target.kind = ABI_EXPRESSION_UNARY;
 			if (source.operation != OPERATOR_STAR)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"unsupported retained dependent unary operation");
 			target.operation = ABI_EXPRESSION_OPERATION_DEREFERENCE;
 			target.expression_refs.push_resolved(
@@ -1292,7 +1292,7 @@ public:
 		{
 			target.kind = ABI_EXPRESSION_BINARY;
 			if (source.operation != OPERATOR_MINUS)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"unsupported retained dependent binary operation");
 			target.operation = ABI_EXPRESSION_OPERATION_SUBTRACT;
 			target.expression_refs.push_resolved(
@@ -1307,7 +1307,7 @@ public:
 				source.argument_count >
 					program_.function_template_abi_arguments.size() -
 						source.argument_begin)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"retained dependent template-id is invalid");
 			target.kind = ABI_EXPRESSION_TEMPLATE_ID;
 			target.index = ResolveName(source.name) + 1;
@@ -1316,7 +1316,7 @@ public:
 					program_.function_template_abi_arguments[
 						source.argument_begin + i], recipe));
 		}
-		else throw std::logic_error(
+		else ThrowLoweringInternal(
 			"function template ABI expression node kind is invalid");
 		return context_->resolve_expression(target);
 	}
@@ -1352,7 +1352,7 @@ public:
 		using namespace semantic;
 		if (type == kNoFunctionTemplateAbiType ||
 			type >= program_.function_template_abi_types.size())
-			throw std::logic_error("function template ABI result recipe is invalid");
+			ThrowLoweringInternal("function template ABI result recipe is invalid");
 		const FunctionTemplateAbiType& source =
 			program_.function_template_abi_types[type];
 		AbiType result;
@@ -1361,7 +1361,7 @@ public:
 		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER)
 		{
 			if (source.parameter >= recipe.template_parameter_count)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function template ABI result parameter is invalid");
 			result.kind = ABI_TYPE_TEMPLATE_PARAMETER;
 			result.index = source.parameter;
@@ -1377,7 +1377,7 @@ public:
 				source.argument_count >
 					program_.function_template_abi_arguments.size() -
 						source.argument_begin)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function template ABI template-parameter specialization is invalid");
 			result.kind = ABI_TYPE_TEMPLATE_PARAMETER_SPECIALIZATION;
 			result.index = source.parameter;
@@ -1396,7 +1396,7 @@ public:
 				source.argument_count >
 					program_.function_template_abi_arguments.size() -
 						source.argument_begin)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function template ABI specialization is invalid");
 			result.kind = source.child == kNoFunctionTemplateAbiType ?
 				ABI_TYPE_TEMPLATE_SPECIALIZATION :
@@ -1426,7 +1426,7 @@ public:
 		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_BUILTIN_TRANSFORM)
 		{
 			if (source.child == kNoFunctionTemplateAbiType || source.name == 0)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function template ABI builtin transform is invalid");
 			result.kind = ABI_TYPE_BUILTIN_TRANSFORM;
 			result.index = ResolveName(source.name) + 1;
@@ -1437,7 +1437,7 @@ public:
 		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_MEMBER)
 		{
 			if (source.child == kNoFunctionTemplateAbiType || source.name == 0)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function template ABI result member is invalid");
 			result.kind = ABI_TYPE_MEMBER;
 			result.index = ResolveName(source.name) + 1;
@@ -1446,7 +1446,7 @@ public:
 			return result;
 		}
 		if (source.child == kNoFunctionTemplateAbiType)
-			throw std::logic_error("function template ABI result modifier is invalid");
+			ThrowLoweringInternal("function template ABI result modifier is invalid");
 		result = MakeFunctionTemplateAbiType(source.child, recipe);
 		AbiTypeModifier modifier;
 		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_QUALIFIED)
@@ -1476,7 +1476,7 @@ public:
 				modifier.array_bound.resolved_expression = source.bound;
 			}
 		}
-		else throw std::logic_error(
+		else ThrowLoweringInternal(
 			"function template ABI result node kind is invalid");
 		result.modifiers.insert(result.modifiers.begin(), modifier);
 		return result;
@@ -1494,7 +1494,7 @@ public:
 			const TypeId current = pending.back();
 			pending.pop_back();
 			if (current >= visited.size())
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function template ABI source type is invalid");
 			if (visited[current]) continue;
 			visited[current] = 1;
@@ -1537,7 +1537,7 @@ public:
 			if (first > program_.template_arguments.size() ||
 				entity.template_argument_count >
 					program_.template_arguments.size() - first)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function template ABI source argument range is invalid");
 			for (std::size_t i = 0; i < entity.template_argument_count; ++i)
 			{
@@ -1568,13 +1568,13 @@ public:
 		if (first > program_.template_arguments.size() ||
 			entity.template_argument_count >
 				program_.template_arguments.size() - first)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"template-parameter specialization ABI arguments are invalid");
 		const std::size_t pack = entity.template_argument_pack_begin;
 		const std::size_t fixed = pack == kNoTemplateParameter ?
 			entity.template_argument_count : pack;
 		if (fixed > entity.template_argument_count)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"template-parameter specialization ABI pack is invalid");
 		for (std::size_t i = 0; i < fixed; ++i)
 			result->argument_refs.push_resolved(AddTemplateArgument(
@@ -1596,13 +1596,13 @@ public:
 		if (first > program_.template_arguments.size() ||
 			entity.template_argument_count >
 				program_.template_arguments.size() - first)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"class template ABI argument range is invalid");
 		const std::size_t pack = entity.template_argument_pack_begin;
 		const std::size_t fixed = pack == kNoTemplateParameter ?
 			entity.template_argument_count : pack;
 		if (fixed > entity.template_argument_count)
-			throw std::logic_error("class template ABI pack offset is invalid");
+			ThrowLoweringInternal("class template ABI pack offset is invalid");
 		for (std::size_t i = 0; i < fixed; ++i)
 			result->argument_refs.push_resolved(AddTemplateArgument(
 				first + i, function, recipe));
@@ -1771,7 +1771,7 @@ public:
 					result.resolved_expression = entity.lambda_ordinal;
 					if (entity.lambda_call_operator == kNoBinding ||
 						entity.lambda_call_operator >= program_.bindings.size())
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"lambda ABI type has no call operator fact");
 					const BindingRecord& call =
 						program_.bindings[entity.lambda_call_operator];
@@ -1804,7 +1804,7 @@ public:
 			else if (entity.enclosing_class != kNoEntity)
 			{
 				if (entity.enclosing_class >= program_.entities.size())
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"nested ABI type has no enclosing class");
 				const bool specialization =
 					IsClassTemplateSpecialization(entity);
@@ -1849,7 +1849,7 @@ public:
 			return result;
 		}
 		if (MakeBuiltinAbiType(program_, *record, &result)) return result;
-		throw std::runtime_error("unsupported ABI type in PA15");
+		ThrowLoweringSource("unsupported ABI type in PA15");
 	}
 };
 
@@ -1865,7 +1865,7 @@ bool AppendClassTemplateOwner(const semantic::Program& program,
 	const std::size_t first = entity.template_argument_begin;
 	if (first > program.template_arguments.size() ||
 		entity.template_argument_count > program.template_arguments.size() - first)
-		throw std::logic_error("class template ABI owner arguments are invalid");
+		ThrowLoweringInternal("class template ABI owner arguments are invalid");
 	std::vector<NameId> path;
 	program.BuildEmissionPath(entity.owner, entity.identity_name, &path);
 	const StandardTemplateSubstitution standard =
@@ -1896,7 +1896,7 @@ bool AppendClassTemplateOwner(const semantic::Program& program,
 			const std::size_t fixed = pack == kNoTemplateParameter ?
 				entity.template_argument_count : pack;
 			if (fixed > entity.template_argument_count)
-				throw std::logic_error("class template ABI pack offset is invalid");
+				ThrowLoweringInternal("class template ABI pack offset is invalid");
 			for (std::size_t argument = 0; argument < fixed; ++argument)
 				component.function.argument_refs.push_resolved(
 					builder->AddTemplateArgument(first + argument));
@@ -1967,7 +1967,7 @@ abi_mangle::AbiTerminalKind OperatorTerminal(OperatorKind kind, bool member,
 	case OPERATOR_NONE:
 	case OPERATOR_LITERAL: return ABI_TERMINAL_NONE;
 	}
-	throw std::logic_error("invalid typed operator terminal");
+	ThrowLoweringInternal("invalid typed operator terminal");
 }
 
 }
@@ -2062,12 +2062,12 @@ void AppendFunctionTemplateArgumentsAndResult(const semantic::Program& program,
 	const std::size_t count = binding.template_argument_count;
 	if (first > program.template_arguments.size() ||
 		count > program.template_arguments.size() - first)
-		throw std::logic_error(
+		ThrowLoweringInternal(
 			"function template argument range is invalid during mangling");
 	const std::size_t fixed = recipe && recipe->template_parameter_pack ?
 		recipe->template_parameter_count - 1 : count;
 	if (fixed > count)
-		throw std::logic_error("function template ABI pack range is invalid");
+		ThrowLoweringInternal("function template ABI pack range is invalid");
 	for (std::size_t i = 0; i < fixed; ++i)
 	{
 		AbiFactRecord argument;
@@ -2123,9 +2123,9 @@ std::string MangleLambdaCallOperator(const semantic::Program& program,
 	using namespace abi_mangle;
 	using namespace semantic;
 	if (!context)
-		throw std::logic_error("lambda ABI mangling has no graph context");
+		ThrowLoweringInternal("lambda ABI mangling has no graph context");
 	if (binding.operator_kind != OPERATOR_CALL)
-		throw std::logic_error("invalid lambda call-operator ABI identity");
+		ThrowLoweringInternal("invalid lambda call-operator ABI identity");
 	AbiTypedCase fact_case;
 	AbiFactBuilder facts(program, fact_case, context, stats);
 	const FunctionTemplateAbiRecipe* recipe = 0;
@@ -2133,7 +2133,7 @@ std::string MangleLambdaCallOperator(const semantic::Program& program,
 	{
 		if (binding.function_template_abi_recipe >=
 			program.function_template_abi_recipes.size())
-			throw std::logic_error("invalid generic lambda ABI recipe");
+			ThrowLoweringInternal("invalid generic lambda ABI recipe");
 		recipe = &program.function_template_abi_recipes[
 			binding.function_template_abi_recipe];
 	}
@@ -2313,11 +2313,11 @@ std::string MangleFunction(const semantic::Program& program,
 	{
 		if (binding.function_template_abi_recipe >=
 			program.function_template_abi_recipes.size())
-			throw std::logic_error("invalid function template ABI recipe");
+			ThrowLoweringInternal("invalid function template ABI recipe");
 		recipe = &program.function_template_abi_recipes[
 			binding.function_template_abi_recipe];
 		if (!program.types.IsFunction(recipe->function_type))
-			throw std::logic_error("function template ABI recipe is not callable");
+			ThrowLoweringInternal("function template ABI recipe is not callable");
 	}
 	const bool structured_local_owner = binding.member_owner != kNoEntity &&
 		program.entities[binding.member_owner].local_context != kNoBinding;
@@ -2367,7 +2367,7 @@ std::string MangleFunction(const semantic::Program& program,
 			program, binding, &facts, context, &fact_case);
 	if (structured_class_owner &&
 		!AppendClassTemplateOwner(program, binding, &facts, &fact_case, true))
-		throw std::logic_error("class template ABI owner was lost");
+		ThrowLoweringInternal("class template ABI owner was lost");
 	const bool member = binding.member_owner != kNoEntity &&
 		!binding.static_member_function;
 	// Most member dump boundaries prepend the implicit object and the ABI path
@@ -2569,7 +2569,7 @@ std::string MangleVariable(const semantic::Program& program,
 	if (needs_path)
 	{
 		if (binding.name == 0)
-			throw std::logic_error("variable ABI target has no semantic name");
+			ThrowLoweringInternal("variable ABI target has no semantic name");
 		facts.SetPath(&target.target.function, binding.owner, binding.name);
 	}
 	if (typed_class_owner)
@@ -2583,7 +2583,7 @@ std::string MangleVariable(const semantic::Program& program,
 	{
 		if (!AppendClassTemplateOwner(
 			program, binding, &facts, &fact_case, false))
-			throw std::logic_error("class template ABI variable owner was lost");
+			ThrowLoweringInternal("class template ABI variable owner was lost");
 		AbiFactRecord member;
 		member.set_kind(ABI_FACT_RECORD_FUNCTION);
 		member.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
@@ -2596,7 +2596,7 @@ std::string MangleVariable(const semantic::Program& program,
 		const std::size_t count = binding.template_argument_count;
 		if (first > program.template_arguments.size() ||
 			count > program.template_arguments.size() - first)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"variable template argument range is invalid during mangling");
 		for (std::size_t i = 0; i < count; ++i)
 		{
@@ -2620,7 +2620,7 @@ std::string MangleThreadLocalWrapper(const semantic::Program& program,
 	using namespace abi_mangle;
 	using namespace semantic;
 	if (binding_id == kNoBinding || binding_id >= program.bindings.size())
-		throw std::logic_error("invalid thread-local wrapper binding");
+		ThrowLoweringInternal("invalid thread-local wrapper binding");
 	const BindingRecord& binding = program.bindings[binding_id];
 	std::unique_ptr<AbiMangleContext> local_context;
 	if (!context)
@@ -2637,7 +2637,7 @@ std::string MangleThreadLocalWrapper(const semantic::Program& program,
 	if (terminal != 0 && !program.names.Get(terminal).empty())
 		facts.SetPath(&target.target.function, binding.owner, terminal);
 	if (target.target.function.resolved_path == ABI_NO_RESOLVED_REFERENCE)
-		throw std::logic_error("thread-local wrapper has no semantic name (binding " +
+		ThrowLoweringInternal("thread-local wrapper has no semantic name (binding " +
 			std::to_string(binding_id) + ", owner " +
 			std::to_string(binding.owner) + ", terminal " +
 			std::to_string(binding.name) + ", fallback " +
