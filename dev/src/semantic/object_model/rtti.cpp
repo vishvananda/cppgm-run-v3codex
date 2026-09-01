@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -29,7 +29,7 @@ ExpressionInfo Analyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 	const LookupResult type_info = LookupPath(scope,
 		GeneratedLibraryPath(GENERATED_LIBRARY_TYPE_INFO), LOOKUP_TYPE);
 	if (type_info.type == kNoType)
-		throw std::runtime_error("typeid requires std::type_info");
+		ThrowSemanticError("typeid requires std::type_info");
 	const TypeId result_type = program_->types.Qualify(
 		program_->types.RemoveTopCv(type_info.type), CV_CONST);
 
@@ -55,7 +55,7 @@ ExpressionInfo Analyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 	{
 		const NodeId operand_syntax = FirstSemanticChild(node);
 		if (operand_syntax == kNoNode)
-			throw std::runtime_error("typeid expression has no operand");
+			ThrowSemanticError("typeid expression has no operand");
 		++unevaluated_depth_;
 		++conditionally_evaluated_operand_depth_;
 		++resolved_call_demand_suppressed_depth_;
@@ -136,7 +136,7 @@ bool Analyzer::TryAnalyzeTypeidComparison(
 	ExpressionInfo validated;
 	if (!TryAnalyzeOverloadedOperator(operation, scope, syntax, operands,
 		false, kNoType, &validated))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"typeid comparison requires std::type_info operator");
 
 	const TypeId bool_type = program_->types.Fundamental(FUND_BOOL);
@@ -158,7 +158,7 @@ void Analyzer::DemandConditionallyEvaluatedConstructors(
 	std::uint32_t root)
 {
 	if (root >= dump_.nodes.size())
-		throw std::logic_error("invalid conditionally evaluated demand root");
+		ThrowInternalCompilerError("invalid conditionally evaluated demand root");
 	std::vector<std::uint32_t> pending(1, root);
 	while (!pending.empty())
 	{
@@ -187,7 +187,7 @@ bool Analyzer::TryAnalyzeDynamicCast(TypeId target,
 	const TypeRecord& target_shape = program_->types.Get(
 		program_->types.RemoveTopCv(target_object_with_cv));
 	if (!reference && target_shape.kind != TYPE_POINTER)
-		throw std::runtime_error("dynamic_cast target is not a pointer or reference");
+		ThrowSemanticError("dynamic_cast target is not a pointer or reference");
 	if (!reference) target_object_with_cv = target_shape.child;
 	TypeId target_object = target_object_with_cv;
 	target_object = program_->types.RemoveTopCv(target_object);
@@ -201,7 +201,7 @@ bool Analyzer::TryAnalyzeDynamicCast(TypeId target,
 			program_->types.RemoveTopCv(Decay(operand.type));
 		const TypeRecord& source_shape = program_->types.Get(source_pointer);
 		if (source_shape.kind != TYPE_POINTER)
-			throw std::runtime_error("dynamic_cast source is not a pointer");
+			ThrowSemanticError("dynamic_cast source is not a pointer");
 		source_object_with_cv = source_shape.child;
 	}
 	const TypeId source_object =
@@ -217,10 +217,10 @@ bool Analyzer::TryAnalyzeDynamicCast(TypeId target,
 		!IsClassNamedFlavor(program_->entities[source_entity].flavor) ||
 		(!target_void &&
 		 !IsClassNamedFlavor(program_->entities[target_entity].flavor)))
-		throw std::runtime_error("dynamic_cast requires class operands");
+		ThrowSemanticError("dynamic_cast requires class operands");
 	if ((TopCv(*program_, source_object_with_cv) &
 		~TopCv(*program_, target_object_with_cv)) != 0)
-		throw std::runtime_error("dynamic_cast removes cv-qualification");
+		ThrowSemanticError("dynamic_cast removes cv-qualification");
 	EnsureClassDefinition(source_object);
 	if (!target_void) EnsureClassDefinition(target_object);
 
@@ -231,13 +231,13 @@ bool Analyzer::TryAnalyzeDynamicCast(TypeId target,
 	if (!target_void && program_->IsBaseOf(target_entity, source_entity))
 	{
 		if (!BaseConversionAllowed(source_entity, target_entity))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"dynamic_cast names an inaccessible base");
 		return false;
 	}
 
 	if (!program_->entities[source_entity].polymorphic_class)
-		throw std::runtime_error("dynamic_cast source is not polymorphic");
+		ThrowSemanticError("dynamic_cast source is not polymorphic");
 	MarkVtableDemand(source_entity);
 	if (!target_void) MarkVtableDemand(target_entity);
 
@@ -264,7 +264,7 @@ bool Analyzer::TryAnalyzeDynamicCast(TypeId target,
 			else if (offset <= static_cast<std::uint64_t>(
 				std::numeric_limits<std::int64_t>::max()))
 				hint = static_cast<std::int64_t>(offset);
-			else throw std::runtime_error(
+			else ThrowSemanticResourceLimit(
 				"dynamic_cast base offset exceeds runtime ABI");
 		}
 	}

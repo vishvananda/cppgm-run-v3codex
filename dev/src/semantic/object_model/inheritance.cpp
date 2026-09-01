@@ -1,7 +1,7 @@
 #include "semantic/model/program.h"
+#include "support/exceptions.h"
 
 #include <cstdint>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -93,7 +93,7 @@ BindingId LookupResult::OrdinaryAt(std::size_t index) const
 	if (index == 0) return ordinary;
 	--index;
 	if (index >= extra_ordinary_count_)
-		throw std::logic_error("ordinary lookup candidate index is out of range");
+		ThrowInternalCompilerError("ordinary lookup candidate index is out of range");
 	return extra_ordinary_count_ <= 2 ? extra_ordinary_inline_[index] :
 		extra_ordinary_overflow_[index];
 }
@@ -101,7 +101,7 @@ BindingId LookupResult::OrdinaryAt(std::size_t index) const
 void LookupResult::AddOrdinary(BindingId binding)
 {
 	if (binding == kNoBinding)
-		throw std::logic_error("ordinary lookup candidate has no identity");
+		ThrowInternalCompilerError("ordinary lookup candidate has no identity");
 	if (ordinary == kNoBinding)
 	{
 		ordinary = binding;
@@ -186,7 +186,7 @@ ScopeId LookupResult::TemplateOwnerAt(std::size_t index) const
 		return template_owner_;
 	if (template_owner_ == kNoScope || --index >=
 		extra_template_owner_count_)
-		throw std::logic_error("template owner index is out of range");
+		ThrowInternalCompilerError("template owner index is out of range");
 	return extra_template_owner_count_ <= 2 ?
 		extra_template_owner_inline_[index] :
 		extra_template_owner_overflow_[index];
@@ -195,7 +195,7 @@ ScopeId LookupResult::TemplateOwnerAt(std::size_t index) const
 void LookupResult::AddTemplateOwner(ScopeId owner)
 {
 	if (owner == kNoScope)
-		throw std::logic_error("template lookup owner is missing");
+		ThrowInternalCompilerError("template lookup owner is missing");
 	for (std::size_t i = 0; i < TemplateOwnerCount(); ++i)
 		if (TemplateOwnerAt(i) == owner) return;
 	if (template_owner_ == kNoScope)

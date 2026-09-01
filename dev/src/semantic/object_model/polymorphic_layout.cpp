@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -89,18 +89,18 @@ void Analyzer::MergeSharedVirtualView(PolymorphicViewFact* retained,
 {
 	if (retained->entity != incoming.entity ||
 		retained->slots.size() != incoming.slots.size())
-		throw std::logic_error("shared virtual views have incompatible slots");
+		ThrowInternalCompilerError("shared virtual views have incompatible slots");
 	for (std::size_t i = 0; i < retained->slots.size(); ++i)
 	{
 		VirtualSlotFact& selected = retained->slots[i];
 		const VirtualSlotFact& candidate = incoming.slots[i];
 		if (program_->bindings[selected.root].canonical !=
 			program_->bindings[candidate.root].canonical)
-			throw std::logic_error("shared virtual slot roots do not match");
+			ThrowInternalCompilerError("shared virtual slot roots do not match");
 		if (selected.function == kNoBinding)
 		{
 			if (program_->bindings[candidate.function].final_virtual)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"virtual function overrides final function");
 			continue;
 		}
@@ -125,7 +125,7 @@ void Analyzer::MergeSharedVirtualView(PolymorphicViewFact* retained,
 		{
 			if (program_->bindings[selected_function].final_virtual ||
 				program_->bindings[candidate_function].final_virtual)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"virtual function overrides final function");
 			selected.function = kNoBinding;
 		}
@@ -143,13 +143,13 @@ void Analyzer::AppendPolymorphicView(ClassPolymorphismFacts* facts,
 	++polymorphic_virtual_view_lookups_;
 	const EntityId entity = view.entity;
 	if (entity >= polymorphic_virtual_view_marks_.size())
-		throw std::logic_error("virtual view identity is out of range");
+		ThrowInternalCompilerError("virtual view identity is out of range");
 	if (polymorphic_virtual_view_marks_[entity] ==
 		polymorphic_virtual_view_generation_)
 	{
 		const std::uint32_t index = polymorphic_virtual_view_indices_[entity];
 		if (index >= facts->views.size())
-			throw std::logic_error("virtual view index is invalid");
+			ThrowInternalCompilerError("virtual view index is invalid");
 		MergeSharedVirtualView(&facts->views[index], view);
 		++polymorphic_virtual_view_merges_;
 		return;
@@ -211,7 +211,7 @@ const EntityRecord* Analyzer::InitializeClassBaseLayout(
 		DirectBaseEdge& edge = program_->MutableDirectBase(entity, base_index);
 		const EntityRecord* base = &program_->entities[edge.entity];
 		if (!base->layout_complete)
-			throw std::runtime_error("direct base layout is incomplete");
+			ThrowSemanticError("direct base layout is incomplete");
 		if (!edge.virtual_base && !primary)
 		{
 			primary = base; owner.direct_base = edge.entity;
@@ -234,7 +234,7 @@ const EntityRecord* Analyzer::InitializeClassBaseLayout(
 			const std::size_t base_size =
 				AlignClassBase(raw_base_size, effective_base_alignment);
 			if (offset > std::numeric_limits<std::size_t>::max() - base_size)
-				throw std::runtime_error("class layout is too large");
+				ThrowSemanticResourceLimit("class layout is too large");
 			*size = offset + base_size;
 		}
 		edge.offset = offset;
@@ -270,7 +270,7 @@ void Analyzer::CompleteClassPolymorphism(EntityId entity)
 		const DirectBaseEdge& edge = program_->DirectBase(entity, ordinal);
 		if (edge.entity >= class_polymorphism_.size() ||
 			!class_polymorphism_[edge.entity].complete)
-			throw std::logic_error("base polymorphism facts are incomplete");
+			ThrowInternalCompilerError("base polymorphism facts are incomplete");
 		if (!edge.virtual_base && primary == owner.direct_base_count &&
 			(!class_polymorphism_[edge.entity].slots.empty() ||
 			 !class_polymorphism_[edge.entity].views.empty()))
@@ -358,7 +358,7 @@ void Analyzer::CompleteClassPolymorphism(EntityId entity)
 		for (std::size_t slot = 0; slot < slots.size(); ++slot)
 		{
 			if (locations.size() >= kNoBinding)
-				throw std::runtime_error("too many virtual slot locations");
+				ThrowSemanticResourceLimit("too many virtual slot locations");
 			const FunctionSignatureKey key = VirtualSignatureKey(slots[slot].root);
 			const BindingId next = slot_index.Find(key);
 			locations.push_back(VirtualSlotLocation(
@@ -395,10 +395,10 @@ void Analyzer::CompleteClassPolymorphism(EntityId entity)
 			VirtualSlotFact& slot = slots[indexed.slot];
 			if (inherited_root == kNoBinding) inherited_root = slot.root;
 			if (!VirtualSignatureMatches(member, slot.root))
-				throw std::runtime_error("invalid covariant virtual return type");
+				ThrowSemanticError("invalid covariant virtual return type");
 			if (slot.function != kNoBinding &&
 				program_->bindings[slot.function].final_virtual)
-				throw std::runtime_error("virtual function overrides final function");
+				ThrowSemanticError("virtual function overrides final function");
 			slot.function = member;
 			location = indexed.next;
 			++virtual_overrides_;
@@ -413,11 +413,11 @@ void Analyzer::CompleteClassPolymorphism(EntityId entity)
 		else
 		{
 			if (binding.override_specifier)
-				throw std::runtime_error("override has no matching base virtual");
+				ThrowSemanticError("override has no matching base virtual");
 			if (binding.pure_virtual && !binding.virtual_function)
-				throw std::runtime_error("pure function is not virtual");
+				ThrowSemanticError("pure function is not virtual");
 			if (binding.final_virtual && !binding.virtual_function)
-				throw std::runtime_error("final function is not virtual");
+				ThrowSemanticError("final function is not virtual");
 			if (binding.virtual_function)
 				facts.slots.push_back(VirtualSlotFact(member, member));
 		}
@@ -436,7 +436,7 @@ void Analyzer::CompleteClassPolymorphism(EntityId entity)
 		for (std::size_t slot = 0; slot < slots.size(); ++slot)
 		{
 			if (slots[slot].function == kNoBinding)
-				throw std::runtime_error("no unique final overrider");
+				ThrowSemanticError("no unique final overrider");
 			const BindingId root = program_->bindings[slots[slot].root].canonical;
 			const BindingId function =
 				program_->bindings[slots[slot].function].canonical;
@@ -448,7 +448,7 @@ void Analyzer::CompleteClassPolymorphism(EntityId entity)
 				virtual_slot_by_binding_[function] = physical_slot;
 			const std::uint32_t width = program_->bindings[root].destructor ? 2 : 1;
 			if (physical_slot > std::numeric_limits<std::uint32_t>::max() - width)
-				throw std::runtime_error("too many virtual slots");
+				ThrowSemanticResourceLimit("too many virtual slots");
 			physical_slot += width;
 		}
 	}
@@ -471,7 +471,7 @@ void Analyzer::FinalizeClassPolymorphismViews(EntityId entity)
 		const bool inherited_virtual_view = current.virtual_base;
 		if (current.direct_base_ordinal >=
 			program_->entities[entity].direct_base_count)
-			throw std::logic_error("polymorphic view has no direct-base owner");
+			ThrowInternalCompilerError("polymorphic view has no direct-base owner");
 		const DirectBaseEdge& edge = program_->DirectBase(
 			entity, current.direct_base_ordinal);
 		current.offset = edge.offset + current.relative_offset;
@@ -496,7 +496,7 @@ void Analyzer::FinalizeClassPolymorphismViews(EntityId entity)
 				program_->VirtualBase(current.entity, base).entity;
 			std::uint64_t target_offset = 0;
 			if (!program_->FindVirtualBase(entity, target, &target_offset))
-				throw std::logic_error("view virtual base has no complete offset");
+				ThrowInternalCompilerError("view virtual base has no complete offset");
 			current.virtual_base_offsets.push_back(
 				static_cast<std::int64_t>(target_offset) -
 				static_cast<std::int64_t>(current.offset));
@@ -533,7 +533,7 @@ void Analyzer::FinalizeClassPolymorphismViews(EntityId entity)
 			if (target != entity && target != kNoEntity &&
 				!program_->FindVirtualBase(entity, target, &target_offset) &&
 				!program_->QueryBasePath(entity, target, 0, 0, &target_offset))
-				throw std::logic_error("virtual final overrider has no object path");
+				ThrowInternalCompilerError("virtual final overrider has no object path");
 			slots[slot].this_adjustment =
 				static_cast<std::int64_t>(target_offset) -
 				static_cast<std::int64_t>(view_offset);
@@ -551,14 +551,14 @@ void Analyzer::FinalizeClassPolymorphismViews(EntityId entity)
 			{
 				if (result >= class_polymorphism_.size() ||
 					virtual_ordinal >= program_->entities[result].virtual_base_count)
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"covariant result has no finalized virtual-base slot");
 				const ClassPolymorphismFacts& result_facts =
 					class_polymorphism_[result];
 				const std::uint64_t row = 8 *
 					static_cast<std::uint64_t>(virtual_ordinal);
 				if (row >= result_facts.address_point)
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"covariant virtual-base row is outside the vtable prefix");
 				slots[slot].return_adjustment_virtual = true;
 				slots[slot].return_vtable_offset =
@@ -569,7 +569,7 @@ void Analyzer::FinalizeClassPolymorphismViews(EntityId entity)
 			{
 				if (!program_->QueryBasePath(
 					result, root_result, 0, 0, &result_offset))
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"covariant result has no finalized base path");
 				slots[slot].return_adjustment =
 					static_cast<std::int64_t>(result_offset);

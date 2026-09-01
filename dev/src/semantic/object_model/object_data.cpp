@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "preprocess/tokens/post_tokenizer.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -52,24 +52,24 @@ void Analyzer::ApplyVariableObjectAttributes(
 		{
 			const NodeId child = arena_->EdgeChild(argument_edge);
 			if (arena_->IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE_NONLITERAL_ARGUMENT))
-				throw std::runtime_error("invalid section attribute argument");
+				ThrowSemanticError("invalid section attribute argument");
 			if (!arena_->IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE_ARGUMENT)) continue;
 			if (argument != kNoNode)
-				throw std::runtime_error("section attribute has multiple arguments");
+				ThrowSemanticError("section attribute has multiple arguments");
 			argument = child;
 		}
 		if (argument == kNoNode)
-			throw std::runtime_error("section attribute requires a string");
+			ThrowSemanticError("section attribute requires a string");
 		std::string section;
 		if (!DecodeNarrowStringLiteralSequence(arena_->SemanticPayload(argument),
 			&section) || !IsTokenSafeElfSectionName(section))
-			throw std::runtime_error("invalid section attribute name");
+			ThrowSemanticError("invalid section attribute name");
 		const NameId section_name = program_->names.Intern(section);
 		if ((record.object_section_name != 0 &&
 				record.object_section_name != section_name) ||
 			(canonical.object_section_name != 0 &&
 				canonical.object_section_name != section_name))
-			throw std::runtime_error("conflicting section attributes");
+			ThrowSemanticError("conflicting section attributes");
 		record.object_section_name = section_name;
 		canonical.object_section_name = section_name;
 	}
@@ -80,7 +80,7 @@ std::uint32_t Analyzer::MakeVariableDeclarationDump(
 	bool has_initializer, bool* declaration_only)
 {
 	if (!declaration_only)
-		throw std::logic_error("missing variable declaration classification");
+		ThrowInternalCompilerError("missing variable declaration classification");
 	*declaration_only = !local && !has_initializer &&
 		(program_->bindings[binding].storage_class == STORAGE_CLASS_EXTERN ||
 		 direct_linkage_declaration_depth_ != 0);

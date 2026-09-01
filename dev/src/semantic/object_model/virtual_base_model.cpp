@@ -1,7 +1,7 @@
 #include "semantic/model/program.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -46,7 +46,7 @@ void Program::IndexVirtualBase(EntityId derived, EntityId base,
 	}
 	if (virtual_base_index_entries_.size() >=
 		std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many indexed virtual base layouts");
+		ThrowSemanticResourceLimit("too many indexed virtual base layouts");
 	virtual_base_index_entries_.push_back(
 		VirtualBaseIndexEntry(derived, base, ordinal));
 	virtual_base_index_slots_[slot] =
@@ -57,14 +57,14 @@ void Program::SetVirtualBaseLayouts(EntityId derived,
 	const std::vector<VirtualBaseLayout>& layouts)
 {
 	if (derived >= entities.size())
-		throw std::logic_error("invalid virtual base layout owner");
+		ThrowInternalCompilerError("invalid virtual base layout owner");
 	EntityRecord& record = entities[derived];
 	if (record.virtual_base_count != 0)
-		throw std::logic_error("virtual base layouts are already fixed");
+		ThrowInternalCompilerError("virtual base layouts are already fixed");
 	if (layouts.size() > std::numeric_limits<std::uint32_t>::max() ||
 		virtual_bases.size() > std::numeric_limits<std::uint32_t>::max() -
 			layouts.size())
-		throw std::runtime_error("too many virtual base layouts");
+		ThrowSemanticResourceLimit("too many virtual base layouts");
 	record.virtual_base_begin =
 		static_cast<std::uint32_t>(virtual_bases.size());
 	record.virtual_base_count =
@@ -82,7 +82,7 @@ const VirtualBaseLayout& Program::VirtualBase(EntityId derived,
 {
 	if (derived >= entities.size() ||
 		ordinal >= entities[derived].virtual_base_count)
-		throw std::logic_error("invalid virtual base layout query");
+		ThrowInternalCompilerError("invalid virtual base layout query");
 	return virtual_bases[entities[derived].virtual_base_begin + ordinal];
 }
 

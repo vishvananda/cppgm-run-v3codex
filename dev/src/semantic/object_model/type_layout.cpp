@@ -1,8 +1,8 @@
 #include "semantic/model/program.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -34,7 +34,7 @@ std::size_t Program::SizeOf(TypeId type) const
 				record.bound > std::numeric_limits<std::size_t>::max() ||
 				multiplier > std::numeric_limits<std::size_t>::max() /
 					static_cast<std::size_t>(record.bound))
-				throw std::runtime_error("invalid array size");
+				ThrowSemanticError("invalid array size");
 			multiplier *= static_cast<std::size_t>(record.bound);
 			type = record.child;
 			continue;
@@ -52,20 +52,20 @@ std::size_t Program::SizeOf(TypeId type) const
 			if (record.dependent_bound_parameter != kNoTemplateParameter ||
 				record.bound == 0 ||
 				record.bound > std::numeric_limits<std::size_t>::max())
-				throw std::runtime_error("dependent or invalid GNU vector size");
+				ThrowSemanticError("dependent or invalid GNU vector size");
 			size = static_cast<std::size_t>(record.bound);
 			break;
 		case TYPE_BITINT:
 			if (record.dependent_bound_parameter != kNoTemplateParameter ||
 				record.bound == 0 || record.bound > 128)
-				throw std::runtime_error("dependent or unsupported _BitInt size");
+				ThrowSemanticError("dependent or unsupported _BitInt size");
 			size = record.bound <= 8 ? 1 : record.bound <= 16 ? 2 :
 				record.bound <= 32 ? 4 : record.bound <= 64 ? 8 : 16;
 			break;
 		case TYPE_COMPLEX:
 			if (SizeOf(record.child) >
 				std::numeric_limits<std::size_t>::max() / 2)
-				throw std::runtime_error("complex object type is too large");
+				ThrowSemanticResourceLimit("complex object type is too large");
 			size = 2 * SizeOf(record.child);
 			break;
 		case TYPE_NAMED:
@@ -91,23 +91,23 @@ std::size_t Program::SizeOf(TypeId type) const
 					}
 					message += "]";
 				}
-				throw std::runtime_error(message);
+				ThrowSemanticError(message);
 			}
 			if (IsEnumNamedFlavor(entity.flavor))
 				size = SizeOf(entity.underlying);
 			else
 			{
 				if (!entity.layout_complete || entity.object_size == 0)
-					throw std::runtime_error("class layout is incomplete");
+					ThrowSemanticError("class layout is incomplete");
 				size = static_cast<std::size_t>(entity.object_size);
 			}
 			break;
 		}
-		default: throw std::runtime_error("invalid sizeof operand type");
+		default: ThrowSemanticError("invalid sizeof operand type");
 		}
 		if (multiplier == 0) return 0;
 		if (multiplier > std::numeric_limits<std::size_t>::max() / size)
-			throw std::runtime_error("object type is too large");
+			ThrowSemanticResourceLimit("object type is too large");
 		return multiplier * size;
 	}
 }
@@ -134,14 +134,14 @@ std::size_t Program::AlignOf(TypeId type) const
 	{
 		if (record->bound == 0 ||
 			record->bound > std::numeric_limits<std::size_t>::max())
-			throw std::runtime_error("invalid GNU vector alignment");
+			ThrowSemanticError("invalid GNU vector alignment");
 		alignment = static_cast<std::size_t>(record->bound);
 	}
 	else if (record->kind == TYPE_BITINT)
 	{
 		if (record->dependent_bound_parameter != kNoTemplateParameter ||
 			record->bound == 0 || record->bound > 128)
-			throw std::runtime_error("dependent or unsupported _BitInt alignment");
+			ThrowSemanticError("dependent or unsupported _BitInt alignment");
 		alignment = record->bound <= 8 ? 1 : record->bound <= 16 ? 2 :
 			record->bound <= 32 ? 4 : record->bound <= 64 ? 8 : 16;
 	}
@@ -151,7 +151,7 @@ std::size_t Program::AlignOf(TypeId type) const
 	{
 		const EntityRecord& entity = entities[record->entity];
 		if (!entity.complete)
-			throw std::runtime_error(std::string("incomplete named type: ") +
+			ThrowSemanticError(std::string("incomplete named type: ") +
 				RenderEntityEmissionName(record->entity) + " (" +
 				names.Get(entity.identity_name) + ")");
 		if (IsEnumNamedFlavor(entity.flavor))
@@ -159,12 +159,12 @@ std::size_t Program::AlignOf(TypeId type) const
 		else
 		{
 			if (!entity.layout_complete || entity.object_alignment == 0)
-				throw std::runtime_error("class layout is incomplete");
+				ThrowSemanticError("class layout is incomplete");
 			alignment = static_cast<std::size_t>(entity.object_alignment);
 		}
 	}
 	if (alignment == 0)
-		throw std::runtime_error("invalid alignof operand type");
+		ThrowSemanticError("invalid alignof operand type");
 	if (atomic && SizeOf(type) == 16)
 		alignment = std::max<std::size_t>(16, alignment);
 	return alignment;

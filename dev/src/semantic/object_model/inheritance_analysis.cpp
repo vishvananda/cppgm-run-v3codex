@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -368,7 +368,7 @@ ExpressionInfo Analyzer::ApplyMemberObjectTarget(
 		conversion_fact->base_projection_count : selected_projections;
 	if (projections == std::numeric_limits<std::size_t>::max() ||
 		projections > std::numeric_limits<std::uint32_t>::max())
-		throw std::logic_error("using member has no bounded base path");
+		ThrowInternalCompilerError("using member has no bounded base path");
 	const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION,
 		target, VALUE_PRVALUE);
 	dump_.nodes[cast].base_projection_count =
@@ -452,7 +452,7 @@ bool Analyzer::ApplyQualifiedMemberNamingTarget(ExpressionInfo* value,
 ExpressionInfo Analyzer::AnalyzeCast(NodeId node, ScopeId scope)
 {
 	const NodeId type_id = FindChild(node, ::cppgm::syntax::STAG_TYPE_ID);
-	if (type_id == kNoNode) throw std::runtime_error("cast without type-id");
+	if (type_id == kNoNode) ThrowSemanticError("cast without type-id");
 	NodeId operand_node = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -606,7 +606,7 @@ ExpressionInfo Analyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		target_record.kind != TYPE_RVALUE_REFERENCE &&
 		target_record.kind != TYPE_MEMBER_POINTER &&
 		explicit_target_kind != TYPE_NAMED && !vector_target)
-		throw std::runtime_error("unsupported cast target");
+		ThrowSemanticError("unsupported cast target");
 	const ValueCategory category = target_record.kind == TYPE_LVALUE_REFERENCE ?
 		VALUE_LVALUE : target_record.kind == TYPE_RVALUE_REFERENCE ?
 		VALUE_XVALUE : VALUE_PRVALUE;
@@ -632,7 +632,7 @@ ExpressionInfo Analyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			!reinterpret_reference_cast &&
 			!static_reference_downcast &&
 			reference_conversion == CONVERSION_INVALID)
-			throw std::runtime_error("invalid reference cast");
+			ThrowSemanticError("invalid reference cast");
 		if (reference_conversion == CONVERSION_DERIVED_TO_BASE)
 			return ApplyTarget(operand, target);
 		if (static_reference_downcast)
@@ -641,7 +641,7 @@ ExpressionInfo Analyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			std::uint64_t projection_offset = 0;
 			if (!program_->QueryBasePath(constructed_entity, operand_entity,
 				0, 0, &projection_offset))
-				throw std::logic_error("reference downcast has no base path");
+				ThrowInternalCompilerError("reference downcast has no base path");
 			if (projection_offset != 0)
 			{
 				const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION, target,
@@ -765,7 +765,7 @@ ExpressionInfo Analyzer::AnalyzeCast(NodeId node, ScopeId scope)
 				BaseProjectionCount(operand.type, target, &projection_offset);
 			if (projections == std::numeric_limits<std::size_t>::max() ||
 				projections > std::numeric_limits<std::uint32_t>::max())
-				throw std::logic_error("cast has no bounded base path");
+				ThrowInternalCompilerError("cast has no bounded base path");
 			dump_.nodes[cast].base_projection_count =
 				static_cast<std::uint32_t>(projections);
 			dump_.nodes[cast].base_projection_offset = projection_offset;
@@ -777,7 +777,7 @@ ExpressionInfo Analyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			std::uint64_t projection_offset = 0;
 			if (!program_->QueryBasePath(base, derived, 0, 0,
 				&projection_offset))
-				throw std::logic_error("pointer downcast has no base path");
+				ThrowInternalCompilerError("pointer downcast has no base path");
 			if (projection_offset != 0)
 			{
 				dump_.nodes[cast].base_projection_count = 1;
@@ -862,7 +862,7 @@ bool Analyzer::AnalyzeParenthesizedFunctionTemplateCast(
 	const std::vector<BindingId> candidates =
 		FunctionCallCandidates(scope, spelling, 0, name);
 	if (candidates.empty())
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"parenthesized function template has no specialization");
 	const BindingId selected = SelectOverload(
 		scope, argument_syntax, arguments, candidates);
@@ -923,7 +923,7 @@ ExpressionInfo Analyzer::AnalyzeImplicitDataMember(
 		 constexpr_frames_.back().receiver_address != kNoConstexprAddress))
 	{
 		if (!CanAccessMember(member_binding, naming_class))
-			throw std::runtime_error("inaccessible implicit data member");
+			ThrowSemanticError("inaccessible implicit data member");
 		ExpressionInfo result;
 		result.node = MakeDump(DUMP_MEMBER_EXPRESSION, binding.type,
 			VALUE_LVALUE, binding.name, member_binding);
@@ -975,7 +975,7 @@ ExpressionInfo Analyzer::AnalyzeImplicitDataMember(
 	const LookupResult this_lookup =
 		program_->LookupName(scope, this_name, LOOKUP_ORDINARY);
 	if (this_lookup.ordinary == kNoBinding)
-		throw std::runtime_error("non-static member requires an object");
+		ThrowSemanticError("non-static member requires an object");
 	TypeId member_type = binding.type;
 	const ExpressionInfo this_expression = AnalyzeThisExpression(scope);
 	TypeId object_type = EffectiveType(this_expression.type);
@@ -984,7 +984,7 @@ ExpressionInfo Analyzer::AnalyzeImplicitDataMember(
 	const EntityId object_class = object_pointer.kind == TYPE_POINTER ?
 		EntityOf(object_pointer.child) : kNoEntity;
 	if (!CanAccessMember(member_binding, naming_class, object_class))
-		throw std::runtime_error("inaccessible implicit data member");
+		ThrowSemanticError("inaccessible implicit data member");
 	if (object_pointer.kind == TYPE_POINTER)
 	{
 		const TypeRecord pointee = program_->types.Get(object_pointer.child);
@@ -994,21 +994,21 @@ ExpressionInfo Analyzer::AnalyzeImplicitDataMember(
 	const std::uint32_t member = MakeDump(DUMP_MEMBER_EXPRESSION,
 		member_type, VALUE_LVALUE, binding.name, member_binding);
 	if (object_class == kNoEntity)
-		throw std::logic_error("implicit member has no class context");
+		ThrowInternalCompilerError("implicit member has no class context");
 	std::uint64_t projection_offset = 0;
 	const std::size_t projections = BaseProjectionCount(
 		program_->entities[object_class].type,
 		program_->entities[binding.member_owner].type, &projection_offset);
 	if (projections == std::numeric_limits<std::size_t>::max() ||
 		projections > std::numeric_limits<std::uint32_t>::max())
-		throw std::logic_error("implicit member has no bounded base path");
+		ThrowInternalCompilerError("implicit member has no bounded base path");
 	const bool captured_object = current_function_context_ != kNoBinding &&
 		GetFunction(program_->bindings[
 			current_function_context_].canonical).
 			lambda_this_capture_member == this_expression.binding;
 	if (captured_object &&
 		projections == std::numeric_limits<std::uint32_t>::max())
-		throw std::logic_error("captured object projection count overflow");
+		ThrowSemanticResourceLimit("captured object projection count overflow");
 	dump_.nodes[member].base_projection_count = static_cast<std::uint32_t>(
 		projections + (captured_object ? 1 : 0));
 	dump_.nodes[member].base_projection_offset = projection_offset;
@@ -1028,7 +1028,8 @@ ExpressionInfo Analyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 	std::vector<NodeId> children;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge)) children.push_back(arena_->EdgeChild(edge));
-	if (children.size() != 3) throw std::runtime_error("invalid conditional");
+	if (children.size() != 3)
+		ThrowInternalCompilerError("invalid conditional");
 	ExpressionInfo condition = AnalyzeExpression(children[0], scope);
 	const bool class_condition = IsClassObjectType(condition.type);
 	if (!IsArithmetic(condition.type) && !IsPointer(Decay(condition.type)) &&
@@ -1192,7 +1193,7 @@ ExpressionInfo Analyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		category = VALUE_PRVALUE;
 	}
 	if (type == kNoType)
-		throw std::runtime_error("incompatible conditional arms at " +
+		ThrowSemanticError("incompatible conditional arms at " +
 			arena_->SourceFile(node) + ":" +
 			std::to_string(arena_->SourceLine(node)) + ":" +
 			std::to_string(arena_->SourceColumn(node)) + " (" +

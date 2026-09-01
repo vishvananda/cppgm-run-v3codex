@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -13,7 +13,7 @@ void Analyzer::ConfigureVirtualFunction(BindingId binding,
 	const SpecInfo& spec, NodeId declarator, NodeId initializer)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size())
-		throw std::logic_error("virtual function has no binding");
+		ThrowInternalCompilerError("virtual function has no binding");
 	BindingRecord& declaration = program_->bindings[binding];
 	const BindingId canonical_id = declaration.canonical;
 	BindingRecord& canonical = program_->bindings[canonical_id];
@@ -39,7 +39,7 @@ void Analyzer::ConfigureVirtualFunction(BindingId binding,
 	}
 	if (declaration.static_member_function &&
 		(spec.virtual_specifier || override_specifier || final_specifier || pure))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"static member function cannot have a virtual specifier");
 
 	declaration.virtual_function = declaration.virtual_function ||

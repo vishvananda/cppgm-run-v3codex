@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -92,7 +92,7 @@ void Analyzer::FinalizeClassVirtualBaseLayout(EntityId entity,
 	}
 	if (owner.requested_alignment != 0 &&
 		owner.requested_alignment < *natural_alignment)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"requested alignment is weaker than the natural class alignment");
 	*alignment = std::max(*alignment,
 		static_cast<std::size_t>(owner.requested_alignment));
@@ -113,7 +113,7 @@ void Analyzer::FinalizeClassVirtualBaseLayout(EntityId entity,
 		const std::size_t base_size = static_cast<std::size_t>(
 			base.nonvirtual_size == 0 ? base.object_size : base.nonvirtual_size);
 		if (*size > std::numeric_limits<std::size_t>::max() - base_size)
-			throw std::runtime_error("class layout is too large");
+			ThrowSemanticResourceLimit("class layout is too large");
 		*size += base_size;
 	}
 	program_->SetVirtualBaseLayouts(entity, layouts);
@@ -123,7 +123,7 @@ void Analyzer::FinalizeClassVirtualBaseLayout(EntityId entity,
 		if (!edge.virtual_base) continue;
 		std::uint64_t offset = 0;
 		if (!program_->FindVirtualBase(entity, edge.entity, &offset))
-			throw std::logic_error("direct virtual base has no layout fact");
+			ThrowInternalCompilerError("direct virtual base has no layout fact");
 		edge.offset = offset;
 	}
 	if (!layouts.empty())
@@ -155,7 +155,7 @@ void Analyzer::AddVirtualBaseInitializationActions(EntityId entity,
 		std::uint32_t virtual_ordinal = 0;
 		if (!program_->FindVirtualBase(
 			entity, edge.entity, 0, &virtual_ordinal))
-			throw std::logic_error("direct virtual base has no layout fact");
+			ThrowInternalCompilerError("direct virtual base has no layout fact");
 		direct_ordinals[virtual_ordinal] = static_cast<std::uint32_t>(candidate);
 	}
 	for (std::size_t virtual_ordinal = 0;

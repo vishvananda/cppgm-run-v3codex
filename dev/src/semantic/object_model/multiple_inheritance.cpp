@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -13,7 +13,7 @@ std::uint32_t Analyzer::BuildInheritedConstructorBaseAction(
 	const std::vector<BindingId>& parameters, std::size_t* base_ordinal)
 {
 	if (!base_ordinal || constructor.inherited_constructor_source == kNoBinding)
-		throw std::logic_error("missing inherited constructor source");
+		ThrowInternalCompilerError("missing inherited constructor source");
 	const BindingId source = constructor.inherited_constructor_source;
 	const EntityId base = program_->bindings[source].member_owner;
 	const std::size_t base_count = program_->entities[entity].direct_base_count;
@@ -25,7 +25,7 @@ std::uint32_t Analyzer::BuildInheritedConstructorBaseAction(
 			break;
 		}
 	if (*base_ordinal == base_count)
-		throw std::logic_error("inherited constructor has no direct base");
+		ThrowInternalCompilerError("inherited constructor has no direct base");
 	const FunctionInfo& source_info = GetFunction(source);
 	const std::uint32_t base_action = MakeDump(
 		DUMP_BASE_INITIALIZER_ACTION, program_->entities[base].type,
@@ -37,7 +37,7 @@ std::uint32_t Analyzer::BuildInheritedConstructorBaseAction(
 	const std::uint32_t call = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(source), VALUE_NONE, 0, source);
 	if (parameters.size() != source_info.parameters.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"inherited constructor parameter fact mismatch");
 	for (std::size_t i = 0; i < parameters.size(); ++i)
 	{
@@ -80,7 +80,7 @@ LookupResult Analyzer::LookupExplicitUnqualifiedTemplateName(
 		RecordCandidateSubstitutionFailure();
 		return LookupResult();
 	}
-	throw std::runtime_error("ambiguous template name");
+	ThrowSemanticError("ambiguous template name");
 }
 
 std::size_t Analyzer::FindClassTemplate(ScopeId scope,

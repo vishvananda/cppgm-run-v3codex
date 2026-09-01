@@ -1,7 +1,7 @@
 #include "semantic/model/program.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -100,7 +100,7 @@ void Program::StoreBasePathCache(EntityId derived, EntityId base, bool found,
 	}
 	if (base_path_cache_entries_.size() >=
 		std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many cached base paths");
+		ThrowSemanticResourceLimit("too many cached base paths");
 	BasePathCacheEntry entry(
 		derived, base, base_graph_versions_[derived]);
 	entry.found = found;
@@ -215,7 +215,7 @@ bool Program::QueryBasePath(EntityId derived, EntityId base,
 				}
 			}
 			if (!child.complete)
-				throw std::logic_error("cyclic class inheritance path");
+				ThrowInternalCompilerError("cyclic class inheritance path");
 			++frame.next_base;
 			if (child.path_count == 0) continue;
 			const bool candidate_all_public =
@@ -225,10 +225,10 @@ bool Program::QueryBasePath(EntityId derived, EntityId base,
 			if (select_candidate)
 			{
 				if (child.distance == std::numeric_limits<std::size_t>::max())
-					throw std::logic_error("class inheritance is too deep");
+					ThrowSemanticResourceLimit("class inheritance is too deep");
 				if (child.offset >
 					std::numeric_limits<std::uint64_t>::max() - edge.offset)
-					throw std::logic_error("base-subobject offset overflow");
+					ThrowSemanticResourceLimit("base-subobject offset overflow");
 				current.distance = child.distance + 1;
 				current.offset = edge.offset + child.offset;
 				current.first_base = frame.next_base - 1;
@@ -254,12 +254,12 @@ bool Program::QueryBasePath(EntityId derived, EntityId base,
 			for (std::size_t step = 0; current != base; ++step)
 			{
 				if (step >= entities.size())
-					throw std::logic_error("cyclic class inheritance path");
+					ThrowInternalCompilerError("cyclic class inheritance path");
 				const BasePathState& state = base_path_states_[current];
 				if (state.generation != generation ||
 					state.first_base ==
 						std::numeric_limits<std::uint32_t>::max())
-					throw std::logic_error("base path has no selected edge");
+					ThrowInternalCompilerError("base path has no selected edge");
 				direct_base_ordinals->push_back(state.first_base);
 				current = DirectBase(current, state.first_base).entity;
 			}
@@ -295,7 +295,7 @@ bool Program::QueryBasePath(EntityId derived, EntityId base,
 	{
 		const DirectBaseEdge& edge = DirectBase(current, 0);
 		if (total > std::numeric_limits<std::uint64_t>::max() - edge.offset)
-			throw std::logic_error("base-subobject offset overflow");
+			ThrowSemanticResourceLimit("base-subobject offset overflow");
 		total += edge.offset;
 		current = edge.entity;
 	}

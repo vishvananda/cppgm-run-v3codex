@@ -708,7 +708,8 @@ Append one row for each retained or rejected increment:
 | E4c | initialization and lifetime | construction/destruction diagnostics, capacity ceilings, and synthesized-state contradictions shared generic bases | typed semantic/resource/internal dispositions; substitution and constexpr status remain explicit | PA17 initialization/lifetime, PA21 constexpr, PA23 templates | successful full remains 0; generic logic/runtime sites -71/-125 | -14,336 text, -2,132 exception table, +200 unwind | frozen neutral; repeated full O1 -0.10% CPU, O3 +0.08% CPU | PA17 247/247; PA21 151/151; PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `e743a077` | retained |
 | E4d | template arguments, deduction, placeholders, validation, and identity support | template diagnostics and retained-state invariants shared generic bases | terminal source diagnostics typed; candidate substitution remains explicit status; limits/invariants bypass it | PA23 template deduction/substitution and retained templates | successful full remains 0; generic logic/runtime sites -86/-125 | -768 text, -1,820 exception table, +168 unwind | frozen neutral; repeated full O1 -0.10% CPU, O3 -0.05% CPU | PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `63354ba4` | retained |
 | E4e | class/function template formation and exception-specification cache | terminal template diagnostics and cache policy shared generic bases; runtime base selected permanent failure | typed semantic/resource/internal failures; only ordinary semantic disposition is cached failed, all other unwinds remain deferred | PA23 class/function templates and deferred exception-specification demand | successful full remains 0; generic logic/runtime sites -81/-73; internal runtime catches -1 | -11,840 text, -1,460 exception table, -376 unwind | frozen -1.0% user; repeated full O1 -0.14% CPU, O3 -0.17% CPU | PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `e9e719ee` | retained |
-| E4f | constant evaluation, constexpr objects/addresses, and alignment | source rejection, representation limits, and evaluator invariants shared generic bases | typed semantic/resource/internal failures; non-constant probe results and cleanup/rethrow guards remain status-based | PA21 constant expressions, constexpr initialization, and required-constant diagnostics | successful full remains 0; generic logic/runtime sites -48/-27 | -2,112 text, -1,068 exception table, -216 unwind | frozen neutral; full deferred to next periodic semantic checkpoint | PA21 151/151; through-PA21 2,417/2,417; frozen object exact | pending | retained |
+| E4f | constant evaluation, constexpr objects/addresses, and alignment | source rejection, representation limits, and evaluator invariants shared generic bases | typed semantic/resource/internal failures; non-constant probe results and cleanup/rethrow guards remain status-based | PA21 constant expressions, constexpr initialization, and required-constant diagnostics | successful full remains 0; generic logic/runtime sites -48/-27 | -2,112 text, -1,068 exception table, -216 unwind | frozen neutral; full deferred to next periodic semantic checkpoint | PA21 151/151; through-PA21 2,417/2,417; frozen object exact | `56214019` | retained |
+| E4g | class layout, inheritance, virtual dispatch, RTTI, and object attributes | object diagnostics, ABI/resource ceilings, and graph invariants shared generic bases | typed semantic/resource/internal failures; cleanup catches still rethrow | PA17 object model plus cumulative PA18-PA21 inheritance/RTTI behavior | successful full remains 0; generic logic/runtime sites -39/-57 | +1,856 text, +32 rodata, -920 exception table, +336 unwind | frozen neutral; clean mirrored full O1 -0.16% CPU, full O3 -0.34% CPU | PA17 247/247; through-PA21 2,417/2,417; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1187,6 +1188,39 @@ files.  Against `e9e719ee`, `.text` changes 6,578,534 -> 6,576,422,
 objects remain exact at `8545fec6...`; baseline/candidate user medians are
 0.475/0.470 seconds and paired timing is neutral.  The next combined semantic
 checkpoint owns the periodic full O1/O3 measurement.
+
+### E4g execution record
+
+Class layout, inheritance paths, polymorphic views, virtual-base indexing,
+RTTI, casts, and object-section attributes now separate source diagnostics,
+semantic/ABI representation ceilings, and retained graph contradictions.  The
+slice converts 39 generic logic throws and 57 generic runtime throws.  Layout,
+path, virtual-slot, and runtime-offset capacity use semantic-domain
+`ResourceLimitError`; invalid C++ casts, access, overrides, RTTI use, and object
+attributes use `SemanticError`; impossible cached identities and graph shapes
+use `InternalCompilerError`.
+
+The existing catch-alls in inheritance/RTTI paths only restore current-class
+or conditionally-evaluated context and rethrow.  They do not select a semantic
+fallback.  PA17 passes 247/247 and through-PA21 passes 2,417/2,417, covering
+layout and inheritance behavior through later RTTI/constant-expression uses.
+The exception audit ratchets to 1,014 generic logic throws and 745 generic
+runtime throws in 156 files.
+
+Against `56214019`, `.text` changes 6,576,422 -> 6,578,278, `.rodata`
+214,240 -> 214,272, `.eh_frame_hdr` 51,204 -> 51,284, `.eh_frame`
+323,240 -> 323,496, and `.gcc_except_table` 154,660 -> 153,740.  Frozen output
+remains exact at `8545fec6...`; baseline/candidate user medians are
+0.480/0.475 seconds.
+
+The periodic full checkpoint used an A/B/B/A block and a mirrored B/A/A/B
+block.  Every one of the 222 requested-O1 and O3 objects is exact.  The first
+O1 baseline lane was an isolated 512.89-second aggregate-CPU load outlier; its
+paired baseline returned to 487.30 seconds and the outlier is not treated as a
+candidate win.  The clean mirrored O1 block averages baseline/candidate
+490.350/489.570 seconds (-0.16%).  Across all eight O3 lanes the averages are
+494.693/493.008 seconds (-0.34%).  The code-shape tradeoff is therefore retained
+as dynamically neutral.
 
 ## Initial code map
 

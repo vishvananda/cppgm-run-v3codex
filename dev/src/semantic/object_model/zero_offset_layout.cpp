@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -65,7 +65,7 @@ std::uint32_t Analyzer::BeginClassZeroOffsetSubobjects(EntityId entity)
 {
 	const std::size_t member_count = entity_layout_members_[entity].size();
 	if (member_count >= std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many class layout members");
+		ThrowSemanticResourceLimit("too many class layout members");
 	zero_offset_subobject_marks_.resize(program_->entities.size(), 0);
 	const std::uint32_t reserve =
 		static_cast<std::uint32_t>(member_count + 1);
