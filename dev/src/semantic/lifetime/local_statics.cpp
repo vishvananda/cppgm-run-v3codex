@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/analysis/switch.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -34,7 +34,7 @@ bool Analyzer::IsNonthrowing(NodeId declarator, ScopeId scope,
 		return false;
 	const NodeId expression_node = FirstSemanticChild(qualifier);
 	if (expression_node == kNoNode)
-		throw std::logic_error("missing noexcept expression");
+		ThrowInternalCompilerError("missing noexcept expression");
 	const std::size_t outer_suppression =
 		constant_evaluation_suppressed_depth_;
 	constant_evaluation_suppressed_depth_ = 0;
@@ -54,7 +54,7 @@ bool Analyzer::IsNonthrowing(NodeId declarator, ScopeId scope,
 	--constant_expression_required_depth_;
 	constant_evaluation_suppressed_depth_ = outer_suppression;
 	if (!expression.constant || !IsIntegral(expression.type, true))
-		throw std::runtime_error("nonconstant noexcept expression");
+		ThrowSemanticError("nonconstant noexcept expression");
 	return expression.value != 0;
 }
 
@@ -103,14 +103,14 @@ void Analyzer::ConfigureFunctionExceptionSpecification(
 	{
 		const NodeId list = FindChild(qualifier, ::cppgm::syntax::STAG_EXCEPTION_TYPE_LIST);
 		if (list == kNoNode)
-			throw std::logic_error("dynamic exception specification has no type list");
+			ThrowInternalCompilerError("dynamic exception specification has no type list");
 		for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
 		{
 			TypeId type = Decay(BuildTypeId(arena_->EdgeChild(edge), scope));
 			type = program_->types.RemoveTopCv(type);
 			if (IsVoid(type))
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"void is not an allowed exception type");
 			allowed.push_back(type);
 		}
@@ -122,18 +122,18 @@ void Analyzer::ConfigureFunctionExceptionSpecification(
 	{
 		if (record.exception_boundary != boundary ||
 			record.exception_type_count != allowed.size())
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"conflicting function exception specification");
 		for (std::size_t i = 0; i < allowed.size(); ++i)
 			if (program_->function_exception_types[
 				record.exception_type_begin + i] != allowed[i])
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"conflicting function exception specification");
 		return;
 	}
 	if (program_->function_exception_types.size() >
 		std::numeric_limits<std::uint32_t>::max() - allowed.size())
-		throw std::runtime_error("too many function exception types");
+		ThrowSemanticResourceLimit("too many function exception types");
 	record.exception_boundary = boundary;
 	record.exception_type_begin = static_cast<std::uint32_t>(
 		program_->function_exception_types.size());
@@ -285,7 +285,7 @@ bool Analyzer::IsConstexprCallableType(TypeId type,
 {
 	const TypeRecord& function = program_->types.Get(type);
 	if (function.kind != TYPE_FUNCTION)
-		throw std::logic_error("constexpr callable has non-function type");
+		ThrowInternalCompilerError("constexpr callable has non-function type");
 	if (!constructor && !IsConstexprLiteralType(function.child)) return false;
 	const TypeId* parameters = program_->types.Parameters(type);
 	for (std::size_t i = 0; i < function.parameter_count; ++i)
@@ -299,7 +299,7 @@ TypeId Analyzer::ApplyConstexprMemberFunctionType(TypeId type,
 	if (owner == kNoEntity || static_member) return type;
 	const TypeRecord& function = program_->types.Get(type);
 	if (function.kind != TYPE_FUNCTION)
-		throw std::logic_error("constexpr member has non-function type");
+		ThrowInternalCompilerError("constexpr member has non-function type");
 	if ((function.cv & CV_CONST) != 0) return type;
 	const TypeId* parameter_data = program_->types.Parameters(type);
 	std::vector<TypeId> parameters;
@@ -337,7 +337,7 @@ void Analyzer::ValidateConstexprCallableType(TypeId type,
 	bool constructor) const
 {
 	if (!IsConstexprCallableType(type, constructor))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"constexpr callable uses a non-literal result or parameter type");
 }
 
@@ -345,7 +345,7 @@ void Analyzer::ValidateConstexprClassDeclarations(
 	EntityId entity)
 {
 	if (entity == kNoEntity || entity >= program_->entities.size())
-		throw std::logic_error("invalid constexpr class validation owner");
+		ThrowInternalCompilerError("invalid constexpr class validation owner");
 	const TypeId owner_type = program_->entities[entity].type;
 	const bool template_specialization =
 		IsClassTemplateSpecializationContext(entity);
@@ -367,7 +367,7 @@ void Analyzer::ValidateConstexprClassDeclarations(
 				}
 				ValidateConstexprCallableType(constructor.type, true);
 				if (!constructor_owner_suitable)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"constexpr constructor has non-literal subobjects");
 			}
 		}
@@ -378,7 +378,7 @@ void Analyzer::ValidateConstexprClassDeclarations(
 			FunctionInfo& function = GetMutableFunction(binding);
 			if (!function.constexpr_function) continue;
 			if (program_->bindings[binding].virtual_function)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"constexpr function may not be virtual");
 			if (template_specialization &&
 				(!IsConstexprCallableType(function.type, false) ||
@@ -391,7 +391,7 @@ void Analyzer::ValidateConstexprClassDeclarations(
 			ValidateConstexprCallableType(function.type, false);
 			if (!program_->bindings[binding].static_member_function &&
 				!IsConstexprLiteralType(owner_type))
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"constexpr member function owner is not a literal type");
 		}
 	if (entity < entity_conversion_functions_.size())
@@ -402,7 +402,7 @@ void Analyzer::ValidateConstexprClassDeclarations(
 			FunctionInfo& function = GetMutableFunction(binding);
 			if (!function.constexpr_function) continue;
 			if (program_->bindings[binding].virtual_function)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"constexpr conversion function may not be virtual");
 			if (template_specialization &&
 				(!IsConstexprCallableType(function.type, false) ||
@@ -413,7 +413,7 @@ void Analyzer::ValidateConstexprClassDeclarations(
 			}
 			ValidateConstexprCallableType(function.type, false);
 			if (!IsConstexprLiteralType(owner_type))
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"constexpr conversion function owner is not a literal type");
 		}
 }
@@ -425,7 +425,7 @@ void Analyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 	std::uint32_t source_token_last, bool constant_initialized)
 {
 	if (current_function_context_ == kNoBinding)
-		throw std::logic_error("local static object has no function owner");
+		ThrowInternalCompilerError("local static object has no function owner");
 	const BindingId function =
 		program_->bindings[current_function_context_].canonical;
 	const BindingRecord& function_record = program_->bindings[function];
@@ -438,7 +438,7 @@ void Analyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 	std::uint32_t& declaration_ordinal =
 		local_static_count_by_function_[function];
 	if (declaration_ordinal == std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many local static declarations");
+		ThrowSemanticResourceLimit("too many local static declarations");
 	const std::uint32_t ordinal = declaration_ordinal++;
 	std::uint32_t destructor_action = kNoDumpEdge;
 	const EntityId entity = dump_.nodes[variable].storage_size == 0 ?
@@ -446,12 +446,12 @@ void Analyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 	if (entity != kNoEntity)
 	{
 		if (!program_->entities[entity].destructible)
-			throw std::runtime_error("local static object type is not destructible");
+			ThrowSemanticError("local static object type is not destructible");
 		const BindingId destructor = DestructorForType(type);
 		if (destructor == kNoBinding)
-			throw std::logic_error("local static class has no destructor identity");
+			ThrowInternalCompilerError("local static class has no destructor identity");
 		if (!CanAccessMember(destructor, entity))
-			throw std::runtime_error("inaccessible local static object destructor");
+			ThrowSemanticError("inaccessible local static object destructor");
 		if (!program_->entities[entity].trivial_destructor)
 		{
 			destructor_action = MakeDestructorAction(type, destructor, object);
@@ -467,7 +467,7 @@ void Analyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 		function_record.function_template_abi_recipe;
 	if (recipe != kNoFunctionTemplateAbiRecipe &&
 		recipe >= program_->function_template_abi_recipes.size())
-		throw std::logic_error("local static function has invalid ABI recipe");
+		ThrowInternalCompilerError("local static function has invalid ABI recipe");
 	const bool recipe_source_identity =
 		recipe != kNoFunctionTemplateAbiRecipe &&
 		(program_->function_template_abi_recipes[recipe].overloaded_pattern ||

@@ -1,6 +1,5 @@
 #include "semantic/analysis/analyzer.h"
-
-#include <stdexcept>
+#include "support/exceptions.h"
 
 namespace cppgm
 {
@@ -32,12 +31,12 @@ void Analyzer::AddLifetimeObligation(ScopeId scope,
 	if (entity == kNoEntity) return;
 	EnsureClassDefinition(type);
 	if (!program_->entities[entity].destructible)
-		throw std::runtime_error("object type is not destructible");
+		ThrowSemanticError("object type is not destructible");
 	const BindingId destructor = DestructorForType(type);
 	if (destructor == kNoBinding)
-		throw std::logic_error("class has no destructor identity");
+		ThrowInternalCompilerError("class has no destructor identity");
 	if (!CanAccessMember(destructor, entity))
-		throw std::runtime_error("inaccessible destructor");
+		ThrowSemanticError("inaccessible destructor");
 	const TypeKind object_kind = program_->types.Get(
 		program_->types.RemoveTopCv(type)).kind;
 	if (program_->entities[entity].trivial_destructor) return;

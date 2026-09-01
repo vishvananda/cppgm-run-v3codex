@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
 #include "preprocess/tokens/post_tokenizer.h"
+#include "support/exceptions.h"
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 namespace cppgm
 {
 namespace semantic
@@ -20,7 +20,7 @@ std::vector<unsigned char> DecodeStringInitializer(
 {
 	std::string decoded;
 	if (!DecodeNarrowStringLiteral(spelling, &decoded))
-		throw std::runtime_error("invalid string array initializer");
+		ThrowSemanticError("invalid string array initializer");
 	std::vector<unsigned char> bytes(decoded.begin(), decoded.end());
 	bytes.push_back(0);
 	return bytes;
@@ -38,9 +38,9 @@ BindingId Analyzer::ValidateClassValueConstruction(TypeId type,
 	EnsureClassDefinition(type);
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
-		throw std::logic_error("class-value construction has non-class type");
+		ThrowInternalCompilerError("class-value construction has non-class type");
 	if (program_->entities[entity].abstract_class)
-		throw std::runtime_error("cannot construct an abstract class value");
+		ThrowSemanticError("cannot construct an abstract class value");
 	std::vector<NodeId> argument_syntax(1, kNoNode);
 	std::vector<ExpressionInfo> arguments(1, source);
 	return SelectConstructor(kNoScope, argument_syntax, arguments,
@@ -53,7 +53,7 @@ std::uint32_t Analyzer::BuildClassValueConstructorAction(TypeId type,
 	EnsureClassDefinition(type);
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
-		throw std::logic_error("class-value construction has non-class type");
+		ThrowInternalCompilerError("class-value construction has non-class type");
 	std::vector<NodeId> argument_syntax(1, kNoNode);
 	std::vector<ExpressionInfo> arguments(1, source);
 	std::vector<CallConversionFact> selected_conversions;
@@ -64,7 +64,7 @@ std::uint32_t Analyzer::BuildClassValueConstructorAction(TypeId type,
 	const TypeRecord function_type = program_->types.Get(constructor.type);
 	const TypeId* parameter_data = program_->types.Parameters(constructor.type);
 	if (function_type.parameter_count == 0)
-		throw std::logic_error("class-value constructor has no source parameter");
+		ThrowInternalCompilerError("class-value constructor has no source parameter");
 	const std::vector<TypeId> parameters(parameter_data,
 		parameter_data + function_type.parameter_count);
 	const ExpressionInfo converted_source = ApplyCallArgument(
@@ -116,7 +116,7 @@ std::uint32_t Analyzer::BuildClassValueConstructorAction(TypeId type,
 	{
 		if (a >= constructor.parameters.size() ||
 			constructor.parameters[a].default_argument == kNoNode)
-			throw std::logic_error("class-value constructor lacks default argument");
+			ThrowInternalCompilerError("class-value constructor lacks default argument");
 		ExpressionInfo argument = AnalyzeExpression(
 			constructor.parameters[a].default_argument,
 			constructor.parameters[a].default_scope, parameters[a]);
@@ -162,7 +162,7 @@ ExpressionInfo Analyzer::BuildClassConditional(
 {
 	const TypeId object = program_->types.RemoveTopCv(EffectiveType(type));
 	if (!IsClassEntity(*program_, EntityOf(object)))
-		throw std::logic_error("class conditional has non-class result");
+		ThrowInternalCompilerError("class conditional has non-class result");
 	const ExpressionInfo operands[2] = {yes, no};
 	std::uint32_t arms[2] = {kNoDumpEdge, kNoDumpEdge};
 	for (std::size_t i = 0; i < 2; ++i)
@@ -243,13 +243,13 @@ ExpressionInfo Analyzer::RetargetClassConditional(
 	const ExpressionInfo& value, TypeId type)
 {
 	if (dump_.nodes[value.node].kind != DUMP_CONDITIONAL_EXPRESSION)
-		throw std::logic_error("retargeted class value is not conditional");
+		ThrowInternalCompilerError("retargeted class value is not conditional");
 	std::vector<std::uint32_t> children;
 	for (std::uint32_t edge = dump_.nodes[value.node].first_edge;
 		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 		children.push_back(dump_.edges[edge].child);
 	if (children.size() != 3)
-		throw std::logic_error("invalid class conditional shape");
+		ThrowInternalCompilerError("invalid class conditional shape");
 	if (value.category == VALUE_PRVALUE &&
 		dump_.nodes[children[1]].kind == DUMP_CONDITIONAL_ARM &&
 		dump_.nodes[children[2]].kind == DUMP_CONDITIONAL_ARM)
@@ -365,7 +365,7 @@ std::uint32_t Analyzer::BuildDefaultConstructorAction(TypeId type,
 		return BuildConstructorAction(type, scope, arguments, false, false);
 	}
 	if (record.bound == 0)
-		throw std::runtime_error("default construction of an unbounded array");
+		ThrowSemanticError("default construction of an unbounded array");
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ARRAY_ACTION);
 	dump_.nodes[action].operand_type = object;
 	const BindingId destructor = DestructorForType(object);
@@ -409,7 +409,7 @@ ExpressionInfo Analyzer::BuildDirectClassValueTransfer(
 		 !validated_special_member) ||
 		program_->types.RemoveTopCv(EffectiveType(source.type)) !=
 			program_->types.RemoveTopCv(EffectiveType(target)))
-		throw std::logic_error("invalid direct class-value transfer");
+		ThrowInternalCompilerError("invalid direct class-value transfer");
 	const std::uint32_t action = MakeDump(DUMP_CLASS_VALUE_TRANSFER,
 		program_->types.RemoveTopCv(EffectiveType(target)), VALUE_PRVALUE);
 	dump_.nodes[action].selected_binding = selected_constructor;
@@ -443,7 +443,7 @@ void Analyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 		if (placeholder_return)
 			PublishPlaceholderFunctionReturn(current_function_context_, 0);
 		if (!IsVoid(current_return_type_))
-			throw std::runtime_error("missing return value");
+			ThrowSemanticError("missing return value");
 	}
 	else
 	{
@@ -475,7 +475,7 @@ void Analyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 		else if (!IsVoid(current_return_type_) && !class_return)
 			value = ApplyTarget(value, current_return_type_);
 		if (IsVoid(current_return_type_) && !IsVoid(value.type))
-			throw std::runtime_error("void function returns a value");
+			ThrowSemanticError("void function returns a value");
 		if (class_return && dump_.nodes[value.node].kind ==
 			DUMP_TEMPORARY_OBJECT &&
 			dump_.nodes[value.node].first_edge != kNoDumpEdge &&
@@ -791,13 +791,13 @@ ExpressionInfo Analyzer::AnalyzeVariableInitializer(
 			const bool expanded = ExpandCallArgumentPacks(
 				syntax, scope, &syntax, &expanded_values);
 			if ((expanded ? expanded_values.size() : syntax.size()) > 1)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"scalar direct-initializer has multiple arguments");
 			if ((expanded ? expanded_values.size() : syntax.size()) == 0)
 			{
 				if (declared_kind == TYPE_LVALUE_REFERENCE ||
 					declared_kind == TYPE_RVALUE_REFERENCE)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"reference direct-initializer is empty");
 				initializer = MakeLiteral(type, program_->names.Intern("0"));
 				initializer.constant = true;
@@ -839,13 +839,13 @@ void Analyzer::AddMemberInitializationAction(BindingId member_id,
 		program_->entities[member_entity].union_default_member == kNoBinding) return;
 	if (initializer == kNoNode && (member_kind == TYPE_LVALUE_REFERENCE ||
 		member_kind == TYPE_RVALUE_REFERENCE))
-		throw std::runtime_error("reference member is not initialized");
+		ThrowSemanticError("reference member is not initialized");
 	if (initializer == kNoNode && member_kind == TYPE_QUALIFIED)
 	{
 		const TypeRecord& qualified = program_->types.Get(member.type);
 		if ((qualified.cv & CV_CONST) != 0 &&
 			!IsClassEntity(*program_, EntityOf(qualified.child)))
-			throw std::runtime_error("const scalar member is not initialized");
+			ThrowSemanticError("const scalar member is not initialized");
 	}
 	if (initializer == kNoNode && !class_member) return;
 	const bool copy_initialization = initializer != kNoNode &&
@@ -861,7 +861,7 @@ void Analyzer::AddMemberInitializationAction(BindingId member_id,
 		{
 			const BindingId destructor = DestructorForType(member.type);
 			if (destructor == kNoBinding)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"constructed member has no destructor identity");
 			dump_.nodes[action].selected_binding = destructor;
 		}
@@ -876,7 +876,7 @@ void Analyzer::AddMemberInitializationAction(BindingId member_id,
 			arena_->IsTag(initializer, ::cppgm::syntax::STAG_PAREN_ARGUMENT_LIST))
 		{
 			if (arena_->FirstEdge(initializer) != kNoEdge)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"array member initializer has arguments");
 			value = BuildDefaultConstructorAction(member.type, scope);
 			std::uint32_t element = value;
@@ -885,7 +885,7 @@ void Analyzer::AddMemberInitializationAction(BindingId member_id,
 			{
 				const std::uint32_t edge = dump_.nodes[element].first_edge;
 				if (edge == kNoDumpEdge)
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"constructor array has no element action");
 				element = dump_.edges[edge].child;
 			}
@@ -920,7 +920,7 @@ void Analyzer::AddMemberInitializationAction(BindingId member_id,
 					if (program_->types.RemoveTopCv(
 						EffectiveType(initialized.type)) !=
 						program_->types.RemoveTopCv(EffectiveType(member.type)))
-						throw std::runtime_error(
+						ThrowSemanticError(
 							"invalid class default member initializer");
 					if (initialized.category == VALUE_PRVALUE &&
 						dump_.nodes[initialized.node].kind == DUMP_CALL_EXPRESSION &&
@@ -985,7 +985,7 @@ void Analyzer::AddMemberInitializationAction(BindingId member_id,
 				for (std::size_t i = 0; i < syntax.size(); ++i)
 					values.push_back(AnalyzeExpression(syntax[i], scope));
 			if (values.size() > 1)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"scalar member has multiple initializers");
 			for (std::size_t i = 0; i < values.size(); ++i)
 				dump_.Add(list, ApplyTarget(values[i], member.type).node);
@@ -1017,7 +1017,7 @@ void Analyzer::RecordDelegatingConstructor(BindingId source,
 	if (source_info.delegated_constructor != kNoBinding)
 	{
 		if (complete_identity(source_info.delegated_constructor) != selected)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"constructor has conflicting delegation facts");
 		return;
 	}
@@ -1025,7 +1025,7 @@ void Analyzer::RecordDelegatingConstructor(BindingId source,
 	for (std::size_t depth = 0; depth <= functions_.size(); ++depth)
 	{
 		if (cursor == source)
-			throw std::runtime_error("delegating constructor cycle");
+			ThrowSemanticError("delegating constructor cycle");
 		const BindingId next = GetFunction(cursor).delegated_constructor;
 		if (next == kNoBinding)
 		{
@@ -1034,7 +1034,7 @@ void Analyzer::RecordDelegatingConstructor(BindingId source,
 		}
 		cursor = complete_identity(next);
 	}
-	throw std::logic_error("cyclic constructor delegation fact graph");
+	ThrowInternalCompilerError("cyclic constructor delegation fact graph");
 }
 
 void Analyzer::CollectConstructorInitializers(
@@ -1061,7 +1061,7 @@ void Analyzer::CollectConstructorInitializers(
 			initializer, function_scope, &element_scopes))
 		{
 			if (CandidateSubstitutionFailed()) return;
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"constructor pack expansion contains no unexpanded pack");
 		}
 		for (std::size_t element = 0;
@@ -1082,7 +1082,7 @@ void Analyzer::AddConstructorMemberActions(
 {
 	const EntityId entity = program_->bindings[constructor.binding].member_owner;
 	if (entity == kNoEntity || entity >= entity_data_members_.size())
-		throw std::logic_error("constructor is missing its member index");
+		ThrowInternalCompilerError("constructor is missing its member index");
 	// Snapshot member order across re-entrant lambda entity construction.
 	const std::vector<BindingId> members = entity_data_members_[entity];
 	if (constructor_initializer_scratch_.size() < members.size())
@@ -1116,7 +1116,7 @@ void Analyzer::AddConstructorMemberActions(
 				initializer_scopes[initializer_index];
 			const NodeId id = FindChild(initializer, ::cppgm::syntax::STAG_MEM_INITIALIZER_ID);
 			if (id == kNoNode)
-				throw std::runtime_error("member initializer has no target");
+				ThrowSemanticError("member initializer has no target");
 			const NameId name = program_->names.UseInterned(arena_->PayloadId(id));
 			const LookupResult found = program_->LookupDirect(
 				program_->entities[entity].member_scope, name, LOOKUP_ORDINARY);
@@ -1129,7 +1129,7 @@ void Analyzer::AddConstructorMemberActions(
 					!arena_->IsTag(child, ::cppgm::syntax::STAG_PACK_EXPANSION)) value = child;
 			}
 			if (value == kNoNode)
-				throw std::runtime_error("member initializer has no value");
+				ThrowSemanticError("member initializer has no value");
 			LookupResult target_type;
 			const NodeId structured = FindChild(id, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 			if (structured != kNoNode)
@@ -1155,7 +1155,7 @@ void Analyzer::AddConstructorMemberActions(
 				EntityOf(target_type.type) == entity)
 			{
 				if (initializer_count != 1)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"delegating initializer must be the only initializer");
 				std::vector<NodeId> arguments;
 				const bool list_initialization =
@@ -1199,23 +1199,23 @@ void Analyzer::AddConstructorMemberActions(
 				if (RecordInjectedMemberInitializer(member, entity, value)) continue;
 				if (program_->entities[entity].flavor == NAMED_UNION &&
 					!constructor_initializer_touched_.empty())
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"union constructor initializes multiple variants");
 				const std::uint32_t ordinal =
 					program_->BindingLayout(
 						program_->bindings[member]).member_ordinal;
 				if (ordinal >= members.size() || members[ordinal] != member)
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"constructor member has no canonical ordinal");
 				if (constructor_initializer_scratch_[ordinal] != kNoNode)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"duplicate constructor member initializer");
 				constructor_initializer_scratch_[ordinal] = value;
 				constructor_initializer_touched_.push_back(member);
 				continue;
 			}
 			if (found.ordinary != kNoBinding)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"constructor initializer target is not a data member");
 			const EntityId target_base = EntityOf(target_type.type);
 			std::size_t base_ordinal = base_count;
@@ -1226,14 +1226,14 @@ void Analyzer::AddConstructorMemberActions(
 					break;
 				}
 			if (base_ordinal == base_count)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"unknown constructor member initializer");
 			if (target_type.type_declaration != kNoBinding &&
 				!CanAccessMember(target_type.type_declaration,
 					target_type.naming_class))
-				throw std::runtime_error("inaccessible base initializer type");
+				ThrowSemanticError("inaccessible base initializer type");
 			if (base_initializer_seen[base_ordinal])
-				throw std::runtime_error("duplicate base initializer");
+				ThrowSemanticError("duplicate base initializer");
 			base_initializers[base_ordinal] = value;
 			base_initializer_scopes[base_ordinal] = initializer_scope;
 			base_initializer_seen[base_ordinal] = 1;
@@ -1272,7 +1272,7 @@ void Analyzer::AddConstructorMemberActions(
 				program_->BindingLayout(
 					program_->bindings[active]).member_ordinal;
 			if (ordinal >= members.size() || members[ordinal] != active)
-				throw std::logic_error("union active member has no canonical ordinal");
+				ThrowInternalCompilerError("union active member has no canonical ordinal");
 			NodeId initializer = constructor_initializer_scratch_[ordinal];
 			if (initializer == kNoNode &&
 				active < member_initializer_by_binding_.size())
@@ -1310,7 +1310,7 @@ void Analyzer::AddBaseInitializationAction(EntityId entity,
 	std::uint32_t body, bool pack_expanded)
 {
 	if (base_ordinal >= program_->entities[entity].direct_base_count)
-		throw std::logic_error("base initialization has no direct base");
+		ThrowInternalCompilerError("base initialization has no direct base");
 	const DirectBaseEdge& edge = program_->DirectBase(entity, base_ordinal);
 	AddBaseInitializationActionAt(entity, edge.entity, edge.offset,
 		initializer, scope, body, pack_expanded);
@@ -1344,7 +1344,7 @@ void Analyzer::AddBaseInitializationActionAt(EntityId entity,
 	{
 		BindingId destructor = DestructorForType(base_type);
 		if (destructor == kNoBinding)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"constructed base has no destructor identity");
 		destructor = EnsureDestructorBaseEntry(destructor);
 		dump_.nodes[action].selected_binding = destructor;
@@ -1481,12 +1481,12 @@ ExpressionInfo Analyzer::AnalyzeAggregateElement(TypeId type,
 			const TypeRecord element_record = program_->types.Get(element);
 			if (element_record.kind != TYPE_FUNDAMENTAL ||
 				element_record.fundamental != FUND_CHAR)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"string literal initializes a non-character array");
 			const std::vector<unsigned char> bytes =
 				DecodeStringInitializer(arena_->Payload(source));
 			if (record.bound != 0 && bytes.size() > record.bound)
-				throw std::runtime_error("string literal is too long for array");
+				ThrowSemanticError("string literal is too long for array");
 			TypeId initialized_type = type;
 			if (record.bound == 0)
 				initialized_type = program_->types.Array(record.child, bytes.size());
@@ -1600,7 +1600,7 @@ ExpressionInfo Analyzer::AnalyzeAggregateElement(TypeId type,
 	}
 	if (record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE)
-		throw std::runtime_error("omitted aggregate reference member");
+		ThrowSemanticError("omitted aggregate reference member");
 	ExpressionInfo omitted;
 	omitted.type = type;
 	omitted.category = VALUE_NONE;
@@ -1613,7 +1613,7 @@ std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity) ||
 		!program_->entities[entity].is_aggregate)
-		throw std::logic_error("aggregate helper has non-aggregate type");
+		ThrowInternalCompilerError("aggregate helper has non-aggregate type");
 	std::vector<std::uint32_t> actions;
 	for (std::uint32_t edge = dump_.nodes[aggregate_list].first_edge; edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 		actions.push_back(dump_.edges[edge].child);
@@ -1642,7 +1642,7 @@ std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 	{
 		const DumpNode& action = dump_.nodes[actions[i]];
 		if (action.kind != DUMP_INITIALIZER_ACTION || action.binding == kNoBinding)
-			throw std::logic_error("aggregate helper has invalid member action");
+			ThrowInternalCompilerError("aggregate helper has invalid member action");
 		const BindingId member_destructor = DestructorForType(action.type);
 		const bool direct_omitted_class = action.value_initialization &&
 			member_destructor != kNoBinding &&
@@ -1650,15 +1650,16 @@ std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 		if (action.first_edge != kNoDumpEdge && !direct_omitted_class)
 		{
 			if (dump_.edges[action.first_edge].next != kNoDumpEdge)
-				throw std::runtime_error("aggregate helper member has multiple values");
+				ThrowInternalCompilerError("aggregate helper member has multiple values");
 			parameter_member_count = i + 1;
 		}
 		const TypeKind kind = program_->types.Get(program_->types.RemoveTopCv(action.type)).kind;
 		if (kind == TYPE_ARRAY && !allow_array_members)
 			return aggregate_list;
 	}
-	if (parameter_member_count > std::numeric_limits<std::uint32_t>::max()) throw
-		std::runtime_error("aggregate helper parameter prefix is too large");
+	if (parameter_member_count > std::numeric_limits<std::uint32_t>::max())
+		ThrowSemanticResourceLimit(
+			"aggregate helper parameter prefix is too large");
 	std::vector<std::uint32_t> values;
 	std::vector<BindingId> members;
 	std::vector<BindingId> member_constructors;
@@ -1687,7 +1688,7 @@ std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 		if (kind == TYPE_ARRAY && allow_array_members)
 		{
 			if (action.first_edge == kNoDumpEdge)
-				throw std::logic_error("omitted aggregate array has no value plan");
+				ThrowInternalCompilerError("omitted aggregate array has no value plan");
 			std::vector<std::uint32_t> pending(1, dump_.edges[action.first_edge].child);
 			while (!pending.empty())
 			{
@@ -1739,7 +1740,7 @@ std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 			if (constructor == kNoBinding ||
 				GetFunction(constructor).deleted_constructor ||
 				GetFunction(constructor).deleted_special_member)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"aggregate member has no usable value constructor");
 			if (!GetFunction(constructor).trivial_special_member)
 			{
@@ -1752,7 +1753,7 @@ std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 				destructor = DestructorForType(action.type);
 				if (destructor == kNoBinding || GetFunction(destructor).deleted_destructor ||
 					!CanAccessMember(destructor, member_entity))
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"aggregate member is not destructible");
 				if (!GetFunction(destructor).defined)
 					GetMutableFunction(destructor).deferred = true;
@@ -1771,13 +1772,13 @@ std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 	if (widest != kNoDumpEdge)
 	{
 		if (widest >= aggregate_helpers_.size())
-			throw std::logic_error("aggregate helper owner index is invalid");
+			ThrowInternalCompilerError("aggregate helper owner index is invalid");
 		const AggregateHelperInfo& prior = aggregate_helpers_[widest];
 		if (prior.members != members ||
 			prior.member_constructors != member_constructors ||
 			prior.member_destructors != member_destructors ||
 			prior.trivial_member_constructors != trivial_member_constructors)
-			throw std::logic_error("aggregate helper owner plan changed");
+			ThrowInternalCompilerError("aggregate helper owner plan changed");
 		if (prior.parameter_member_count > parameter_member_count)
 		{
 			for (std::size_t i = parameter_member_count;
@@ -1788,7 +1789,7 @@ std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 					IsClassEntity(*program_, EntityOf(action.type)) ||
 					program_->types.Get(
 						program_->types.RemoveTopCv(action.type)).kind == TYPE_ARRAY)
-					throw std::logic_error("cannot synthesize aggregate argument");
+					ThrowInternalCompilerError("cannot synthesize aggregate argument");
 				values.push_back(make_zero_value(action.type));
 				parameter_types.push_back(AdjustParameterType(action.type));
 			}
@@ -1810,7 +1811,7 @@ std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 	if (encoded == kNoBinding)
 	{
 		if (aggregate_helpers_.size() >= kNoDumpEdge)
-			throw std::runtime_error("too many aggregate helper identities");
+			ThrowSemanticResourceLimit("too many aggregate helper identities");
 		helper = static_cast<std::uint32_t>(aggregate_helpers_.size());
 		aggregate_helpers_.push_back(AggregateHelperInfo(
 			entity, type, function_type,
@@ -1838,7 +1839,7 @@ std::uint32_t Analyzer::BuildAggregateConstructionAction(TypeId type,
 				member_destructors ||
 			aggregate_helpers_[helper].trivial_member_constructors !=
 				trivial_member_constructors)
-			throw std::logic_error("aggregate helper identity collision");
+			ThrowInternalCompilerError("aggregate helper identity collision");
 	}
 	const std::uint32_t call = MakeDump(
 		DUMP_AGGREGATE_CONSTRUCTION_ACTION, type, VALUE_NONE);
@@ -1890,7 +1891,7 @@ BindingId Analyzer::SelectUsualDeallocation(ScopeId scope,
 			sized.push_back(candidates[i]);
 	}
 	std::vector<BindingId>& usual = unsized.empty() ? sized : unsized;
-	if (usual.empty()) throw std::runtime_error("no usual deallocation function");
+	if (usual.empty()) ThrowSemanticError("no usual deallocation function");
 	ExpressionInfo pointer_argument;
 	pointer_argument.type = program_->types.Pointer(
 		program_->types.Fundamental(FUND_VOID));
@@ -1910,7 +1911,7 @@ BindingId Analyzer::SelectUsualDeallocation(ScopeId scope,
 	const BindingId selected = SelectOverload(scope, syntax, arguments,
 		usual, 0, 0, 0);
 	if (!CanAccessMember(selected, naming_class, entity))
-		throw std::runtime_error("inaccessible deallocation function");
+		ThrowSemanticError("inaccessible deallocation function");
 	DemandFunction(selected);
 	return selected;
 }
@@ -1923,7 +1924,7 @@ ExpressionInfo Analyzer::AnalyzeArrayNewExpression(NodeId node,
 		specifiers, scope, std::string(), false);
 	const NodeId declarator = FindChild(type_node, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR);
 	if (declarator == kNoNode)
-		throw std::logic_error("array new has no abstract declarator");
+		ThrowInternalCompilerError("array new has no abstract declarator");
 	TypeId leaf_type = spec.type;
 	std::vector<NodeId> suffixes;
 	bool value_initialization = false;
@@ -1935,13 +1936,13 @@ ExpressionInfo Analyzer::AnalyzeArrayNewExpression(NodeId node,
 		else if (arena_->IsTag(child, ::cppgm::syntax::STAG_PARAMETER_CLAUSE))
 		{
 			if (FirstSemanticChild(child) != kNoNode)
-				throw std::runtime_error("array new initializer has parameters");
+				ThrowSemanticError("array new initializer has parameters");
 			value_initialization = true;
 		}
 		else if (arena_->IsTag(child, ::cppgm::syntax::STAG_PTR_OPERATOR))
 		{
 			if (PayloadSource(child) != "*")
-				throw std::runtime_error("unsupported array new declarator");
+				ThrowSemanticError("unsupported array new declarator");
 			leaf_type = program_->types.Pointer(leaf_type);
 		}
 		else if (arena_->IsTag(child, ::cppgm::syntax::STAG_CV_QUALIFIER))
@@ -1949,30 +1950,30 @@ ExpressionInfo Analyzer::AnalyzeArrayNewExpression(NodeId node,
 				PayloadSource(child) == "const" ? CV_CONST : CV_VOLATILE);
 	}
 	if (suffixes.empty())
-		throw std::logic_error("array new has no array suffix");
+		ThrowInternalCompilerError("array new has no array suffix");
 	TypeId result_element_type = leaf_type;
 	for (std::size_t i = suffixes.size(); i != 1; --i)
 	{
 		const NodeId bound_node = FirstSemanticChild(suffixes[i - 1]);
 		const ExpressionInfo bound = AnalyzeExpression(bound_node, scope);
 		if (!bound.constant || bound.value <= 0)
-			throw std::runtime_error("invalid inner array bound");
+			ThrowSemanticError("invalid inner array bound");
 		result_element_type = program_->types.Array(result_element_type,
 			static_cast<std::uint64_t>(bound.value));
 	}
 	const NodeId extent_syntax = FirstSemanticChild(suffixes[0]);
 	if (extent_syntax == kNoNode)
-		throw std::runtime_error("array new has no extent");
+		ThrowSemanticError("array new has no extent");
 	ExpressionInfo extent = AnalyzeExpression(extent_syntax, scope);
 	if (!IsIntegral(extent.type) || (extent.constant && extent.value < 0))
-		throw std::runtime_error("invalid array new extent");
+		ThrowSemanticError("invalid array new extent");
 	const EntityId entity = EntityOf(leaf_type);
 	const bool class_elements = IsClassEntity(*program_, entity);
 	const std::uint64_t cookie_size = class_elements ? 8 : 0;
 	const std::uint64_t row_size = program_->SizeOf(result_element_type);
 	const std::uint64_t leaf_size = program_->SizeOf(leaf_type);
 	if (leaf_size == 0 || row_size % leaf_size != 0)
-		throw std::logic_error("invalid array element stride");
+		ThrowInternalCompilerError("invalid array element stride");
 	ExpressionInfo allocation_size = extent;
 	std::uint64_t flat_count = 0;
 	if (extent.constant)
@@ -1980,13 +1981,13 @@ ExpressionInfo Analyzer::AnalyzeArrayNewExpression(NodeId node,
 		const std::uint64_t count = static_cast<std::uint64_t>(extent.value);
 		if (count > (std::numeric_limits<std::uint64_t>::max() - cookie_size) /
 			row_size)
-			throw std::runtime_error("array allocation size overflow");
+			ThrowSemanticResourceLimit("array allocation size overflow");
 		const std::uint64_t bytes = count * row_size + cookie_size;
 		const std::uint64_t inner_count = row_size / leaf_size;
 		if (bytes > static_cast<std::uint64_t>(
 			std::numeric_limits<std::int64_t>::max()) ||
 			count > std::numeric_limits<std::uint64_t>::max() / inner_count)
-			throw std::runtime_error("array allocation exceeds PA17 limits");
+			ThrowSemanticResourceLimit("array allocation exceeds PA17 limits");
 		flat_count = count * inner_count;
 		allocation_size = MakeLiteral(extent.type,
 			InternNumber(static_cast<std::int64_t>(bytes)));
@@ -2079,7 +2080,7 @@ ExpressionInfo Analyzer::AnalyzeArrayNewExpression(NodeId node,
 			destructor = DestructorForType(leaf_type);
 			if (destructor == kNoBinding ||
 				GetFunction(destructor).deleted_destructor)
-				throw std::runtime_error("array element is not destructible");
+				ThrowSemanticError("array element is not destructible");
 			DemandFunction(destructor);
 		}
 	}
@@ -2113,7 +2114,7 @@ ExpressionInfo Analyzer::AnalyzeNewExpression(NodeId node,
 {
 	const NodeId type_node = FindChild(node, ::cppgm::syntax::STAG_TYPE_ID);
 	if (type_node == kNoNode)
-		throw std::runtime_error("new-expression has no allocated type");
+		ThrowSemanticError("new-expression has no allocated type");
 	const NodeId new_declarator = FindChild(type_node, ::cppgm::syntax::STAG_ABSTRACT_DECLARATOR);
 	if (new_declarator != kNoNode &&
 		FindChild(new_declarator, ::cppgm::syntax::STAG_ARRAY_SUFFIX) != kNoNode)
@@ -2130,7 +2131,7 @@ ExpressionInfo Analyzer::AnalyzeNewExpression(NodeId node,
 	}
 	if (program_->types.Get(program_->types.RemoveTopCv(object_type)).kind ==
 		TYPE_ARRAY)
-		throw std::runtime_error("array new is outside PA16");
+		ThrowSemanticError("array new is outside PA16");
 	// A synthetic template-parameter shape is not a complete object type, and
 	// its allocation validity cannot be decided while materializing a partial
 	// specialization.  Let the candidate become a non-deduced shape so PA23's
@@ -2189,7 +2190,7 @@ ExpressionInfo Analyzer::AnalyzeNewExpression(NodeId node,
 		candidates = FunctionCandidates(program_->GlobalScope(), operator_new);
 	}
 	if (candidates.empty())
-		throw std::runtime_error("operator new was not declared");
+		ThrowSemanticError("operator new was not declared");
 	std::vector<CallConversionFact> argument_conversions;
 	const BindingId selected = SelectOverload(scope, argument_syntax,
 		arguments, candidates, 0, 0, &argument_conversions);
@@ -2276,7 +2277,7 @@ ExpressionInfo Analyzer::AnalyzeNewExpression(NodeId node,
 				&expanded_syntax, &expanded_values))
 			{
 				if (expanded_values.size() > 1)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"scalar new has multiple initializers");
 				if (expanded_values.empty())
 				{
@@ -2305,7 +2306,7 @@ ExpressionInfo Analyzer::AnalyzeNewExpression(NodeId node,
 			else
 			{
 				if (arena_->NextEdge(first) != kNoEdge)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"scalar new has multiple initializers");
 				construction = AnalyzeExpression(arena_->EdgeChild(first),
 					scope, object_type).node;
@@ -2357,7 +2358,7 @@ ExpressionInfo Analyzer::AnalyzeDeleteExpression(NodeId node,
 			!arena_->IsTag(child, ::cppgm::syntax::STAG_ARRAY_DELETE)) operand_syntax = child;
 	}
 	if (operand_syntax == kNoNode)
-		throw std::runtime_error("delete-expression has no operand");
+		ThrowSemanticError("delete-expression has no operand");
 	ExpressionInfo operand = AnalyzeExpression(operand_syntax, scope);
 	if (!IsPointer(Decay(operand.type)))
 	{
@@ -2367,16 +2368,16 @@ ExpressionInfo Analyzer::AnalyzeDeleteExpression(NodeId node,
 		for (std::size_t i = 0; i < results.size(); ++i)
 			if (IsPointer(results[i])) pointers.push_back(results[i]);
 		if (pointers.size() != 1)
-			throw std::runtime_error("delete operand is not a unique pointer");
+			ThrowSemanticError("delete operand is not a unique pointer");
 		const CallConversionFact conversion =
 			ConvertingFunction(operand, pointers[0], false);
 		if (conversion.rank == CONVERSION_INVALID)
-			throw std::runtime_error("invalid delete pointer conversion");
+			ThrowSemanticError("invalid delete pointer conversion");
 		operand = ApplyCallArgument(operand, pointers[0], &conversion);
 	}
 	const TypeRecord pointer = program_->types.Get(Decay(operand.type));
 	if (pointer.kind != TYPE_POINTER)
-		throw std::runtime_error("delete operand is not a pointer");
+		ThrowSemanticError("delete operand is not a pointer");
 	const TypeId object_type = program_->types.RemoveTopCv(pointer.child);
 	TypeId leaf_type = object_type;
 	while (array && program_->types.Get(
@@ -2391,11 +2392,11 @@ ExpressionInfo Analyzer::AnalyzeDeleteExpression(NodeId node,
 	{
 		const BindingId selected_destructor = DestructorForType(leaf_type);
 		if (selected_destructor == kNoBinding)
-			throw std::logic_error("deleted class has no destructor identity");
+			ThrowInternalCompilerError("deleted class has no destructor identity");
 		if (!CanAccessMember(selected_destructor, entity))
-			throw std::runtime_error("inaccessible delete destructor");
+			ThrowSemanticError("inaccessible delete destructor");
 		if (GetFunction(selected_destructor).deleted_destructor)
-			throw std::runtime_error("deleted destructor is required");
+			ThrowSemanticError("deleted destructor is required");
 		if (!program_->entities[entity].trivial_destructor)
 		{
 			destructor = selected_destructor;
@@ -2416,7 +2417,7 @@ ExpressionInfo Analyzer::AnalyzeDeleteExpression(NodeId node,
 		dump_.nodes[expression].virtual_call = true;
 		const std::uint32_t complete_slot = VirtualSlotFor(destructor);
 		if (complete_slot == kNoDumpEdge)
-			throw std::logic_error("virtual destructor has no slot");
+			ThrowInternalCompilerError("virtual destructor has no slot");
 		dump_.nodes[expression].virtual_slot = complete_slot + 1;
 	}
 	dump_.nodes[expression].array_action = array;
@@ -2539,7 +2540,7 @@ void Analyzer::AddDefaultConstructor(std::uint32_t variable,
 	if (!IsClassNamedFlavor(flavor)) return;
 	const EntityRecord& class_record = program_->entities[entity];
 	if (!class_record.default_constructible)
-		throw std::runtime_error("class has no usable default constructor");
+		ThrowSemanticError("class has no usable default constructor");
 	const std::uint32_t action = BuildDefaultConstructorAction(type,
 		program_->bindings[binding].owner);
 	if (object_type.kind == TYPE_ARRAY)
@@ -2609,10 +2610,10 @@ std::uint32_t Analyzer::MakeDestructorAction(TypeId type,
 {
 	if (destructor == kNoBinding ||
 		!program_->bindings[destructor].destructor)
-		throw std::logic_error("destruction action has no destructor identity");
+		ThrowInternalCompilerError("destruction action has no destructor identity");
 	const FunctionInfo& info = GetFunction(destructor);
 	if (info.deleted_destructor)
-		throw std::runtime_error("deleted destructor is required");
+		ThrowSemanticError("deleted destructor is required");
 	const std::uint32_t action = MakeDump(DUMP_DESTRUCTOR_ACTION,
 		AdaptMemberFunctionType(destructor), VALUE_NONE, 0, destructor);
 	dump_.nodes[action].operand_type = type;
@@ -2671,7 +2672,7 @@ void Analyzer::AppendUnwindDestructionActions(ScopeId scope,
 	{
 		++unwind_cleanup_scope_visits_;
 		if (current >= scope_lifetimes_.size())
-			throw std::logic_error("indexed lifetime scope has no obligations");
+			ThrowInternalCompilerError("indexed lifetime scope has no obligations");
 		const std::vector<LifetimeObligation>& obligations =
 			scope_lifetimes_[current];
 		for (std::size_t i = obligations.size(); i != 0; --i)
@@ -2803,12 +2804,12 @@ void Analyzer::AddNamespaceObjectAction(std::uint32_t variable,
 			}
 		}
 		if (!program_->entities[entity].destructible)
-			throw std::runtime_error("namespace object type is not destructible");
+			ThrowSemanticError("namespace object type is not destructible");
 		const BindingId destructor = DestructorForType(type);
 		if (destructor == kNoBinding)
-			throw std::logic_error("namespace class has no destructor identity");
+			ThrowInternalCompilerError("namespace class has no destructor identity");
 		if (!CanAccessMember(destructor, entity))
-			throw std::runtime_error("inaccessible namespace object destructor");
+			ThrowSemanticError("inaccessible namespace object destructor");
 		if (!program_->entities[entity].trivial_destructor)
 			destructor_action = MakeDestructorAction(type, destructor, object);
 	}
@@ -2847,7 +2848,7 @@ void Analyzer::AddDestructorSubobjectActions(EntityId entity,
 	BindingId active_destructor, std::uint32_t body)
 {
 	if (entity >= entity_data_members_.size())
-		throw std::logic_error("destructor is missing its member index");
+		ThrowInternalCompilerError("destructor is missing its member index");
 	if (program_->entities[entity].flavor == NAMED_UNION) return;
 	const BindingId complete_destructor = DestructorForType(
 		program_->entities[entity].type);
@@ -2866,9 +2867,9 @@ void Analyzer::AddDestructorSubobjectActions(EntityId entity,
 			program_->entities[subobject].trivial_destructor) continue;
 		const BindingId destructor = DestructorForType(type);
 		if (destructor == kNoBinding)
-			throw std::logic_error("member has no destructor identity");
+			ThrowInternalCompilerError("member has no destructor identity");
 		if (!CanAccessMember(destructor, subobject))
-			throw std::runtime_error("inaccessible member destructor");
+			ThrowSemanticError("inaccessible member destructor");
 		TypeId object = program_->types.RemoveTopCv(EffectiveType(type));
 		const TypeRecord& record = program_->types.Get(object);
 		if (record.kind == TYPE_ARRAY)
@@ -2882,7 +2883,7 @@ void Analyzer::AddDestructorSubobjectActions(EntityId entity,
 				if (array.kind != TYPE_ARRAY) break;
 				if (array.bound == 0 || array.bound >
 					std::numeric_limits<std::size_t>::max() / element_count)
-					throw std::logic_error("invalid destructor array extent");
+					ThrowInternalCompilerError("invalid destructor array extent");
 				element_count *= static_cast<std::size_t>(array.bound);
 				element_type = array.child;
 			}
@@ -2925,9 +2926,9 @@ void Analyzer::AddDestructorSubobjectActions(EntityId entity,
 		if (program_->entities[base].trivial_destructor) continue;
 		BindingId destructor = DestructorForType(program_->entities[base].type);
 		if (destructor == kNoBinding)
-			throw std::logic_error("base has no destructor identity");
+			ThrowInternalCompilerError("base has no destructor identity");
 		if (!CanAccessMember(destructor, base))
-			throw std::runtime_error("inaccessible base destructor");
+			ThrowSemanticError("inaccessible base destructor");
 		destructor = EnsureDestructorBaseEntry(destructor);
 		const std::uint32_t action = MakeDestructorAction(
 			program_->entities[base].type, destructor, kNoBinding, 1);
@@ -2948,9 +2949,9 @@ void Analyzer::AddDestructorSubobjectActions(EntityId entity,
 		if (program_->entities[base].trivial_destructor) continue;
 		BindingId destructor = DestructorForType(program_->entities[base].type);
 		if (destructor == kNoBinding)
-			throw std::logic_error("virtual base has no destructor identity");
+			ThrowInternalCompilerError("virtual base has no destructor identity");
 		if (!CanAccessMember(destructor, base))
-			throw std::runtime_error("inaccessible virtual base destructor");
+			ThrowSemanticError("inaccessible virtual base destructor");
 		DemandFunction(destructor);
 		destructor = EnsureDestructorBaseEntry(destructor, true);
 		const std::uint32_t action = MakeDestructorAction(

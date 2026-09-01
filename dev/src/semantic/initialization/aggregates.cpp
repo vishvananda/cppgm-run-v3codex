@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <sstream>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -21,7 +21,7 @@ ExpressionInfo Analyzer::AnalyzeDesignatedAggregateInit(
 	const EntityId entity = EntityOf(type);
 	if (entity == kNoEntity || entity >= entity_data_members_.size() ||
 		!program_->entities[entity].is_aggregate || !element_edge)
-		throw std::logic_error("invalid designated aggregate target");
+		ThrowInternalCompilerError("invalid designated aggregate target");
 	const std::vector<BindingId> members = entity_data_members_[entity];
 	const std::uint32_t list = MakeDump(
 		DUMP_BRACED_INIT_LIST, type, VALUE_LVALUE);
@@ -38,16 +38,16 @@ ExpressionInfo Analyzer::AnalyzeDesignatedAggregateInit(
 			program_->LookupMember(entity, name, LOOKUP_ORDINARY);
 		if (found.ordinary == kNoBinding ||
 			found.ordinary >= program_->bindings.size())
-			throw std::runtime_error("designated aggregate member not found");
+			ThrowSemanticError("designated aggregate member not found");
 		const BindingRecord& binding = program_->bindings[found.ordinary];
 		const std::uint32_t ordinal =
 			program_->BindingLayout(binding).member_ordinal;
 		if (!binding.non_static_data_member || binding.member_owner != entity ||
 			ordinal >= members.size() || members[ordinal] != found.ordinary)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"designator does not name a direct aggregate member");
 		if (!CanAccessMember(found.ordinary, found.naming_class))
-			throw std::runtime_error("inaccessible designated aggregate member");
+			ThrowSemanticError("inaccessible designated aggregate member");
 		return found.ordinary;
 	};
 
@@ -69,13 +69,13 @@ ExpressionInfo Analyzer::AnalyzeDesignatedAggregateInit(
 		{
 			const NodeId initializer = FindChild(designated, ::cppgm::syntax::STAG_INITIALIZER);
 			if (initializer == kNoNode)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"designated member has no initializer");
 			std::uint32_t value_edge = arena_->FirstEdge(initializer);
 			value = AnalyzeAggregateElement(
 				member_record.type, scope, &value_edge);
 			if (value_edge != kNoEdge)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"designated member has excess initializer elements");
 		}
 		if (value.node != kNoDumpEdge) dump_.Add(action, value.node);
@@ -105,14 +105,14 @@ ExpressionInfo Analyzer::AnalyzeDesignatedAggregateInit(
 			{
 				designated = arena_->EdgeChild(*element_edge);
 				if (!arena_->IsTag(designated, ::cppgm::syntax::STAG_DESIGNATED_INITIALIZER))
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"cannot mix designated and positional initializers");
 				const BindingId selected = selected_member(designated);
 				const std::size_t ordinal =
 					program_->BindingLayout(
 						program_->bindings[selected]).member_ordinal;
 				if (ordinal < i)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"aggregate designators are out of declaration order");
 				if (ordinal != i) designated = kNoNode;
 				else *element_edge = arena_->NextEdge(*element_edge);
@@ -138,7 +138,7 @@ void Analyzer::AnalyzeStructuredBindingDeclaration(
 {
 	if (!spec.placeholder_auto || spec.is_typedef || spec.is_friend ||
 		spec.inline_specifier || spec.storage_class == STORAGE_CLASS_EXTERN)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"invalid structured binding declaration specifiers");
 	ExpressionInfo initializer;
 	DeclaratorInfo parsed = BuildVariableDeclarator(
@@ -154,14 +154,14 @@ void Analyzer::EmitStructuredBindingStorage(
 {
 	const NodeId bindings = FindChild(declarator, ::cppgm::syntax::STAG_STRUCTURED_BINDING);
 	if (bindings == kNoNode)
-		throw std::logic_error("structured binding has no binding list");
+		ThrowInternalCompilerError("structured binding has no binding list");
 	EnsureClassDefinition(parsed.type);
 	const EntityId entity = EntityOf(parsed.type);
 	if (entity == kNoEntity || entity >= program_->entities.size() ||
 		!program_->entities[entity].is_aggregate ||
 		program_->entities[entity].flavor == NAMED_UNION ||
 		entity >= entity_data_members_.size())
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"structured binding requires a decomposable aggregate class");
 
 	std::vector<NodeId> binding_syntax;
@@ -170,12 +170,12 @@ void Analyzer::EmitStructuredBindingStorage(
 	{
 		const NodeId binding = arena_->EdgeChild(edge);
 		if (!arena_->IsTag(binding, ::cppgm::syntax::STAG_BINDING_IDENTIFIER))
-			throw std::runtime_error("invalid structured binding identifier");
+			ThrowSemanticError("invalid structured binding identifier");
 		binding_syntax.push_back(binding);
 	}
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	if (binding_syntax.size() != members.size())
-		throw std::runtime_error("structured binding element count mismatch");
+		ThrowSemanticError("structured binding element count mismatch");
 
 	std::ostringstream generated;
 	generated << "__structured_binding_storage__" << arena_->TokenFirst(source)
@@ -228,12 +228,12 @@ void Analyzer::EmitStructuredBindingStorage(
 	{
 		const BindingId member = members[i];
 		if (!CanAccessMember(member, entity))
-			throw std::runtime_error("inaccessible structured binding member");
+			ThrowSemanticError("inaccessible structured binding member");
 		const NameId name = program_->names.Intern(
 			arena_->Payload(binding_syntax[i]));
 		if (name == 0 || program_->LookupDirect(
 			scope, name, LOOKUP_ORDINARY).ordinary != kNoBinding)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"duplicate or conflicting structured binding name");
 		TypeId alias_type = EffectiveType(program_->bindings[member].type);
 		const TypeRecord member_shape =

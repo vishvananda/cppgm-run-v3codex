@@ -1,6 +1,5 @@
 #include "semantic/analysis/analyzer.h"
-
-#include <stdexcept>
+#include "support/exceptions.h"
 
 namespace cppgm
 {
@@ -190,7 +189,7 @@ void Analyzer::ConfigureInitializerListBackingLifetime(
 		return;
 	const BindingId destructor = DestructorForType(element_type);
 	if (destructor == kNoBinding || GetFunction(destructor).deleted_destructor)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"initializer-list element is not destructible");
 	dump_.nodes[backing].selected_binding = destructor;
 	DemandFunction(destructor);
@@ -206,7 +205,7 @@ std::uint32_t Analyzer::PrepareNamespaceInitializerListLifetime(
 		MakeTemporaryDestructorAction(*backing);
 	if (backing_destructor == kNoDumpEdge) return destructor;
 	if (destructor != kNoDumpEdge)
-		throw std::runtime_error(
+		ThrowInternalCompilerError(
 			"initializer-list object has two namespace destructors");
 	return backing_destructor;
 }
@@ -297,7 +296,7 @@ ExpressionInfo Analyzer::AnalyzeInitializerList(
 {
 	TypeId element = kNoType;
 	if (!IsInitializerListType(type, &element))
-		throw std::logic_error("initializer-list object has non-list type");
+		ThrowInternalCompilerError("initializer-list object has non-list type");
 	ConfigureInitializerListSpecialization(type);
 	std::size_t count = 0;
 	for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
@@ -316,7 +315,7 @@ ExpressionInfo Analyzer::AnalyzeInitializerList(
 		ExpressionInfo backing = AnalyzeArrayAggregateInit(
 			array_type, scope, &edge);
 		if (edge != kNoEdge)
-			throw std::runtime_error("excess initializer-list elements");
+			ThrowSemanticError("excess initializer-list elements");
 		backing = MaterializeTemporary(backing);
 		dump_.nodes[backing.node].initializer_list_backing = true;
 		ConfigureInitializerListBackingLifetime(backing.node, element);
@@ -336,7 +335,7 @@ ExpressionInfo Analyzer::BuildInitializerListFromValues(
 {
 	TypeId element = kNoType;
 	if (!IsInitializerListType(type, &element))
-		throw std::logic_error("initializer-list values have non-list type");
+		ThrowInternalCompilerError("initializer-list values have non-list type");
 	ConfigureInitializerListSpecialization(type);
 	const std::uint32_t object = MakeDump(
 		DUMP_INITIALIZER_LIST, program_->types.RemoveTopCv(EffectiveType(type)),

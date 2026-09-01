@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -14,7 +14,7 @@ void Analyzer::RecordFunctionDemand(BindingId binding,
 	if (binding == kNoBinding) return;
 	if (reason < FUNCTION_DEMAND_EVALUATED_USE ||
 		reason >= FUNCTION_DEMAND_REASON_COUNT)
-		throw std::logic_error("invalid function demand reason");
+		ThrowInternalCompilerError("invalid function demand reason");
 	binding = program_->bindings[binding].canonical;
 	program_->bindings[binding].demand_reason_mask |=
 		FunctionDemandReasonMask(reason);

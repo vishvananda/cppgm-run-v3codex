@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 namespace cppgm
 {
@@ -15,7 +16,7 @@ void Analyzer::ValidateConstexprConstructorDefinition(
 	const EntityId entity =
 		program_->bindings[constructor.binding].member_owner;
 	if (entity == kNoEntity || entity >= entity_data_members_.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"constexpr constructor is missing its member index");
 	if (IsClassTemplateSpecializationContext(entity)) return;
 	const std::vector<BindingId>& members = entity_data_members_[entity];
@@ -60,7 +61,7 @@ void Analyzer::ValidateConstexprConstructorDefinition(
 		const NamedFlavor flavor = record.kind == TYPE_NAMED ?
 			program_->entities[record.entity].flavor : NAMED_NONE;
 		if (record.kind != TYPE_NAMED || !IsClassNamedFlavor(flavor))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"constexpr constructor leaves a scalar member uninitialized");
 	}
 }
@@ -72,11 +73,11 @@ void Analyzer::CompleteOutOfClassDefaultedConstructor(EntityId entity,
 	const std::size_t required_parameters =
 		info.special_member == SPECIAL_MEMBER_NONE ? 0 : 1;
 	if (info.parameters.size() != required_parameters)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"explicitly defaulted constructor has the wrong type");
 	for (std::size_t i = 0; i < info.parameters.size(); ++i)
 		if (info.parameters[i].default_argument != kNoNode)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"explicitly defaulted function has a default argument");
 	if (info.special_member != SPECIAL_MEMBER_NONE)
 	{
@@ -95,7 +96,7 @@ void Analyzer::CompleteOutOfClassDefaultedConstructor(EntityId entity,
 	}
 	else CompleteDefaultedDefaultConstructor(entity, constructor);
 	if (info.deleted_constructor)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"out-of-class defaulted constructor is deleted");
 }
 

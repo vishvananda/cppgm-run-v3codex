@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -188,7 +188,7 @@ bool Analyzer::EmptyDefaultConstructorChain(BindingId constructor,
 		empty_constructor_chain_dependencies_.size() - dependency_begin;
 	if (dependency_begin > std::numeric_limits<std::uint32_t>::max() ||
 		dependency_count > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error(
+		ThrowSemanticResourceLimit(
 			"empty constructor dependency index overflow");
 	empty_constructor_chain_dependency_begins_[root] =
 		static_cast<std::uint32_t>(dependency_begin);

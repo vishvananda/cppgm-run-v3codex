@@ -704,7 +704,8 @@ Append one row for each retained or rejected increment:
 | E3b | scalar conversion and compound update | two catch-alls swallowed arithmetic failure, invariant failure, allocation, or any future type alike | recover only `SemanticError`; scalar invariants use `InternalCompilerError`; shared cold throw helpers | PA21 scalar/constexpr evaluation, including rejected required constants | successful full 0->0; catch-all sites 59->57 | -512 text, +32 rodata, -352 exception table, +296 unwind | frozen neutral; full O1 -0.23% CPU, O3 -0.31% CPU | PA21 150/150; 222 O1/O3 objects exact | `421d5c1c` | retained |
 | E3c | constructor/function constexpr probe boundaries and selection | four catch-alls converted every unknown failure to non-constant; constructor selection was untyped | recover only `SemanticError`; overload failures are semantic and conversion-table exhaustion is resource | PA17 nonconstant class-array initialization; PA21 ordinary dynamic fallback after a failed constant probe | successful full 0->0; targeted fallback has one typed semantic throw; catch-all sites 57->53 | +128 text, +32 rodata, -48 exception table, +112 unwind | frozen neutral; full O1 -0.32% CPU, O3 -0.71% CPU | through-PA21 2,417/2,417; PA21 151/151; 222 O1/O3 objects exact | `4e933284` | retained |
 | E4a | declarations, lookup, and semantic index tables | source diagnostics, resource ceilings, and invariants shared generic standard bases | `SemanticError`, semantic-domain `ResourceLimitError`, and `InternalCompilerError`; cold shared throw helpers | PA12 declarations and expressions, with cumulative PA21/PA23 recovery coverage | successful full remains 0; generic logic/runtime sites -43/-160 | -10,368 text, -32 rodata, -1,972 exception table, -32 unwind | frozen 0.520/0.520 s; full O1 -0.46% CPU, O3 -0.07% CPU | through-PA12 842/842; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `5d25136f` | retained |
-| E4b | expressions, calls, and overload resolution | expression rejection and failed overloads shared generic bases with representation limits and invariants | ordinary diagnostics use `SemanticError`; candidate failure stays status-based; limits and invariants bypass recovery | PA12 expressions/intrinsics; PA23 substitution and overload recovery | successful full remains 0; generic logic/runtime sites -28/-113 | -8,256 text, -1,328 exception table, +208 unwind | frozen 0.525/0.520 s; full O1 -0.08% CPU, O3 -0.45% CPU | PA12 184/184; PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | pending | retained |
+| E4b | expressions, calls, and overload resolution | expression rejection and failed overloads shared generic bases with representation limits and invariants | ordinary diagnostics use `SemanticError`; candidate failure stays status-based; limits and invariants bypass recovery | PA12 expressions/intrinsics; PA23 substitution and overload recovery | successful full remains 0; generic logic/runtime sites -28/-113 | -8,256 text, -1,328 exception table, +208 unwind | frozen 0.525/0.520 s; full O1 -0.08% CPU, O3 -0.45% CPU | PA12 184/184; PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `0bda33df` | retained |
+| E4c | initialization and lifetime | construction/destruction diagnostics, capacity ceilings, and synthesized-state contradictions shared generic bases | typed semantic/resource/internal dispositions; substitution and constexpr status remain explicit | PA17 initialization/lifetime, PA21 constexpr, PA23 templates | successful full remains 0; generic logic/runtime sites -71/-125 | -14,336 text, -2,132 exception table, +200 unwind | frozen neutral; repeated full O1 -0.10% CPU, O3 +0.08% CPU | PA17 247/247; PA21 151/151; PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1055,6 +1056,41 @@ objects.  O1 baseline/candidate aggregate CPU averages 493.625/493.235 seconds
 (-0.08%); O3 averages 493.680/491.460 seconds (-0.45%).  The slice is therefore
 neutral-to-favorable in both dynamic lanes while removing another 9,584 bytes
 of text and exception-table data.
+
+### E4c execution record
+
+Initialization, aggregate/list initialization, constructor/destructor
+lifetime, local statics, and special-member analysis now distinguish ordinary
+source rejection from resource ceilings and compiler-state contradictions.
+The slice converts 71 generic logic throws and 125 generic runtime throws.
+Candidate construction and the previously narrowed constexpr recovery paths
+remain unchanged; resource and internal siblings continue to bypass ordinary
+semantic recovery.
+
+Exception-type storage, local-static ordinals, empty-constructor dependency
+indices, aggregate-helper identity/prefix bounds, and compile-time array
+allocation representation limits use semantic-domain `ResourceLimitError`.
+Conflicting synthesized helper values and duplicate namespace backing
+destructors are internal invariants.  Invalid initialization, unavailable or
+inaccessible special members, and non-destructible source types remain
+`SemanticError`.  The two catch-alls in this group only restore an evaluation
+depth or class context and rethrow; they do not classify a failure.
+
+PA17 passes 247/247, PA21 passes 151/151, PA23 passes 414/414, and the
+cumulative through-PA23 report passes 3,142/3,142.  The exception audit
+ratchets to 1,268 generic logic throws and 1,027 generic runtime throws in 189
+files.  Against `0bda33df`, `.text` changes 6,605,478 -> 6,591,142,
+`.rodata` stays 214,240, `.eh_frame_hdr` 51,068 -> 51,116, `.eh_frame`
+323,600 -> 323,752, and `.gcc_except_table` 161,140 -> 159,008.  Twelve frozen
+outputs are exact at `8545fec6...` and remain within the 0.52-second timer
+band.
+
+Because the first full block was within 1%, a second mirrored B/A/A/B block
+was run.  All 222 requested-O1 and O3 objects match in both blocks.  Across
+eight lanes per optimization, O1 baseline/candidate aggregate CPU averages
+489.830/489.330 seconds (-0.10%), while O3 averages 494.320/494.698 seconds
+(+0.08%).  This is neutral under the pure typed-migration guard and removes
+another 16,468 bytes of text and exception-table data.
 
 ## Initial code map
 

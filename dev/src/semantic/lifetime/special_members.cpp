@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -51,7 +51,7 @@ public:
 			return transfer_unit_ ? BIT_FIELD_TRANSFER_COVERED :
 				BIT_FIELD_TRANSFER_FIELD;
 		if (index >= members_.size())
-			throw std::logic_error("bit-field transfer index is out of bounds");
+			ThrowInternalCompilerError("bit-field transfer index is out of bounds");
 		const BindingRecord& first = program_.bindings[members_[index]];
 		if (!first.bit_field)
 		{
@@ -134,7 +134,7 @@ BindingId Analyzer::EnsureImplicitConstructor(EntityId entity)
 		return implicit_constructor_by_entity_[entity];
 	EntityRecord& owner = program_->entities[entity];
 	if (!owner.default_constructible)
-		throw std::runtime_error("class has no usable implicit constructor");
+		ThrowSemanticError("class has no usable implicit constructor");
 	const NameId name = owner.identity_name;
 	const TypeId type = program_->types.Function(
 		program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
@@ -295,7 +295,7 @@ BindingId Analyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	const BindingRecord source_binding = program_->bindings[constructor];
 	const FunctionInfo source_info = GetFunction(constructor);
 	if (!source_binding.constructor || !source_info.constructor)
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"constructor base entry requested for non-constructor");
 	// The base entry shares the source constructor's name; the lifecycle
 	// flag is its identity, so it must stay out of ordinary name lookup.
@@ -406,7 +406,7 @@ void Analyzer::RegisterClassSpecialMember(BindingId binding)
 		const TypeRecord& prior_type =
 			program_->types.Get(GetFunction(*slot).type);
 		if (GetFunction(*slot).type == function.type)
-			throw std::runtime_error("duplicate class special member");
+			ThrowSemanticError("duplicate class special member");
 		if (prior_type.cv != CV_NONE && function_type.cv == CV_NONE)
 			*slot = binding;
 	}
@@ -440,7 +440,7 @@ void Analyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 		if (special == kNoNode) return;
 		const std::string spelling = arena_->Payload(special);
 		if (spelling == "default")
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"only a special member function may be defaulted");
 		if (spelling == "delete")
 		{
@@ -448,14 +448,14 @@ void Analyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 			function.defined = true;
 			return;
 		}
-		throw std::runtime_error("invalid assignment function initializer");
+		ThrowSemanticError("invalid assignment function initializer");
 	}
 	if (special == kNoNode) return;
 	const std::string spelling = arena_->Payload(special);
 	const bool defaulted = spelling == "default";
 	const bool deleted = spelling == "delete";
 	if (!defaulted && !deleted)
-		throw std::runtime_error("invalid assignment special initializer");
+		ThrowSemanticError("invalid assignment special initializer");
 	function.defaulted_special_member =
 		function.defaulted_special_member || defaulted;
 	function.user_provided_special_member =
@@ -484,7 +484,7 @@ void Analyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 				function.parameters[0].default_argument != kNoNode ||
 				result_type.kind != TYPE_LVALUE_REFERENCE ||
 				result_type.child != program_->entities[entity].type)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"explicitly defaulted assignment has the wrong type");
 		}
 		bool implicitly_deleted = false;
@@ -500,7 +500,7 @@ void Analyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 			declaration.nonthrowing = nonthrowing;
 		function.deferred = !implicitly_deleted;
 		if (!defaulted_inline && implicitly_deleted)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"out-of-class defaulted assignment is deleted");
 	}
 }
@@ -525,20 +525,20 @@ bool Analyzer::AnalyzeQualifiedAssignmentStatement(NodeId node,
 	const NodeId identifier = argument_declarator == kNoNode ? kNoNode :
 		FindChild(argument_declarator, ::cppgm::syntax::STAG_IDENTIFIER);
 	if (identifier == kNoNode)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"unsupported qualified assignment argument syntax");
 
 	EntityId naming_class = kNoEntity;
 	const std::vector<BindingId> candidates =
 		FunctionCandidates(scope, spelling, &naming_class, specifier);
 	if (candidates.empty())
-		throw std::runtime_error("qualified assignment operator was not found");
+		ThrowSemanticError("qualified assignment operator was not found");
 	const NameId argument_name =
 		program_->names.UseInterned(arena_->PayloadId(identifier));
 	const LookupResult found_argument =
 		program_->LookupName(scope, argument_name, LOOKUP_ORDINARY);
 	if (found_argument.ordinary == kNoBinding)
-		throw std::runtime_error("qualified assignment argument was not found");
+		ThrowSemanticError("qualified assignment argument was not found");
 	const BindingRecord& argument_binding =
 		program_->bindings[found_argument.ordinary];
 	ExpressionInfo argument;
@@ -553,7 +553,7 @@ bool Analyzer::AnalyzeQualifiedAssignmentStatement(NodeId node,
 	const LookupResult found_this =
 		program_->LookupName(scope, this_name, LOOKUP_ORDINARY);
 	if (found_this.ordinary == kNoBinding)
-		throw std::runtime_error("qualified assignment has no object");
+		ThrowSemanticError("qualified assignment has no object");
 	ExpressionInfo object;
 	object.type = EffectiveType(program_->bindings[found_this.ordinary].type);
 	object.category = VALUE_LVALUE;
@@ -622,7 +622,7 @@ void Analyzer::EvaluateSynthesizedConstructor(EntityId entity,
 {
 	if (kind != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
 		kind != SPECIAL_MEMBER_MOVE_CONSTRUCTOR)
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"constructor status requested for another member");
 	*deleted = false;
 	*trivial = !program_->entities[entity].polymorphic_class &&
@@ -673,7 +673,7 @@ void Analyzer::EvaluateSynthesizedAssignment(EntityId entity,
 	bool* nonthrowing) const
 {
 	if (!IsAssignmentSpecialMember(kind))
-		throw std::logic_error("assignment status requested for another member");
+		ThrowInternalCompilerError("assignment status requested for another member");
 	*deleted = false;
 	*trivial = !program_->entities[entity].polymorphic_class &&
 		program_->entities[entity].virtual_base_count == 0;
@@ -787,7 +787,7 @@ BindingId Analyzer::DeclareImplicitCopyMoveConstructor(
 {
 	if (kind != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
 		kind != SPECIAL_MEMBER_MOVE_CONSTRUCTOR)
-		throw std::logic_error("cannot declare non-constructor helper");
+		ThrowInternalCompilerError("cannot declare non-constructor helper");
 	bool deleted = false;
 	bool trivial = false;
 	bool nonthrowing = false;
@@ -848,7 +848,7 @@ BindingId Analyzer::DeclareImplicitAssignment(EntityId entity,
 	SpecialMemberKind kind)
 {
 	if (!IsAssignmentSpecialMember(kind))
-		throw std::logic_error("cannot declare non-assignment helper");
+		ThrowInternalCompilerError("cannot declare non-assignment helper");
 	bool deleted = false;
 	bool trivial = false;
 	bool nonthrowing = false;
@@ -1019,7 +1019,7 @@ void Analyzer::CompleteClassSpecialMembers(EntityId entity)
 		(nontrivial_copy && nontrivial_move) ||
 		!class_record.trivial_destructor;
 	if (!class_record.layout_complete)
-		throw std::logic_error("class boundary ABI requires completed layout");
+		ThrowInternalCompilerError("class boundary ABI requires completed layout");
 	const std::size_t object_size =
 		static_cast<std::size_t>(class_record.object_size);
 	const bool dependent_empty_value = class_record.empty_class &&
@@ -1058,7 +1058,7 @@ void Analyzer::AddSynthesizedConstructorBody(
 	if ((function.special_member != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
 		 function.special_member != SPECIAL_MEMBER_MOVE_CONSTRUCTOR) ||
 		parameters.size() != 1 || function.deleted_special_member)
-		throw std::logic_error("invalid synthesized constructor body");
+		ThrowInternalCompilerError("invalid synthesized constructor body");
 	const EntityId entity = program_->bindings[function.binding].member_owner;
 	const EntityRecord& owner = program_->entities[entity];
 	const std::uint32_t construction = MakeDump(
@@ -1109,7 +1109,7 @@ void Analyzer::AddSynthesizedConstructorBody(
 			BindingId selected = ConstructorForSubobject(
 				base.type, function.special_member);
 			if (selected == kNoBinding)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"synthesized base constructor is missing");
 			const FunctionInfo& selected_function = GetFunction(selected);
 			if (!base.empty_class || !selected_function.trivial_special_member)
@@ -1151,7 +1151,7 @@ void Analyzer::AddSynthesizedConstructorBody(
 				(void)is_const;
 				(void)is_reference;
 				if (member_entity != kNoEntity && selected == kNoBinding)
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"synthesized member constructor is missing");
 				if (member_entity != kNoEntity &&
 					program_->entities[member_entity].empty_class &&
@@ -1227,7 +1227,7 @@ void Analyzer::AddSynthesizedAssignmentBody(
 {
 	if (!IsAssignmentSpecialMember(function.special_member) ||
 		parameters.size() != 1 || function.deleted_special_member)
-		throw std::logic_error("invalid synthesized assignment body");
+		ThrowInternalCompilerError("invalid synthesized assignment body");
 	const EntityId entity = program_->bindings[function.binding].member_owner;
 	const EntityRecord& owner = program_->entities[entity];
 	const std::uint32_t assignment = MakeDump(
@@ -1278,7 +1278,7 @@ void Analyzer::AddSynthesizedAssignmentBody(
 			const BindingId selected = AssignmentForSubobject(
 				base.type, function.special_member);
 			if (selected == kNoBinding)
-				throw std::logic_error("synthesized base assignment is missing");
+				ThrowInternalCompilerError("synthesized base assignment is missing");
 			if (!base.empty_class || !GetFunction(selected).trivial_special_member)
 			{
 				const std::uint32_t step = MakeDump(
@@ -1312,7 +1312,7 @@ void Analyzer::AddSynthesizedAssignmentBody(
 				const EntityId member_entity = SubobjectClass(
 					*program_, type, &is_const, &is_reference);
 				if (member_entity != kNoEntity && selected == kNoBinding)
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"synthesized member assignment is missing");
 				if (selected != kNoBinding &&
 					(host_object_emission_ ||
@@ -1351,21 +1351,21 @@ void Analyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 {
 	const NodeId declarator = FindChild(node, ::cppgm::syntax::STAG_DECLARATOR);
 	if (declarator == kNoNode)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"out-of-class special member is missing its declarator");
 	const NodeId member_specifiers = FindChild(node, ::cppgm::syntax::STAG_MEMBER_SPECIFIERS);
 	if (FindChild(declarator, ::cppgm::syntax::STAG_VIRT_SPECIFIER) != kNoNode)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"virt-specifier is only allowed in a class definition");
 	if (member_specifiers != kNoNode)
 		for (std::uint32_t edge = arena_->FirstEdge(member_specifiers);
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
 			if (PayloadSource(arena_->EdgeChild(edge)) == "virtual")
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"virtual specifier is only allowed in a class definition");
 	const NamePath path = DeclaratorNamePath(declarator);
 	if (!path.global && path.Size() <= 1)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"unqualified special member definition outside a class");
 	const ScopeId path_owner = declaration_scope == kNoScope ?
 		ResolveOwner(scope, path) : program_->ParentScope(declaration_scope);
@@ -1396,7 +1396,7 @@ void Analyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	const EntityId entity = owner == kNoScope ? kNoEntity :
 		program_->EntityForScope(owner);
 	if (entity == kNoEntity)
-		throw std::runtime_error("special member owner is not a class");
+		ThrowSemanticError("special member owner is not a class");
 	const std::string terminal = program_->names.Get(path.Last());
 	const std::string class_name = program_->names.Get(
 		program_->entities[entity].identity_name);
@@ -1406,7 +1406,7 @@ void Analyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	const bool destructor_definition = terminal == "~" + class_name;
 	if (!constructor_definition && !destructor_definition &&
 		!conversion_definition)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"qualified special member definition has an invalid name");
 
 	const EntityId previous_class = current_class_context_;
@@ -1436,10 +1436,10 @@ void Analyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	if (conversion_definition)
 	{
 		if (special == kNoBinding)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"qualified conversion definition has no declaration");
 		if (GetFunction(special).defined)
-			throw std::runtime_error("duplicate function definition");
+			ThrowSemanticError("duplicate function definition");
 		GetMutableFunction(special).defined = true;
 	}
 	else
@@ -1466,7 +1466,7 @@ void Analyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	ApplyFunctionAbiTagAttributes(node, special);
 	FunctionInfo& info = GetMutableFunction(special);
 	if (parsed.parameters.size() != info.parameters.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"special member definition parameter fact mismatch");
 	for (std::size_t i = 0; i < parsed.parameters.size(); ++i)
 		if (parsed.parameters[i].name != 0)
@@ -1482,15 +1482,15 @@ void Analyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 				inline_specifier = true;
 	PublishInlineFunctionFacts(special, inline_specifier || defer_demand);
 	if (info.member_owner != program_->entities[entity].type)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"qualified special member definition has no member declaration");
 	if ((constructor_definition && !info.constructor) ||
 		(destructor_definition && !info.destructor) ||
 		(conversion_definition && !info.conversion_function))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"qualified special member definition has no matching kind");
 	if (conversion_definition && info.conversion_target != conversion_target)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"qualified conversion definition has a mismatched target");
 	ValidateFunctionRefQualifier(special);
 	const NodeId initializer = FindChild(node, ::cppgm::syntax::STAG_INITIALIZER);
@@ -1505,7 +1505,7 @@ void Analyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	if (conversion_definition)
 	{
 		if (defaulted)
-			throw std::runtime_error("conversion function cannot be defaulted");
+			ThrowSemanticError("conversion function cannot be defaulted");
 		BindingRecord& binding = program_->bindings[special];
 		binding.conversion_function = true;
 		binding.conversion_target = conversion_target;
@@ -1544,7 +1544,7 @@ void Analyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		{
 			CompleteDefaultedDestructor(entity, special);
 			if (info.deleted_destructor)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"out-of-class defaulted destructor is deleted");
 		}
 	}

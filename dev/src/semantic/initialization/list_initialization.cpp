@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -189,7 +188,7 @@ ExpressionInfo Analyzer::AnalyzeUntypedCallArgument(
 	if (!arena_->IsTag(argument, ::cppgm::syntax::STAG_BRACED_INIT_LIST))
 		return AnalyzeExpression(argument, scope);
 	if (!braced_initialization_context_)
-		throw std::logic_error("braced call argument has no fact context");
+		ThrowInternalCompilerError("braced call argument has no fact context");
 	PrepareBracedInitialization(argument, scope);
 	return ExpressionInfo();
 }
@@ -271,7 +270,7 @@ ExpressionInfo Analyzer::MaterializeCallArgument(NodeId syntax,
 ExpressionInfo Analyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	TypeId target)
 {
-	if (target == kNoType) throw std::runtime_error("untyped braced-init-list");
+	if (target == kNoType) ThrowSemanticError("untyped braced-init-list");
 	if (IsInitializerListType(target))
 		return AnalyzeInitializerList(node, scope, target);
 	EnsureClassDefinition(target);
@@ -313,7 +312,7 @@ ExpressionInfo Analyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 		std::uint32_t element_edge = arena_->FirstEdge(node);
 		ExpressionInfo result = AnalyzeAggregateInit(type, scope, &element_edge);
 		if (element_edge != kNoEdge)
-			throw std::runtime_error("excess aggregate initializer elements");
+			ThrowSemanticError("excess aggregate initializer elements");
 		return result;
 	}
 	if (array.kind == TYPE_ARRAY)
@@ -332,7 +331,7 @@ ExpressionInfo Analyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 			AnalyzeAggregateElement(type, scope, &element_edge) :
 			AnalyzeArrayAggregateInit(type, scope, &element_edge);
 		if (element_edge != kNoEdge)
-			throw std::runtime_error("excess array initializer elements");
+			ThrowSemanticError("excess array initializer elements");
 		return result;
 	}
 	TypeId element = array.kind == TYPE_VECTOR ? array.child : type;
@@ -353,7 +352,7 @@ ExpressionInfo Analyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 		const std::size_t lanes = static_cast<std::size_t>(array.bound) /
 			program_->SizeOf(array.child);
 		if (!values.empty() && values.size() != 1 && values.size() != lanes)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"GNU vector initializer requires one or all lane values");
 	}
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST, type,
@@ -429,7 +428,7 @@ ExpressionInfo Analyzer::AnalyzePreparedAggregateElement(TypeId type,
 	ScopeId scope, std::uint32_t* element_edge)
 {
 	if (!element_edge)
-		throw std::logic_error("aggregate element has no initializer cursor");
+		ThrowInternalCompilerError("aggregate element has no initializer cursor");
 	if (braced_initialization_context_ || *element_edge == kNoEdge)
 		return AnalyzeAggregateElement(type, scope, element_edge);
 	BracedInitializationContext context;
@@ -1057,7 +1056,7 @@ std::uint32_t Analyzer::BuildConstructorAction(TypeId type,
 	EnsureClassDefinition(type);
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
-		throw std::logic_error("constructor action has non-class type");
+		ThrowInternalCompilerError("constructor action has non-class type");
 	if (!base_subobject && program_->entities[entity].abstract_class)
 	{
 		if (CandidateSubstitutionActive())
@@ -1065,7 +1064,7 @@ std::uint32_t Analyzer::BuildConstructorAction(TypeId type,
 			RecordCandidateSubstitutionFailure();
 			return kNoDumpEdge;
 		}
-		throw std::runtime_error("cannot construct an abstract class value");
+		ThrowSemanticError("cannot construct an abstract class value");
 	}
 	bool has_braced_argument = list_initialization && source_list != kNoNode;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
@@ -1095,7 +1094,7 @@ std::uint32_t Analyzer::BuildConstructorAction(TypeId type,
 	if (prepared_arguments)
 	{
 		if (prepared_arguments->size() != argument_syntax.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"prepared constructor argument count mismatch");
 		arguments = *prepared_arguments;
 	}
@@ -1231,7 +1230,7 @@ std::uint32_t Analyzer::BuildConstructorAction(TypeId type,
 	{
 		if (a >= constructor.parameters.size() ||
 			constructor.parameters[a].default_argument == kNoNode)
-			throw std::logic_error("selected constructor lacks a default argument");
+			ThrowInternalCompilerError("selected constructor lacks a default argument");
 		ExpressionInfo argument = AnalyzeExpression(
 			constructor.parameters[a].default_argument,
 			constructor.parameters[a].default_scope, parameters[a]);
