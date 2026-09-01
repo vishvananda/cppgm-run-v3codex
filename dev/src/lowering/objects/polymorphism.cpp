@@ -4,9 +4,9 @@
 #include "lowering/presentation/local_names.h"
 #include "lowering/abi/symbol_names.h"
 #include "lowering/core/source_types.h"
+#include "lowering/support/errors.h"
 
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -176,7 +176,7 @@ private:
 				if (program_.bindings[function].member_owner == entity)
 				{
 					if (physical >= std::numeric_limits<std::uint32_t>::max())
-						throw std::runtime_error("host primary vtable is too large");
+						ThrowLoweringResourceLimit("host primary vtable is too large");
 					state_.host_primary_slot_by_binding[function] =
 						static_cast<std::uint32_t>(physical);
 				}
@@ -197,7 +197,7 @@ private:
 		const std::uint64_t secondary_vcall_bytes =
 			static_cast<std::uint64_t>(facts.virtual_call_offsets.size()) * 8;
 		if (secondary_vcall_bytes > facts.address_point)
-			throw std::logic_error("primary vtable address point is invalid");
+			ThrowLoweringInternal("primary vtable address point is invalid");
 		return facts.address_point - secondary_vcall_bytes;
 	}
 
@@ -372,7 +372,7 @@ private:
 			{
 				const std::size_t count = program_.types.Size() + 1;
 				if (type >= count)
-					throw std::logic_error("RTTI demand type is out of range");
+					ThrowLoweringInternal("RTTI demand type is out of range");
 				state_.type_rtti_symbols.resize(count, kNoLowId);
 				state_.type_name_symbols.resize(count, kNoLowId);
 				state_.type_rtti_demanded.resize(count, 0);
@@ -422,7 +422,7 @@ private:
 	void CollectRttiDemands()
 	{
 		if (graph_.root >= graph_.arena.nodes.size())
-			throw std::logic_error("RTTI demand graph has no root");
+			ThrowLoweringInternal("RTTI demand graph has no root");
 		std::vector<std::uint8_t> visited(graph_.arena.nodes.size(), 0);
 		std::vector<std::uint32_t> pending(1, graph_.root);
 		while (!pending.empty())
@@ -430,7 +430,7 @@ private:
 			const std::uint32_t node = pending.back();
 			pending.pop_back();
 			if (node >= graph_.arena.nodes.size())
-				throw std::logic_error("RTTI demand graph edge is out of range");
+				ThrowLoweringInternal("RTTI demand graph edge is out of range");
 			if (visited[node]) continue;
 			visited[node] = 1;
 			if (stats_) ++stats_->rtti_graph_nodes_visited;
@@ -508,7 +508,7 @@ private:
 				function.exception_type_count >
 				program_.function_exception_types.size() -
 					function.exception_type_begin)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function exception type slice is invalid");
 			for (std::size_t i = 0; i < function.exception_type_count; ++i)
 			{
@@ -606,7 +606,7 @@ private:
 		if (first > program_.template_arguments.size() ||
 			record.template_argument_count >
 				program_.template_arguments.size() - first)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"RTTI template argument range is invalid");
 		for (std::size_t i = 0; i < record.template_argument_count; ++i)
 		{
@@ -904,17 +904,17 @@ private:
 		const BindingRecord& binding = program_.bindings[slot.function];
 		const TypeRecord& function = program_.types.Get(binding.type);
 		if (function.kind != TYPE_FUNCTION)
-			throw std::logic_error("covariant thunk has no function type");
+			ThrowLoweringInternal("covariant thunk has no function type");
 		const TypeRecord& result = program_.types.Get(function.child);
 		if (result.kind != TYPE_POINTER &&
 			result.kind != TYPE_LVALUE_REFERENCE &&
 			result.kind != TYPE_RVALUE_REFERENCE)
-			throw std::logic_error("covariant thunk has no class result");
+			ThrowLoweringInternal("covariant thunk has no class result");
 		const TypeId target = program_.types.RemoveTopCv(result.child);
 		const TypeRecord& named = program_.types.Get(target);
 		if (named.kind != TYPE_NAMED ||
 			named.entity >= graph_.class_polymorphism.size())
-			throw std::logic_error("covariant thunk result has no vtable facts");
+			ThrowLoweringInternal("covariant thunk result has no vtable facts");
 		return slot.return_vtable_offset + static_cast<std::int64_t>(
 			graph_.class_polymorphism[named.entity].virtual_call_offsets.size()) * 8;
 	}
@@ -995,7 +995,7 @@ private:
 		}
 		if (adjusted_slot_entries_.size() >=
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many adjusted vtable slots");
+			ThrowLoweringResourceLimit("too many adjusted vtable slots");
 		const std::string direction = slot.this_adjustment < 0 ? "neg" : "pos";
 		const std::uint64_t magnitude = slot.this_adjustment < 0 ?
 			static_cast<std::uint64_t>(-(slot.this_adjustment + 1)) + 1 :
@@ -1043,7 +1043,7 @@ private:
 		}
 		if (function >= function_symbols_.size() ||
 			function_symbols_[function] == kNoLowId)
-			throw std::logic_error("virtual slot has no lowered function symbol");
+			ThrowLoweringInternal("virtual slot has no lowered function symbol");
 		return RegisterAdjustedSlot(slot, function_symbols_[function], function);
 	}
 
@@ -1061,7 +1061,7 @@ private:
 		}
 		const SymbolId deleting = state_.deleting_destructor_symbols[entity];
 		if (deleting == kNoLowId)
-			throw std::logic_error("destructor slot has no deleting entry");
+			ThrowLoweringInternal("destructor slot has no deleting entry");
 		state_.class_view_deleting_slot_symbols[entity][view][slot] =
 			RegisterAdjustedSlot(source, deleting, function);
 	}
@@ -1291,7 +1291,7 @@ private:
 		}
 		for (std::size_t slot = 0; slot < PrimarySlots(entity).size(); ++slot)
 			if (state_.class_view_slot_symbols[entity][0][slot] == kNoLowId)
-				throw std::logic_error("primary vtable slots are not registered");
+				ThrowLoweringInternal("primary vtable slots are not registered");
 		for (std::size_t view = 0; view < facts.views.size(); ++view)
 		{
 			const PolymorphicViewFact& source = facts.views[view];
@@ -1304,7 +1304,7 @@ private:
 			for (std::size_t slot = 0; slot < source.slots.size(); ++slot)
 				if (state_.class_view_slot_symbols[
 					entity][view + 1][slot] == kNoLowId)
-					throw std::logic_error("secondary vtable slots are not registered");
+					ThrowLoweringInternal("secondary vtable slots are not registered");
 		}
 		RegisterConstructionVtables(entity);
 	}
@@ -1395,7 +1395,7 @@ private:
 				record.kind != TYPE_FUNCTION &&
 				record.kind != TYPE_MEMBER_POINTER &&
 				!(record.kind == TYPE_NAMED && !IsClassRttiType(type)))
-				throw std::logic_error("demanded RTTI type has no ABI category");
+				ThrowLoweringInternal("demanded RTTI type has no ABI category");
 			const std::string encoding =
 				lowering::abi::MangleType(program_, type);
 			const std::string stem = RttiPresentationStem(type);
@@ -1548,7 +1548,7 @@ private:
 	{
 		if (symbol == kNoLowId || slots.size() != targets.size() ||
 			slots.size() != deleting_targets.size())
-			throw std::logic_error("polymorphic view lowering facts are incomplete");
+			ThrowLoweringInternal("polymorphic view lowering facts are incomplete");
 		Global vtable;
 		vtable.symbol = symbol;
 		vtable.initializer_kind = Global::STRUCTURED_VALUE;
@@ -1583,7 +1583,7 @@ private:
 		const ClassPolymorphismFacts& base =
 			graph_.class_polymorphism[base_entity];
 		if (*cursor >= symbols.size())
-			throw std::logic_error("construction vtable subtree is truncated");
+			ThrowLoweringInternal("construction vtable subtree is truncated");
 		std::vector<std::int64_t> offsets;
 		for (std::size_t virtual_base = 0;
 			virtual_base < base_owner.virtual_base_count; ++virtual_base)
@@ -1591,7 +1591,7 @@ private:
 			std::uint64_t complete_offset = 0;
 			if (!program_.FindVirtualBase(complete, program_.VirtualBase(
 				base_entity, virtual_base).entity, &complete_offset))
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"construction vtable has no complete virtual base");
 			offsets.push_back(static_cast<std::int64_t>(complete_offset) -
 				static_cast<std::int64_t>(base_offset));
@@ -1615,12 +1615,12 @@ private:
 		{
 			if (!base.views[view].stores_vptr) continue;
 			if (*cursor >= symbols.size())
-				throw std::logic_error("construction view subtree is truncated");
+				ThrowLoweringInternal("construction view subtree is truncated");
 			std::uint64_t complete_view_offset =
 				base_offset + base.views[view].offset;
 			if (base.views[view].virtual_base && !program_.FindVirtualBase(
 				complete, base.views[view].entity, &complete_view_offset))
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"construction view has no complete virtual base");
 			std::vector<std::int64_t> view_offsets;
 			const EntityRecord& view_owner =
@@ -1632,7 +1632,7 @@ private:
 				if (!program_.FindVirtualBase(complete, program_.VirtualBase(
 					base.views[view].entity, virtual_base).entity,
 					&complete_offset))
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"construction view has no nested virtual base");
 				view_offsets.push_back(
 					static_cast<std::int64_t>(complete_offset) -
@@ -1661,7 +1661,7 @@ private:
 			EmitConstructionSubtree(
 				entity, edge.entity, edge.offset, symbols, &cursor);
 			if (cursor != symbols.size())
-				throw std::logic_error("construction vtable subtree is oversized");
+				ThrowLoweringInternal("construction vtable subtree is oversized");
 		}
 	}
 
@@ -1672,7 +1672,7 @@ private:
 		const ClassPolymorphismFacts& base =
 			graph_.class_polymorphism[base_entity];
 		if (*cursor >= symbols.size())
-			throw std::logic_error("construction VTT subtree is truncated");
+			ThrowLoweringInternal("construction VTT subtree is truncated");
 		const std::uint64_t address_point = output_.host_object_emission ?
 			PrimaryAddressPoint(base) :
 			(base_offset == 0 ? base.address_point : base.address_point -
@@ -1691,7 +1691,7 @@ private:
 			if (base.views[view].stores_vptr)
 			{
 				if (*cursor >= symbols.size())
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"construction VTT view subtree is truncated");
 				AddAddressItem(vtt, symbols[(*cursor)++],
 					static_cast<std::int64_t>(base.views[view].address_point));
@@ -1720,7 +1720,7 @@ private:
 				program_.DirectBase(entity, ordinal).offset,
 				construction, &cursor);
 			if (cursor != construction.size())
-				throw std::logic_error("construction VTT subtree is oversized");
+				ThrowLoweringInternal("construction VTT subtree is oversized");
 		}
 		for (std::size_t view = 0; view < facts.views.size(); ++view)
 		{
@@ -1832,7 +1832,7 @@ private:
 				state_.rtti_function_symbol : record.kind == TYPE_MEMBER_POINTER ?
 				state_.rtti_member_pointer_symbol : state_.rtti_enum_symbol;
 			if (runtime == kNoLowId)
-				throw std::logic_error("demanded RTTI kind has no ABI runtime");
+				ThrowLoweringInternal("demanded RTTI kind has no ABI runtime");
 			AddAddressItem(&rtti, runtime, 16);
 			AddAddressItem(&rtti, state_.type_name_symbols[type]);
 			if (record.kind == TYPE_POINTER ||
@@ -1862,14 +1862,14 @@ private:
 				AddIntegerItem(&rtti, LowI32(), flags);
 				if (child >= state_.type_rtti_symbols.size() ||
 					state_.type_rtti_symbols[child] == kNoLowId)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"pointer RTTI pointee was not demanded");
 				AddAddressItem(&rtti, state_.type_rtti_symbols[child]);
 				if (record.kind == TYPE_MEMBER_POINTER)
 				{
 					if (context >= state_.type_rtti_symbols.size() ||
 						state_.type_rtti_symbols[context] == kNoLowId)
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"member-pointer RTTI context was not demanded");
 					AddAddressItem(&rtti,
 						state_.type_rtti_symbols[context]);
@@ -1967,7 +1967,7 @@ public:
 				deallocation_binding < function_symbols_.size())
 				deallocation = function_symbols_[deallocation_binding];
 			if (deallocation == kNoLowId)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"deleting destructor dependencies are not emitted");
 			EmitOne(entity, symbol, deallocation_binding, deallocation);
 		}
@@ -2137,7 +2137,7 @@ private:
 			std::uint64_t view_offset = facts.views[view].offset;
 			if (facts.views[view].virtual_base && !program_.FindVirtualBase(
 				entity, facts.views[view].entity, &view_offset))
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"deleting destructor has no virtual-base view");
 			EmitVptrStore(state_.class_view_vtable_symbols[entity][view],
 				state_.class_view_address_points[entity][view],
@@ -2244,7 +2244,7 @@ private:
 			if (complete != kNoBinding && complete < function_symbols_.size())
 				complete_destructor = function_symbols_[complete];
 			if (complete_destructor == kNoLowId)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"deleting destructor has no complete entry");
 		}
 		EmitEhTarget(Instruction::EH_CLEANUP, cleanup);
@@ -2313,7 +2313,7 @@ private:
 		if (deleting_functions_.empty()) return;
 		const std::size_t first = state_.source_function_first;
 		if (first > output_.functions.size())
-			throw std::logic_error("invalid PA18 function ordering boundary");
+			ThrowLoweringInternal("invalid PA18 function ordering boundary");
 		const std::size_t missing =
 			std::numeric_limits<std::size_t>::max();
 		std::vector<std::size_t> pending_by_symbol(

@@ -729,7 +729,8 @@ Append one row for each retained or rejected increment:
 | E7e | call, constructor, special-member, intrinsic, and value-boundary lowering | call/cleanup graph contradictions, unsupported object source shapes, and fixed argument/extent limits shared generic bases | lowering internal/source/resource types through the cold boundary; builtin/call eligibility stays Boolean and cleanup routing unchanged | PA15 calls, PA17 object construction/lifetime, and PA26 destruction/EH behavior | successful frozen remains 0; generic logic/runtime sites -65/-10 | -5,056 text, neutral rodata, -72 EH header, -352 unwind, -876 exception table | cumulative frozen 0.445/0.445 s; paired -0.54% (neutral) | PA15 121/121; PA17 247/247; PA26 114/114; through-PA26 3,822/3,822; frozen object exact | `6fb546a1` | retained |
 | E7f | constants, control, expression, and extension lowering | CFG/EH contradictions, unsupported source shapes, and fixed graph/count limits shared generic bases | lowering internal/source/resource types through the cold boundary; semantic checkpoint, operator, and initializer eligibility remains ordinary flow | PA15 control/expression lowering, PA16 lifetime/goto policy, PA23 extensions, and PA26 EH behavior | successful frozen remains 0; generic logic/runtime sites -53/-42 | -11,136 text, +32 rodata, +40 EH header, +56 unwind, -1,456 exception table | cumulative frozen 0.450/0.450 s; paired +1.67% (noise) | PA15 121/121; PA16 58/58; PA23 414/414; PA26 114/114; through-PA26 3,822/3,822; frozen object exact | `61011cc8` | retained |
 | E7g | object initialization, arrays, temporaries, and cleanup lowering | semantic-dump contradictions, unsupported initializer shapes, and fixed cleanup/extent identities shared generic bases | lowering internal/source/resource types through the cold boundary; optional initialization and cleanup decisions remain ordinary flow | PA15 initialization, PA17 object lifetime, and PA26 cleanup/EH behavior | successful frozen remains 0; generic logic/runtime sites -57/-28 | -6,528 text, +32 rodata, neutral EH header, -144 unwind, -916 exception table | cumulative frozen 0.450/0.450 s; paired +0.56% (neutral) | PA15 121/121; PA17 247/247; PA26 114/114; through-PA26 3,822/3,822; frozen object exact | `a184f038` | retained |
-| E7h | storage, static lifetime, RTTI, member-pointer, and thunk lowering | emitted-symbol/storage/RTTI facts and semantic action shapes shared generic bases | lowering internal/source types through the cold boundary; storage lookup and object-model applicability remain ordinary flow | PA15 storage, PA16 static lifetime, PA18 polymorphism, and PA22 member pointers | successful frozen remains 0; generic logic/runtime sites -22/-9 | -5,760 text, neutral rodata, -16 EH header, -128 unwind, -692 exception table | cumulative frozen user 0.460/0.450 s; paired -1.09% (neutral) | PA15 121/121; PA16 300/300; PA18 37/37; PA22 311/311; through-PA26 3,822/3,822; frozen object exact | pending | retained |
+| E7h | storage, static lifetime, RTTI, member-pointer, and thunk lowering | emitted-symbol/storage/RTTI facts and semantic action shapes shared generic bases | lowering internal/source types through the cold boundary; storage lookup and object-model applicability remain ordinary flow | PA15 storage, PA16 static lifetime, PA18 polymorphism, and PA22 member pointers | successful frozen remains 0; generic logic/runtime sites -22/-9 | -5,760 text, neutral rodata, -16 EH header, -128 unwind, -692 exception table | cumulative frozen user 0.460/0.450 s; paired -1.09% (neutral) | PA15 121/121; PA16 300/300; PA18 37/37; PA22 311/311; through-PA26 3,822/3,822; frozen object exact | `fb0bb947` | retained |
+| E7i | polymorphic layout, construction VTT, and virtual-base lowering | vtable/VTT/RTTI graph contradictions and finite slot ceilings shared generic bases | lowering internal/resource types through the cold boundary; hierarchy traversal and optional ABI facts remain ordinary flow | PA18 polymorphism and PA22 object-model behavior | successful frozen remains 0; generic logic/runtime sites -41/-2 | -4,608 text, neutral rodata, -16 EH header, -104 unwind, -404 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA18 37/37; PA22 311/311; through-PA26 3,822/3,822; frozen object exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1788,6 +1789,28 @@ hash `8545fec6...`; baseline/candidate user medians are 0.460/0.450 seconds and
 paired candidate time is -1.09%, below timer resolution.  The cold typed
 boundary reduces the linked success-path footprint without adding a returned
 status check to these frequently instantiated lowering helpers.
+
+### E7i execution record
+
+Polymorphic-layout, construction-VTT, and virtual-base lowering has no recovery
+catch around its generic failures.  Ordinary hierarchy traversal, optional
+virtual-base lookup, and ABI-fact discovery retain their existing Boolean and
+sentinel paths.  Contradictory vtable, RTTI, thunk, construction-tree, symbol,
+and virtual-base facts now use the lowering internal type; the 32-bit host
+vtable and adjusted-slot ceilings use the lowering resource type.
+
+The successful frozen compile records zero throws.  Generic logic/runtime
+sites fall by 41/2 and both owners leave the generic inventory, bringing the
+audit to 382/303/63.  Against E7h, `.text` changes 6,467,110 -> 6,462,502,
+`.rodata` remains 214,592, `.eh_frame_hdr` 51,604 -> 51,588, `.eh_frame`
+321,848 -> 321,744, and `.gcc_except_table` 130,000 -> 129,596.
+
+PA18 passes 37/37, PA22 311/311, and through-PA26 passes 3,822/3,822.  Four
+cumulative frozen A/B/B/A blocks reproduce object hash `8545fec6...`;
+baseline/candidate user medians both measure 0.450 seconds and paired candidate
+time is exactly neutral.  These are terminal graph-contract checks, so a
+returned failure channel would burden successful vtable construction without
+a recovery owner.
 
 ## Initial code map
 

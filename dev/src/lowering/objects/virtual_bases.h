@@ -3,6 +3,7 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/presentation/local_names.h"
 #include "lowering/ir/model.h"
@@ -11,7 +12,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -585,7 +585,7 @@ protected:
 		const DumpNode& function = derived.arena_.nodes[node];
 		const std::size_t hidden = HiddenVirtualBaseParameterCount(node);
 		if (hidden > parameters.size())
-			throw std::logic_error("virtual-base boundary parameter mismatch: " +
+			ThrowLoweringInternal("virtual-base boundary parameter mismatch: " +
 				derived.program_.names.Get(function.text));
 		std::size_t boundary = parameters.size() - hidden;
 		const bool omit_copy_source =
@@ -659,7 +659,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (fact.slot == kNoLowId)
-			throw std::logic_error("virtual-base parameter has no slot");
+			ThrowLoweringInternal("virtual-base parameter has no slot");
 		Instruction store(Instruction::STORE);
 		store.type = LowPtr();
 		if (fact.static_source)
@@ -694,7 +694,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		VirtualBaseContractState& state = derived.virtual_base_contracts_;
 		if (node >= state.expression_node_count)
-			throw std::logic_error("virtual-base expression is out of range");
+			ThrowLoweringInternal("virtual-base expression is out of range");
 		if (state.expression_bindings.empty())
 		{
 			state.expression_bindings.assign(
@@ -738,7 +738,7 @@ protected:
 			if (children.size() != 1) break;
 			current = children[0];
 			if (current >= state.expression_node_count)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"virtual-base expression edge is out of range");
 		}
 		for (std::size_t i = 0;
@@ -766,7 +766,7 @@ protected:
 			else
 			{
 				if (fact.slot == kNoLowId)
-					throw std::logic_error("virtual-base address has no slot");
+					ThrowLoweringInternal("virtual-base address has no slot");
 				*address = derived.LoadStorage(Operand(fact.slot, LowPtr()), LowPtr());
 			}
 			return true;
@@ -863,7 +863,7 @@ protected:
 	Operand CurrentConstructionVtt() const
 	{
 		if (!HasCurrentConstructionVtt())
-			throw std::logic_error("construction VTT parameter is unavailable");
+			ThrowLoweringInternal("construction VTT parameter is unavailable");
 		return Operand(current_construction_vtt_, LowPtr());
 	}
 
@@ -873,17 +873,17 @@ protected:
 		const EntityId owner = complete == kNoEntity ?
 			derived.current_member_owner_ : complete;
 		if (owner == kNoEntity)
-			throw std::logic_error("construction VTT has no owning class");
+			ThrowLoweringInternal("construction VTT has no owning class");
 		if (complete == kNoEntity)
 		{
 			if (!HasCurrentConstructionVtt())
-				throw std::logic_error("nested base constructor has no VTT");
+				ThrowLoweringInternal("nested base constructor has no VTT");
 			if (base == owner) return CurrentConstructionVtt();
 		}
 		if (complete != kNoEntity &&
 			(complete >= derived.polymorphism_.class_vtt_symbols.size() ||
 			 derived.polymorphism_.class_vtt_symbols[complete] == kNoLowId))
-			throw std::logic_error("complete constructor has no VTT symbol");
+			ThrowLoweringInternal("complete constructor has no VTT symbol");
 		std::uint64_t offset = std::numeric_limits<std::uint64_t>::max();
 		const EntityRecord& owner_record = derived.program_.entities[owner];
 		for (std::size_t ordinal = 0;
@@ -897,7 +897,7 @@ protected:
 				break;
 			}
 		if (offset == std::numeric_limits<std::uint64_t>::max())
-			throw std::logic_error("base constructor has no construction VTT slice");
+			ThrowLoweringInternal("base constructor has no construction VTT slice");
 		if (complete == kNoEntity)
 			return derived.IndexAddress(LowI8(), CurrentConstructionVtt(),
 				Operand(static_cast<std::int64_t>(offset), LowI64()), false);
