@@ -2,12 +2,12 @@
 #define CPPGM_LOWERING_CALLS_ARGUMENTS_H
 
 #include "lowering/core/source_types.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -129,14 +129,14 @@ protected:
 			hosted_builtin::GetIntegerIntrinsic(
 				binding.hosted_integer_intrinsic);
 		if (children.size() != intrinsic.arity + 1)
-			throw std::logic_error("invalid integer intrinsic call");
+			ThrowLoweringInternal("invalid integer intrinsic call");
 		TypeId argument_type = derived.arena_.nodes[children[1]].type;
 		if (intrinsic.argument_rule !=
 			hosted_builtin::INTEGER_ARGUMENT_GENERIC_UNSIGNED)
 			argument_type = derived.program_.types.Parameters(binding.type)[0];
 		const LowType type = derived.LowerType(argument_type);
 		if (!IsInteger(type) || type.width > 64 || type.is_signed)
-			throw std::logic_error("invalid lowered integer intrinsic type");
+			ThrowLoweringInternal("invalid lowered integer intrinsic type");
 		Operand value = derived.LowerValue(children[1], type);
 		if (intrinsic.operation == hosted_builtin::INTEGER_OPERATION_BSWAP)
 		{
@@ -152,7 +152,7 @@ protected:
 			}
 			else if (type.width == 32 || type.width == 64)
 				*result = EmitIntegerIntrinsicUnary(LOW_OP_BSWAP, value, type);
-			else throw std::logic_error("invalid byte-swap width");
+			else ThrowLoweringInternal("invalid byte-swap width");
 			return true;
 		}
 		Operand count = LowerIntegerIntrinsicCount(
@@ -284,7 +284,7 @@ protected:
 			word_type = LowU16();
 			word_offset = 8;
 		}
-		else throw std::logic_error("invalid floating signbit width");
+		else ThrowLoweringInternal("invalid floating signbit width");
 
 		const Operand slot(derived.CreateGeneratedSlot(
 			"floating_signbit", value.type), value.type);
@@ -314,7 +314,7 @@ protected:
 			hosted_builtin::GetFloatingIntrinsic(
 				binding.hosted_floating_intrinsic);
 		if (children.size() != intrinsic.arity + 1)
-			throw std::logic_error("invalid floating intrinsic call");
+			ThrowLoweringInternal("invalid floating intrinsic call");
 		if (intrinsic.operation ==
 			hosted_builtin::FLOATING_OPERATION_EXTERNAL_CEIL)
 			return false;
@@ -349,7 +349,7 @@ protected:
 		const LowType value_type = derived.LowerExpressionType(
 			derived.arena_.nodes[children[value_index]].type);
 		if (!IsFloating(value_type))
-			throw std::logic_error("floating intrinsic lost operand type");
+			ThrowLoweringInternal("floating intrinsic lost operand type");
 		const Operand value =
 			derived.LowerValue(children[value_index], value_type);
 		Operand classified;
@@ -401,7 +401,7 @@ protected:
 		case hosted_builtin::FLOATING_OPERATION_NAN:
 		case hosted_builtin::FLOATING_OPERATION_SNAN:
 		case hosted_builtin::FLOATING_OPERATION_EXTERNAL_CEIL:
-			throw std::logic_error("invalid floating intrinsic dispatch");
+			ThrowLoweringInternal("invalid floating intrinsic dispatch");
 		}
 		*result = derived.Convert(classified, derived.LowerType(record.type));
 		return true;
@@ -424,14 +424,14 @@ protected:
 		if (kind == BUILTIN_FUNCTION_NANL)
 		{
 			if (children.size() != 2)
-				throw std::logic_error("invalid nanl builtin call");
+				ThrowLoweringInternal("invalid nanl builtin call");
 			(void)derived.LowerValue(children[1]);
 			*result = derived.FloatingOperand("nanL", LowF80());
 			return true;
 		}
 		if (kind != BUILTIN_FUNCTION_ISNAN) return false;
 		if (children.size() != 2)
-			throw std::logic_error("invalid isnan builtin call");
+			ThrowLoweringInternal("invalid isnan builtin call");
 		const Operand value = derived.LowerConvertedValue(
 			children[1], LowF80(), false);
 		const Operand compared = derived.Temp(LowI64());
@@ -459,7 +459,7 @@ protected:
 		case 64: return LowU64();
 		case 128: return LowU128();
 		default:
-			throw std::runtime_error(
+			ThrowLoweringSource(
 				"atomic object width has no native LowIR representation");
 		}
 	}
@@ -477,7 +477,7 @@ protected:
 		}
 		if (!order.constant || order.constant_value < 0 ||
 			order.constant_value > 5)
-			throw std::logic_error("atomic order lost its semantic constant fact");
+			ThrowLoweringInternal("atomic order lost its semantic constant fact");
 		return static_cast<std::uint8_t>(order.constant_value);
 	}
 
@@ -518,7 +518,7 @@ protected:
 		if (source.type.kind == LOW_PTR)
 			return derived.LoadStorage(source, transfer);
 		if (source.type.kind != LOW_OBJECT)
-			throw std::logic_error("atomic class value has invalid storage form");
+			ThrowLoweringInternal("atomic class value has invalid storage form");
 		const Operand slot(derived.CreateGeneratedSlot(
 			"atomic_arg", source.type), source.type);
 		const Operand address = derived.AddressOfStorage(slot);
@@ -672,7 +672,7 @@ protected:
 		const AtomicIntrinsic& intrinsic =
 			GetAtomicIntrinsic(record.hosted_atomic_intrinsic);
 		if (children.size() != intrinsic.arity + 1)
-			throw std::logic_error("invalid lowered atomic intrinsic arity");
+			ThrowLoweringInternal("invalid lowered atomic intrinsic arity");
 		if (intrinsic.shape == ATOMIC_SHAPE_FENCE)
 		{
 			Instruction fence(
@@ -686,7 +686,7 @@ protected:
 			return true;
 		}
 		if (children.size() < 2)
-			throw std::logic_error("atomic intrinsic has no object argument");
+			ThrowLoweringInternal("atomic intrinsic has no object argument");
 		const LowType type = AtomicTransferType(record);
 		const Operand pointer = derived.LowerValue(children[1], LowPtr());
 		const std::uint8_t default_order =
@@ -819,7 +819,7 @@ protected:
 		case ATOMIC_SHAPE_LOCK_FREE:
 		case ATOMIC_SHAPE_FENCE: break;
 		}
-		throw std::logic_error("unhandled atomic intrinsic lowering shape");
+		ThrowLoweringInternal("unhandled atomic intrinsic lowering shape");
 	}
 
 	bool TryLowerCompilerBuiltinCall(const DumpNode& record,
@@ -838,7 +838,7 @@ protected:
 			const std::size_t arity = intrinsic.operation ==
 				hosted_builtin::VECTOR_OPERATION_INIT ? intrinsic.lane_count : 2;
 			if (children.size() != arity + 1)
-				throw std::logic_error("invalid vector intrinsic call");
+				ThrowLoweringInternal("invalid vector intrinsic call");
 			const LowType element =
 				intrinsic.element == hosted_builtin::VECTOR_ELEMENT_I8 ? LowI8() :
 				intrinsic.element == hosted_builtin::VECTOR_ELEMENT_I16 ? LowI16() :
@@ -849,7 +849,7 @@ protected:
 				const Operand source = derived.LowerValue(children[1], vector);
 				const DumpNode& lane = derived.arena_.nodes[children[2]];
 				if (!lane.constant_value && !lane.constant)
-					throw std::logic_error("vector extraction lost its lane");
+					ThrowLoweringInternal("vector extraction lost its lane");
 				const Operand address = derived.IndexAddress(LowI8(), source,
 					Operand(static_cast<std::int64_t>(lane.constant_value *
 						(element.width / 8)), LowI64()), false);
@@ -858,7 +858,7 @@ protected:
 			}
 			const LowType type = derived.LowerType(record.type);
 			if (!SameType(type, vector))
-				throw std::logic_error("invalid vector intrinsic result type");
+				ThrowLoweringInternal("invalid vector intrinsic result type");
 			const Operand storage(derived.EnsureGeneratedSlot(
 				children[0], "vector", type), type);
 			const Operand base = derived.AddressOfStorage(storage);
@@ -878,10 +878,10 @@ protected:
 		if (record.compiler_intrinsic != COMPILER_INTRINSIC_NONE)
 		{
 			if (children.size() != 4)
-				throw std::logic_error("invalid overflow intrinsic call");
+				ThrowLoweringInternal("invalid overflow intrinsic call");
 			const LowType narrow = derived.LowerType(record.operand_type);
 			if (!IsInteger(narrow) || narrow.width > 64)
-				throw std::logic_error("invalid overflow intrinsic operand type");
+				ThrowLoweringInternal("invalid overflow intrinsic operand type");
 			const LowType wide = narrow.width < 64 ?
 				(narrow.is_signed ? LowI64() : LowU64()) :
 				(narrow.is_signed ? LowI128() : LowU128());
@@ -923,7 +923,7 @@ protected:
 		if (kind == BUILTIN_FUNCTION_UNREACHABLE)
 		{
 			if (children.size() != 1)
-				throw std::logic_error("invalid unreachable intrinsic call");
+				ThrowLoweringInternal("invalid unreachable intrinsic call");
 			derived.Emit(Instruction(Instruction::UNREACHABLE));
 			*result = Operand(0, LowVoid());
 			return true;
@@ -936,7 +936,7 @@ protected:
 						hosted_memory_intrinsic);
 			if (children.size() < intrinsic.minimum_arity + 1 ||
 				children.size() > intrinsic.maximum_arity + 1)
-				throw std::logic_error("invalid memory intrinsic call");
+				ThrowLoweringInternal("invalid memory intrinsic call");
 			if (intrinsic.lowering == hosted_builtin::MEMORY_LOWER_EXTERNAL)
 				return false;
 			Operand first;
@@ -960,7 +960,7 @@ protected:
 			kind != BUILTIN_FUNCTION_VA_END &&
 			kind != BUILTIN_FUNCTION_VA_ARG) return false;
 		if (children.size() != 2)
-			throw std::logic_error("invalid compiler intrinsic call");
+			ThrowLoweringInternal("invalid compiler intrinsic call");
 		if (kind == BUILTIN_FUNCTION_VA_END)
 		{
 			(void)derived.LowerValue(children[1], LowPtr());
@@ -993,7 +993,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (arguments.size() != references.size())
-			throw std::logic_error("PA15 call argument fact mismatch");
+			ThrowLoweringInternal("PA15 call argument fact mismatch");
 		if (arguments.empty()) return;
 		if (arguments.size() >= kNoLowId ||
 			derived.output_.call_arguments.size() >
@@ -1003,7 +1003,7 @@ protected:
 			derived.output_.call_arguments.size() !=
 				derived.output_.call_argument_object_bytes.size() ||
 			(object_bytes && object_bytes->size() != arguments.size()))
-			throw std::runtime_error("too many PA15 call arguments");
+			ThrowLoweringResourceLimit("too many PA15 call arguments");
 		call->extra_first = static_cast<std::uint32_t>(
 			derived.output_.call_arguments.size());
 		call->extra_count = static_cast<std::uint32_t>(arguments.size());
@@ -1293,7 +1293,7 @@ protected:
 			if (children.size() != 1 ||
 				binding >= derived.function_symbols_.size() ||
 				derived.function_symbols_[binding] == kNoLowId)
-				throw std::runtime_error(
+				ThrowLoweringInternal(
 					"invalid static member function expression");
 			const std::string spelling =
 				derived.program_.names.Get(record.text);

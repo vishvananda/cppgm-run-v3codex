@@ -1,12 +1,12 @@
 #ifndef CPPGM_LOWERING_CALLS_CONSTRUCTORS_H
 #define CPPGM_LOWERING_CALLS_CONSTRUCTORS_H
 
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 
 #include <cstdint>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -124,7 +124,7 @@ protected:
 		if (action.elide_empty_constructor && !force_empty) return;
 		if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
 			action.binding == kNoBinding)
-			throw std::runtime_error("invalid constructor action");
+			ThrowLoweringInternal("invalid constructor action");
 		const BindingRecord& selected =
 			derived.program_.bindings[action.binding];
 		if (derived.output_.host_object_emission && selected.constructor &&
@@ -150,7 +150,7 @@ protected:
 		{
 			if (children.size() != 1 ||
 				!derived.IsClassObjectType(action.operand_type))
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"invalid trivial special-member construction");
 			const DumpNode& source_record = derived.arena_.nodes[children[0]];
 			const NodeChildren source_children = derived.Children(children[0]);
@@ -184,13 +184,13 @@ protected:
 		}
 		if (action.binding >= derived.function_symbols_.size() ||
 			derived.function_symbols_[action.binding] == kNoLowId)
-			throw std::runtime_error("constructor action has no emitted binding: " +
+			ThrowLoweringInternal("constructor action has no emitted binding: " +
 				derived.program_.names.Get(action.text));
 		const TypeRecord& function_type =
 			derived.program_.types.Get(action.type);
 		if (function_type.kind != TYPE_FUNCTION ||
 			function_type.parameter_count == 0)
-			throw std::logic_error("constructor action has invalid function type");
+			ThrowLoweringInternal("constructor action has invalid function type");
 		const TypeId* parameters = derived.program_.types.Parameters(action.type);
 		CallArguments arguments;
 		CallArgumentFlags references;
@@ -277,7 +277,7 @@ protected:
 					std::uint64_t offset = 0;
 					if (!derived.program_.FindVirtualBase(
 						complete_entity, needed.entity, &offset))
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"complete constructor has no virtual base address");
 					const Operand complete_object = derived.LoadStorage(
 						derived.StorageFor(
@@ -289,7 +289,7 @@ protected:
 				{
 					if (!derived.CurrentVirtualBaseAddress(
 						derived.current_this_binding_, needed.entity, &address))
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"base constructor has no forwarded virtual base address");
 				}
 				arguments.Push(address);
@@ -339,7 +339,7 @@ protected:
 		if (action.kind != DUMP_BASE_INITIALIZER_ACTION ||
 			derived.current_this_binding_ == kNoBinding || children.empty() ||
 			derived.arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"base initialization is outside a constructor");
 		NodeChildren constructor;
 		constructor.Push(children[0]);
@@ -380,7 +380,7 @@ protected:
 		if (action.kind != DUMP_DELEGATING_INITIALIZER_ACTION ||
 			derived.current_this_binding_ == kNoBinding || children.empty() ||
 			derived.arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"delegating initialization is outside a constructor");
 		if (children.size() > 1)
 			derived.BeginFullExpressionCleanup(children, 1);
@@ -408,13 +408,13 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (values.size() > 1)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"constructor aggregate leaf has multiple values");
 		if (derived.IsArrayType(action.type))
 		{
 			if (values.size() != 1 ||
 				derived.arena_.nodes[values[0]].kind != DUMP_BRACED_INIT_LIST)
-				throw std::runtime_error(
+				ThrowLoweringSource(
 					"constructor array member requires braces");
 			if (retained_destination.kind == Operand::NONE)
 				derived.LowerConstructorArrayActions(
@@ -435,7 +435,7 @@ protected:
 		if (derived.IsReferenceType(action.type))
 		{
 			if (values.empty())
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"constructor aggregate reference has no value");
 			store.type = LowPtr();
 			store.first = derived.AddressOfStorage(
@@ -471,7 +471,7 @@ protected:
 			const DumpNode& action = derived.arena_.nodes[actions[i]];
 			if (action.kind != DUMP_INITIALIZER_ACTION ||
 				action.binding == kNoBinding)
-				throw std::logic_error("invalid constructor aggregate action");
+				ThrowLoweringInternal("invalid constructor aggregate action");
 			const NodeChildren values = derived.Children(actions[i]);
 			const bool nested = values.size() == 1 &&
 				derived.arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
@@ -510,11 +510,11 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (action.binding == kNoBinding ||
 			derived.current_this_binding_ == kNoBinding)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"member initialization is outside a constructor");
 		if (children.empty()) return;
 		if (children.size() != 1)
-			throw std::logic_error("member initialization has multiple values");
+			ThrowLoweringInternal("member initialization has multiple values");
 		const std::uint32_t value_node = children[0];
 		const DumpNode& value = derived.arena_.nodes[value_node];
 		if (value.kind == DUMP_CONSTRUCTOR_ARRAY_ACTION)
@@ -579,7 +579,7 @@ protected:
 			{
 				const NodeChildren values = derived.Children(value_node);
 				if (values.size() != 1)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"reference member requires one initializer");
 				store.first = derived.AddressOfStorage(
 					derived.LowerStorage(values[0]));
@@ -594,7 +594,7 @@ protected:
 			{
 				const NodeChildren values = derived.Children(value_node);
 				if (values.size() > 1)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"scalar brace initialization has many values");
 				if (values.empty())
 					store.first = store.type.kind == LOW_PTR ?

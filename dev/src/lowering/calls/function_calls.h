@@ -2,13 +2,13 @@
 
 #include "lowering/ir/model.h"
 #include "lowering/objects/member_pointers.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "semantic/model/graph.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -42,7 +42,7 @@ protected:
 		using namespace lowering::support;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.empty())
-			throw std::runtime_error("semantic call has no callee");
+			ThrowLoweringInternal("semantic call has no callee");
 		const DumpNode& callee = derived.arena_.nodes[children[0]];
 		Operand builtin_result;
 		if (derived.TryLowerCompilerBuiltinCall(
@@ -77,7 +77,7 @@ protected:
 		const TypeRecord& function_type =
 			derived.program_.types.Get(function_type_id);
 		if (function_type.kind != TYPE_FUNCTION)
-			throw std::runtime_error("invalid PA15 indirect callee type");
+			ThrowLoweringInternal("invalid PA15 indirect callee type");
 		const TypeId* parameters =
 			derived.program_.types.Parameters(function_type_id);
 		CallArguments arguments;
@@ -238,7 +238,7 @@ protected:
 		{
 			if (virtual_object.kind == Operand::NONE ||
 				record.virtual_slot == kNoDumpEdge)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"virtual call has no object or slot");
 			call.first = derived.LowerVirtualCallee(record, virtual_object,
 				ResolveHostVirtualSlot(derived.program_,
@@ -265,7 +265,7 @@ protected:
 		if (supplied_result.kind != Operand::NONE)
 		{
 			if (call.type.kind != LOW_OBJECT)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"direct class call destination has a scalar result");
 			derived.EmitClassObjectCopy(
 				record.type, result, supplied_result);

@@ -4,6 +4,7 @@
 #include "semantic/model/graph.h"
 #include "lowering/abi/emission_policy.h"
 #include "lowering/abi/symbol_metadata.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/types.h"
 
@@ -85,7 +86,7 @@ protected:
 		if (function != semantic::kNoBinding)
 		{
 			if (function >= derived.program_.bindings.size())
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"class-result boundary has an invalid callable owner");
 			function = derived.program_.bindings[function].canonical;
 		}

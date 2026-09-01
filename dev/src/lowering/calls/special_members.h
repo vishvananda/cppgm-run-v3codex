@@ -1,12 +1,12 @@
 #pragma once
 
 #include "semantic/model/graph.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -63,7 +63,7 @@ protected:
 		if (selected == kNoBinding ||
 			selected >= derived.function_symbols_.size() ||
 			derived.function_symbols_[selected] == kNoLowId)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"selected special-member helper has no lowering identity");
 		const TypeRecord& function = derived.program_.types.Get(
 			derived.program_.bindings[selected].type);
@@ -102,7 +102,7 @@ protected:
 					std::uint64_t offset = 0;
 					if (!derived.program_.FindVirtualBase(
 						derived.current_member_owner_, needed.entity, &offset))
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"complete synthesized constructor has no virtual base");
 					const Operand complete_object = derived.LoadStorage(
 						derived.StorageFor(
@@ -112,7 +112,7 @@ protected:
 				}
 				else if (!derived.CurrentVirtualBaseAddress(
 					derived.current_this_binding_, needed.entity, &address))
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"base synthesized constructor has no virtual base");
 				arguments.Push(address);
 				references.Push(Instruction::CALL_PASS_VALUE);
@@ -129,7 +129,7 @@ protected:
 				--hidden_remaining;
 			}
 			if (hidden_remaining != 0)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"synthesized constructor virtual-base ABI is incomplete");
 		}
 		Instruction call = derived.DirectCallInstruction(
@@ -160,7 +160,7 @@ protected:
 		const TypeId object_type = derived.program_.types.RemoveTopCv(type);
 		const TypeRecord& record = derived.program_.types.Get(object_type);
 		if (record.kind == TYPE_ARRAY)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"array construction bypassed its retained loop recipe");
 		if (selected != kNoBinding)
 		{
@@ -189,7 +189,7 @@ protected:
 		const TypeId object_type = derived.program_.types.RemoveTopCv(type);
 		const TypeRecord& record = derived.program_.types.Get(object_type);
 		if (record.kind == TYPE_ARRAY)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"array assignment bypassed its retained loop recipe");
 		if (selected != kNoBinding)
 		{
@@ -222,7 +222,7 @@ protected:
 			if (array.kind != TYPE_ARRAY) return type;
 			if (array.bound == 0 || array.bound >
 				std::numeric_limits<std::size_t>::max() / *count)
-				throw std::logic_error("invalid synthesized array extent");
+				ThrowLoweringInternal("invalid synthesized array extent");
 			*count *= static_cast<std::size_t>(array.bound);
 			type = array.child;
 		}
@@ -271,7 +271,8 @@ protected:
 		}
 		if (count > static_cast<std::size_t>(
 			std::numeric_limits<std::int64_t>::max()))
-			throw std::logic_error("synthesized array extent exceeds LowIR");
+			ThrowLoweringResourceLimit(
+				"synthesized array extent exceeds LowIR");
 		Operand source = LoadAssignmentObject(source_object);
 		if (source_member != kNoBinding)
 			source = derived.ProjectAggregateMember(source, source_member);
@@ -335,7 +336,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (step.kind != DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION)
-			throw std::logic_error("invalid synthesized construction step");
+			ThrowLoweringInternal("invalid synthesized construction step");
 		if (step.storage_size != 0)
 		{
 			const Operand destination = LoadAssignmentObject(
@@ -360,7 +361,7 @@ protected:
 		if (derived.IsReferenceType(step.type))
 		{
 			if (step.binding == kNoBinding || step.selected_binding != kNoBinding)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"invalid synthesized reference construction step");
 			Operand source = LoadAssignmentObject(construction.object_binding);
 			source = derived.ProjectAggregateMember(source, step.binding);
@@ -420,7 +421,7 @@ protected:
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (binding == kNoBinding ||
 			!derived.program_.bindings[binding].bit_field)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"invalid synthesized storage-unit transfer");
 		const BindingLayoutFact& layout = derived.program_.BindingLayout(
 			derived.program_.bindings[binding]);
@@ -431,7 +432,7 @@ protected:
 		case 32: return LowU32();
 		case 64: return LowU64();
 		default:
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"unsupported synthesized storage-unit width");
 		}
 	}
@@ -465,7 +466,7 @@ protected:
 				DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION ||
 			construction.object_binding == kNoBinding ||
 			derived.current_this_binding_ == kNoBinding)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"invalid synthesized construction action");
 		const NodeChildren steps = derived.Children(node);
 		for (std::size_t i = 0; i < steps.size(); ++i)
@@ -483,7 +484,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (step.kind != DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION)
-			throw std::logic_error("invalid synthesized assignment step");
+			ThrowLoweringInternal("invalid synthesized assignment step");
 		if (step.storage_size != 0)
 		{
 			const Operand destination = LoadAssignmentObject(
@@ -597,7 +598,7 @@ protected:
 		if (assignment.kind != DUMP_SPECIAL_MEMBER_ASSIGNMENT_ACTION ||
 			assignment.object_binding == kNoBinding ||
 			derived.current_this_binding_ == kNoBinding)
-			throw std::logic_error("invalid synthesized assignment action");
+			ThrowLoweringInternal("invalid synthesized assignment action");
 		const NodeChildren steps = derived.Children(node);
 		for (std::size_t i = 0; i < steps.size(); ++i)
 		{
@@ -660,7 +661,7 @@ protected:
 		if (destructor == kNoBinding ||
 			destructor >= derived.function_symbols_.size() ||
 			derived.function_symbols_[destructor] == kNoLowId)
-			throw std::runtime_error(
+			ThrowLoweringInternal(
 				"destructor action has no emitted binding: " +
 				std::to_string(destructor) + " " +
 				(destructor < derived.program_.bindings.size() ?
@@ -703,7 +704,7 @@ protected:
 				if (derived.current_this_binding_ == kNoBinding ||
 					!derived.CurrentVirtualBaseAddress(
 						derived.current_this_binding_, needed.entity, &address))
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"base destructor has no forwarded virtual-base address");
 			}
 			else if (base_subobject && derived.current_this_binding_ != kNoBinding &&
@@ -712,7 +713,7 @@ protected:
 				std::uint64_t offset = 0;
 				if (!derived.program_.FindVirtualBase(
 					derived.current_member_owner_, needed.entity, &offset))
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"complete destructor has no virtual-base address");
 				const Operand complete = derived.LoadStorage(derived.StorageFor(
 					derived.current_this_binding_, LowPtr()), LowPtr());
@@ -727,7 +728,7 @@ protected:
 			--hidden;
 		}
 		if (hidden != 0)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"destructor call has an incomplete virtual-base contract");
 		Instruction call = derived.DirectCallInstruction(
 			derived.function_symbols_[destructor], LowVoid());
@@ -784,7 +785,8 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (count > static_cast<std::size_t>(
 			std::numeric_limits<std::int64_t>::max()))
-			throw std::logic_error("destructor array extent exceeds LowIR");
+			ThrowLoweringResourceLimit(
+				"destructor array extent exceeds LowIR");
 		const SlotId progress_id = static_cast<SlotId>(
 			derived.function_->slots.size());
 		Slot progress_slot;
@@ -873,7 +875,7 @@ protected:
 			return;
 		}
 		if (record.bound == 0)
-			throw std::runtime_error("destruction of an unbounded array");
+			ThrowLoweringSource("destruction of an unbounded array");
 		std::size_t count = 1;
 		TypeId element_type = type;
 		for (;;)
@@ -883,7 +885,7 @@ protected:
 			if (array.kind != TYPE_ARRAY) break;
 			if (array.bound == 0 || array.bound >
 				std::numeric_limits<std::size_t>::max() / count)
-				throw std::logic_error("invalid destructor array extent");
+				ThrowLoweringInternal("invalid destructor array extent");
 			count *= static_cast<std::size_t>(array.bound);
 			element_type = array.child;
 		}
@@ -909,7 +911,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (action.kind != DUMP_DESTRUCTOR_ACTION ||
 			action.binding == kNoBinding || action.operand_type == kNoType)
-			throw std::logic_error("invalid destructor action");
+			ThrowLoweringInternal("invalid destructor action");
 		if (derived.LowerInitializerListTemporaryDestructor(action)) return;
 		const TypeRecord& outer = derived.program_.types.Get(
 			derived.RemoveTopQualifiers(action.operand_type));
@@ -920,7 +922,7 @@ protected:
 				if (action.constant_value < 0 ||
 					static_cast<std::uint64_t>(action.constant_value) >=
 						outer.bound)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"invalid destructor array element identity");
 				const Operand element = derived.BoundArrayElementAddress(
 					action.object_binding, action.operand_type,
@@ -937,7 +939,7 @@ protected:
 				if (array.kind != TYPE_ARRAY) break;
 				if (array.bound == 0 || array.bound >
 					std::numeric_limits<std::size_t>::max() / count)
-					throw std::logic_error("invalid destructor array extent");
+					ThrowLoweringInternal("invalid destructor array extent");
 				count *= static_cast<std::size_t>(array.bound);
 				element_type = array.child;
 			}
@@ -967,7 +969,7 @@ protected:
 			if (object.non_static_data_member)
 			{
 				if (derived.current_this_binding_ == kNoBinding)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"member destruction is outside a destructor");
 				destination = derived.LoadStorage(derived.StorageFor(
 					derived.current_this_binding_, LowPtr()), LowPtr());
@@ -981,7 +983,7 @@ protected:
 		else if (action.complete_object_destruction)
 		{
 			if (derived.current_this_binding_ == kNoBinding)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"complete-object destruction is outside a member function");
 			destination = derived.LoadStorage(derived.StorageFor(
 				derived.current_this_binding_, LowPtr()), LowPtr());
@@ -992,7 +994,7 @@ protected:
 		{
 			if (derived.current_this_binding_ == kNoBinding ||
 				action.base_projection_count == 0)
-				throw std::logic_error("base destruction has no object");
+				ThrowLoweringInternal("base destruction has no object");
 			destination = derived.LoadStorage(derived.StorageFor(
 				derived.current_this_binding_, LowPtr()), LowPtr());
 			destination = derived.ProjectBaseSubobjects(destination,
