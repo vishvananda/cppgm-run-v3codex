@@ -1,6 +1,6 @@
 #include "lowering/support/identity_maps.h"
 
-#include <stdexcept>
+#include "lowering/support/errors.h"
 
 namespace cppgm
 {
@@ -54,7 +54,7 @@ void FlatIdMap::Insert(std::uint32_t key, std::uint32_t value)
 		slot = (slot + 1) & mask;
 	}
 	if (keys_.size() >= UINT32_MAX)
-		throw std::runtime_error("too many flat identity map entries");
+		ThrowLoweringResourceLimit("too many flat identity map entries");
 	keys_.push_back(key);
 	values_.push_back(value);
 	slots_[slot] = static_cast<std::uint32_t>(keys_.size());
@@ -141,7 +141,7 @@ void FlatIdPairMap::Insert(std::uint32_t first, std::uint32_t second,
 		slot = (slot + 1) & mask;
 	}
 	if (first_keys_.size() >= UINT32_MAX)
-		throw std::runtime_error("too many flat identity-pair map entries");
+		ThrowLoweringResourceLimit("too many flat identity-pair map entries");
 	first_keys_.push_back(first);
 	second_keys_.push_back(second);
 	values_.push_back(value);

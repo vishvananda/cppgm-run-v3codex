@@ -9,6 +9,7 @@
 #include "lowering/presentation/local_names.h"
 #include "lowering/abi/symbol_names.h"
 #include "lowering/objects/storage_facts.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/identity_maps.h"
 #include "lowering/support/sequences.h"
 #include "lowering/expressions/scalar_unary.h"
@@ -52,7 +53,6 @@
 #include <algorithm>
 #include <limits>
 #include <ostream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 namespace cppgm { namespace lowering { namespace {
@@ -145,10 +145,11 @@ public:
 		{
 			const NamespaceObjectAction& action = graph_.namespace_objects[i];
 			if (action.object >= program_.bindings.size())
-				throw std::logic_error("invalid namespace object identity");
+				ThrowLoweringInternal("invalid namespace object identity");
 			const BindingId canonical = program_.bindings[action.object].canonical;
 			if (canonical >= namespace_action_.size())
-				throw std::logic_error("invalid canonical namespace object identity");
+				ThrowLoweringInternal(
+					"invalid canonical namespace object identity");
 			namespace_action_[canonical] = static_cast<std::uint32_t>(i);
 			namespace_action_[action.object] = static_cast<std::uint32_t>(i);
 		}
@@ -163,9 +164,9 @@ public:
 		{
 			const LocalStaticObjectAction& action = graph_.local_static_objects[i];
 			if (action.object >= program_.bindings.size())
-				throw std::logic_error("invalid local static object identity");
+				ThrowLoweringInternal("invalid local static object identity");
 			if (local_static_action_[action.object] != kNoDumpEdge)
-				throw std::logic_error("duplicate local static object action");
+				ThrowLoweringInternal("duplicate local static object action");
 			local_static_action_[action.object] = static_cast<std::uint32_t>(i);
 		}
 		binding_slots_.resize(program_.bindings.size(), kNoLowId);
@@ -473,13 +474,13 @@ private:
 		{
 			Symbol& symbol = output_.symbols[found];
 			if (symbol.source_type != source_type)
-				throw std::runtime_error(
+				ThrowLoweringSource(
 					"conflicting cross-source PA15 symbol type for " +
 					proposed_name + " (existing symbol " +
 					output_.strings.get(symbol.name) + ")");
 			if (symbol.object_name.valid() && object_name_id.valid() &&
 				symbol.object_name != object_name_id)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"conflicting PA15 ABI object identity for " +
 					proposed_name + ": " +
 					output_.strings.get(symbol.object_name) + " versus " +
@@ -518,7 +519,7 @@ private:
 			return found;
 		}
 		if (output_.symbols.size() >= kNoLowId)
-			throw std::runtime_error("too many PA15 emission symbols");
+			ThrowLoweringResourceLimit("too many PA15 emission symbols");
 		const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());
 		output_.symbols.push_back(Symbol(kind,
 			output_.InternUniqueSymbolName(proposed_name),
@@ -660,7 +661,7 @@ private:
 				{
 						const SymbolId symbol = function_symbols_[record.binding];
 						if (output_.symbols[symbol].definition_emitted)
-							throw std::runtime_error(
+							ThrowLoweringSource(
 								"duplicate cross-source function definition");
 						output_.functions.push_back(LowerFunction(current));
 						output_.symbols[symbol].definition_emitted = true;
@@ -702,7 +703,7 @@ private:
 						{
 								const SymbolId symbol = global_symbols_[canonical];
 								if (output_.symbols[symbol].definition_emitted)
-									throw std::runtime_error(
+									ThrowLoweringSource(
 										"duplicate cross-source global definition");
 								output_.globals.push_back(LowerGlobal(current));
 								output_.symbols[symbol].definition_emitted = true;
@@ -751,7 +752,8 @@ private:
 			namespace_action_[canonical] : kNoDumpEdge;
 		if (action_index == kNoDumpEdge ||
 			action_index >= graph_.namespace_objects.size())
-			throw std::logic_error("global definition has no namespace action fact");
+			ThrowLoweringInternal(
+				"global definition has no namespace action fact");
 		const NamespaceObjectAction& action =
 			graph_.namespace_objects[action_index];
 		RegisterNamespaceInitializerListBacking(action);
@@ -873,7 +875,7 @@ private:
 	SlotId CreateGeneratedSlot(const std::string& prefix, const LowType& type)
 	{
 		if (function_->slots.size() >= kNoLowId)
-			throw std::runtime_error("too many PA15 LowIR slots");
+			ThrowLoweringResourceLimit("too many PA15 LowIR slots");
 		const SlotId result = static_cast<SlotId>(function_->slots.size());
 		Slot slot;
 		slot.name = InternLocalName(output_, GeneratedSlotName(prefix));
@@ -965,7 +967,7 @@ private:
 					Operand(0, result.result);
 				Emit(instruction);
 			}
-			else throw std::runtime_error("non-void function has no return");
+			else ThrowLoweringSource("non-void function has no return");
 		}
 		FinishFunctionExceptionBoundary();
 		if (stats_)
@@ -993,7 +995,7 @@ private:
 		while (true)
 		{
 			if (temp_counter_ + 1 >= kNoLowId)
-				throw std::runtime_error("too many PA15 LowIR temporaries");
+				ThrowLoweringResourceLimit("too many PA15 LowIR temporaries");
 			const TempId candidate = static_cast<TempId>(++temp_counter_);
 			if (!local_presentation_.ReservesTemporary(candidate))
 			{
@@ -1012,7 +1014,7 @@ private:
 	void Emit(const Instruction& instruction)
 	{
 		if (CurrentBlock().terminated)
-			throw std::runtime_error("PA15 attempted to emit after a terminator");
+			ThrowLoweringInternal("PA15 attempted to emit after a terminator");
 		CurrentBlock().instructions.push_back(instruction);
 		if (IsTerminator(instruction)) CurrentBlock().terminated = true;
 		if (stats_) ++stats_->instructions;

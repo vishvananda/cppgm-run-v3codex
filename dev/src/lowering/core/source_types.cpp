@@ -1,7 +1,6 @@
 #include "lowering/core/source_types.h"
+#include "lowering/support/errors.h"
 #include "lowir/model/program.h"
-
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -117,14 +116,14 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 	if (record->kind == TYPE_BITINT)
 	{
 		if (record->dependent_bound_parameter != kNoTemplateParameter)
-			throw std::runtime_error("cannot lower dependent _BitInt type");
+			ThrowLoweringInternal("cannot lower dependent _BitInt type");
 		const std::uint64_t width = record->bound;
 		if (width <= 8) return record->bitint_unsigned ? LowU8() : LowI8();
 		if (width <= 16) return record->bitint_unsigned ? LowU16() : LowI16();
 		if (width <= 32) return record->bitint_unsigned ? LowU32() : LowI32();
 		if (width <= 64) return record->bitint_unsigned ? LowU64() : LowI64();
 		if (width <= 128) return record->bitint_unsigned ? LowU128() : LowI128();
-		throw std::runtime_error("unsupported _BitInt lowering width");
+		ThrowLoweringResourceLimit("unsupported _BitInt lowering width");
 	}
 	if (record->kind == TYPE_LVALUE_REFERENCE ||
 		record->kind == TYPE_RVALUE_REFERENCE || record->kind == TYPE_POINTER ||
@@ -138,7 +137,7 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 		return LowObject(program_.SizeOf(type), program_.AlignOf(type));
 	}
 	if (record->kind != TYPE_FUNDAMENTAL)
-		throw std::runtime_error("invalid PA15 scalar type");
+		ThrowLoweringInternal("invalid PA15 scalar type");
 	switch (record->fundamental)
 	{
 	case FUND_BOOL: return LowU8();
@@ -166,7 +165,7 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 	case FUND_VOID: return LowVoid();
 	case FUND_NULLPTR_T: return LowI64();
 	}
-	throw std::runtime_error("unsupported PA15 fundamental type");
+	ThrowLoweringInternal("unsupported PA15 fundamental type");
 }
 
 bool SourceTypeLowering::IsReference(TypeId type) const
@@ -236,7 +235,7 @@ TypeId SourceTypeLowering::ArrayElement(TypeId type) const
 {
 	const TypeRecord& record = program_.types.Get(ExpressionObject(type));
 	if (record.kind != TYPE_ARRAY)
-		throw std::logic_error("PA15 expected array type");
+		ThrowLoweringInternal("PA15 expected array type");
 	return record.child;
 }
 
@@ -257,7 +256,7 @@ TypeId SourceTypeLowering::Pointee(TypeId type) const
 {
 	const TypeRecord& record = program_.types.Get(ExpressionObject(type));
 	if (record.kind != TYPE_POINTER && record.kind != TYPE_ARRAY)
-		throw std::logic_error("PA15 expected pointer-like type");
+		ThrowLoweringInternal("PA15 expected pointer-like type");
 	return record.child;
 }
 

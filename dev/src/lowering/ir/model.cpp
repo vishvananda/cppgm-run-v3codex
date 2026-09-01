@@ -1,5 +1,7 @@
 #include "lowering/ir/model.h"
 
+#include "lowering/support/errors.h"
+
 namespace cppgm
 {
 namespace lowering
@@ -48,7 +50,7 @@ const char* LowOperationText(LowOperation operation)
 	case LOW_OP_FPEXT: return "fpext";
 	case LOW_OP_NONE: break;
 	}
-	throw std::logic_error("missing PA15 LowIR operation");
+	ThrowLoweringInternal("missing PA15 LowIR operation");
 }
 
 EmissionIdentityTable::EmissionIdentityTable()
@@ -176,7 +178,7 @@ IdentityTypeId EmissionIdentityTable::InternFunctionSignature(
 {
 	const TypeRecord& source = program.types.Get(type);
 	if (source.kind != TYPE_FUNCTION)
-		throw std::logic_error("PA15 function identity has non-function type");
+		ThrowLoweringInternal("PA15 function identity has non-function type");
 	IdentityTypeKey key;
 	key.kind = TYPE_FUNCTION;
 	key.variadic = source.variadic;
@@ -209,7 +211,7 @@ IdentityTypeId EmissionIdentityTable::InternBindingTemplateArguments(
 	const std::size_t count = binding.template_argument_count;
 	if (first > program.template_arguments.size() ||
 		count > program.template_arguments.size() - first)
-		throw std::logic_error(
+		ThrowLoweringInternal(
 			"function template identity argument range is invalid");
 	IdentityTypeKey key;
 	key.kind = TYPE_FUNCTION;
@@ -232,7 +234,8 @@ IdentityTypeId EmissionIdentityTable::InternEntityTemplateArguments(
 	const std::size_t count = entity.template_argument_count;
 	if (first > program.template_arguments.size() ||
 		count > program.template_arguments.size() - first)
-		throw std::logic_error("class template identity argument range is invalid");
+		ThrowLoweringInternal(
+			"class template identity argument range is invalid");
 	IdentityTypeKey key;
 	key.kind = TYPE_FUNCTION;
 	key.parameters.reserve(count);
@@ -251,7 +254,7 @@ IdentityTypeId EmissionIdentityTable::InternLambdaContextIdentity(
 {
 	if (entity >= program.entities.size() ||
 		!program.entities[entity].lambda_closure)
-		throw std::logic_error("lambda context identity entity is invalid");
+		ThrowLoweringInternal("lambda context identity entity is invalid");
 	const EntityRecord& lambda = program.entities[entity];
 	if (lambda.local_context == kNoBinding)
 		return kNoLowId;
@@ -340,7 +343,7 @@ void EmissionIdentityTable::PushTypeDependencies(const semantic::Program& progra
 			const TypeId context_type = context_binding.type;
 			const TypeRecord& context = program.types.Get(context_type);
 			if (context.kind != TYPE_FUNCTION)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"local type context has non-function type");
 			const TypeId* parameters = program.types.Parameters(context_type);
 			for (std::size_t i = 0; i < context.parameter_count; ++i)
@@ -353,7 +356,7 @@ void EmissionIdentityTable::PushTypeDependencies(const semantic::Program& progra
 					context_binding.template_argument_count;
 				if (first > program.template_arguments.size() ||
 					count > program.template_arguments.size() - first)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"lambda context argument range is invalid");
 				for (std::size_t i = 0; i < count; ++i)
 					PushDependency(
@@ -382,7 +385,7 @@ void EmissionIdentityTable::PushTypeDependencies(const semantic::Program& progra
 					if (outer_first > program.template_arguments.size() ||
 						outer_count >
 							program.template_arguments.size() - outer_first)
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"outer lambda context argument range is invalid");
 					for (std::size_t i = 0; i < outer_count; ++i)
 						PushDependency(program.template_arguments[
@@ -396,7 +399,8 @@ void EmissionIdentityTable::PushTypeDependencies(const semantic::Program& progra
 		if (count != 0 &&
 			(first > program.template_arguments.size() ||
 			 count > program.template_arguments.size() - first))
-			throw std::logic_error("class template type argument range is invalid");
+			ThrowLoweringInternal(
+				"class template type argument range is invalid");
 		for (std::size_t i = 0; i < count; ++i)
 			PushDependency(program.template_arguments[first + i], cache, pending);
 	}
@@ -463,10 +467,10 @@ IdentityTypeId EmissionIdentityTable::InternStoredTemplateArgument(
 	const std::vector<IdentityTypeId>& cache)
 {
 	if (argument >= program.template_arguments.size())
-		throw std::logic_error("template identity argument index is invalid");
+		ThrowLoweringInternal("template identity argument index is invalid");
 	const TypeId type = program.template_arguments[argument];
 	if (type >= cache.size() || cache[type] == kNoLowId)
-		throw std::logic_error("template identity argument type is unresolved");
+		ThrowLoweringInternal("template identity argument type is unresolved");
 	if (argument >= program.canonical_template_arguments.size() ||
 		program.canonical_template_arguments[argument].kind ==
 			TEMPLATE_ARGUMENT_TYPE)
@@ -494,7 +498,7 @@ IdentityPathId EmissionIdentityTable::InternPathKey(const IdentityPathKey& key)
 		slot = (slot + 1) & (path_slots_.size() - 1);
 	}
 	if (path_records_.size() >= kNoLowId)
-		throw std::runtime_error("too many PA15 identity paths");
+		ThrowLoweringResourceLimit("too many PA15 identity paths");
 	const IdentityPathId id = static_cast<IdentityPathId>(path_records_.size());
 	path_records_.push_back(key);
 	path_slots_[slot] = id;
@@ -526,7 +530,7 @@ IdentityTypeId EmissionIdentityTable::InternTypeKey(const IdentityTypeKey& key)
 		slot = (slot + 1) & (type_slots_.size() - 1);
 	}
 	if (type_records_.size() >= kNoLowId)
-		throw std::runtime_error("too many PA15 identity types");
+		ThrowLoweringResourceLimit("too many PA15 identity types");
 	const IdentityTypeId id = static_cast<IdentityTypeId>(type_records_.size());
 	type_records_.push_back(key);
 	type_slots_[slot] = id;
@@ -631,7 +635,8 @@ lowir_model::StringId Program::InternUniqueSymbolName(
 		symbol_name_counts.resize(static_cast<std::size_t>(index) + 1, 0);
 	std::uint32_t& ordinal = symbol_name_counts[index];
 	if (ordinal == std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many typed LowIR symbol name collisions");
+		ThrowLoweringResourceLimit(
+			"too many typed LowIR symbol name collisions");
 	++ordinal;
 	return ordinal == 1 ? base : strings.intern(
 		proposed + "__sym" + std::to_string(ordinal));

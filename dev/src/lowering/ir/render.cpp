@@ -1,8 +1,8 @@
 #include "lowering/ir/render.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 
 #include <ostream>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -11,6 +11,7 @@ namespace
 {
 
 using namespace lowering::ir;
+using lowering::ThrowLoweringInternal;
 
 const char* RuntimeRoleName(Symbol::RuntimeRole role)
 {
@@ -37,7 +38,7 @@ const char* RuntimeRoleName(Symbol::RuntimeRole role)
 	case Symbol::RUNTIME_ROLE_RTTI_VMI:
 	case Symbol::RUNTIME_ROLE_RTTI_DATA: return 0;
 	}
-	throw std::logic_error("missing PA15 runtime role");
+	ThrowLoweringInternal("missing PA15 runtime role");
 }
 
 void WriteType(std::ostream& output, const LowType& type)
@@ -62,7 +63,7 @@ void WriteType(std::ostream& output, const LowType& type)
 		return;
 	case LOW_INVALID: break;
 	}
-	throw std::logic_error("missing PA15 LowIR type");
+	ThrowLoweringInternal("missing PA15 LowIR type");
 }
 
 void WriteParameter(std::ostream& output, const lowering::ir::Program& program,
@@ -124,25 +125,25 @@ void WriteOperand(std::ostream& output, const Operand& operand,
 	case Operand::TEMP: output << "%t" << operand.id; break;
 	case Operand::PARAMETER:
 		if (operand.id >= function.parameters.size())
-			throw std::logic_error("invalid PA15 parameter reference");
+			ThrowLoweringInternal("invalid PA15 parameter reference");
 		output << '%' << program.strings.get(
 			function.parameters[operand.id].name);
 		break;
 	case Operand::SLOT:
 		if (operand.id >= function.slots.size())
-			throw std::logic_error("invalid PA15 slot reference");
+			ThrowLoweringInternal("invalid PA15 slot reference");
 		output << '$' << program.strings.get(function.slots[operand.id].name);
 		break;
 	case Operand::GLOBAL: case Operand::FUNCTION:
 		if (operand.id >= program.symbols.size())
-			throw std::logic_error("invalid PA15 symbol reference");
+			ThrowLoweringInternal("invalid PA15 symbol reference");
 		output << '@' << program.strings.get(program.symbols[operand.id].name);
 		break;
 	case Operand::INTEGER: output << operand.integer_value; break;
 	case Operand::FLOATING:
 		output << program.strings.get(lowir_model::StringId(operand.id)); break;
 	case Operand::NULL_POINTER: output << "nullptr"; break;
-	case Operand::NONE: throw std::logic_error("missing PA15 LowIR operand");
+	case Operand::NONE: ThrowLoweringInternal("missing PA15 LowIR operand");
 	}
 }
 
@@ -152,12 +153,13 @@ void ValidateExtraRange(const Instruction& instruction, std::size_t size,
 	if (instruction.extra_count == 0)
 	{
 		if (instruction.extra_first != kNoLowId)
-			throw std::logic_error(std::string("invalid empty PA15 ") + description);
+			ThrowLoweringInternal(
+				std::string("invalid empty PA15 ") + description);
 		return;
 	}
 	if (instruction.extra_first == kNoLowId || instruction.extra_first > size ||
 		instruction.extra_count > size - instruction.extra_first)
-		throw std::logic_error(std::string("invalid PA15 ") + description);
+		ThrowLoweringInternal(std::string("invalid PA15 ") + description);
 }
 
 void WriteInstruction(std::ostream& output, const Instruction& instruction,
@@ -222,7 +224,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		break;
 	case Instruction::COPY_OBJECT:
 		if (instruction.type.kind != LOW_OBJECT)
-			throw std::logic_error("invalid PA17 copyobj span");
+			ThrowLoweringInternal("invalid PA17 copyobj span");
 		output << "copyobj " << instruction.type.width / 8 << 'x'
 			<< instruction.type.alignment << ' ';
 		WriteOperand(output, instruction.first, program, function);
@@ -231,7 +233,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		break;
 	case Instruction::ZERO_OBJECT:
 		if (instruction.type.kind != LOW_OBJECT)
-			throw std::logic_error("invalid PA26 zeroinit span");
+			ThrowLoweringInternal("invalid PA26 zeroinit span");
 		output << "zeroinit " << instruction.type.width / 8 << 'x'
 			<< instruction.type.alignment << ' ';
 		WriteOperand(output, instruction.first, program, function);
@@ -384,7 +386,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		break;
 	case Instruction::EH_TRY:
 		if (instruction.target >= function.blocks.size())
-			throw std::logic_error("invalid PA16 eh_try target");
+			ThrowLoweringInternal("invalid PA16 eh_try target");
 		output << "eh_try ^" << program.strings.get(
 			function.blocks[instruction.target].label);
 		break;
@@ -395,7 +397,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 			break;
 		}
 		if (instruction.target >= function.blocks.size())
-			throw std::logic_error("invalid PA16 eh_cleanup target");
+			ThrowLoweringInternal("invalid PA16 eh_cleanup target");
 		output << "eh_cleanup ^" << program.strings.get(
 			function.blocks[instruction.target].label);
 		break;
@@ -413,7 +415,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 			const SymbolId symbol = program.exception_filter_types[
 				instruction.extra_first + i];
 			if (symbol >= program.symbols.size())
-				throw std::logic_error("invalid exception filter RTTI symbol");
+				ThrowLoweringInternal("invalid exception filter RTTI symbol");
 			output << (i == 0 ? " " : ", ") << "@" <<
 				program.strings.get(program.symbols[symbol].name);
 		}
@@ -433,14 +435,14 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 	case Instruction::RESUME: output << "resume"; break;
 	case Instruction::JUMP:
 		if (instruction.target >= function.blocks.size())
-			throw std::logic_error("invalid PA15 jump target");
+			ThrowLoweringInternal("invalid PA15 jump target");
 		output << "jump ^" << program.strings.get(
 			function.blocks[instruction.target].label);
 		break;
 	case Instruction::BRANCH:
 		if (instruction.target >= function.blocks.size() ||
 			instruction.alternate >= function.blocks.size())
-			throw std::logic_error("invalid PA15 branch target");
+			ThrowLoweringInternal("invalid PA15 branch target");
 		output << "branch ";
 		WriteOperand(output, instruction.first, program, function);
 		output << ", ^" << program.strings.get(
@@ -454,7 +456,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		ValidateExtraRange(instruction, program.switch_case_targets.size(),
 			"switch target range");
 		if (instruction.target >= function.blocks.size())
-			throw std::logic_error("invalid PA15 switch default target");
+			ThrowLoweringInternal("invalid PA15 switch default target");
 		output << "switch ";
 		WriteOperand(output, instruction.first, program, function);
 		output << ", ^" << program.strings.get(
@@ -464,7 +466,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 			const BlockId case_target =
 				program.switch_case_targets[instruction.extra_first + i];
 			if (case_target >= function.blocks.size())
-				throw std::logic_error("invalid PA15 switch case target");
+				ThrowLoweringInternal("invalid PA15 switch case target");
 			output << ", "
 				<< program.switch_case_values[instruction.extra_first + i] << ":^"
 				<< program.strings.get(function.blocks[case_target].label);
@@ -550,7 +552,7 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 	if (function && symbol.tls_for_symbol != kNoLowId)
 	{
 		if (symbol.tls_for_symbol >= program.symbols.size())
-			throw std::logic_error("invalid PA16 TLS wrapper target");
+			ThrowLoweringInternal("invalid PA16 TLS wrapper target");
 		if (separator) output << ", ";
 		output << "tls_for=@" << program.strings.get(
 			program.symbols[symbol.tls_for_symbol].name);
@@ -715,7 +717,7 @@ void RenderProgram(const lowering::ir::Program& program, std::ostream& output)
 	{
 		const ObjectAlias& alias = program.object_aliases[i];
 		if (alias.target >= program.symbols.size())
-			throw std::logic_error("invalid PA15 object alias target");
+			ThrowLoweringInternal("invalid PA15 object alias target");
 		if (wrote) output << '\n';
 		output << "alias object " << program.strings.get(alias.object_name) <<
 			" = @" << program.strings.get(

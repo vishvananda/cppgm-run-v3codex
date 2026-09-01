@@ -1,10 +1,10 @@
 #pragma once
 
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -29,7 +29,7 @@ public:
 	void Pop()
 	{
 		if (count_ == 0)
-			throw std::logic_error("cannot pop an empty small sequence");
+			ThrowLoweringInternal("cannot pop an empty small sequence");
 		if (count_ > InlineCount) overflow_.pop_back();
 		--count_;
 	}

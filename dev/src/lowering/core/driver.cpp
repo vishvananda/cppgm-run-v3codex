@@ -6,11 +6,11 @@
 #include "lowering/presentation/local_names.h"
 #include "lowering/ir/model.h"
 #include "lowering/ir/render.h"
+#include "lowering/support/errors.h"
 
 #include <algorithm>
 #include <chrono>
 #include <ostream>
-#include <stdexcept>
 #include <streambuf>
 #include <string>
 #include <vector>
@@ -410,7 +410,7 @@ lowering::ir::Program lowering::BuildProgram(const std::vector<lowering::Source>
 	bool complete_constructor_unwind, bool host_object_emission,
 	bool prune_unreachable_weak_functions, bool retain_local_names)
 {
-	if (sources.empty()) throw std::runtime_error("no PA15 source inputs");
+	if (sources.empty()) ThrowLoweringInvocation("no PA15 source inputs");
 	if (stats) *stats = lowering::Stats();
 	lowering::ir::Program program;
 	program.host_object_emission = host_object_emission;
@@ -656,7 +656,7 @@ void lowering::WriteLowIR(const std::vector<lowering::Source>& sources,
 	lowering::ir::RenderLowIR(program, rendered);
 	rendered.flush();
 	if (!rendered || !output)
-		throw std::runtime_error("unable to write LowIR output");
+		ThrowLoweringInputOutput("unable to write LowIR output");
 	if (stats)
 	{
 		stats->output_bytes = buffer.Bytes();

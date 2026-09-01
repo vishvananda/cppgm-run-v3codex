@@ -1,12 +1,12 @@
 #pragma once
 
 #include "lowir/model/identity.h"
+#include "lowering/support/errors.h"
 #include "semantic/model/program.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -73,7 +73,7 @@ inline LowType LowObject(std::size_t size, std::size_t alignment)
 {
 	if (size > std::numeric_limits<std::uint64_t>::max() / 8 ||
 		alignment > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("PA15 object type exceeds LowIR limits");
+		ThrowLoweringResourceLimit("PA15 object type exceeds LowIR limits");
 	return LowType(LOW_OBJECT, size * 8, alignment, false);
 }
 
@@ -147,7 +147,7 @@ struct Operand
 		: kind(kind_value), id(id_value), integer_value(0), integer_high(0), type(type_value)
 	{
 		if (kind != GLOBAL && kind != FUNCTION)
-			throw std::logic_error("invalid PA15 symbol operand kind");
+			ThrowLoweringInternal("invalid PA15 symbol operand kind");
 	}
 	Operand(std::int64_t value, const LowType& type_value)
 		: kind(INTEGER), id(kNoLowId), integer_value(value),

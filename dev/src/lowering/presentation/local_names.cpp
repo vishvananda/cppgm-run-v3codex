@@ -1,4 +1,5 @@
 #include "lowering/presentation/local_names.h"
+#include "lowering/support/errors.h"
 #include "support/numeric/decimal_spelling.h"
 #include "semantic/semantic.h"
 #include "semantic/model/graph.h"
@@ -8,7 +9,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -28,7 +28,7 @@ EmissionNameMap::EmissionNameMap(const semantic::Program& program,
 		const semantic::EntityRecord& entity = program.entities[i];
 		if (!entity.class_template_presentation) continue;
 		if (entity.emission_name == 0)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"class template presentation has no emission name");
 		const semantic::NameId identity = entity.identity_name != 0 ?
 			entity.identity_name : entity.emission_name;
@@ -38,7 +38,7 @@ EmissionNameMap::EmissionNameMap(const semantic::Program& program,
 				static_cast<std::size_t>(largest) + 1, 0);
 		if (presentation_entities_.size() >=
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error(
+			ThrowLoweringResourceLimit(
 				"too many class template presentations");
 		presentation_entities_.push_back(static_cast<semantic::EntityId>(i));
 		rendered_indices_.push_back(0);
@@ -54,11 +54,11 @@ const std::string& EmissionNameMap::ClassTemplatePresentation(
 {
 	if (presentation >= presentation_entities_.size() ||
 		presentation >= rendered_indices_.size())
-		throw std::logic_error(
+		ThrowLoweringInternal(
 			"class template presentation index is invalid");
 	const semantic::EntityId entity = presentation_entities_[presentation];
 	if (entity >= program_.entities.size())
-		throw std::logic_error(
+		ThrowLoweringInternal(
 			"class template presentation entity is invalid");
 	if (stats_)
 		++stats_->presentation_reads[
@@ -72,13 +72,13 @@ const std::string& EmissionNameMap::ClassTemplatePresentation(
 		if (record.identity_name == 0 || first == semantic::kNoBinding ||
 			first > program_.canonical_template_arguments.size() ||
 			count > program_.canonical_template_arguments.size() - first)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"class template presentation facts are invalid");
 		const semantic::TemplateArgument* arguments = count == 0 ? 0 :
 			&program_.canonical_template_arguments[first];
 		if (rendered_presentations_.size() >=
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error(
+			ThrowLoweringResourceLimit(
 				"too many rendered class template presentations");
 		rendered_presentations_.push_back(
 			semantic::presentation::RenderClassTemplateSpecializationName(
@@ -157,16 +157,16 @@ Block MakePresentedBlock(lowering::ir::Program& program, Function* function,
 	const BlockPresentationName& presentation)
 {
 	if (!function)
-		throw std::logic_error("block presentation has no function");
+		ThrowLoweringInternal("block presentation has no function");
 	if (program.retain_local_names)
 	{
 		if (presentation.generated() || !presentation.text.valid())
-			throw std::logic_error("serializable block has no exact label");
+			ThrowLoweringInternal("serializable block has no exact label");
 		return Block(presentation.text);
 	}
 	if (!presentation.text.valid() ||
 		function->block_presentations.size() != function->blocks.size())
-		throw std::logic_error("invalid object-only block presentation");
+		ThrowLoweringInternal("invalid object-only block presentation");
 	function->block_presentations.push_back(presentation);
 	return Block(lowir_model::StringId());
 }
@@ -226,7 +226,7 @@ void FinalizeBlockPresentation(lowering::ir::Program* program,
 	{
 		Function& function = program->functions[f];
 		if (function.block_presentations.size() != function.blocks.size())
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"object-only function has incomplete block presentation");
 		if (!RequiresBlockPresentationOrder(function))
 		{
@@ -238,7 +238,7 @@ void FinalizeBlockPresentation(lowering::ir::Program* program,
 		std::vector<BlockId> order = function.block_order;
 		for (std::size_t b = 0; b < order.size(); ++b)
 			if (order[b] >= function.blocks.size())
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"object-only function has invalid block order");
 		// Render each presentation's exact lexical bytes once, then sort by
 		// flat byte spans instead of reconstructing characters per compare.

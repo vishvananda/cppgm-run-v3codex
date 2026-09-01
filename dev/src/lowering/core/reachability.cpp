@@ -1,10 +1,10 @@
 #include "lowering/core/reachability.h"
 
+#include "lowering/support/errors.h"
 #include "semantic/lifetime/demand_reason.h"
 
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -69,10 +69,10 @@ public:
 		{
 			const std::uint32_t symbol = program_.functions[i].symbol;
 			if (symbol >= function_by_symbol_.size())
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function reachability symbol is out of bounds");
 			if (function_by_symbol_[symbol] != kNoFunction)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"function reachability has duplicate definitions");
 			function_by_symbol_[symbol] = i;
 		}
@@ -190,7 +190,7 @@ private:
 			instruction.extra_first > program_.call_arguments.size() ||
 			instruction.extra_count > program_.call_arguments.size() -
 				instruction.extra_first)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"function reachability call arguments are out of bounds");
 		for (std::size_t i = 0; i < instruction.extra_count; ++i)
 			MarkOperand(program_.call_arguments[
@@ -277,7 +277,7 @@ void PreserveReachableLifecycleBaseEntries(lowering::ir::Program* program,
 
 Summary Analyze(lowering::ir::Program* program)
 {
-	if (!program) throw std::logic_error(
+	if (!program) ThrowLoweringInternal(
 		"cannot analyze a null typed LowIR program");
 	Analyzer object_reachability(*program, false);
 	(void)object_reachability.Run();
@@ -292,7 +292,7 @@ Summary AuditWithoutInternalRoots(const lowering::ir::Program& program)
 
 Summary PruneUnreachableWeakFunctions(lowering::ir::Program* program)
 {
-	if (!program) throw std::logic_error(
+	if (!program) ThrowLoweringInternal(
 		"cannot prune a null typed LowIR program");
 	Analyzer analyzer(*program, false);
 	Summary result = analyzer.Run();

@@ -2,8 +2,8 @@
 
 #include "lowering/abi/mangling.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -72,7 +72,8 @@ void ApplyLifecycleSymbolMetadata(const semantic::Program& program,
 	const BindingRecord& binding = program.bindings[node.binding];
 	const TypeRecord& function = program.types.Get(node.type);
 	if (function.kind != TYPE_FUNCTION)
-		throw std::logic_error("lifecycle ABI metadata has non-function type");
+		ThrowLoweringInternal(
+			"lifecycle ABI metadata has non-function type");
 	const bool trivial_constructor = IsTrivialLifecycleBinding(
 		program, node.binding) && binding.constructor &&
 		!binding.constructor_base_entry && binding.member_owner != kNoEntity &&
