@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -81,16 +81,16 @@ TypeId Analyzer::ApplyGnuVectorAttributes(
 				child, "gnu-attribute-identifier-argument");
 			if (!literal && !identifier) continue;
 			if (argument != kNoNode)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"GNU vector attribute requires one integral argument");
 			argument = child;
 			identifier_argument = identifier;
 		}
 		if (argument == kNoNode)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"GNU vector attribute requires one integral argument");
 		if (nonliteral_argument && !identifier_argument)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"GNU vector attribute requires one integral argument");
 		std::int64_t count = 0;
 		TypeId dependent_type = kNoType;
@@ -100,7 +100,7 @@ TypeId Analyzer::ApplyGnuVectorAttributes(
 		else
 		{
 			if (byte_width)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"GNU vector_size requires an integer literal");
 			const NameId argument_name = program_->names.UseInterned(
 				arena_->SemanticPayloadId(argument));
@@ -108,11 +108,11 @@ TypeId Analyzer::ApplyGnuVectorAttributes(
 				LookupName(scope, argument_name, LOOKUP_ORDINARY);
 			if (found.ordinary == kNoBinding ||
 				found.ordinary >= program_->bindings.size())
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"unknown GNU vector lane-count parameter");
 			const BindingRecord& binding = program_->bindings[found.ordinary];
 			if (binding.kind != BIND_PARAMETER || !IsIntegral(binding.type))
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"GNU vector lane count is not integral");
 			if (binding.constant) count = binding.value;
 			else if (program_->KindOfScope(binding.owner) ==
@@ -122,11 +122,11 @@ TypeId Analyzer::ApplyGnuVectorAttributes(
 				dependent_type = program_->types.RemoveTopCv(binding.type);
 				dependent_parameter = static_cast<std::uint32_t>(binding.value);
 			}
-			else throw std::runtime_error(
+			else ThrowSemanticError(
 				"GNU vector lane count is not a constant or template parameter");
 		}
 		if (dependent_parameter == kNoTemplateParameter && count <= 0)
-			throw std::runtime_error("GNU vector width must be positive");
+			ThrowSemanticError("GNU vector width must be positive");
 		const TypeRecord& top = program_->types.Get(type);
 		const std::uint8_t cv = top.kind == TYPE_QUALIFIED ? top.cv : CV_NONE;
 		const TypeId element = program_->types.RemoveTopCv(type);
@@ -142,13 +142,13 @@ TypeId Analyzer::ApplyGnuVectorAttributes(
 				const std::size_t lane_bytes = program_->SizeOf(element);
 				if (width > std::numeric_limits<std::uint64_t>::max() /
 					lane_bytes)
-					throw std::runtime_error("GNU vector byte width overflows");
+					ThrowSemanticResourceLimit("GNU vector byte width overflows");
 				width *= lane_bytes;
 			}
 			vector = program_->types.TryVector(element, width);
 		}
 		if (vector == kNoType)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"invalid GNU vector element type or width");
 		type = program_->types.Qualify(vector, cv);
 	}

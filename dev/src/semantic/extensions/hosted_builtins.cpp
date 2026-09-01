@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include "preprocess/hosted/builtin_registry.h"
 
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -116,7 +116,7 @@ FundamentalKind SignednessKind(FundamentalKind kind, bool make_unsigned)
 	case FUND_INT128:
 	case FUND_UINT128:
 		return make_unsigned ? FUND_UINT128 : FUND_INT128;
-	default: throw std::runtime_error("invalid signedness transform operand");
+	default: ThrowSemanticError("invalid signedness transform operand");
 	}
 }
 
@@ -138,7 +138,7 @@ TypeId Analyzer::BuildBuiltinTransformType(NodeId node, ScopeId scope)
 	const TypeTransformKind transform =
 		FindTypeTransform(PayloadSource(node));
 	if (transform == TYPE_TRANSFORM_NONE)
-		throw std::runtime_error("unsupported builtin type transform");
+		ThrowSemanticError("unsupported builtin type transform");
 	const NodeId operand = FindChild(node, ::cppgm::syntax::STAG_TYPE_ID);
 	TypeId type = BuildTypeId(operand, scope);
 	if (CandidateSubstitutionFailed() || type == kNoType) return kNoType;
@@ -197,7 +197,7 @@ TypeId Analyzer::BuildBuiltinTransformType(NodeId node, ScopeId scope)
 			IsEnumEntity(program_->entities[shape.entity]))
 			return program_->entities[shape.entity].underlying;
 		if (FunctionTemplateTypeIsDependent(type)) return type;
-		throw std::runtime_error("underlying type operand is not an enum");
+		ThrowSemanticError("underlying type operand is not an enum");
 	}
 	if (transform == TYPE_TRANSFORM_MAKE_SIGNED ||
 		transform == TYPE_TRANSFORM_MAKE_UNSIGNED)
@@ -214,13 +214,13 @@ TypeId Analyzer::BuildBuiltinTransformType(NodeId node, ScopeId scope)
 		if (shape.kind != TYPE_FUNDAMENTAL)
 		{
 			if (FunctionTemplateTypeIsDependent(type)) return type;
-			throw std::runtime_error("invalid signedness transform operand");
+			ThrowSemanticError("invalid signedness transform operand");
 		}
 		base = types->Fundamental(SignednessKind(shape.fundamental,
 			transform == TYPE_TRANSFORM_MAKE_UNSIGNED));
 		return cv == CV_NONE ? base : types->Qualify(base, cv);
 	}
-	throw std::logic_error("unhandled builtin type transform");
+	ThrowInternalCompilerError("unhandled builtin type transform");
 }
 
 ExpressionInfo Analyzer::AnalyzeBuiltinTypeTrait(
@@ -229,7 +229,7 @@ ExpressionInfo Analyzer::AnalyzeBuiltinTypeTrait(
 	using namespace hosted_builtin;
 	const TypeTraitKind trait = FindTypeTrait(PayloadSource(node));
 	if (trait == TYPE_TRAIT_NONE)
-		throw std::runtime_error("unsupported builtin type trait");
+		ThrowSemanticError("unsupported builtin type trait");
 	std::vector<TypeId> operands;
 	bool dependent = false;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -272,7 +272,7 @@ ExpressionInfo Analyzer::AnalyzeBuiltinTypeTrait(
 			expansion;
 	}
 	if (operands.empty())
-		throw std::runtime_error("builtin type trait has no operands");
+		ThrowSemanticError("builtin type trait has no operands");
 	bool value = false;
 	std::int64_t integral_value = 0;
 	TypeId result_type = program_->types.Fundamental(FUND_BOOL);
@@ -294,7 +294,7 @@ ExpressionInfo Analyzer::AnalyzeBuiltinTypeTrait(
 			&program_->entities[entity];
 		if (trait == TYPE_TRAIT_IS_POLYMORPHIC && named &&
 			IsClassEntity(*named) && !named->complete)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"polymorphic trait requires a complete class type");
 		if (trait == TYPE_TRAIT_IS_BASE_OF && operands.size() == 2)
 		{
@@ -303,7 +303,7 @@ ExpressionInfo Analyzer::AnalyzeBuiltinTypeTrait(
 			if (base != derived && derived != kNoEntity &&
 				IsClassEntity(program_->entities[derived]) &&
 				!program_->entities[derived].complete)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"base-of trait requires a complete derived type");
 		}
 		if (trait == TYPE_TRAIT_ARRAY_RANK && operands.size() == 1)
@@ -448,12 +448,12 @@ ExpressionInfo Analyzer::AnalyzeBuiltinTypeTrait(
 			trait == TYPE_TRAIT_REFERENCE_CONSTRUCTS_FROM_TEMPORARY)
 			value = false;
 		else
-			throw std::runtime_error("unsupported builtin type trait operands");
+			ThrowSemanticError("unsupported builtin type trait operands");
 	}
 	if (trait == TYPE_TRAIT_ARRAY_RANK)
 	{
 		if (operands.size() != 1)
-			throw std::runtime_error("unsupported builtin type trait operands");
+			ThrowSemanticError("unsupported builtin type trait operands");
 		result_type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
 	}
 	else integral_value = value ? 1 : 0;

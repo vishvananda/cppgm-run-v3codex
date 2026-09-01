@@ -1,6 +1,6 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -49,7 +49,7 @@ ExpressionInfo Analyzer::AnalyzeStatementExpression(
 {
 	const NodeId body = FindChild(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT);
 	if (body == kNoNode)
-		throw std::runtime_error("statement expression has no body");
+		ThrowSemanticError("statement expression has no body");
 	std::vector<NodeId> items;
 	for (std::uint32_t edge = arena_->FirstEdge(body); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -90,7 +90,7 @@ void Analyzer::AnalyzeFunctionTryHandlers(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, FunctionTryBodyKind body_kind)
 {
 	if (body_kind == FUNCTION_TRY_BODY_NONE)
-		throw std::logic_error("function try region has no body role");
+		ThrowInternalCompilerError("function try region has no body role");
 	dump_.nodes[output_parent].function_try_body = body_kind;
 	bool catches_all = false;
 	std::size_t handlers = 0;
@@ -106,7 +106,7 @@ void Analyzer::AnalyzeFunctionTryHandlers(NodeId node, ScopeId scope,
 		++handlers;
 	}
 	if (handlers == 0)
-		throw std::runtime_error("function try block has no handler");
+		ThrowSemanticError("function try block has no handler");
 	if (!catches_all) AppendUnwindDestructionActions(scope, output_parent);
 }
 

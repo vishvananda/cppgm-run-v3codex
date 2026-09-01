@@ -709,7 +709,8 @@ Append one row for each retained or rejected increment:
 | E4d | template arguments, deduction, placeholders, validation, and identity support | template diagnostics and retained-state invariants shared generic bases | terminal source diagnostics typed; candidate substitution remains explicit status; limits/invariants bypass it | PA23 template deduction/substitution and retained templates | successful full remains 0; generic logic/runtime sites -86/-125 | -768 text, -1,820 exception table, +168 unwind | frozen neutral; repeated full O1 -0.10% CPU, O3 -0.05% CPU | PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `63354ba4` | retained |
 | E4e | class/function template formation and exception-specification cache | terminal template diagnostics and cache policy shared generic bases; runtime base selected permanent failure | typed semantic/resource/internal failures; only ordinary semantic disposition is cached failed, all other unwinds remain deferred | PA23 class/function templates and deferred exception-specification demand | successful full remains 0; generic logic/runtime sites -81/-73; internal runtime catches -1 | -11,840 text, -1,460 exception table, -376 unwind | frozen -1.0% user; repeated full O1 -0.14% CPU, O3 -0.17% CPU | PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `e9e719ee` | retained |
 | E4f | constant evaluation, constexpr objects/addresses, and alignment | source rejection, representation limits, and evaluator invariants shared generic bases | typed semantic/resource/internal failures; non-constant probe results and cleanup/rethrow guards remain status-based | PA21 constant expressions, constexpr initialization, and required-constant diagnostics | successful full remains 0; generic logic/runtime sites -48/-27 | -2,112 text, -1,068 exception table, -216 unwind | frozen neutral; full deferred to next periodic semantic checkpoint | PA21 151/151; through-PA21 2,417/2,417; frozen object exact | `56214019` | retained |
-| E4g | class layout, inheritance, virtual dispatch, RTTI, and object attributes | object diagnostics, ABI/resource ceilings, and graph invariants shared generic bases | typed semantic/resource/internal failures; cleanup catches still rethrow | PA17 object model plus cumulative PA18-PA21 inheritance/RTTI behavior | successful full remains 0; generic logic/runtime sites -39/-57 | +1,856 text, +32 rodata, -920 exception table, +336 unwind | frozen neutral; clean mirrored full O1 -0.16% CPU, full O3 -0.34% CPU | PA17 247/247; through-PA21 2,417/2,417; 222 O1/O3 objects exact | pending | retained |
+| E4g | class layout, inheritance, virtual dispatch, RTTI, and object attributes | object diagnostics, ABI/resource ceilings, and graph invariants shared generic bases | typed semantic/resource/internal failures; cleanup catches still rethrow | PA17 object model plus cumulative PA18-PA21 inheritance/RTTI behavior | successful full remains 0; generic logic/runtime sites -39/-57 | +1,856 text, +32 rodata, -920 exception table, +336 unwind | frozen neutral; clean mirrored full O1 -0.16% CPU, full O3 -0.34% CPU | PA17 247/247; through-PA21 2,417/2,417; 222 O1/O3 objects exact | `64bfa60b` | retained |
+| E4h | language/host extensions, builtins, range-for, source exceptions, and ABI tags | extension diagnostics, limits, and retained syntax invariants shared generic bases | typed semantic/resource/internal failures; candidate and cleanup status flow unchanged | PA23 builtin/template behavior and PA26 source-language exceptions | successful full remains 0; generic logic/runtime sites -44/-129 | -11,264 text, -1,856 exception table, +264 unwind | frozen neutral; full covered by adjacent periodic checkpoints | PA23 414/414; PA26 114/114; through-PA26 3,821/3,821; frozen object exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1221,6 +1222,32 @@ candidate win.  The clean mirrored O1 block averages baseline/candidate
 490.350/489.570 seconds (-0.16%).  Across all eight O3 lanes the averages are
 494.693/493.008 seconds (-0.34%).  The code-shape tradeoff is therefore retained
 as dynamically neutral.
+
+### E4h execution record
+
+The remaining extension-layer failures in ABI tags, compiler/host builtins,
+numeric and pack extensions, range-for, lambdas, GNU asm, control regions, and
+source-language exception analysis now use project-owned types.  The slice
+converts 44 generic logic throws and 129 generic runtime throws.  Invalid
+extension syntax and source-language constraints use `SemanticError`; ABI-tag,
+exception-context, capture-fact, range hidden-object, vector-width, and
+generated-pack capacity use semantic-domain `ResourceLimitError`; impossible
+retained syntax and context-stack states use `InternalCompilerError`.
+
+Candidate substitution and dependent builtin results continue to use their
+existing explicit status forms.  None of these terminal throws selects a
+successful builtin or template alternative, and existing cleanup catches only
+restore context and rethrow.  PA23 passes 414/414, PA26 passes 114/114, and
+through-PA26 passes 3,821/3,821.  The exception audit ratchets to 970 generic
+logic throws and 616 generic runtime throws in 142 files.
+
+Against `64bfa60b`, `.text` changes 6,578,278 -> 6,567,014, `.rodata` stays
+214,272, `.eh_frame_hdr` 51,284 -> 51,364, `.eh_frame` 323,496 -> 323,680,
+and `.gcc_except_table` 153,740 -> 151,884.  Twelve frozen objects remain exact
+at `8545fec6...`.  One first-position baseline warm-up measured 0.510 seconds;
+the remaining baseline/candidate medians are 0.480/0.475 seconds and do not
+show a credible regression.  Full timing is bracketed by the adjacent E4g
+periodic checkpoint and the next combined semantic checkpoint.
 
 ## Initial code map
 

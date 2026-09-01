@@ -1,6 +1,6 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -12,7 +12,7 @@ TypeId Analyzer::BuildComplexSpecifierType(TypeId element)
 	const TypeId result = program_->types.TryComplex(
 		program_->types.RemoveTopCv(element));
 	if (result == kNoType)
-		throw std::runtime_error("invalid _Complex element type");
+		ThrowSemanticError("invalid _Complex element type");
 	return result;
 }
 
@@ -20,7 +20,7 @@ ExpressionInfo Analyzer::AnalyzeComplexConstruction(ScopeId scope,
 	const std::vector<NodeId>& arguments, TypeId target)
 {
 	if (arguments.size() != 2)
-		throw std::runtime_error("__builtin_complex requires two operands");
+		ThrowSemanticError("__builtin_complex requires two operands");
 	ExpressionInfo real = AnalyzeUntypedCallArgument(arguments[0], scope);
 	ExpressionInfo imaginary = AnalyzeUntypedCallArgument(arguments[1], scope);
 	const TypeId real_type = program_->types.RemoveTopCv(
@@ -29,11 +29,11 @@ ExpressionInfo Analyzer::AnalyzeComplexConstruction(ScopeId scope,
 		EffectiveType(imaginary.type));
 	if (real_type != imaginary_type ||
 		(!IsIntegral(real_type) && !IsFloating(real_type)))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"__builtin_complex operands must have the same real arithmetic type");
 	const TypeId type = program_->types.TryComplex(real_type);
 	if (type == kNoType)
-		throw std::runtime_error("invalid __builtin_complex element type");
+		ThrowSemanticError("invalid __builtin_complex element type");
 	const std::uint32_t node = MakeDump(
 		DUMP_COMPLEX_CONSTRUCTION, type, VALUE_PRVALUE);
 	dump_.Add(node, real.node);
@@ -53,7 +53,7 @@ ExpressionInfo Analyzer::AnalyzeComplexComponent(
 		EffectiveType(operand.type));
 	const TypeRecord& complex = program_->types.Get(complex_type);
 	if (complex.kind != TYPE_COMPLEX)
-		throw std::runtime_error("complex component operator requires _Complex");
+		ThrowSemanticError("complex component operator requires _Complex");
 	const ValueCategory category = operand.category == VALUE_PRVALUE ?
 		VALUE_PRVALUE : operand.category;
 	const std::uint32_t node = MakeDump(DUMP_COMPLEX_COMPONENT,

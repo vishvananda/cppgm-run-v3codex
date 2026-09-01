@@ -1,8 +1,8 @@
 #include "semantic/extensions/lambda_capture.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -74,7 +74,7 @@ std::uint32_t LambdaCaptureUseTable::EnsureFact(NodeId lambda)
 	if ((facts_.size() + 1) * 10 > slots_.size() * 7)
 		Rehash(slots_.size() * 2);
 	if (facts_.size() >= std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many lambda capture syntax facts");
+		ThrowSemanticResourceLimit("too many lambda capture syntax facts");
 	const std::uint32_t fact = static_cast<std::uint32_t>(facts_.size());
 	facts_.push_back(Fact());
 	facts_.back().syntax = lambda;
@@ -99,9 +99,9 @@ const LambdaCaptureUseTable::Fact& LambdaCaptureUseTable::FindOrBuild(
 			return facts_[found];
 		}
 		if (states_[found] == 1)
-			throw std::logic_error("recursive lambda capture syntax");
+			ThrowInternalCompilerError("recursive lambda capture syntax");
 		if (states_[found] == 3)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"lambda capture syntax analysis previously failed");
 	}
 	const std::uint32_t fact = found == kNoIndex ? EnsureFact(lambda) : found;
@@ -114,7 +114,7 @@ NameId LambdaCaptureUseTable::NameAt(
 {
 	if (index >= fact.name_count ||
 		static_cast<std::size_t>(fact.name_begin) + index >= names_.size())
-		throw std::logic_error("lambda capture name index is invalid");
+		ThrowInternalCompilerError("lambda capture name index is invalid");
 	return names_[static_cast<std::size_t>(fact.name_begin) + index];
 }
 
@@ -124,7 +124,7 @@ bool LambdaCaptureUseTable::IsExplicitAt(
 	if (index >= fact.name_count ||
 		static_cast<std::size_t>(fact.name_begin) + index >=
 			explicit_names_.size())
-		throw std::logic_error("lambda capture flag index is invalid");
+		ThrowInternalCompilerError("lambda capture flag index is invalid");
 	return explicit_names_[static_cast<std::size_t>(fact.name_begin) + index] != 0;
 }
 
@@ -134,7 +134,7 @@ bool LambdaCaptureUseTable::IsReferenceAt(
 	if (index >= fact.name_count ||
 		static_cast<std::size_t>(fact.name_begin) + index >=
 			reference_names_.size())
-		throw std::logic_error("lambda capture mode index is invalid");
+		ThrowInternalCompilerError("lambda capture mode index is invalid");
 	return reference_names_[static_cast<std::size_t>(fact.name_begin) + index] != 0;
 }
 
@@ -402,7 +402,7 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 					else if (arena.IsTag(capture, ::cppgm::syntax::STAG_LAMBDA_CAPTURE_THIS))
 					{
 						if (captures_this)
-							throw std::runtime_error(
+							ThrowSemanticError(
 								"duplicate explicit this capture");
 						captures_this = true;
 					}
@@ -475,7 +475,7 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 			if (dedup_marks_[name] == dedup_generation_)
 			{
 				if (i < explicit_names.size())
-					throw std::runtime_error("duplicate explicit lambda capture");
+					ThrowSemanticError("duplicate explicit lambda capture");
 				continue;
 			}
 			dedup_marks_[name] = dedup_generation_;
@@ -484,7 +484,7 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 		free_names.resize(retained);
 		if (names_.size() + free_names.size() >
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many lambda capture name uses");
+			ThrowSemanticResourceLimit("too many lambda capture name uses");
 		Fact& completed = facts_[fact];
 		completed.name_begin = static_cast<std::uint32_t>(names_.size());
 		completed.name_count = static_cast<std::uint32_t>(free_names.size());

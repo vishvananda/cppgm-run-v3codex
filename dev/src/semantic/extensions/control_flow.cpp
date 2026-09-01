@@ -1,6 +1,6 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -23,7 +23,7 @@ bool Analyzer::AnalyzeHostedSelectionStatement(
 		dump_.Add(output_parent, owner);
 		const NodeId value = FirstSemanticChild(init_syntax);
 		if (value == kNoNode)
-			throw std::runtime_error("selection init-statement is empty");
+			ThrowSemanticError("selection init-statement is empty");
 		if (arena_->IsTag(value, ::cppgm::syntax::STAG_ALIAS_DECLARATION))
 			AnalyzeDeclaration(value, control, owner, true);
 		else
@@ -68,7 +68,7 @@ bool Analyzer::AnalyzeHostedSelectionStatement(
 			kNoNode : FirstSemanticChild(condition_syntax);
 		if (expression_syntax == kNoNode ||
 			arena_->IsTag(expression_syntax, ::cppgm::syntax::STAG_CONDITION_DECLARATION))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"constexpr if requires an expression condition");
 		++constant_expression_required_depth_;
 		ExpressionInfo condition;
@@ -84,7 +84,7 @@ bool Analyzer::AnalyzeHostedSelectionStatement(
 		}
 		--constant_expression_required_depth_;
 		if (!condition.constant || !IsIntegral(condition.type, true))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"constexpr if requires an integral constant expression");
 		const bool select_then = condition.value != 0;
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;

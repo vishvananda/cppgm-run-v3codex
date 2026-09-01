@@ -1,6 +1,6 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -20,7 +20,7 @@ bool Analyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
 		dump_.Add(output_parent, statement);
 		RegisterControlFlowLabel(name, scope);
 		const NodeId child = FirstSemanticChild(node);
-		if (child == kNoNode) throw std::runtime_error("label without statement");
+		if (child == kNoNode) ThrowSemanticError("label without statement");
 		AnalyzeStatement(child, scope, statement);
 		return true;
 	}
@@ -39,7 +39,7 @@ BindingId Analyzer::DelegatingConstructorCleanupDestructor(
 	if (program_->entities[entity].trivial_destructor) return kNoBinding;
 	BindingId destructor = DestructorForType(owner_type);
 	if (destructor == kNoBinding)
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"delegating constructor has no destructor identity");
 	return base_entry ? EnsureDestructorBaseEntry(destructor) : destructor;
 }
@@ -64,11 +64,11 @@ void Analyzer::FinishFunctionControlFlowFacts()
 {
 	if (current_exception_control_context_ != 0 ||
 		exception_control_contexts_.empty())
-		throw std::logic_error("unbalanced semantic exception context");
+		ThrowInternalCompilerError("unbalanced semantic exception context");
 	if (!pending_control_flow_gotos_.empty())
-		throw std::runtime_error("goto names an undefined label");
+		ThrowSemanticError("goto names an undefined label");
 	if (function_control_flow_stack_.empty())
-		throw std::logic_error("semantic control-flow stack underflow");
+		ThrowInternalCompilerError("semantic control-flow stack underflow");
 	FunctionControlFlowFactState saved =
 		std::move(function_control_flow_stack_.back());
 	function_control_flow_stack_.pop_back();
@@ -84,9 +84,9 @@ void Analyzer::PushExceptionControlContext()
 		BeginFunctionControlFlowFacts();
 	const std::uint32_t parent = current_exception_control_context_;
 	if (parent >= exception_control_contexts_.size())
-		throw std::logic_error("invalid semantic exception context");
+		ThrowInternalCompilerError("invalid semantic exception context");
 	if (exception_control_contexts_.size() >= kNoDumpEdge)
-		throw std::runtime_error("too many nested exception contexts");
+		ThrowSemanticResourceLimit("too many nested exception contexts");
 	current_exception_control_context_ = static_cast<std::uint32_t>(
 		exception_control_contexts_.size());
 	exception_control_contexts_.push_back(ExceptionControlContextFact(parent,
@@ -97,7 +97,7 @@ void Analyzer::PopExceptionControlContext()
 {
 	if (current_exception_control_context_ == 0 ||
 		current_exception_control_context_ >= exception_control_contexts_.size())
-		throw std::logic_error("semantic exception context underflow");
+		ThrowInternalCompilerError("semantic exception context underflow");
 	current_exception_control_context_ =
 		exception_control_contexts_[current_exception_control_context_].parent;
 }
@@ -110,11 +110,11 @@ void Analyzer::ResolveControlFlowGoto(
 	while (source_ancestor != target_ancestor)
 	{
 		if (source_ancestor == kNoScope || target_ancestor == kNoScope)
-			throw std::logic_error("goto scopes have no common ancestor");
+			ThrowInternalCompilerError("goto scopes have no common ancestor");
 		ScopeId* descendant = source_ancestor > target_ancestor ?
 			&source_ancestor : &target_ancestor;
 		if (*descendant >= scope_parents_.size())
-			throw std::logic_error("goto scope is invalid");
+			ThrowInternalCompilerError("goto scope is invalid");
 		*descendant = scope_parents_[*descendant];
 	}
 	const ScopeId common_scope = source_ancestor;
@@ -127,7 +127,7 @@ void Analyzer::ResolveControlFlowGoto(
 		if (target.lifetimes[i].scope == common_scope)
 			target_common_count = target.lifetimes[i].count;
 	if (target_common_count > source_common_count)
-		throw std::runtime_error("goto bypasses object initialization");
+		ThrowSemanticError("goto bypasses object initialization");
 	ScopeId entered_scope = target.scope;
 	std::size_t target_lifetime = 0;
 	while (entered_scope != common_scope)
@@ -135,7 +135,7 @@ void Analyzer::ResolveControlFlowGoto(
 		if (target_lifetime < target.lifetimes.size() &&
 			target.lifetimes[target_lifetime].scope == entered_scope &&
 			target.lifetimes[target_lifetime++].count != 0)
-			throw std::runtime_error("goto bypasses object initialization");
+			ThrowSemanticError("goto bypasses object initialization");
 		entered_scope = scope_parents_[entered_scope];
 	}
 	const auto append_lifetime_range = [this, &source](
@@ -164,22 +164,22 @@ void Analyzer::ResolveControlFlowGoto(
 			const GotoLifetimeSnapshot& snapshot = source.lifetimes[lifetime++];
 			if (snapshot.scope >= scope_lifetimes_.size() ||
 				snapshot.count > scope_lifetimes_[snapshot.scope].size())
-				throw std::logic_error("goto lifetime snapshot is invalid");
+				ThrowInternalCompilerError("goto lifetime snapshot is invalid");
 			const std::vector<LifetimeObligation>& obligations =
 				scope_lifetimes_[snapshot.scope];
 			append_lifetime_range(obligations, snapshot.count, 0);
 		}
 		if (scope >= scope_parents_.size())
-			throw std::logic_error("goto source scope is invalid");
+			ThrowInternalCompilerError("goto source scope is invalid");
 		scope = scope_parents_[scope];
 	}
 	if (scope != common_scope)
-		throw std::logic_error("goto cleanup lost its common scope");
+		ThrowInternalCompilerError("goto cleanup lost its common scope");
 	if (source_common_count != target_common_count)
 	{
 		if (common_scope >= scope_lifetimes_.size() ||
 			source_common_count > scope_lifetimes_[common_scope].size())
-			throw std::logic_error("goto common lifetime snapshot is invalid");
+			ThrowInternalCompilerError("goto common lifetime snapshot is invalid");
 		const std::vector<LifetimeObligation>& obligations =
 			scope_lifetimes_[common_scope];
 		append_lifetime_range(obligations, source_common_count,
@@ -188,19 +188,19 @@ void Analyzer::ResolveControlFlowGoto(
 
 	if (source.exception_context >= exception_control_contexts_.size() ||
 		target.exception_context >= exception_control_contexts_.size())
-		throw std::logic_error("goto exception context is invalid");
+		ThrowInternalCompilerError("goto exception context is invalid");
 	std::uint32_t context = source.exception_context;
 	const std::uint32_t source_depth =
 		exception_control_contexts_[context].depth;
 	const std::uint32_t target_depth =
 		exception_control_contexts_[target.exception_context].depth;
 	if (source_depth < target_depth)
-		throw std::runtime_error("goto enters a protected region");
+		ThrowSemanticError("goto enters a protected region");
 	const std::uint32_t exits = source_depth - target_depth;
 	for (std::uint32_t i = 0; i < exits; ++i)
 		context = exception_control_contexts_[context].parent;
 	if (context != target.exception_context)
-		throw std::runtime_error("goto crosses protected regions");
+		ThrowSemanticError("goto crosses protected regions");
 	dump_.nodes[source.node].exception_control_exit_count = exits;
 }
 
@@ -220,7 +220,7 @@ void Analyzer::RegisterControlFlowLabel(NameId name, ScopeId scope)
 			nearest_lifetime_scopes_[parent] : kNoScope;
 	}
 	if (!control_flow_labels_.insert(std::make_pair(name, target)).second)
-		throw std::runtime_error("duplicate label");
+		ThrowSemanticError("duplicate label");
 	const std::pair<std::unordered_multimap<NameId,
 		PendingGotoControlFact>::iterator,
 		std::unordered_multimap<NameId, PendingGotoControlFact>::iterator> range =
@@ -243,7 +243,7 @@ void Analyzer::RegisterControlFlowGoto(std::uint32_t node,
 	while (lifetime_scope != kNoScope)
 	{
 		if (lifetime_scope >= scope_lifetimes_.size())
-			throw std::logic_error("goto lifetime scope is invalid");
+			ThrowInternalCompilerError("goto lifetime scope is invalid");
 		source.lifetimes.push_back(GotoLifetimeSnapshot(lifetime_scope,
 			scope_lifetimes_[lifetime_scope].size()));
 		const ScopeId parent = scope_parents_[lifetime_scope];
@@ -316,18 +316,18 @@ std::uint32_t Analyzer::MakeTemporaryDestructorAction(
 {
 	if (temporary == kNoDumpEdge || temporary >= dump_.nodes.size() ||
 		dump_.nodes[temporary].kind != DUMP_TEMPORARY_OBJECT)
-		throw std::logic_error("temporary destruction has no object identity");
+		ThrowInternalCompilerError("temporary destruction has no object identity");
 	const TypeId type = dump_.nodes[temporary].type;
 	if (IsInitializerListType(type)) return kNoDumpEdge;
 	const EntityId entity = DestructedEntity(type);
 	if (entity == kNoEntity) return kNoDumpEdge;
 	if (!program_->entities[entity].destructible)
-		throw std::runtime_error("temporary type is not destructible");
+		ThrowSemanticError("temporary type is not destructible");
 	if (destructor == kNoBinding) destructor = DestructorForType(type);
 	if (destructor == kNoBinding)
-		throw std::logic_error("temporary class has no destructor identity");
+		ThrowInternalCompilerError("temporary class has no destructor identity");
 	if (!CanAccessMember(destructor, entity))
-		throw std::runtime_error("inaccessible temporary destructor");
+		ThrowSemanticError("inaccessible temporary destructor");
 	if (program_->entities[entity].trivial_destructor) return kNoDumpEdge;
 	const bool dependent_template_object =
 		program_->entities[entity].template_argument_count != 0;
@@ -761,7 +761,7 @@ bool Analyzer::HasUnwindDestructionActions(ScopeId scope,
 	while (current != kNoScope && current != stop_exclusive)
 	{
 		if (current >= scope_lifetimes_.size())
-			throw std::logic_error("indexed lifetime scope has no obligations");
+			ThrowInternalCompilerError("indexed lifetime scope has no obligations");
 		if (!scope_lifetimes_[current].empty()) return true;
 		const ScopeId parent = scope_parents_[current];
 		current = parent != kNoScope &&
@@ -791,7 +791,7 @@ bool Analyzer::HasEnclosingNontrivialObjectLifetime(
 		stop_exclusive < scope_nontrivial_object_lifetime_prefixes_.size() ?
 			scope_nontrivial_object_lifetime_prefixes_[stop_exclusive] : 0;
 	if (active < stopped)
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"enclosing lifetime prefix is not monotonic");
 	return active != stopped;
 }
@@ -803,7 +803,7 @@ ExpressionInfo Analyzer::AnalyzeThrowExpression(
 	if (operand == kNoNode)
 	{
 		if (exception_handler_depth_ == 0)
-			throw std::runtime_error("rethrow outside an exception handler");
+			ThrowSemanticError("rethrow outside an exception handler");
 		ExpressionInfo result;
 		result.node = MakeDump(DUMP_THROW_EXPRESSION,
 			program_->types.Fundamental(FUND_VOID), VALUE_PRVALUE);
@@ -817,7 +817,7 @@ ExpressionInfo Analyzer::AnalyzeThrowExpression(
 	ExpressionInfo value = AnalyzeExpression(operand, scope);
 	const TypeId thrown_type = program_->types.RemoveTopCv(Decay(value.type));
 	if (IsVoid(thrown_type))
-		throw std::runtime_error("cannot throw an expression of type void");
+		ThrowSemanticError("cannot throw an expression of type void");
 	if (value.type != thrown_type)
 		value = ApplyExplicitConversion(value, thrown_type);
 	BindingId destructor = kNoBinding;
@@ -829,7 +829,7 @@ ExpressionInfo Analyzer::AnalyzeThrowExpression(
 		if (destructor == kNoBinding ||
 			GetFunction(destructor).deleted_destructor ||
 			!CanAccessMember(destructor, entity))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"thrown exception object is not destructible");
 		DemandFunction(destructor);
 	}
@@ -890,12 +890,12 @@ void Analyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 	dump_.Add(output_parent, handler);
 	const NodeId declaration = FindChild(node, ::cppgm::syntax::STAG_EXCEPTION_DECLARATION);
 	if (declaration == kNoNode)
-		throw std::runtime_error("exception handler has no declaration");
+		ThrowSemanticError("exception handler has no declaration");
 	if (FindChild(declaration, ::cppgm::syntax::STAG_ELLIPSIS) == kNoNode)
 	{
 		const NodeId specifiers = FindChild(declaration, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 		if (specifiers == kNoNode)
-			throw std::runtime_error("exception handler has no type");
+			ThrowSemanticError("exception handler has no type");
 		const NodeId declarator = FindChild(declaration, ::cppgm::syntax::STAG_DECLARATOR);
 		const SpecInfo spec = BuildSpecifiers(specifiers, handler_scope,
 			std::string(), declarator != kNoNode, true);
@@ -906,7 +906,7 @@ void Analyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 		if (parsed.type == kNoType || IsVoid(parsed.type) ||
 			program_->types.Get(EffectiveType(parsed.type)).kind == TYPE_ARRAY ||
 			program_->types.Get(EffectiveType(parsed.type)).kind == TYPE_FUNCTION)
-			throw std::runtime_error("invalid exception handler type");
+			ThrowSemanticError("invalid exception handler type");
 		dump_.nodes[handler].type = parsed.type;
 		dump_.nodes[handler].operand_type =
 			program_->types.RemoveTopCv(EffectiveType(parsed.type));
@@ -920,7 +920,7 @@ void Analyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 			if (entity == kNoEntity || copy == kNoBinding ||
 				GetFunction(copy).deleted_special_member ||
 				!CanAccessMember(copy, entity))
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"exception handler object is not copy constructible");
 			dump_.nodes[handler].selected_binding = copy;
 			dump_.nodes[handler].trivial_special_member_action =
@@ -932,7 +932,7 @@ void Analyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 			{
 				if (GetFunction(destructor).deleted_destructor ||
 					!CanAccessMember(destructor, entity))
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"exception handler object is not destructible");
 				dump_.nodes[handler].object_binding = destructor;
 				DemandFunction(destructor);
@@ -951,7 +951,7 @@ void Analyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 	}
 	const NodeId body = FindChild(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT);
 	if (body == kNoNode)
-		throw std::runtime_error("exception handler has no body");
+		ThrowSemanticError("exception handler has no body");
 	++exception_handler_depth_;
 	exception_handler_cleanup_stops_.push_back(scope);
 	PushExceptionControlContext();
@@ -993,7 +993,7 @@ void Analyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 		}
 	}
 	if (!saw_body || handler_count == 0)
-		throw std::runtime_error("invalid try statement");
+		ThrowSemanticError("invalid try statement");
 	if (!catches_all) AppendUnwindDestructionActions(scope, statement);
 }
 

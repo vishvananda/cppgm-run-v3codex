@@ -1,10 +1,10 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 #include "semantic/extensions/function_control_attributes.h"
 #include "preprocess/tokens/post_tokenizer.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -34,18 +34,18 @@ void CollectDirectAbiTags(const SyntaxArena& arena, Program* program,
 		{
 			const NodeId child = arena.EdgeChild(child_edge);
 			if (arena.IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE_NONLITERAL_ARGUMENT))
-				throw std::runtime_error("invalid abi_tag attribute argument");
+				ThrowSemanticError("invalid abi_tag attribute argument");
 			if (!arena.IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE_ARGUMENT)) continue;
 			has_argument = true;
 			std::string tag;
 			if (!DecodeNarrowStringLiteralSequence(
 				arena.SemanticPayload(child), &tag) ||
 				tag.empty())
-				throw std::runtime_error("invalid abi_tag attribute");
+				ThrowSemanticError("invalid abi_tag attribute");
 			tags->push_back(program->names.Intern(tag));
 		}
 		if (!has_argument)
-			throw std::runtime_error("abi_tag attribute requires a string");
+			ThrowSemanticError("abi_tag attribute requires a string");
 	}
 }
 
@@ -93,7 +93,7 @@ std::uint8_t DirectFunctionControlAttributeMask(
 			spelling == "__cppgm_stable_prefix__")
 		{
 			if (arena.FirstEdge(attribute) != kNoEdge)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"cppgm_stable_prefix attribute takes no arguments");
 			result |= FUNCTION_CONTROL_STABLE_PREFIX_QUERY;
 		}
@@ -127,7 +127,7 @@ void MergeAbiTags(Program* program, const std::vector<NameId>& additions,
 	if (additions.empty()) return;
 	if (*begin > program->abi_tags.size() ||
 		*count > program->abi_tags.size() - *begin)
-		throw std::logic_error("invalid semantic ABI tag range");
+		ThrowInternalCompilerError("invalid semantic ABI tag range");
 	std::vector<NameId> merged;
 	merged.reserve(static_cast<std::size_t>(*count) + additions.size());
 	merged.insert(merged.end(), program->abi_tags.begin() + *begin,
@@ -142,7 +142,7 @@ void MergeAbiTags(Program* program, const std::vector<NameId>& additions,
 			std::numeric_limits<std::uint32_t>::max()) ||
 		program->abi_tags.size() >
 			std::numeric_limits<std::uint32_t>::max() - merged.size())
-		throw std::runtime_error("too many semantic ABI tags");
+		ThrowSemanticResourceLimit("too many semantic ABI tags");
 	*begin = static_cast<std::uint32_t>(program->abi_tags.size());
 	*count = static_cast<std::uint32_t>(merged.size());
 	program->abi_tags.insert(program->abi_tags.end(),
@@ -195,7 +195,7 @@ void ValidateStablePrefixFunction(const Program& program, TypeId type)
 		!IsStablePrefixIntegerType(program,
 			program.types.Parameters(type)[function.parameter_count - 1]) ||
 		!IsStablePrefixScalarResult(program, function.child))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"cppgm_stable_prefix requires a fixed scalar function "
 			"with a final integer parameter");
 }
@@ -212,11 +212,11 @@ void ApplyFunctionControlAttributes(Program* program,
 	BindingId binding, std::uint8_t attributes)
 {
 	if (!program || binding == kNoBinding || binding >= program->bindings.size())
-		throw std::logic_error("attributed function has no semantic binding");
+		ThrowInternalCompilerError("attributed function has no semantic binding");
 	BindingRecord& record = program->bindings[binding];
 	if (record.canonical == kNoBinding ||
 		record.canonical >= program->bindings.size())
-		throw std::logic_error("attributed function has no canonical binding");
+		ThrowInternalCompilerError("attributed function has no canonical binding");
 	BindingRecord& canonical = program->bindings[record.canonical];
 	if ((attributes & FUNCTION_CONTROL_NORETURN) != 0)
 		record.noreturn_function = canonical.noreturn_function = true;
@@ -243,7 +243,7 @@ void Analyzer::ApplyClassAbiTagAttributes(
 	NodeId declaration, EntityId entity)
 {
 	if (entity == kNoEntity || entity >= program_->entities.size())
-		throw std::logic_error("ABI-tagged class has no semantic entity");
+		ThrowInternalCompilerError("ABI-tagged class has no semantic entity");
 	std::vector<NameId> tags;
 	CollectDirectAbiTags(*arena_, program_, declaration, &tags);
 	EntityRecord& record = program_->entities[entity];
@@ -254,11 +254,11 @@ void Analyzer::ApplyFunctionAbiTagAttributes(
 	NodeId declaration, BindingId binding)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size())
-		throw std::logic_error("ABI-tagged function has no semantic binding");
+		ThrowInternalCompilerError("ABI-tagged function has no semantic binding");
 	BindingRecord& record = program_->bindings[binding];
 	if (record.canonical == kNoBinding ||
 		record.canonical >= program_->bindings.size())
-		throw std::logic_error("attributed function has no canonical binding");
+		ThrowInternalCompilerError("attributed function has no canonical binding");
 	BindingRecord& canonical = program_->bindings[record.canonical];
 	ApplyFunctionControlAttributes(program_, binding,
 		FunctionControlAttributeMask(*arena_, declaration));

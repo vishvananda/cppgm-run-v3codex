@@ -1,6 +1,6 @@
 #include "semantic/model/program.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -26,7 +26,7 @@ TypeId TypeTable::ZeroLengthArray(TypeId type)
 {
 	const TypeId result = TryZeroLengthArray(type);
 	if (result == kNoType)
-		throw std::runtime_error("invalid zero-length array element type");
+		ThrowSemanticError("invalid zero-length array element type");
 	return result;
 }
 
@@ -60,7 +60,7 @@ TypeId TypeTable::BitInt(bool is_unsigned, std::uint64_t width)
 {
 	const TypeId result = TryBitInt(is_unsigned, width);
 	if (result == kNoType)
-		throw std::runtime_error("unsupported _BitInt width");
+		ThrowSemanticError("unsupported _BitInt width");
 	return result;
 }
 
@@ -82,7 +82,7 @@ TypeId TypeTable::DependentBitInt(bool is_unsigned, TypeId width_type,
 	const TypeId result = TryDependentBitInt(
 		is_unsigned, width_type, parameter);
 	if (result == kNoType)
-		throw std::runtime_error("invalid dependent _BitInt width");
+		ThrowSemanticError("invalid dependent _BitInt width");
 	return result;
 }
 
@@ -90,7 +90,7 @@ TypeId TypeTable::TryDependentVector(TypeId element, TypeId lane_count_type,
 	std::uint32_t parameter)
 {
 	if (parameter == kNoTemplateParameter)
-		throw std::logic_error("dependent vector has no lane-count parameter");
+		ThrowInternalCompilerError("dependent vector has no lane-count parameter");
 	element = RemoveTopCv(element);
 	const TypeRecord& lane = Get(element);
 	if (lane.kind == TYPE_LVALUE_REFERENCE ||
@@ -113,7 +113,7 @@ TypeId TypeTable::DependentVector(TypeId element, TypeId lane_count_type,
 	const TypeId result =
 		TryDependentVector(element, lane_count_type, parameter);
 	if (result == kNoType)
-		throw std::runtime_error("invalid dependent GNU vector element type");
+		ThrowSemanticError("invalid dependent GNU vector element type");
 	return result;
 }
 
@@ -134,7 +134,7 @@ TypeId TypeTable::Complex(TypeId element)
 {
 	const TypeId result = TryComplex(element);
 	if (result == kNoType)
-		throw std::runtime_error("invalid _Complex element type");
+		ThrowSemanticError("invalid _Complex element type");
 	return result;
 }
 

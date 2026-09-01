@@ -1,6 +1,6 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -49,13 +49,13 @@ bool Analyzer::TryExpandBuiltinIntegerPack(NodeId operand,
 		arena_->FirstEdge(list); edge != kNoEdge; edge = arena_->NextEdge(edge))
 	{
 		if (count_syntax != kNoNode)
-			throw std::runtime_error("__integer_pack requires one operand");
+			ThrowSemanticError("__integer_pack requires one operand");
 		count_syntax = arena_->EdgeChild(edge);
 	}
 	if (count_syntax == kNoNode)
-		throw std::runtime_error("__integer_pack requires one operand");
+		ThrowSemanticError("__integer_pack requires one operand");
 	if (destination.kind != TEMPLATE_ARGUMENT_INTEGRAL)
-		throw std::runtime_error("__integer_pack requires an integral pack");
+		ThrowSemanticError("__integer_pack requires an integral pack");
 	const TypeId value_type = ResolveTemplateParameterType(
 		destination, parameter_scope);
 	if (value_type == kNoType || CandidateSubstitutionFailed()) return true;
@@ -64,7 +64,7 @@ bool Analyzer::TryExpandBuiltinIntegerPack(NodeId operand,
 	if (!count.constant)
 	{
 		if (!SyntaxNamesUnboundTemplateParameter(count_syntax, scope))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"__integer_pack operand is not an integral constant");
 		TemplateArgument symbolic(TEMPLATE_ARGUMENT_INTEGRAL, value_type, 0,
 			kNondeducedTemplateParameter, true);
@@ -72,10 +72,10 @@ bool Analyzer::TryExpandBuiltinIntegerPack(NodeId operand,
 		return true;
 	}
 	if (!IsIntegral(count.type, true) || count.value < 0)
-		throw std::runtime_error("__integer_pack operand is not nonnegative");
+		ThrowSemanticError("__integer_pack operand is not nonnegative");
 	const std::size_t size = static_cast<std::size_t>(count.value);
 	if (size > arguments->max_size() - arguments->size())
-		throw std::runtime_error("__integer_pack result is too large");
+		ThrowSemanticResourceLimit("__integer_pack result is too large");
 	arguments->reserve(arguments->size() + size);
 	for (std::size_t value = 0; value < size; ++value)
 		arguments->push_back(TemplateArgument(TEMPLATE_ARGUMENT_INTEGRAL,
@@ -93,7 +93,7 @@ bool Analyzer::TryResolveBuiltinTypePackElement(
 		syntax, &path, &argument_syntax) || path.Size() != 1 ||
 		program_->names.Get(path.Last()) != "__type_pack_element") return false;
 	if (argument_syntax.size() < 2)
-		throw std::runtime_error("__type_pack_element requires a type pack");
+		ThrowSemanticError("__type_pack_element requires a type pack");
 	std::vector<TemplateParameter> parameters(2);
 	parameters[0].kind = TEMPLATE_ARGUMENT_INTEGRAL;
 	parameters[0].value_type =
@@ -120,7 +120,7 @@ bool Analyzer::TryResolveBuiltinTypePackElement(
 		}
 	if (arguments[0].value < 0 ||
 		static_cast<std::uint64_t>(arguments[0].value) >= arguments.size() - 1)
-		throw std::runtime_error("__type_pack_element index is out of range");
+		ThrowSemanticError("__type_pack_element index is out of range");
 	*type = arguments[static_cast<std::size_t>(arguments[0].value) + 1].type;
 	return true;
 }
@@ -134,7 +134,7 @@ bool Analyzer::TryResolveBuiltinMakeIntegerSequence(
 		path.Size() != 1 ||
 		program_->names.Get(path.Last()) != "__make_integer_seq") return false;
 	if (source.size() != 3)
-		throw std::runtime_error("__make_integer_seq requires three arguments");
+		ThrowSemanticError("__make_integer_seq requires three arguments");
 	const NodeId type_id = arena_->IsTag(source[0], ::cppgm::syntax::STAG_TYPE_ID) ? source[0] :
 		FindChild(source[0], ::cppgm::syntax::STAG_TYPE_ID);
 	const NodeId specifiers = type_id == kNoNode ? kNoNode :
@@ -142,7 +142,7 @@ bool Analyzer::TryResolveBuiltinMakeIntegerSequence(
 	const NodeId name = specifiers == kNoNode ? kNoNode :
 		FirstSemanticChild(specifiers);
 	if (name == kNoNode)
-		throw std::runtime_error("__make_integer_seq target is not a class template");
+		ThrowSemanticError("__make_integer_seq target is not a class template");
 	const NodeId structured = name == kNoNode ? kNoNode :
 		FindChild(name, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 	const NamePath target_path = structured == kNoNode ? NamePath() :
@@ -151,14 +151,14 @@ bool Analyzer::TryResolveBuiltinMakeIntegerSequence(
 		FindClassTemplate(scope, PayloadSource(name)) :
 		FindClassTemplate(scope, target_path);
 	if (target >= class_templates_.size())
-		throw std::runtime_error("__make_integer_seq target is not a class template");
+		ThrowSemanticError("__make_integer_seq target is not a class template");
 	const std::vector<TemplateParameter>& target_parameters =
 		class_templates_[target].parameters;
 	if (target_parameters.size() != 2 ||
 		target_parameters[0].kind != TEMPLATE_ARGUMENT_TYPE ||
 		target_parameters[1].kind != TEMPLATE_ARGUMENT_INTEGRAL ||
 		!target_parameters[1].pack)
-		throw std::runtime_error("__make_integer_seq target has invalid parameters");
+		ThrowSemanticError("__make_integer_seq target has invalid parameters");
 	std::vector<TemplateParameter> parameters(1);
 	parameters[0].kind = TEMPLATE_ARGUMENT_TYPE;
 	std::vector<NodeId> one_source(1, source[1]);
@@ -175,7 +175,7 @@ bool Analyzer::TryResolveBuiltinMakeIntegerSequence(
 		return true;
 	}
 	if (!IsIntegral(element[0].type, true))
-		throw std::runtime_error("__make_integer_seq element type is not integral");
+		ThrowSemanticError("__make_integer_seq element type is not integral");
 	parameters[0].kind = TEMPLATE_ARGUMENT_INTEGRAL;
 	parameters[0].value_type = element[0].type;
 	one_source[0] = source[2];
@@ -191,7 +191,7 @@ bool Analyzer::TryResolveBuiltinMakeIntegerSequence(
 		return true;
 	}
 	if (count[0].value < 0 || count[0].value > 1048576)
-		throw std::runtime_error("__make_integer_seq result is too large");
+		ThrowSemanticResourceLimit("__make_integer_seq result is too large");
 	const std::size_t size = static_cast<std::size_t>(count[0].value);
 	std::vector<TemplateArgument> arguments;
 	arguments.reserve(size + 1);
@@ -202,7 +202,7 @@ bool Analyzer::TryResolveBuiltinMakeIntegerSequence(
 				static_cast<std::int64_t>(value))));
 	const BindingId binding = InstantiateClassTemplate(target, arguments);
 	if (binding == kNoBinding)
-		throw std::runtime_error("__make_integer_seq specialization is invalid");
+		ThrowSemanticError("__make_integer_seq specialization is invalid");
 	*type = program_->bindings[binding].type;
 	return true;
 }

@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 #include "semantic/presentation/source_identity.h"
 
 #include <algorithm>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -44,7 +44,7 @@ void AppendTemplateSubstitutions(const Program& program,
 	if (count == 0) return;
 	if (parameters.empty() || first > program.canonical_template_arguments.size() ||
 		count > program.canonical_template_arguments.size() - first)
-		throw std::logic_error("pretty-function template arguments are invalid");
+		ThrowInternalCompilerError("pretty-function template arguments are invalid");
 	for (std::size_t i = 0; i < count; ++i)
 	{
 		const TemplateParameter& parameter =
@@ -61,7 +61,7 @@ ExpressionInfo Analyzer::AnalyzePredefinedFunctionName(
 	NodeId syntax, TypeId target, bool pretty)
 {
 	if (current_function_context_ == kNoBinding)
-		throw std::runtime_error("__func__ outside function scope");
+		ThrowSemanticError("__func__ outside function scope");
 	const BindingId binding =
 		program_->bindings[current_function_context_].canonical;
 	const FunctionInfo& function = GetFunction(binding);
@@ -79,7 +79,7 @@ ExpressionInfo Analyzer::AnalyzePredefinedFunctionName(
 		for (EntityId owner = record.member_owner; owner != kNoEntity;)
 		{
 			if (owner >= program_->entities.size())
-				throw std::logic_error("pretty-function owner is invalid");
+				ThrowInternalCompilerError("pretty-function owner is invalid");
 			owners.push_back(owner);
 			owner = program_->entities[owner].enclosing_class;
 		}
@@ -92,7 +92,7 @@ ExpressionInfo Analyzer::AnalyzePredefinedFunctionName(
 				class_template_pattern_by_entity_[owner];
 			if (pattern == kNoDumpEdge) continue;
 			if (pattern >= class_templates_.size())
-				throw std::logic_error("pretty-function class pattern is invalid");
+				ThrowInternalCompilerError("pretty-function class pattern is invalid");
 			const EntityRecord& entity = program_->entities[owner];
 			if (entity.template_argument_begin != kNoBinding)
 				AppendTemplateSubstitutions(*program_,
@@ -103,7 +103,7 @@ ExpressionInfo Analyzer::AnalyzePredefinedFunctionName(
 		if (function.template_pattern != kNoDumpEdge)
 		{
 			if (function.template_pattern >= function_templates_.size())
-				throw std::logic_error("pretty-function pattern is invalid");
+				ThrowInternalCompilerError("pretty-function pattern is invalid");
 			AppendTemplateSubstitutions(*program_,
 				function_templates_[function.template_pattern].parameters,
 				record.template_argument_begin,
@@ -152,7 +152,7 @@ bool Analyzer::TryAnalyzeTypeofFunctionalCast(NodeId callee,
 		return true;
 	}
 	if (arguments.size() != 1)
-		throw std::runtime_error("typeof cast requires one argument");
+		ThrowSemanticError("typeof cast requires one argument");
 	*result = ApplyTarget(
 		AnalyzeUntypedCallArgument(arguments[0], scope), cast_type);
 	if (target != kNoType) *result = ApplyTarget(*result, target);
@@ -166,7 +166,7 @@ ExpressionInfo Analyzer::AnalyzeBuiltinOffsetof(
 	const std::uint32_t member_edge = type_edge == kNoEdge ? kNoEdge :
 		arena_->NextEdge(type_edge);
 	if (member_edge == kNoEdge)
-		throw std::runtime_error("invalid offsetof expression");
+		ThrowSemanticError("invalid offsetof expression");
 	const NodeId operand = arena_->EdgeChild(type_edge);
 	const NodeId type_syntax = FindChild(operand, ::cppgm::syntax::STAG_TYPE_ID);
 	const TypeId type = BuildTypeId(type_syntax, scope);
@@ -192,7 +192,7 @@ ExpressionInfo Analyzer::AnalyzeBuiltinOffsetof(
 			++expression_count_;
 			return ApplyTarget(dependent, target);
 		}
-		throw std::runtime_error("offsetof requires a class type");
+		ThrowSemanticError("offsetof requires a class type");
 	}
 	EnsureClassDefinition(type);
 	const NameId name = program_->names.Intern(
@@ -200,12 +200,12 @@ ExpressionInfo Analyzer::AnalyzeBuiltinOffsetof(
 	const LookupResult found =
 		program_->LookupMember(entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
-		throw std::runtime_error("offsetof names an unknown member");
+		ThrowSemanticError("offsetof names an unknown member");
 	const BindingRecord& member = program_->bindings[found.ordinary];
 	if (!member.non_static_data_member)
-		throw std::runtime_error("offsetof requires a non-static data member");
+		ThrowSemanticError("offsetof requires a non-static data member");
 	if (member.bit_field)
-		throw std::runtime_error("offsetof cannot name a bit-field");
+		ThrowSemanticError("offsetof cannot name a bit-field");
 	ExpressionInfo result;
 	result.type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
 	result.category = VALUE_PRVALUE;
@@ -233,7 +233,7 @@ bool Analyzer::TryAnalyzeCompilerFunctionBuiltin(
 	{
 		const std::size_t expected = vector_reduce_or ? 1 : 2;
 		if (argument_syntax.size() != expected)
-			throw std::runtime_error("invalid scalarized vector builtin arity");
+			ThrowSemanticError("invalid scalarized vector builtin arity");
 		TypeId result_type = kNoType;
 		NodeId value_syntax = argument_syntax[0];
 		if (vector_convert || bit_cast)
@@ -259,7 +259,7 @@ bool Analyzer::TryAnalyzeCompilerFunctionBuiltin(
 			const TypeRecord& vector = program_->types.Get(value_type);
 			if (vector.kind != TYPE_VECTOR ||
 				vector.bound != program_->SizeOf(vector.child))
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"__builtin_reduce_or requires a scalarized vector operand");
 			result_type = program_->types.Fundamental(FUND_BOOL);
 		}
@@ -273,14 +273,14 @@ bool Analyzer::TryAnalyzeCompilerFunctionBuiltin(
 				source.bound != program_->SizeOf(source.child) ||
 				destination.bound != program_->SizeOf(destination.child) ||
 				source.bound != destination.bound)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"__builtin_convertvector requires equal-width scalarized vectors");
 			result_type = converted;
 		}
 		else if (!IsIntegral(value_type, true) ||
 			!IsIntegral(result_type, true) ||
 			program_->SizeOf(value_type) != program_->SizeOf(result_type))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"scalarized __builtin_bit_cast requires equal-width integer types");
 
 		const std::uint32_t cast = MakeDump(
@@ -305,13 +305,13 @@ bool Analyzer::TryAnalyzeCompilerFunctionBuiltin(
 	if (overflow != COMPILER_INTRINSIC_NONE)
 	{
 		if (argument_syntax.size() != 3)
-			throw std::runtime_error("overflow builtin requires three arguments");
+			ThrowSemanticError("overflow builtin requires three arguments");
 		ExpressionInfo left =
 			AnalyzeUntypedCallArgument(argument_syntax[0], scope);
 		const TypeId value_type = program_->types.RemoveTopCv(
 			EffectiveType(left.type));
 		if (!IsIntegral(value_type, true) || IntegralWidth(value_type) > 64)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"overflow builtin requires an integer type up to 64 bits");
 		left = ApplyCallArgument(left, value_type);
 		ExpressionInfo right = ApplyCallArgument(
@@ -350,7 +350,7 @@ bool Analyzer::TryAnalyzeCompilerFunctionBuiltin(
 	if (source_string || source_integer)
 	{
 		if (!argument_syntax.empty())
-			throw std::runtime_error("source-location builtin requires no arguments");
+			ThrowSemanticError("source-location builtin requires no arguments");
 		if (source_string)
 		{
 			std::string value;
@@ -379,7 +379,7 @@ bool Analyzer::TryAnalyzeCompilerFunctionBuiltin(
 	if (spelling == "__builtin_is_constant_evaluated")
 	{
 		if (!argument_syntax.empty())
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"is_constant_evaluated requires no arguments");
 		*result = MakeLiteral(program_->types.Fundamental(FUND_BOOL),
 			program_->names.Intern("false"));
@@ -390,13 +390,13 @@ bool Analyzer::TryAnalyzeCompilerFunctionBuiltin(
 	}
 	if (spelling != "__builtin_addressof") return false;
 	if (argument_syntax.size() != 1)
-		throw std::runtime_error("addressof requires one argument");
+		ThrowSemanticError("addressof requires one argument");
 	ExpressionInfo operand = AnalyzeExpression(argument_syntax[0], scope);
 	if (operand.category != VALUE_LVALUE)
-		throw std::runtime_error("addressof requires an lvalue");
+		ThrowSemanticError("addressof requires an lvalue");
 	if (operand.binding != kNoBinding &&
 		program_->bindings[operand.binding].bit_field)
-		throw std::runtime_error("addressof cannot address a bit-field");
+		ThrowSemanticError("addressof cannot address a bit-field");
 	const TypeId result_type = program_->types.Pointer(EffectiveType(operand.type));
 	const std::uint32_t expression = MakeDump(DUMP_UNARY_EXPRESSION,
 		result_type, VALUE_PRVALUE, program_->names.Intern("&"));

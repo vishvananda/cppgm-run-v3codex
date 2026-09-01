@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <string>
 #include <vector>
@@ -605,7 +606,7 @@ bool Analyzer::CompleteHostedTraitTemplateSpecialization(
 	const std::vector<TemplateArgument>& arguments)
 {
 	if (pattern_index >= class_templates_.size())
-		throw std::logic_error("invalid hosted trait template pattern");
+		ThrowInternalCompilerError("invalid hosted trait template pattern");
 	const ClassTemplatePattern& pattern = class_templates_[pattern_index];
 	const HostedTraitTemplateKind kind = pattern.hosted_trait_template;
 	if (kind == HOSTED_TRAIT_TEMPLATE_NONE) return false;
@@ -617,10 +618,10 @@ bool Analyzer::CompleteHostedTraitTemplateSpecialization(
 			arguments[0].type == kNoType) return false;
 		if (specialization == kNoBinding ||
 			specialization >= program_->bindings.size())
-			throw std::logic_error("invalid hosted char_traits specialization");
+			ThrowInternalCompilerError("invalid hosted char_traits specialization");
 		const EntityId entity = EntityOf(program_->bindings[specialization].type);
 		if (entity == kNoEntity)
-			throw std::logic_error("hosted char_traits specialization has no entity");
+			ThrowInternalCompilerError("hosted char_traits specialization has no entity");
 		EntityRecord& record = program_->entities[entity];
 		if (record.member_scope == kNoScope)
 		{
@@ -711,10 +712,10 @@ bool Analyzer::CompleteHostedTraitTemplateSpecialization(
 
 	if (specialization == kNoBinding ||
 		specialization >= program_->bindings.size())
-		throw std::logic_error("invalid hosted trait specialization binding");
+		ThrowInternalCompilerError("invalid hosted trait specialization binding");
 	const EntityId entity = EntityOf(program_->bindings[specialization].type);
 	if (entity == kNoEntity)
-		throw std::logic_error("hosted trait specialization has no entity");
+		ThrowInternalCompilerError("hosted trait specialization has no entity");
 	EntityRecord& record = program_->entities[entity];
 	if (record.member_scope == kNoScope)
 	{

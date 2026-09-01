@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -13,14 +13,14 @@ namespace semantic
 NameId Analyzer::NextRangeForHiddenName(const char* prefix)
 {
 	if (current_function_context_ == kNoBinding)
-		throw std::logic_error("range-for is not owned by a function");
+		ThrowInternalCompilerError("range-for is not owned by a function");
 	if (range_for_hidden_count_by_function_.size() <= current_function_context_)
 		range_for_hidden_count_by_function_.resize(
 			static_cast<std::size_t>(current_function_context_) + 1, 0);
 	std::uint32_t& count =
 		range_for_hidden_count_by_function_[current_function_context_];
 	if (count == std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many range-for hidden objects");
+		ThrowSemanticResourceLimit("too many range-for hidden objects");
 	const std::string generated =
 		std::string(prefix) + std::to_string(++count);
 	if (stats_)
@@ -33,7 +33,7 @@ ExpressionInfo Analyzer::MakeRangeForBindingExpression(
 	BindingId binding)
 {
 	if (binding >= program_->bindings.size())
-		throw std::logic_error("invalid range-for binding");
+		ThrowInternalCompilerError("invalid range-for binding");
 	const BindingRecord& record = program_->bindings[binding];
 	ExpressionInfo result;
 	result.type = EffectiveType(record.type);
@@ -166,7 +166,7 @@ ExpressionInfo Analyzer::AnalyzeRangeForUnary(const char* operation,
 		const TypeId pointer_type = Decay(result_type);
 		const TypeRecord& pointer = program_->types.Get(pointer_type);
 		if (pointer.kind != TYPE_POINTER)
-			throw std::runtime_error("range iterator is not dereferenceable");
+			ThrowSemanticError("range iterator is not dereferenceable");
 		result_type = pointer.child;
 		category = VALUE_LVALUE;
 	}
@@ -175,10 +175,10 @@ ExpressionInfo Analyzer::AnalyzeRangeForUnary(const char* operation,
 		if (!IsModifiableLvalue(operand) ||
 			(!IsArithmetic(result_type) && !IsPointer(result_type)) ||
 			(IsPointer(result_type) && !IsPointerToCompleteObject(result_type)))
-			throw std::runtime_error("range iterator is not incrementable");
+			ThrowSemanticError("range iterator is not incrementable");
 		category = VALUE_LVALUE;
 	}
-	else throw std::logic_error("invalid range-for unary operation");
+	else ThrowInternalCompilerError("invalid range-for unary operation");
 	const std::uint32_t expression = MakeDump(DUMP_UNARY_EXPRESSION,
 		result_type, category, program_->names.Intern(display));
 	dump_.Add(expression, operand.node);
@@ -200,7 +200,7 @@ ExpressionInfo Analyzer::AnalyzeRangeForSubscript(
 	const TypeRecord& pointer = program_->types.Get(pointer_type);
 	if (pointer.kind != TYPE_POINTER || !IsIntegral(index.type) ||
 		!IsPointerToCompleteObject(pointer_type))
-		throw std::runtime_error("invalid bounded range subscript");
+		ThrowSemanticError("invalid bounded range subscript");
 	const std::uint32_t expression = MakeDump(DUMP_SUBSCRIPT_EXPRESSION,
 		pointer.child, VALUE_LVALUE);
 	dump_.Add(expression, range.node);
@@ -218,10 +218,10 @@ ExpressionInfo Analyzer::AnalyzeRangeForMemberCall(
 {
 	if (found.ordinary == kNoBinding ||
 		program_->bindings[found.ordinary].kind != BIND_FUNCTION)
-		throw std::runtime_error("range member does not name a function");
+		ThrowSemanticError("range member does not name a function");
 	std::vector<BindingId> candidates = FunctionSet(found.ordinary);
 	if (candidates.empty())
-		throw std::runtime_error("range member has no callable candidates");
+		ThrowSemanticError("range member has no callable candidates");
 	if (object.category == VALUE_PRVALUE &&
 		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
 		object = MaterializeTemporary(object);
@@ -234,7 +234,7 @@ ExpressionInfo Analyzer::AnalyzeRangeForMemberCall(
 		arguments, candidates, &object_pointer, &object_conversion,
 		&argument_conversions);
 	if (selected == kNoBinding)
-		throw std::runtime_error("range member call is ambiguous");
+		ThrowSemanticError("range member call is ambiguous");
 	DemandRetainedRuntimeCalls(object.node);
 	return BuildResolvedCall(selected, scope, argument_syntax, arguments,
 		&object_pointer, kNoType, found.naming_class, &object_conversion,
@@ -250,12 +250,12 @@ ExpressionInfo Analyzer::AnalyzeRangeForAdlCall(
 	CompleteArgumentDependentCallCandidates(name, 0, scope,
 		argument_syntax, arguments, false, &candidates);
 	if (candidates.empty())
-		throw std::runtime_error("range ADL call has no candidates");
+		ThrowSemanticError("range ADL call has no candidates");
 	std::vector<CallConversionFact> argument_conversions;
 	const BindingId selected = SelectOverload(scope, argument_syntax,
 		arguments, candidates, 0, 0, &argument_conversions);
 	if (selected == kNoBinding)
-		throw std::runtime_error("range ADL call is ambiguous");
+		ThrowSemanticError("range ADL call is ambiguous");
 	return BuildResolvedCall(selected, scope, argument_syntax, arguments,
 		0, kNoType, kNoEntity, 0, &argument_conversions);
 }
@@ -266,7 +266,7 @@ void Analyzer::AddRangeForLoopVariable(NodeId declaration,
 	const NodeId specifiers = FindChild(declaration, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 	const NodeId declarator = FindChild(declaration, ::cppgm::syntax::STAG_DECLARATOR);
 	if (specifiers == kNoNode || declarator == kNoNode)
-		throw std::runtime_error("invalid range declaration");
+		ThrowSemanticError("invalid range declaration");
 	const SpecInfo spec = BuildSpecifiers(
 		specifiers, scope, std::string(), true);
 	DeclaratorInfo parsed;
@@ -281,7 +281,7 @@ void Analyzer::AddRangeForLoopVariable(NodeId declaration,
 			const NodeId child = arena_->EdgeChild(edge);
 			if (!arena_->IsTag(child, ::cppgm::syntax::STAG_PTR_OPERATOR)) continue;
 			if (!pointer_operator.empty())
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"compound placeholder range declarator");
 			pointer_operator = PayloadSource(child);
 		}
@@ -291,7 +291,7 @@ void Analyzer::AddRangeForLoopVariable(NodeId declaration,
 		{
 			if (initializer.category != VALUE_LVALUE &&
 				(spec.placeholder_cv & CV_CONST) == 0)
-				throw std::runtime_error("auto& range variable needs an lvalue");
+				ThrowSemanticError("auto& range variable needs an lvalue");
 		}
 		else if (pointer_operator == "&&")
 		{
@@ -304,10 +304,10 @@ void Analyzer::AddRangeForLoopVariable(NodeId declaration,
 			const TypeRecord& pointer = program_->types.Get(
 				Decay(initializer.type));
 			if (pointer.kind != TYPE_POINTER)
-				throw std::runtime_error("auto* range variable needs a pointer");
+				ThrowSemanticError("auto* range variable needs a pointer");
 			base = pointer.child;
 		}
-		else throw std::runtime_error(
+		else ThrowSemanticError(
 			"unsupported placeholder range declarator");
 		base = program_->types.Qualify(base, spec.placeholder_cv);
 		parsed = BuildDeclarator(declarator, base, scope);
@@ -328,7 +328,7 @@ void Analyzer::AddRangeForLoopVariable(NodeId declaration,
 		return;
 	}
 	if (parsed.name == 0)
-		throw std::runtime_error("unnamed range variable");
+		ThrowSemanticError("unnamed range variable");
 	const TypeKind declared_kind = program_->types.Get(parsed.type).kind;
 	if ((declared_kind == TYPE_LVALUE_REFERENCE ||
 		 declared_kind == TYPE_RVALUE_REFERENCE) &&
@@ -363,7 +363,7 @@ void Analyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 	const NodeId initializer_node = FindChild(node, ::cppgm::syntax::STAG_RANGE_INITIALIZER);
 	const NodeId initializer_syntax = FirstSemanticChild(initializer_node);
 	if (declaration == kNoNode || initializer_syntax == kNoNode)
-		throw std::runtime_error("invalid range-for statement");
+		ThrowSemanticError("invalid range-for statement");
 	NodeId body_syntax = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -373,7 +373,7 @@ void Analyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 			body_syntax = child;
 	}
 	if (body_syntax == kNoNode)
-		throw std::runtime_error("range-for statement has no body");
+		ThrowSemanticError("range-for statement has no body");
 
 	const ScopeId control = NewScope(
 		scope, SCOPE_BLOCK, 0, ScopePrefixId(scope));
@@ -393,7 +393,7 @@ void Analyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 			elements.push_back(AnalyzeExpression(
 				arena_->EdgeChild(edge), control));
 		if (elements.empty())
-			throw std::runtime_error("empty braced range has no element type");
+			ThrowSemanticError("empty braced range has no element type");
 		const TypeId element_type = Decay(elements[0].type);
 		range_type = program_->types.Array(element_type, elements.size());
 		const std::uint32_t list = MakeDump(
@@ -541,7 +541,7 @@ void Analyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 	{
 		const EntityId entity = EntityOf(range_type);
 		if (entity == kNoEntity)
-			throw std::runtime_error("range expression is neither array nor class");
+			ThrowSemanticError("range expression is neither array nor class");
 		EnsureClassDefinition(range_type);
 		const NameId begin_name = program_->names.Intern("begin");
 		const NameId end_name = program_->names.Intern("end");
