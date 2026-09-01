@@ -4223,6 +4223,35 @@ flat to unfavorable.  The safe implementation therefore remained far below
 the 1% source-diverse CPU gate and was removed together with its provisional
 README and property movement.
 
+### Rejected current-baseline fast-wrapper retry
+
+The fast-return split was re-evaluated after stable-prefix reuse changed the
+dominant query population.  The prototype selected a structurally
+repeat-stable internal query with at least eight direct calls, retained its
+bounded pure return region as an 18-instruction wrapper, moved the complete
+body into one internal slow function, and reran inlining only for that wrapper.
+No source name or complete program shape participated in selection.
+
+Inlining the wrapper at all 26 surviving sites grew tokenizer LowIR by 19,739
+bytes and tokenizer text by 1,068 bytes.  The fixed-point compiler grew 12,544
+text bytes.  A two-block native ABBA screen appeared favorable at `0.99098x`
+wall and `0.98071x` user, but the deterministic oracle correctly rejected the
+dose: self instructions rose from 3,787,890,268 to 3,790,914,713
+(`1.000798451x`).  This is another concrete case where the native-only screen
+is useful for triage but cannot replace the instruction and normalized gates.
+
+A lower-duplication form copied the wrapper only into the caller with the
+largest static population: 16 calls, leaving the other 7/2/1 caller
+populations intact.  It grew tokenizer LowIR by 12,448 bytes and the
+fixed-point compiler by 14,456 text bytes.  Self instructions rose to
+3,791,093,445 (`1.000845636x`); same-source GCC moved only from 2,426,082,982
+to 2,426,118,959 (`1.000014829x`).  The normalized ratio is therefore
+`1.000830795x`, and the absolute gap worsens from `1.561319335x` to
+`1.562616471x`.  Every baseline/candidate self/GCC hot object is byte-identical
+at `fa3fd1899...`.  Both prototypes were removed before contract or test
+movement: the current baseline confirms the earlier fast-prefix rejection
+under the corrected self/GCC metric.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4249,6 +4278,7 @@ Fill one row for every retained or rejected dose.
 | D.readonly-string-groups-3 | reuse the retained grouped specializer for the three most frequent readonly-string values | none; stopped before contract movement | three independent clones; deterministic output exact | normalized hot Ir -0.917%; full aggregate user -0.36%, total CPU -0.25% | exact hot and repeated full-build outputs; dose superseded | rejected at this breadth; complete-workload gain missed the 0.5% close-result threshold |
 | D.readonly-string-groups | specialize every profitable bounded internal readonly-string group and fold exact serialized bytes | PA37 README plus O0-O2 isolation, multi-group structure, signed-byte/phi/replay/behavior positives, and replaceable/writable/unterminated/dynamic/volatile/indexed negatives | 56 calls, eight clones/88 instructions; macro LowIR +1,227 bytes, macro text -688; fixed-point producer +16,248 text vs prior accepted | self Ir `0.985097x`; GCC `1.000014x`; normalized `0.985083x`; gap `1.624706x` to `1.600470x`; full aggregate wall/user/CPU `0.976414x`/`0.988666x`/`0.989585x` | PA37 188/188; PA38 45/45; 5,471/5,471; PA37/38 debug/round-trip clean; zero-fatal audit; 221-object G2/G3 exact | retained in `85bac3e1`; broader reuse clears deterministic and complete-workload gates |
 | D.stable-prefix-query | serialize a general stable-prefix query promise and reuse established lower prefixes at O3 | PA13/PA17/PA37/PA38 READMEs plus shape, source-production, level, relationship, barrier, replay, object-roundtrip, stats, and behavior properties | object version 5; tokenizer query fact; 6.60M dynamic full calls removed; fixed-point producer +13,556 text bytes | self Ir `0.975652x`; GCC `1.000117x`; normalized `0.975538x`; gap `1.600470x` to `1.561319x`; full raw wall/CPU `0.969113x`/`0.984335x`, GCC-normalized CPU `0.979699x`, Clang-normalized CPU `0.985227x` | PA37 188/188; PA38 45/45; 5,472/5,472; debug/round-trip and all audits clean; exact 221-object G1/G2/G3 | retained in `d54e7e03`; contract-backed general reuse clears deterministic and complete-workload gates |
+| D.stable-prefix-fast-wrapper-retry | split one repeat-stable query into a bounded fast wrapper and shared slow body, then inline all callers or only the largest caller population | none; rejected before contract movement | all: 26 calls and producer +12,544 text; narrow: 16 calls, 7/2/1 left, producer +14,456 text; hot objects exact | all self Ir `1.000798x`; narrow self `1.000846x`, GCC `1.000015x`, normalized `1.000831x`; gap `1.561319x` to `1.562616x` | explicit-32-way G1 for both forms; deterministic self/GCC hot objects; prototypes removed | rejected; current stable-prefix baseline reproduces the earlier fast-prefix loss under the corrected normalized metric |
 | D.call-plan | keep reactive call results out of future cyclic spans and grant a cyclic call result after its completed arguments retire | PA38 README plus O2/O1 register-agnostic structural/behavioral control | `Run` -181 MIR, scalar loads/stores -89/-77, frame homes -3; tokenizer -234 `.text`; O3 producer +292 text bytes; O1 object exact; unrelated EH/branch fixtures exact | O1 workload +0.11% wall/-0.40% CPU; GCC CPU -0.21%; normalized CPU -0.18%; O3 workload -1.42% wall/-0.30% CPU, five of six pairs favorable | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; frozen O2/O3 exact; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.epilogue | share repeated optimized return sequences, with broad and bounded variants | none; rejected before contract movement | broad: `Run` -161 native instructions and -23 physical epilogues; O3 producer -94,192 text bytes; bounded variants -17,928/-16,120 bytes | broad O1 user +1.5%; return-bounded +0.26%; bounded/excluded O3 CPU +0.32% and wall +1.5% | exact-output all-32 screens; all variants removed | rejected; taken return branches cost more than duplicate bytes |
 | D.copy-pair | fuse staged adjacent 64-bit predecessor loads/successor stores into one vector copy | none; rejected before contract movement | clone -3 MIR/-8 bytes; generic -8 bytes; tokenizer -22 text bytes; producer +8,744 text bytes | twelve-lane hot TU +4.1% wall/user, every candidate lane slower | exact hot outputs; candidate removed | rejected; exposed entry-address sensitivity |
