@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 
@@ -11,7 +12,7 @@ void Analyzer::ApplyPlaceholderDeclaratorOperator(
 	const std::string& operation, DeclaratorInfo* declarator) const
 {
 	if (declarator->placeholder_return_kind != PLACEHOLDER_DECLARATOR_VALUE)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"compound placeholder function result declarator");
 	if (operation == "*")
 		declarator->placeholder_return_kind = PLACEHOLDER_DECLARATOR_POINTER;
@@ -21,7 +22,7 @@ void Analyzer::ApplyPlaceholderDeclaratorOperator(
 	else if (operation == "&&")
 		declarator->placeholder_return_kind =
 			PLACEHOLDER_DECLARATOR_RVALUE_REFERENCE;
-	else throw std::runtime_error(
+	else ThrowSemanticError(
 		"unsupported placeholder function result declarator");
 }
 
@@ -35,11 +36,11 @@ DeclaratorInfo Analyzer::BuildVariableDeclarator(
 		return BuildDeclarator(declarator, spec.type, scope,
 			spec.placeholder_auto);
 	if (!prepared_initializer)
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"placeholder variable deduction has no result owner");
 	NodeId initializer = FindChild(item, ::cppgm::syntax::STAG_INITIALIZER);
 	if (initializer == kNoNode)
-		throw std::runtime_error("placeholder variable requires initializer");
+		ThrowSemanticError("placeholder variable requires initializer");
 	NodeId expression = FirstSemanticChild(initializer);
 	while (expression != kNoNode && arena_->IsTag(expression, ::cppgm::syntax::STAG_INITIALIZER))
 		expression = FirstSemanticChild(expression);
@@ -48,7 +49,7 @@ DeclaratorInfo Analyzer::BuildVariableDeclarator(
 		const NodeId first = FirstSemanticChild(expression);
 		const std::uint32_t first_edge = arena_->FirstEdge(expression);
 		if (first == kNoNode || arena_->NextEdge(first_edge) != kNoEdge)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"placeholder direct-initializer requires one expression");
 		expression = first;
 	}
@@ -68,21 +69,21 @@ DeclaratorInfo Analyzer::BuildVariableDeclarator(
 				values.push_back(AnalyzeExpression(syntax[i], scope));
 		}
 		if (values.empty())
-			throw std::runtime_error("empty placeholder initializer-list");
+			ThrowSemanticError("empty placeholder initializer-list");
 		TypeId element = program_->types.RemoveTopCv(Decay(values[0].type));
 		for (std::size_t i = 1; i < values.size(); ++i)
 			if (program_->types.RemoveTopCv(Decay(values[i].type)) != element)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"placeholder initializer-list has inconsistent element types");
 		const std::size_t pattern =
 			FindClassTemplate(scope,
 				GeneratedLibraryPath(GENERATED_LIBRARY_INITIALIZER_LIST));
 		if (pattern >= class_templates_.size())
-			throw std::runtime_error("std::initializer_list is not declared");
+			ThrowSemanticError("std::initializer_list is not declared");
 		const BindingId specialization = InstantiateClassTemplate(
 			pattern, std::vector<TypeId>(1, element));
 		if (specialization == kNoBinding)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"unable to form std::initializer_list specialization");
 		TypeId list_type = program_->bindings[specialization].type;
 		ConfigureInitializerListSpecialization(list_type);
@@ -94,7 +95,7 @@ DeclaratorInfo Analyzer::BuildVariableDeclarator(
 		return parsed;
 	}
 	if (expression == kNoNode)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"placeholder list deduction is outside the PA23 boundary");
 	const bool require_constant = spec.is_constexpr || !local ||
 		spec.storage_class == STORAGE_CLASS_STATIC ||
@@ -134,7 +135,7 @@ DeclaratorInfo Analyzer::BuildVariableDeclarator(
 			const NodeId child = arena_->EdgeChild(edge);
 			if (!arena_->IsTag(child, ::cppgm::syntax::STAG_PTR_OPERATOR)) continue;
 			if (!pointer_operator.empty())
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"compound placeholder declarator is outside the PA23 boundary");
 			pointer_operator = PayloadSource(child);
 		}
@@ -143,7 +144,7 @@ DeclaratorInfo Analyzer::BuildVariableDeclarator(
 		else if (pointer_operator == "&")
 		{
 			if (value.category != VALUE_LVALUE)
-				throw std::runtime_error("auto& requires an lvalue initializer");
+				ThrowSemanticError("auto& requires an lvalue initializer");
 		}
 		else if (pointer_operator == "&&")
 		{
@@ -155,10 +156,10 @@ DeclaratorInfo Analyzer::BuildVariableDeclarator(
 		{
 			const TypeRecord& pointer = program_->types.Get(Decay(value.type));
 			if (pointer.kind != TYPE_POINTER)
-				throw std::runtime_error("auto* requires a pointer initializer");
+				ThrowSemanticError("auto* requires a pointer initializer");
 			base = pointer.child;
 		}
-		else throw std::runtime_error(
+		else ThrowSemanticError(
 			"unsupported placeholder pointer operator in PA23");
 		base = program_->types.Qualify(base, spec.placeholder_cv);
 		parsed = BuildDeclarator(declarator, base, scope);
@@ -215,7 +216,7 @@ void Analyzer::ConfigurePlaceholderFunctionReturn(BindingId function,
 	if (fact.placeholder_return_kind != PLACEHOLDER_DECLARATOR_NONE &&
 		(fact.placeholder_return_kind != declarator.placeholder_return_kind ||
 		 fact.placeholder_return_cv != placeholder_cv))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"conflicting placeholder function return declarator");
 	fact.placeholder_return_kind = declarator.placeholder_return_kind;
 	fact.placeholder_return_cv = placeholder_cv;
@@ -227,7 +228,7 @@ TypeId Analyzer::DeducePlaceholderFunctionReturnType(
 	if (!expression)
 	{
 		if (function.placeholder_return_kind != PLACEHOLDER_DECLARATOR_VALUE)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"reference or pointer placeholder function returns no value");
 		return program_->types.Fundamental(FUND_VOID);
 	}
@@ -245,7 +246,7 @@ TypeId Analyzer::DeducePlaceholderFunctionReturnType(
 		const TypeId pointer = Decay(expression->type);
 		const TypeRecord& shape = program_->types.Get(pointer);
 		if (shape.kind != TYPE_POINTER)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"auto* function return requires a pointer expression");
 		base = shape.child;
 		if (function.placeholder_return_cv != CV_NONE)
@@ -255,7 +256,7 @@ TypeId Analyzer::DeducePlaceholderFunctionReturnType(
 	}
 	case PLACEHOLDER_DECLARATOR_LVALUE_REFERENCE:
 		if (expression->category != VALUE_LVALUE)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"auto& function return requires an lvalue expression");
 		if (function.placeholder_return_cv != CV_NONE)
 			base = program_->types.Qualify(
@@ -273,7 +274,7 @@ TypeId Analyzer::DeducePlaceholderFunctionReturnType(
 	case PLACEHOLDER_DECLARATOR_NONE:
 		break;
 	}
-	throw std::logic_error("placeholder return deduction has no placeholder");
+	ThrowInternalCompilerError("placeholder return deduction has no placeholder");
 }
 
 void Analyzer::PublishPlaceholderFunctionReturn(
@@ -282,14 +283,14 @@ void Analyzer::PublishPlaceholderFunctionReturn(
 	function = program_->bindings[function].canonical;
 	FunctionInfo& fact = GetMutableFunction(function);
 	if (fact.placeholder_return_kind == PLACEHOLDER_DECLARATOR_NONE)
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"placeholder result published for an ordinary function");
 	const TypeId deduced =
 		DeducePlaceholderFunctionReturnType(fact, expression);
 	if (fact.placeholder_return_deduced)
 	{
 		if (fact.placeholder_return_type != deduced)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"inconsistent placeholder function return types");
 		current_return_type_ = fact.placeholder_return_type;
 		return;
@@ -331,13 +332,13 @@ void Analyzer::AnalyzeRetainedPlaceholderFunctionBody(
 		return;
 	}
 	if (requested.placeholder_body_state == PLACEHOLDER_BODY_IN_PROGRESS)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"recursive placeholder function return deduction");
 	if (requested.placeholder_body_state == PLACEHOLDER_BODY_FAILED)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"placeholder function return deduction previously failed");
 	if (!requested.defined || requested.definition_body == kNoNode)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"placeholder function return requires a visible definition");
 	requested.placeholder_body_state = PLACEHOLDER_BODY_IN_PROGRESS;
 

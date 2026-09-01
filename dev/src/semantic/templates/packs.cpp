@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -52,7 +52,7 @@ ExpressionInfo Analyzer::AnalyzeSizeofPackExpression(
 		count = constexpr_arguments.size();
 	else if (LookupFunctionParameterPack(scope, name, &function_arguments))
 		count = function_arguments.size();
-	else throw std::runtime_error("sizeof names no parameter pack");
+	else ThrowSemanticError("sizeof names no parameter pack");
 	ExpressionInfo result;
 	result.type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
 	result.node = MakeDump(DUMP_SIZEOF_EXPRESSION, result.type, VALUE_PRVALUE);
@@ -70,7 +70,7 @@ ExpressionInfo Analyzer::AnalyzeFoldExpression(NodeId node, ScopeId scope)
 	const bool binary = FindChild(node, ::cppgm::syntax::STAG_FOLD_BINARY) != kNoNode;
 	if ((!unary_left && !unary_right && !binary) ||
 		(unary_left && unary_right))
-		throw std::logic_error("fold expression has invalid direction");
+		ThrowInternalCompilerError("fold expression has invalid direction");
 	std::vector<NodeId> operands;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -81,7 +81,7 @@ ExpressionInfo Analyzer::AnalyzeFoldExpression(NodeId node, ScopeId scope)
 			!arena_->IsTag(child, ::cppgm::syntax::STAG_FOLD_BINARY)) operands.push_back(child);
 	}
 	if (operands.size() != (binary ? 2U : 1U))
-		throw std::logic_error("fold expression has invalid operands");
+		ThrowInternalCompilerError("fold expression has invalid operands");
 	NodeId pattern = operands[0];
 	NodeId initializer = kNoNode;
 	bool left_fold = unary_left;
@@ -91,7 +91,7 @@ ExpressionInfo Analyzer::AnalyzeFoldExpression(NodeId node, ScopeId scope)
 		CollectPackExpansionNames(operands[0], scope, &left_packs);
 		CollectPackExpansionNames(operands[1], scope, &right_packs);
 		if (left_packs.empty() == right_packs.empty())
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"binary fold must contain one unexpanded parameter pack");
 		left_fold = left_packs.empty();
 		pattern = left_fold ? operands[1] : operands[0];
@@ -105,7 +105,7 @@ ExpressionInfo Analyzer::AnalyzeFoldExpression(NodeId node, ScopeId scope)
 			RecordCandidateSubstitutionFailure();
 			return CandidateSubstitutionFailure();
 		}
-		throw std::runtime_error("fold expression contains no parameter pack");
+		ThrowSemanticError("fold expression contains no parameter pack");
 	}
 	std::vector<ExpressionInfo> elements;
 	elements.reserve(element_scopes.size());
@@ -118,7 +118,7 @@ ExpressionInfo Analyzer::AnalyzeFoldExpression(NodeId node, ScopeId scope)
 	if (elements.empty() && initializer == kNoNode)
 	{
 		if (operation != "&&" && operation != "||")
-			throw std::runtime_error("empty unary fold has no identity");
+			ThrowSemanticError("empty unary fold has no identity");
 		ExpressionInfo identity = MakeLiteral(
 			program_->types.Fundamental(FUND_BOOL),
 			program_->names.Intern(operation == "&&" ? "true" : "false"));
@@ -286,7 +286,7 @@ bool Analyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 				RecordCandidateSubstitutionFailure();
 				return false;
 			}
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"declaration pack expansion requires a template parameter pack");
 		}
 		const std::size_t source_length = pack_kind[source] == 1 ?
@@ -300,7 +300,7 @@ bool Analyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 				RecordCandidateSubstitutionFailure();
 				return false;
 			}
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"pack expansion operands have different lengths at " +
 				program_->names.Get(names[source]) + ": " +
 				std::to_string(length) + " versus " +
@@ -326,7 +326,7 @@ bool Analyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 			{
 				const BindingId binding = function_packs[source][element];
 				if (binding >= program_->bindings.size())
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"function parameter pack binding is invalid");
 				const BindingRecord& record = program_->bindings[binding];
 				program_->AddBinding(element_scope, BIND_PARAMETER,
@@ -368,10 +368,10 @@ void Analyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 	std::vector<ExpressionInfo>* expressions)
 {
 	if (!arena_->IsTag(expansion, ::cppgm::syntax::STAG_PACK_EXPANSION_EXPRESSION))
-		throw std::logic_error("expression pack expansion node is invalid");
+		ThrowInternalCompilerError("expression pack expansion node is invalid");
 	const NodeId operand = FirstSemanticChild(expansion);
 	if (operand == kNoNode)
-		throw std::runtime_error("empty pack expansion expression");
+		ThrowSemanticError("empty pack expansion expression");
 	std::vector<NameId> names;
 	CollectPackExpansionNames(operand, scope, &names);
 	if (names.empty())
@@ -381,7 +381,7 @@ void Analyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 			RecordCandidateSubstitutionFailure();
 			return;
 		}
-		throw std::runtime_error("pack expansion contains no unexpanded pack");
+		ThrowSemanticError("pack expansion contains no unexpanded pack");
 	}
 	std::vector<std::vector<TemplateArgument> > template_packs(names.size());
 	std::vector<std::vector<BindingId> > function_packs(names.size());
@@ -399,7 +399,7 @@ void Analyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 			pack_kind[source] = 2;
 		else if (!LookupFunctionParameterPack(
 			scope, names[source], &function_packs[source]))
-			throw std::logic_error("collected pack binding disappeared");
+			ThrowInternalCompilerError("collected pack binding disappeared");
 		const std::size_t source_length = pack_kind[source] == 1 ?
 			template_packs[source].size() : pack_kind[source] == 2 ?
 			constexpr_packs[source].size() : function_packs[source].size();
@@ -412,7 +412,7 @@ void Analyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 				RecordCandidateSubstitutionFailure();
 				return;
 			}
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"pack expansion operands have different lengths");
 		}
 	}
@@ -444,14 +444,14 @@ void Analyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 					constexpr_packs[source][element]];
 				if (!AddConstexprLocal(names[source], 0,
 					local.type, local.value))
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"constexpr pack element alias conflicts");
 			}
 			else
 			{
 				const BindingId binding = function_packs[source][element];
 				if (binding >= program_->bindings.size())
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"function parameter pack binding is invalid");
 				const BindingRecord& record = program_->bindings[binding];
 				program_->AddBinding(element_scope, BIND_PARAMETER, names[source],
@@ -503,13 +503,13 @@ bool Analyzer::TryAnalyzeExpandedBracedInit(
 	if (class_aggregate)
 	{
 		if (entity >= entity_data_members_.size())
-			throw std::logic_error("aggregate is missing its member index");
+			ThrowInternalCompilerError("aggregate is missing its member index");
 		const std::vector<BindingId>& members = entity_data_members_[entity];
 		const std::size_t member_count =
 			program_->entities[entity].flavor == NAMED_UNION ?
 				(members.empty() ? 0 : 1) : members.size();
 		if (values.size() > member_count)
-			throw std::runtime_error("excess aggregate initializer elements");
+			ThrowSemanticError("excess aggregate initializer elements");
 		const std::uint32_t list = MakeDump(
 			DUMP_BRACED_INIT_LIST, target, VALUE_LVALUE);
 		std::vector<ConstexprObjectElement> constant_elements;
@@ -524,7 +524,7 @@ bool Analyzer::TryAnalyzeExpandedBracedInit(
 			if (i < values.size())
 			{
 				if (IsBracedNarrowing(values[i], member.type))
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"narrowing aggregate initialization conversion");
 				value = ApplyTarget(values[i], member.type);
 			}
@@ -556,7 +556,7 @@ bool Analyzer::TryAnalyzeExpandedBracedInit(
 	if (record.kind == TYPE_ARRAY)
 	{
 		if (record.bound != 0 && values.size() > record.bound)
-			throw std::runtime_error("excess array initializer elements");
+			ThrowSemanticError("excess array initializer elements");
 		const std::size_t count = record.bound == 0 ?
 			values.size() : record.bound;
 		const TypeId initialized = record.bound == 0 ?
@@ -570,7 +570,7 @@ bool Analyzer::TryAnalyzeExpandedBracedInit(
 			// does not have to rediscover it from initializer syntax.
 			const std::size_t alignment = program_->AlignOf(record.child);
 			if (alignment > std::numeric_limits<std::uint32_t>::max())
-				throw std::runtime_error(
+				ThrowSemanticResourceLimit(
 					"zero-cardinality array alignment is too large");
 			dump_.nodes[list].storage_size = 1;
 			dump_.nodes[list].storage_alignment =
@@ -585,7 +585,7 @@ bool Analyzer::TryAnalyzeExpandedBracedInit(
 			if (i < values.size())
 			{
 				if (IsBracedNarrowing(values[i], record.child))
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"narrowing array initialization conversion");
 				value = ApplyTarget(values[i], record.child);
 			}
@@ -614,7 +614,7 @@ bool Analyzer::TryAnalyzeExpandedBracedInit(
 		return true;
 	}
 	if (values.size() != 1)
-		throw std::runtime_error("scalar pack initialization has invalid arity");
+		ThrowSemanticError("scalar pack initialization has invalid arity");
 	*result = ApplyTarget(values[0], target);
 	return true;
 }

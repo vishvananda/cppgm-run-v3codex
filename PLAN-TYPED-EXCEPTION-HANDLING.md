@@ -705,7 +705,8 @@ Append one row for each retained or rejected increment:
 | E3c | constructor/function constexpr probe boundaries and selection | four catch-alls converted every unknown failure to non-constant; constructor selection was untyped | recover only `SemanticError`; overload failures are semantic and conversion-table exhaustion is resource | PA17 nonconstant class-array initialization; PA21 ordinary dynamic fallback after a failed constant probe | successful full 0->0; targeted fallback has one typed semantic throw; catch-all sites 57->53 | +128 text, +32 rodata, -48 exception table, +112 unwind | frozen neutral; full O1 -0.32% CPU, O3 -0.71% CPU | through-PA21 2,417/2,417; PA21 151/151; 222 O1/O3 objects exact | `4e933284` | retained |
 | E4a | declarations, lookup, and semantic index tables | source diagnostics, resource ceilings, and invariants shared generic standard bases | `SemanticError`, semantic-domain `ResourceLimitError`, and `InternalCompilerError`; cold shared throw helpers | PA12 declarations and expressions, with cumulative PA21/PA23 recovery coverage | successful full remains 0; generic logic/runtime sites -43/-160 | -10,368 text, -32 rodata, -1,972 exception table, -32 unwind | frozen 0.520/0.520 s; full O1 -0.46% CPU, O3 -0.07% CPU | through-PA12 842/842; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `5d25136f` | retained |
 | E4b | expressions, calls, and overload resolution | expression rejection and failed overloads shared generic bases with representation limits and invariants | ordinary diagnostics use `SemanticError`; candidate failure stays status-based; limits and invariants bypass recovery | PA12 expressions/intrinsics; PA23 substitution and overload recovery | successful full remains 0; generic logic/runtime sites -28/-113 | -8,256 text, -1,328 exception table, +208 unwind | frozen 0.525/0.520 s; full O1 -0.08% CPU, O3 -0.45% CPU | PA12 184/184; PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `0bda33df` | retained |
-| E4c | initialization and lifetime | construction/destruction diagnostics, capacity ceilings, and synthesized-state contradictions shared generic bases | typed semantic/resource/internal dispositions; substitution and constexpr status remain explicit | PA17 initialization/lifetime, PA21 constexpr, PA23 templates | successful full remains 0; generic logic/runtime sites -71/-125 | -14,336 text, -2,132 exception table, +200 unwind | frozen neutral; repeated full O1 -0.10% CPU, O3 +0.08% CPU | PA17 247/247; PA21 151/151; PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | pending | retained |
+| E4c | initialization and lifetime | construction/destruction diagnostics, capacity ceilings, and synthesized-state contradictions shared generic bases | typed semantic/resource/internal dispositions; substitution and constexpr status remain explicit | PA17 initialization/lifetime, PA21 constexpr, PA23 templates | successful full remains 0; generic logic/runtime sites -71/-125 | -14,336 text, -2,132 exception table, +200 unwind | frozen neutral; repeated full O1 -0.10% CPU, O3 +0.08% CPU | PA17 247/247; PA21 151/151; PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `e743a077` | retained |
+| E4d | template arguments, deduction, placeholders, validation, and identity support | template diagnostics and retained-state invariants shared generic bases | terminal source diagnostics typed; candidate substitution remains explicit status; limits/invariants bypass it | PA23 template deduction/substitution and retained templates | successful full remains 0; generic logic/runtime sites -86/-125 | -768 text, -1,820 exception table, +168 unwind | frozen neutral; repeated full O1 -0.10% CPU, O3 -0.05% CPU | PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1091,6 +1092,37 @@ eight lanes per optimization, O1 baseline/candidate aggregate CPU averages
 489.830/489.330 seconds (-0.10%), while O3 averages 494.320/494.698 seconds
 (+0.08%).  This is neutral under the pure typed-migration guard and removes
 another 16,468 bytes of text and exception-table data.
+
+### E4d execution record
+
+Template arguments, deduction, aliases/lambdas, placeholders, pack handling,
+retained-template validation, ABI-result identity, and supporting indices now
+use typed terminal failures.  The slice converts 86 generic logic throws and
+125 generic runtime throws.  All active candidate-substitution paths continue
+to record and return their explicit owner-local status; no generic or typed
+exception is introduced as the successful SFINAE mechanism.
+
+Template/partial/proxy/ABI identity counts, parameter ordinals, zero-cardinality
+alignment representation, and static-member definition indices use
+semantic-domain `ResourceLimitError`.  Retained syntax and invalid explicit
+specializations use `SemanticError`, while impossible stored ranges, owner
+indices, and cached identity shapes use `InternalCompilerError`.  Existing
+catch-alls in this group restore candidate stacks, contexts, or scratch state
+and rethrow; none returns an ordinary substitution result from an exception.
+
+PA23 passes 414/414 and through-PA23 passes 3,142/3,142.  The exception audit
+ratchets to 1,182 generic logic throws and 902 generic runtime throws in 175
+files.  Against `e743a077`, `.text` changes 6,591,142 -> 6,590,374,
+`.rodata` stays 214,240, `.eh_frame_hdr` 51,116 -> 51,180, `.eh_frame`
+323,752 -> 323,856, and `.gcc_except_table` 159,008 -> 157,188.  Frozen output
+is exact at `8545fec6...`; user-time medians are both 0.480 seconds.
+
+The first full block was within 1%, so a mirrored second block was run.  All
+222 requested-O1 and O3 objects match in all lanes.  Across eight lanes per
+optimization, O1 baseline/candidate aggregate CPU averages 488.695/488.200
+seconds (-0.10%); O3 averages 493.078/492.855 seconds (-0.05%).  The template
+infrastructure migration is dynamically neutral and removes another 2,588
+bytes of text and exception-table data.
 
 ## Initial code map
 

@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -83,19 +83,19 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 	++lambda_closure_requests_;
 	const NodeId introducer = FindChild(node, ::cppgm::syntax::STAG_LAMBDA_INTRODUCER);
 	if (introducer == kNoNode)
-		throw std::runtime_error("lambda expression has no capture introducer");
+		ThrowSemanticError("lambda expression has no capture introducer");
 	const semantic::LambdaCaptureUseTable::Fact& capture_uses =
 		lambda_capture_uses_.FindOrBuild(*arena_, node);
 	const NodeId declarator = FindChild(node, ::cppgm::syntax::STAG_LAMBDA_DECLARATOR);
 	const NodeId body = FindChild(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT);
 	if (body == kNoNode)
-		throw std::logic_error("lambda expression has no retained body");
+		ThrowInternalCompilerError("lambda expression has no retained body");
 	ScopeId namespace_owner = scope;
 	while (namespace_owner != kNoScope &&
 		program_->KindOfScope(namespace_owner) != SCOPE_NAMESPACE)
 		namespace_owner = program_->ParentScope(namespace_owner);
 	if (namespace_owner == kNoScope)
-		throw std::logic_error("lambda closure has no namespace owner");
+		ThrowInternalCompilerError("lambda closure has no namespace owner");
 	const BindingId enclosing = current_function_context_ == kNoBinding ?
 		kNoBinding : program_->bindings[current_function_context_].canonical;
 	const std::uint32_t context_key = enclosing == kNoBinding ?
@@ -108,13 +108,13 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 	if (indexed)
 	{
 		if (indexed->Size() != 1)
-			throw std::logic_error("ambiguous canonical lambda closure fact");
+			ThrowInternalCompilerError("ambiguous canonical lambda closure fact");
 		fact_index = (*indexed)[0];
 		if (fact_index >= lambda_closures_.size() ||
 			lambda_closures_[fact_index].syntax != node ||
 			lambda_closures_[fact_index].function != enclosing ||
 			lambda_closures_[fact_index].namespace_owner != namespace_owner)
-			throw std::logic_error("corrupt canonical lambda closure index");
+			ThrowInternalCompilerError("corrupt canonical lambda closure index");
 		++lambda_closure_cache_hits_;
 	}
 	else
@@ -145,7 +145,7 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 			}
 			parameter_clause = FindChild(declarator, ::cppgm::syntax::STAG_PARAMETER_CLAUSE);
 			if (parameter_clause == kNoNode)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"lambda declarator has no parameter clause");
 			if (!generic_call)
 			{
@@ -162,7 +162,7 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 			if (exception != kNoNode)
 			{
 				if (FirstSemanticChild(exception) != kNoNode)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"dependent lambda noexcept is outside the PA22 subset");
 				nonthrowing = true;
 			}
@@ -274,7 +274,7 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 					kNoEntity) captures_this = true;
 			if (found.Empty() && templates.empty() &&
 				lambda_capture_uses_.IsExplicitAt(capture_uses, i))
-				throw std::runtime_error("lambda capture name was not found");
+				ThrowSemanticError("lambda capture name was not found");
 		}
 		TypeId this_capture_type = kNoType;
 		if (captures_this)
@@ -283,7 +283,7 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 			const LookupResult found_this = program_->LookupName(
 				scope, this_name, LOOKUP_ORDINARY);
 			if (found_this.ordinary == kNoBinding)
-				throw std::runtime_error("this lambda capture has no object");
+				ThrowSemanticError("this lambda capture has no object");
 			this_capture_type = EffectiveType(
 				program_->bindings[found_this.ordinary].type);
 			if (current_function_context_ != kNoBinding)
@@ -295,7 +295,7 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 						context.lambda_this_capture_member].type);
 			}
 			if (!IsPointer(this_capture_type))
-				throw std::logic_error("this lambda capture is not a pointer");
+				ThrowInternalCompilerError("this lambda capture is not a pointer");
 		}
 			std::uint32_t ordinal = 0;
 		if (enclosing != kNoBinding)
@@ -405,7 +405,7 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 				FindChild(declarator, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ), declarator,
 				true, false, kNoType, false);
 			if (function_templates_.size() != pattern + 1)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"generic lambda call template did not publish one pattern");
 			FunctionTemplatePattern& call = function_templates_[pattern];
 			call.lambda_lexical_access_function = enclosing;
@@ -434,7 +434,7 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 				}
 			const NodeId type_id = FindChild(trailing_return, ::cppgm::syntax::STAG_TYPE_ID);
 			if (type_id == kNoNode)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"lambda trailing return type is missing its type-id");
 			result_type = BuildTypeId(type_id, return_scope);
 		}
@@ -550,7 +550,7 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 		const std::size_t capture_index =
 			static_cast<std::size_t>(fact.capture_begin) + i;
 		if (capture_index >= lambda_captures_.size())
-			throw std::logic_error("lambda capture range is invalid");
+			ThrowInternalCompilerError("lambda capture range is invalid");
 		const LambdaCaptureFact& capture = lambda_captures_[capture_index];
 		const BindingRecord& member = program_->bindings[capture.member];
 		const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
@@ -581,7 +581,7 @@ ExpressionInfo Analyzer::AnalyzeLambdaExpression(NodeId node,
 			}
 			if (capture_source == kNoBinding ||
 				capture_source >= program_->bindings.size())
-				throw std::logic_error("lambda capture source is invalid");
+				ThrowInternalCompilerError("lambda capture source is invalid");
 			const std::uint32_t injected_fact =
 				capture_source < injected_fact_by_binding_.size() ?
 				injected_fact_by_binding_[capture_source] : kNoDumpEdge;
@@ -678,13 +678,13 @@ void Analyzer::InstallLambdaCaptureBindings(ScopeId scope,
 {
 	if (function.lambda_capture_count == 0) return;
 	if (this_binding == kNoBinding)
-		throw std::logic_error("capturing lambda call has no closure object");
+		ThrowInternalCompilerError("capturing lambda call has no closure object");
 	for (std::uint32_t i = 0; i < function.lambda_capture_count; ++i)
 	{
 		const std::size_t capture_index =
 			static_cast<std::size_t>(function.lambda_capture_begin) + i;
 		if (capture_index >= lambda_captures_.size())
-			throw std::logic_error("lambda call capture range is invalid");
+			ThrowInternalCompilerError("lambda call capture range is invalid");
 		const LambdaCaptureFact& capture = lambda_captures_[capture_index];
 		if (capture.captures_this) continue;
 		TypeId alias_type = capture.value_type;
@@ -712,7 +712,7 @@ ExpressionInfo Analyzer::BuildLambdaInvocationPointer(
 	const FunctionInfo& conversion = GetFunction(conversion_function);
 	const BindingId invocation = conversion.lambda_invocation_function;
 	if (invocation == kNoBinding || invocation >= program_->bindings.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"captureless lambda conversion has no invocation function");
 	const BindingId canonical = program_->bindings[invocation].canonical;
 	const FunctionInfo& callable = GetFunction(canonical);
@@ -735,7 +735,7 @@ void Analyzer::DemandMaterializedConstructorActions(
 	std::uint32_t node, bool demand_calls)
 {
 	if (node >= dump_.nodes.size())
-		throw std::logic_error("invalid materialized-constructor demand root");
+		ThrowInternalCompilerError("invalid materialized-constructor demand root");
 	struct Visit
 	{
 		std::uint32_t node, next_edge;
@@ -779,7 +779,7 @@ void Analyzer::DemandMaterializedConstructorActions(
 			{
 				if (record.first_edge == kNoDumpEdge ||
 					dump_.edges[record.first_edge].next != kNoDumpEdge)
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"materialized constructor has invalid recipe");
 				const DumpNode& recipe = dump_.nodes[
 					dump_.edges[record.first_edge].child];
@@ -788,7 +788,7 @@ void Analyzer::DemandMaterializedConstructorActions(
 						dump_.nodes[recipe.value_constructor] : recipe;
 				if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
 					action.binding == kNoBinding)
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"materialized constructor demand has no action");
 				record.pending_constructor_demand = false;
 				DemandConstructorDefinition(action.binding);
@@ -809,7 +809,7 @@ void Analyzer::DemandRetainedRuntimeCalls(std::uint32_t node)
 {
 	if (unevaluated_depth_ != 0) return;
 	if (node >= dump_.nodes.size())
-		throw std::logic_error("invalid retained-call demand root");
+		ThrowInternalCompilerError("invalid retained-call demand root");
 	std::vector<std::uint32_t> pending(1, node);
 	while (!pending.empty())
 	{
@@ -1001,7 +1001,7 @@ void Analyzer::SelectClassTemplateMemberOwner(
 	std::size_t pattern_index, ClassTemplateMemberPattern* member)
 {
 	if (!member || pattern_index >= class_templates_.size())
-		throw std::logic_error("invalid class template member owner");
+		ThrowInternalCompilerError("invalid class template member owner");
 	ClassTemplatePattern& owner = class_templates_[pattern_index];
 	member->owner_partial_pattern = kNoDumpEdge;
 	bool concrete = true;
@@ -1017,7 +1017,7 @@ void Analyzer::SelectClassTemplateMemberOwner(
 		member->concrete_owner = InstantiateClassTemplate(
 			pattern_index, member->canonical_owner_arguments);
 		if (member->concrete_owner == kNoBinding)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"invalid concrete class template member owner");
 		const ClassTemplatePartialSelection* selection =
 			FindClassTemplatePartialSelection(member->concrete_owner);
@@ -1042,7 +1042,7 @@ void Analyzer::SelectClassTemplateMemberOwner(
 				member->canonical_owner_arguments, partial.canonical_arguments,
 				&member_from_partial)) continue;
 		if (partial_index > std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many class partial patterns");
+			ThrowSemanticResourceLimit("too many class partial patterns");
 		member->owner_partial_pattern =
 			static_cast<std::uint32_t>(partial_index);
 		break;
@@ -1050,7 +1050,7 @@ void Analyzer::SelectClassTemplateMemberOwner(
 	if (member->owner_partial_pattern == kNoDumpEdge &&
 		!ClassTemplateMemberNamesPrimaryParameters(
 			member->parameters, member->canonical_owner_arguments))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"class template member owner is not a declared specialization");
 }
 
@@ -1131,13 +1131,13 @@ bool Analyzer::RouteClassTemplateMemberDefinition(
 		FindChild(pattern.declaration, ::cppgm::syntax::STAG_BASE_CLAUSE) == kNoNode &&
 		!RetainedClassDeclaresNestedPath(
 			pattern.declaration, declared_owner_path))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"class template member has a missing nested owner");
 	if (!MaterializeTemplatePartialArguments(pattern.parameters,
 		routed.parameters, owner_arguments, lexical_scope,
 		&routed.canonical_owner_arguments, &owner_shape_state) ||
 		owner_shape_state != 1)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"nested class template member owner pattern is not deducible");
 	SelectClassTemplateMemberOwner(pattern_index, &routed);
 
@@ -1152,11 +1152,11 @@ bool Analyzer::RouteClassTemplateMemberDefinition(
 		const EntityId entity = EntityOf(
 			program_->bindings[specialization].type);
 		if (entity == kNoEntity)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"nested class specialization has no entity");
 		const EntityRecord& record = program_->entities[entity];
 		if (record.template_argument_begin == kNoBinding)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"nested class specialization has no arguments");
 		const std::vector<TemplateArgument> arguments =
 			StoredTemplateArguments(record.template_argument_begin,
@@ -1347,7 +1347,7 @@ bool Analyzer::BuildTemplateTemplateArgument(NodeId syntax,
 	if (found.type == kNoType) return false;
 	if (found.type_declaration != kNoBinding &&
 		!CanAccessMember(found.type_declaration, found.naming_class))
-		throw std::runtime_error("inaccessible template argument");
+		ThrowSemanticError("inaccessible template argument");
 	const NameId requested = structured == kNoNode ?
 		program_->names.UseInterned(arena_->SemanticPayloadId(name)) :
 		StructuredNamePath(structured).Last();
@@ -1377,7 +1377,7 @@ TypeId Analyzer::CreateTemplateTemplateParameterProxy(ScopeId scope,
 	if (parameter.kind != TEMPLATE_ARGUMENT_TEMPLATE || parameter.name == 0)
 		return kNoType;
 	if (ordinal >= kNoTemplateParameter)
-		throw std::runtime_error("template parameter ordinal is too large");
+		ThrowSemanticResourceLimit("template parameter ordinal is too large");
 	ClassTemplatePattern pattern;
 	pattern.owner = scope;
 	pattern.lexical_scope = scope;
@@ -1394,7 +1394,7 @@ TypeId Analyzer::CreateTemplateTemplateParameterProxy(ScopeId scope,
 		false, 0, NAMED_TEMPLATE_PARAMETER);
 	const std::size_t index = class_templates_.size();
 	if (index > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many template parameter proxies");
+		ThrowSemanticResourceLimit("too many template parameter proxies");
 	class_templates_.push_back(pattern);
 	if (class_template_pattern_by_entity_.size() <= pattern.marker_entity)
 		class_template_pattern_by_entity_.resize(
@@ -1412,17 +1412,17 @@ void Analyzer::RegisterAliasTemplate(NodeId declaration,
 		program_->names.UseInterned(arena_->PayloadId(declaration));
 	const NodeId type_id = FindChild(declaration, ::cppgm::syntax::STAG_TYPE_ID);
 	if (name == 0 || type_id == kNoNode)
-		throw std::runtime_error("invalid alias template declaration");
+		ThrowSemanticError("invalid alias template declaration");
 	const LookupResult old = program_->LookupDirect(scope, name, LOOKUP_TYPE);
 	if (old.type != kNoType)
 	{
 		const std::size_t prior = FindAliasTemplateIndex(old, name);
 		if (prior == NoAliasTemplatePattern())
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"alias template conflicts with an existing type");
 		AliasTemplatePattern& pattern = alias_templates_[prior];
 		if (!EquivalentAliasTemplateParameters(pattern.parameters, parameters))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"alias template parameter list does not match");
 		for (std::size_t i = 0; i < parameters.size(); ++i)
 			if (parameters[i].kind == TEMPLATE_ARGUMENT_TEMPLATE &&
@@ -1432,7 +1432,7 @@ void Analyzer::RegisterAliasTemplate(NodeId declaration,
 				 !TemplateTemplateParameterMatches(
 					parameters[i].template_parameters,
 					pattern.parameters[i].template_parameters)))
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"alias template template-parameter shape mismatch");
 		std::vector<TemplateParameter> merged = parameters;
 		for (std::size_t i = 0; i < merged.size(); ++i)
@@ -1471,7 +1471,7 @@ void Analyzer::RegisterAliasTemplate(NodeId declaration,
 	}
 	const std::size_t index = alias_templates_.size();
 	if (index > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many alias templates");
+		ThrowSemanticResourceLimit("too many alias templates");
 	alias_templates_.push_back(pattern);
 	if (alias_template_pattern_by_entity_.size() <= pattern.marker_entity)
 		alias_template_pattern_by_entity_.resize(
@@ -1580,7 +1580,7 @@ TypeId Analyzer::InstantiateAliasTemplate(std::size_t index,
 	const std::vector<TemplateArgument>& arguments)
 {
 	if (index >= alias_templates_.size())
-		throw std::logic_error("invalid alias template pattern");
+		ThrowInternalCompilerError("invalid alias template pattern");
 	const AliasTemplatePattern& pattern = alias_templates_[index];
 	const NodeId alias_declaration = pattern.declaration;
 	const std::size_t fixed = FixedTemplateParameterCount(pattern.parameters);
@@ -1600,12 +1600,12 @@ TypeId Analyzer::InstantiateAliasTemplate(std::size_t index,
 	{
 		++template_specialization_cache_hits_;
 		if (binding >= alias_template_instantiation_states_.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"alias specialization has no completion state");
 		const std::uint8_t state =
 			alias_template_instantiation_states_[binding];
 		if (state == ALIAS_TEMPLATE_IN_PROGRESS)
-			throw std::runtime_error("recursive alias template specialization");
+			ThrowSemanticError("recursive alias template specialization");
 		if (state == ALIAS_TEMPLATE_EXPECTED_FAILURE)
 		{
 			if (CandidateSubstitutionActive())
@@ -1613,12 +1613,12 @@ TypeId Analyzer::InstantiateAliasTemplate(std::size_t index,
 				RecordCandidateSubstitutionFailure();
 				return kNoType;
 			}
-			throw std::runtime_error("invalid alias template specialization");
+			ThrowSemanticError("invalid alias template specialization");
 		}
 		if (state == ALIAS_TEMPLATE_HARD_FAILURE)
-			throw std::runtime_error("invalid alias template specialization");
+			ThrowSemanticError("invalid alias template specialization");
 		if (state != ALIAS_TEMPLATE_SUCCEEDED)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"alias specialization has an invalid completion state");
 		return program_->bindings[binding].type;
 	}
@@ -1680,7 +1680,7 @@ TypeId Analyzer::InstantiateAliasTemplate(std::size_t index,
 		if (result == kNoType)
 		{
 			if (!CandidateSubstitutionActive())
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"alias template specialization has no result type");
 			RecordCandidateSubstitutionFailure();
 			alias_template_instantiation_states_[binding] =
@@ -1704,7 +1704,7 @@ bool Analyzer::AnalyzeExplicitFunctionInstantiation(
 	NodeId target, ScopeId scope, bool definition)
 {
 	if (program_->KindOfScope(scope) != SCOPE_NAMESPACE)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"explicit function instantiation must appear at namespace scope");
 
 	NodeId declarator = FindChild(target, ::cppgm::syntax::STAG_DECLARATOR);
@@ -1719,7 +1719,7 @@ bool Analyzer::AnalyzeExplicitFunctionInstantiation(
 		{
 			const std::uint32_t first = arena_->FirstEdge(list);
 			if (first != kNoEdge && arena_->NextEdge(first) != kNoEdge)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"explicit function instantiation has multiple declarators");
 		}
 	}
@@ -1802,7 +1802,7 @@ bool Analyzer::AnalyzeExplicitFunctionInstantiation(
 				CompareFunctionTemplateConstraints(function, prior);
 			if (preference > 0) selected = candidate;
 			else if (preference == 0)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"ambiguous explicit function instantiation target: " +
 					function_name);
 			continue;
@@ -1820,17 +1820,17 @@ bool Analyzer::AnalyzeExplicitFunctionInstantiation(
 	if (!definition)
 	{
 		if ((state & 2) != 0)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"explicit function instantiation declaration follows definition");
 		state |= 1;
 		binding.explicit_instantiation_suppressed = true;
 		return true;
 	}
 	if ((state & 2) != 0)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"duplicate explicit function instantiation definition");
 	if (!GetFunction(selected).defined)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"explicit function instantiation target has no definition");
 	state |= 2;
 	binding.explicit_instantiation_suppressed = false;

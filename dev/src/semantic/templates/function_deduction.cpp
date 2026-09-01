@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -134,7 +134,7 @@ bool Analyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 			 FixedTemplateParameterCount(template_parameters)) ||
 			first > program_->template_arguments.size() ||
 			count > program_->template_arguments.size() - first)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"invalid dependent class template argument range");
 		for (std::size_t i = 0; i < count && !dependent; ++i)
 		{
@@ -708,7 +708,7 @@ bool Analyzer::DeduceFunctionTemplateType(TypeId pattern,
 			argument_first > program_->template_arguments.size() ||
 			count > program_->template_arguments.size() - pattern_first ||
 			count > program_->template_arguments.size() - argument_first)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"invalid class template deduction argument range");
 		for (std::size_t i = 0; i < count; ++i)
 			if (!DeduceFunctionTemplateType(
@@ -1248,7 +1248,7 @@ void Analyzer::AppendConversionFunctionTemplateCandidates(
 		for (std::size_t p = 0; p < patterns.size(); ++p)
 		{
 			if (patterns[p] >= function_templates_.size())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"invalid conversion function template candidate");
 			const FunctionTemplatePattern& pattern = function_templates_[patterns[p]];
 			if (!pattern.conversion_template) continue;
@@ -1337,7 +1337,7 @@ void Analyzer::DeduceFunctionTemplatePatterns(
 	for (std::size_t p = 0; p < patterns.size(); ++p)
 	{
 		if (patterns[p] >= function_templates_.size())
-			throw std::logic_error("invalid function template candidate");
+			ThrowInternalCompilerError("invalid function template candidate");
 		const FunctionTemplatePattern& pattern =
 			function_templates_[patterns[p]];
 		const TypeRecord& function_type =
@@ -1356,7 +1356,7 @@ void Analyzer::DeduceFunctionTemplatePatterns(
 			pattern.parameters.size(), 0);
 		bool valid = true;
 		if (explicit_arguments && canonical_explicit_arguments)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template deduction has two explicit argument forms");
 		if (explicit_arguments || canonical_explicit_arguments)
 		{
@@ -1642,7 +1642,7 @@ void Analyzer::DeduceFunctionTemplatePatternsWithExplicitSyntax(
 	for (std::size_t i = 0; i < patterns.size(); ++i)
 	{
 		if (patterns[i] >= function_templates_.size())
-			throw std::logic_error("invalid function template candidate");
+			ThrowInternalCompilerError("invalid function template candidate");
 		const FunctionTemplatePattern& pattern =
 			function_templates_[patterns[i]];
 		std::vector<TemplateParameter> explicit_parameters = pattern.parameters;
@@ -1685,7 +1685,7 @@ std::vector<BindingId> Analyzer::FunctionTemplateTargetCandidates(
 	for (std::size_t i = 0; i < patterns.size(); ++i)
 	{
 		if (patterns[i] >= function_templates_.size())
-			throw std::logic_error("invalid target function template candidate");
+			ThrowInternalCompilerError("invalid target function template candidate");
 		const FunctionTemplatePattern& pattern = function_templates_[patterns[i]];
 		FunctionTemplateDeduction deduced(pattern.parameters);
 		if (explicit_id)

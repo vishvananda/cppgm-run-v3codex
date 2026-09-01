@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -16,7 +16,7 @@ Analyzer::FindClassTemplatePartialSelection(BindingId binding) const
 		class_template_partial_selection_indices_[binding];
 	if (stored == 0) return 0;
 	if (stored > class_template_partial_selections_.size())
-		throw std::logic_error("invalid class template partial selection index");
+		ThrowInternalCompilerError("invalid class template partial selection index");
 	return &class_template_partial_selections_[stored - 1];
 }
 
@@ -24,7 +24,7 @@ ClassTemplatePartialSelection&
 Analyzer::EnsureClassTemplatePartialSelection(BindingId binding)
 {
 	if (binding == kNoBinding)
-		throw std::logic_error("invalid class template partial selection owner");
+		ThrowInternalCompilerError("invalid class template partial selection owner");
 	if (class_template_partial_selection_indices_.size() <= binding)
 		class_template_partial_selection_indices_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
@@ -33,7 +33,7 @@ Analyzer::EnsureClassTemplatePartialSelection(BindingId binding)
 	{
 		if (class_template_partial_selections_.size() >=
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error(
+			ThrowSemanticResourceLimit(
 				"too many class template partial selections");
 		class_template_partial_selections_.push_back(
 			ClassTemplatePartialSelection());

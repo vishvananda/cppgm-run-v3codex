@@ -1,9 +1,9 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -193,7 +193,7 @@ void RetainedTemplateValidator::DeclareParameter(std::size_t scope,
 	const NameId name = parameter.name;
 	if (name == 0) return;
 	if (!parameter_names_.insert(name).second)
-		throw std::runtime_error("duplicate template parameter");
+		ThrowSemanticError("duplicate template parameter");
 	scopes_[scope].names[name] |= parameter.kind == TEMPLATE_ARGUMENT_INTEGRAL ?
 		RETAINED_VALUE_NAME : RETAINED_TYPE_NAME;
 }
@@ -203,10 +203,10 @@ void RetainedTemplateValidator::Declare(std::size_t scope, NameId name,
 {
 	if (name == 0) return;
 	if (parameter_names_.find(name) != parameter_names_.end())
-		throw std::runtime_error("template parameter redeclared in its scope");
+		ThrowSemanticError("template parameter redeclared in its scope");
 	std::uint8_t& present = scopes_[scope].names[name];
 	if ((present & kind) != 0 && !allow_existing)
-		throw std::runtime_error("duplicate retained template declaration: " +
+		ThrowSemanticError("duplicate retained template declaration: " +
 			analyzer_.program_->names.Get(name) +
 			(kind == RETAINED_TYPE_NAME ? " (type)" : " (value)"));
 	const bool newly_declared = (present & kind) == 0;
@@ -230,7 +230,7 @@ void RetainedTemplateValidator::DeclareClassType(std::size_t scope,
 	Declare(scope, name, RETAINED_TYPE_NAME, existing_tag);
 	if (definition &&
 		!scopes_[scope].class_type_definitions.insert(name).second)
-		throw std::runtime_error("duplicate retained class definition: " +
+		ThrowSemanticError("duplicate retained class definition: " +
 			analyzer_.program_->names.Get(name));
 }
 
@@ -474,7 +474,7 @@ void RetainedTemplateValidator::ValidateKnownTemplateArgumentKinds(
 				if (source && direct_id == source->name && source->pack &&
 					direct_type_pack &&
 					source->kind != destination.kind)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"template argument pack kind does not match parameter");
 			}
 		}
@@ -582,7 +582,7 @@ bool RetainedTemplateValidator::DeclareStructuredBindings(
 	{
 		const NodeId binding = analyzer_.arena_->EdgeChild(edge);
 		if (!analyzer_.arena_->IsTag(binding, ::cppgm::syntax::STAG_BINDING_IDENTIFIER))
-			throw std::runtime_error("invalid retained structured binding");
+			ThrowSemanticError("invalid retained structured binding");
 		Declare(scope, analyzer_.program_->names.Intern(
 			analyzer_.arena_->Payload(binding)), RETAINED_VALUE_NAME);
 	}
@@ -810,7 +810,7 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 				name, LOOKUP_ORDINARY).ordinary == kNoBinding &&
 			!DefersUnknownMembers(scope) && !HasUnmodeledFixedBase(scope) &&
 			!HasUnmodeledCurrentClass(scope))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"unknown nondependent name in template definition: " +
 				analyzer_.PayloadSource(call_argument));
 		return;
@@ -918,7 +918,7 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 			scopes_[scope].semantic_scope,
 			analyzer_.SyntaxNamePath(target_node));
 		if (target_scope == kNoScope)
-			throw std::runtime_error("retained using namespace target not found");
+			ThrowSemanticError("retained using namespace target not found");
 		analyzer_.program_->AddUsingEdge(
 			scopes_[scope].semantic_scope, target_scope);
 		return;
@@ -928,7 +928,7 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 	const NamePath path = analyzer_.SyntaxNamePath(target_node);
 	const NameId name = path.Last();
 	if (parameter_names_.find(name) != parameter_names_.end())
-		throw std::runtime_error("using declaration redeclares template parameter");
+		ThrowSemanticError("using declaration redeclares template parameter");
 	if (SyntaxUsesTemplateParameter(target_node))
 	{
 		Declare(scope, name, RETAINED_TYPE_NAME, true);
@@ -974,7 +974,7 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 			analyzer_.LookupPath(
 				scopes_[scope].semantic_scope, path, LOOKUP_TYPE);
 		if (type.type == kNoType)
-			throw std::runtime_error("retained using declaration target not found");
+			ThrowSemanticError("retained using declaration target not found");
 		Declare(scope, name, RETAINED_TYPE_NAME);
 	}
 }
@@ -1014,7 +1014,7 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 		if (type.type != kNoType)
 		{
 			if (unknown_callee) return;
-			throw std::runtime_error("type name used as retained value: " + spelling);
+			ThrowSemanticError("type name used as retained value: " + spelling);
 		}
 		const std::vector<std::size_t> templates =
 			analyzer_.FindFunctionTemplates(
@@ -1046,7 +1046,7 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 	if ((local & RETAINED_TYPE_NAME) != 0)
 	{
 		if (unknown_callee) return;
-		throw std::runtime_error("type name used as retained value: " + spelling);
+		ThrowSemanticError("type name used as retained value: " + spelling);
 	}
 	const LookupResult ordinary = analyzer_.program_->LookupName(
 		scopes_[scope].semantic_scope, name, LOOKUP_ORDINARY);
@@ -1063,7 +1063,7 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 	if (type.type != kNoType)
 	{
 		if (unknown_callee) return;
-		throw std::runtime_error("type name used as retained value: " + spelling);
+		ThrowSemanticError("type name used as retained value: " + spelling);
 	}
 	const std::vector<std::size_t> templates =
 		analyzer_.FindFunctionTemplates(
@@ -1084,7 +1084,7 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 		return;
 	}
 	if (DefersUnknownMembers(scope)) return;
-	throw std::runtime_error(
+	ThrowSemanticError(
 		"unknown nondependent name in template definition: " + spelling);
 }
 
@@ -1217,13 +1217,13 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		const NodeId initializer = analyzer_.FindChild(
 			node, ::cppgm::syntax::STAG_RANGE_INITIALIZER);
 		if (declaration == kNoNode || initializer == kNoNode)
-			throw std::runtime_error("invalid retained range-for statement");
+			ThrowSemanticError("invalid retained range-for statement");
 		Visit(initializer, control);
 		Visit(declaration, control);
 		const NodeId declarator = analyzer_.FindChild(
 			declaration, ::cppgm::syntax::STAG_DECLARATOR);
 		if (declarator == kNoNode)
-			throw std::runtime_error("retained range declaration has no declarator");
+			ThrowSemanticError("retained range declaration has no declarator");
 		if (!DeclareStructuredBindings(declarator, control))
 			Declare(control, analyzer_.DeclaratorName(declarator),
 				RETAINED_VALUE_NAME);
@@ -1324,7 +1324,7 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 				const NameId object_name = analyzer_.program_->names.Intern(
 					analyzer_.PayloadSource(object));
 				if (IsDependentValue(scope, object_name))
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"dependent member template-id requires template");
 			}
 		}
@@ -1379,10 +1379,10 @@ bool RetainedTemplateValidator::VisitSwitchLabel(
 		while (current != boundary)
 		{
 			if (current == std::numeric_limits<std::size_t>::max())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"retained switch label is outside its switch");
 			if (scopes_[current].switch_entry_barriers != 0)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"case or default label bypasses variable initialization");
 			current = scopes_[current].parent;
 		}
@@ -1630,7 +1630,7 @@ void RetainedTemplateValidator::ValidateSpecialMemberExceptionSpecification()
 		if (prior_exception != RETAINED_EXCEPTION_DEFERRED &&
 			target_exception != RETAINED_EXCEPTION_DEFERRED &&
 			prior_exception != target_exception)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"conflicting retained special-member exception specification");
 		return;
 	}
@@ -2153,7 +2153,7 @@ bool Analyzer::ClassTemplateSpecializationArgumentsComplete(
 		return true;
 	const std::size_t index = class_template_pattern_by_entity_[entity];
 	if (index >= class_templates_.size())
-		throw std::logic_error("invalid class specialization owner index");
+		ThrowInternalCompilerError("invalid class specialization owner index");
 	const EntityRecord& specialization = program_->entities[entity];
 	const std::size_t first = specialization.template_argument_begin;
 	const ClassTemplatePattern& pattern = class_templates_[index];
@@ -2164,7 +2164,7 @@ bool Analyzer::ClassTemplateSpecializationArgumentsComplete(
 		 count < FixedTemplateParameterCount(pattern.parameters)) ||
 		first > program_->template_arguments.size() ||
 		count > program_->template_arguments.size() - first)
-		throw std::logic_error("class specialization arguments are truncated");
+		ThrowInternalCompilerError("class specialization arguments are truncated");
 	for (std::size_t i = 0; i < count; ++i)
 	{
 		if (first + i < program_->canonical_template_arguments.size() &&

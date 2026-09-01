@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 #include <unordered_set>
 #include <vector>
 
@@ -202,7 +202,7 @@ void Analyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 	const std::unordered_set<NameId>& dependent_names)
 {
 	if (node == kNoNode || scope == kNoScope || !pattern)
-		throw std::logic_error("deferred function result has no lookup context");
+		ThrowInternalCompilerError("deferred function result has no lookup context");
 	std::vector<NodeId> pending(1, node);
 	while (!pending.empty())
 	{
@@ -268,7 +268,7 @@ void Analyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 							program_->LookupName(scope, name, LOOKUP_TYPE) :
 							LookupStructuredName(callee, scope, LOOKUP_TYPE);
 						if (type.type == kNoType)
-							throw std::runtime_error(
+							ThrowSemanticError(
 								"non-dependent result call was not declared");
 					}
 				}
@@ -288,7 +288,7 @@ void Analyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 						arena_->EdgeChild(edge), "name-component"))
 						components.push_back(arena_->EdgeChild(edge));
 				if (components.empty())
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"structured deferred result name is empty");
 				ScopeId carrier = FindChild(
 					structure, ::cppgm::syntax::STAG_GLOBAL_QUALIFIER) == kNoNode ?
@@ -325,7 +325,7 @@ void Analyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 					if ((kind == LOOKUP_TYPE && found.type == kNoType) ||
 						(kind == LOOKUP_SCOPE_CARRIER &&
 						 found.type == kNoType && found.name_space == kNoScope))
-						throw std::runtime_error(
+						ThrowSemanticError(
 							"non-dependent result type was not declared: " +
 							program_->names.Get(name));
 					pattern->result_lookup_facts.push_back(
@@ -347,7 +347,7 @@ void Analyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 								no_template &&
 							FindAliasTemplateIndex(found, name) ==
 								no_template)
-							throw std::runtime_error(
+							ThrowSemanticError(
 								"non-dependent result template was not declared");
 						if (SyntaxUsesAnyTemplateParameter(
 							template_arguments, dependent_names)) break;
@@ -373,7 +373,7 @@ void Analyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 								  program_->entities[type.entity].flavor ==
 									NAMED_TEMPLATE_PARAMETER))) break;
 						}
-						throw std::runtime_error(
+						ThrowSemanticError(
 							"non-dependent result qualifier has no scope");
 					}
 				}
@@ -391,7 +391,7 @@ void Analyzer::ValidateFunctionTemplatePatternResults(
 	const std::unordered_set<NameId>& parameter_names,
 	bool defer_trailing_return)
 {
-	if (!pattern) throw std::logic_error("function template result has no owner");
+	if (!pattern) ThrowInternalCompilerError("function template result has no owner");
 	const NodeId result = pattern->trailing_return_syntax != kNoNode ?
 		pattern->trailing_return_syntax : pattern->specifiers;
 	pattern->result_root_structure = FirstResultStructure(*arena_, result);

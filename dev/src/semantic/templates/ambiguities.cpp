@@ -1,10 +1,10 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <cctype>
 #include <limits>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -384,7 +384,7 @@ bool Analyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
 	const LookupResult occupied =
 		program_->LookupDirect(scope, variable_name, LOOKUP_ORDINARY);
 	if (occupied.ordinary != kNoBinding)
-		throw std::runtime_error("duplicate local variable");
+		ThrowSemanticError("duplicate local variable");
 	const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
 		variable_name, spec.type);
 	PublishVariableDeclarationFacts(binding, scope, variable_name,
@@ -454,7 +454,7 @@ bool Analyzer::AnalyzeAmbiguousDirectInitializer(
 		const LookupResult occupied =
 			program_->LookupDirect(scope, variable_name, LOOKUP_ORDINARY);
 		if (occupied.ordinary != kNoBinding)
-			throw std::runtime_error("duplicate local variable");
+			ThrowSemanticError("duplicate local variable");
 		const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
 			variable_name, spec.type);
 		PublishVariableDeclarationFacts(binding, scope, variable_name,
@@ -518,7 +518,7 @@ bool Analyzer::AnalyzeAmbiguousDirectInitializer(
 	const LookupResult occupied =
 		program_->LookupDirect(scope, variable_name, LOOKUP_ORDINARY);
 	if (occupied.ordinary != kNoBinding)
-		throw std::runtime_error("duplicate local variable");
+		ThrowSemanticError("duplicate local variable");
 	const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
 		variable_name, spec.type);
 	PublishVariableDeclarationFacts(binding, scope, variable_name,

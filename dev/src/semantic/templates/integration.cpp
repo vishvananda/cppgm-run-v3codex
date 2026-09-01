@@ -1,6 +1,6 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -20,7 +20,7 @@ bool Analyzer::AnalyzeExplicitVariableInstantiation(
 	if (declarator == kNoNode) return false;
 	const std::uint32_t first = arena_->FirstEdge(list);
 	if (first != kNoEdge && arena_->NextEdge(first) != kNoEdge)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"explicit variable instantiation has multiple declarators");
 	const ScopeId owner = ResolveStructuredDeclaratorOwner(declarator, scope);
 	if (owner == kNoScope) return false;
@@ -108,7 +108,7 @@ void Analyzer::MergeFunctionRedeclarationParameters(
 	bool definition)
 {
 	if (!function)
-		throw std::logic_error("missing function redeclaration fact");
+		ThrowInternalCompilerError("missing function redeclaration fact");
 	if (!definition || parameters.empty())
 	{
 		if (function->parameters.empty() && !parameters.empty())

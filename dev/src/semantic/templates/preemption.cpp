@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -29,7 +29,7 @@ bool TypesContainLocalContext(const Program& program,
 		const TypeId type = pending.back();
 		pending.pop_back();
 		if (type >= visited.size())
-			throw std::logic_error("template emission type identity is invalid: " +
+			ThrowInternalCompilerError("template emission type identity is invalid: " +
 				std::to_string(type) + " >= " + std::to_string(visited.size()));
 		if (visited[type]) continue;
 		visited[type] = 1;
@@ -37,7 +37,7 @@ bool TypesContainLocalContext(const Program& program,
 		if (record.kind == TYPE_NAMED)
 		{
 			if (record.entity >= program.entities.size())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"template emission entity identity is invalid");
 			const EntityRecord& entity = program.entities[record.entity];
 			if (entity.local_context != kNoBinding) return true;
@@ -47,7 +47,7 @@ bool TypesContainLocalContext(const Program& program,
 			if (first > program.template_arguments.size() ||
 				entity.template_argument_count >
 					program.template_arguments.size() - first)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"template emission argument range is invalid");
 			for (std::size_t argument = 0;
 				argument < entity.template_argument_count; ++argument)
@@ -180,7 +180,7 @@ void Analyzer::EnsureStaticMemberStorage(
 			const std::size_t pattern = class_template_pattern_by_entity_[entity];
 			if (pattern == kNoDumpEdge) continue;
 			if (pattern >= class_templates_.size())
-				throw std::logic_error("static member definition owner is invalid");
+				ThrowInternalCompilerError("static member definition owner is invalid");
 			const BindingId specialization =
 				program_->entities[entity].declaration;
 			if (specialization <
@@ -188,7 +188,7 @@ void Analyzer::EnsureStaticMemberStorage(
 				class_template_explicit_specialization_states_[specialization] != 0)
 				break;
 			if (pattern > std::numeric_limits<std::uint32_t>::max())
-				throw std::logic_error("static member definition index overflow");
+				ThrowSemanticResourceLimit("static member definition index overflow");
 			const std::uint64_t key =
 				(static_cast<std::uint64_t>(pattern) << 32) | binding.name;
 			const CompactIndexSequence* definitions =
@@ -199,7 +199,7 @@ void Analyzer::EnsureStaticMemberStorage(
 				const std::size_t index = (*definitions)[i];
 				if (index >= class_templates_[pattern].
 					demanded_member_definitions.size())
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"static member definition index is invalid");
 				if (class_templates_[pattern].demanded_member_definitions[index].
 					value_use_requires_storage)
@@ -217,7 +217,7 @@ void Analyzer::EnsureStaticMemberStorage(
 	DemandStaticConstantInitializerDependencies(member);
 	if (static_member_storage_by_binding_[member] != kNoDumpEdge) return;
 	if (root_ == kNoDumpEdge)
-		throw std::logic_error("static member storage has no translation unit");
+		ThrowInternalCompilerError("static member storage has no translation unit");
 	const std::uint32_t declaration = MakeDump(DUMP_VARIABLE,
 		completed_binding.type, VALUE_NONE, completed_binding.name, member);
 	dump_.nodes[declaration].declaration_only = true;

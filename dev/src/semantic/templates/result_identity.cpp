@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/containers/flat_hash_map.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <functional>
@@ -548,7 +549,7 @@ void Analyzer::InternExpandedFunctionTemplateResult(
 			const CompactIndexSequence* values =
 				template_argument_pack_bindings_.Find(key);
 			if (!values)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"template argument pack scope index is invalid");
 			std::vector<ResultSyntaxReference> bound;
 			bound.reserve(values->Size());
@@ -556,7 +557,7 @@ void Analyzer::InternExpandedFunctionTemplateResult(
 			{
 				const std::size_t index = (*values)[value];
 				if (index >= template_argument_pack_values_.size())
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"template argument pack storage is invalid");
 				std::vector<TemplateArgument> singleton(
 					1, template_argument_pack_values_[index]);

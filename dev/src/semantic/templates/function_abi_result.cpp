@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -26,7 +26,7 @@ FunctionTemplateAbiTypeId AppendAbiType(Program* program,
 {
 	if (program->function_template_abi_types.size() >=
 		kNoFunctionTemplateAbiType)
-		throw std::runtime_error("too many function template ABI type nodes");
+		ThrowSemanticResourceLimit("too many function template ABI type nodes");
 	const FunctionTemplateAbiTypeId result =
 		static_cast<FunctionTemplateAbiTypeId>(
 			program->function_template_abi_types.size());
@@ -39,7 +39,7 @@ FunctionTemplateAbiExpressionId AppendAbiExpression(Program* program,
 {
 	if (program->function_template_abi_expressions.size() >=
 		kNoFunctionTemplateAbiExpression)
-		throw std::runtime_error("too many function template ABI expressions");
+		ThrowSemanticResourceLimit("too many function template ABI expressions");
 	const FunctionTemplateAbiExpressionId result =
 		static_cast<FunctionTemplateAbiExpressionId>(
 			program->function_template_abi_expressions.size());

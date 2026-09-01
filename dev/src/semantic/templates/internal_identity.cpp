@@ -1,6 +1,6 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -42,21 +42,21 @@ private:
 	std::size_t TypeNode(TypeId type) const
 	{
 		if (type == kNoType || type == 0 || type >= type_node_count_)
-			throw std::logic_error("internal identity type is invalid");
+			ThrowInternalCompilerError("internal identity type is invalid");
 		return type;
 	}
 
 	std::size_t EntityNode(EntityId entity) const
 	{
 		if (entity == kNoEntity || entity >= program_.entities.size())
-			throw std::logic_error("internal identity entity is invalid");
+			ThrowInternalCompilerError("internal identity entity is invalid");
 		return entity_offset_ + entity;
 	}
 
 	std::size_t BindingNode(BindingId binding) const
 	{
 		if (binding == kNoBinding || binding >= program_.bindings.size())
-			throw std::logic_error("internal identity binding is invalid");
+			ThrowInternalCompilerError("internal identity binding is invalid");
 		return binding_offset_ + binding;
 	}
 
@@ -98,7 +98,7 @@ private:
 			count > program_.template_arguments.size() - begin ||
 			begin > program_.canonical_template_arguments.size() ||
 			count > program_.canonical_template_arguments.size() - begin)
-			throw std::logic_error("internal identity argument range is invalid");
+			ThrowInternalCompilerError("internal identity argument range is invalid");
 		for (std::size_t i = 0; i < count; ++i)
 		{
 			const std::size_t argument = static_cast<std::size_t>(begin) + i;
@@ -179,7 +179,7 @@ private:
 
 void PublishInternalIdentityFacts(Program* program)
 {
-	if (!program) throw std::logic_error("missing internal identity program");
+	if (!program) ThrowInternalCompilerError("missing internal identity program");
 	InternalIdentityPublisher(program).Publish();
 }
 
