@@ -4352,6 +4352,39 @@ emitted the exact same hot object at `fa3fd1899...`.  The implementation and
 source-set entry were removed before README or test movement; the existing
 addressed-scalar contract remains unchanged.
 
+### Rejected nested-loop phi residency
+
+The retained parser profile exposed a large outer suffix loop whose `u32`
+result is already represented as a six-input loop-carried phi.  The native
+planner did not consider that phi because uses in nested loops also mark it
+loop-invariant relative to those inner loops, and the generic nested-invariant
+exclusion took precedence over the dedicated phi path.  A one-line O3
+prototype let loop-carried phis take that path even when they also carried the
+nested-loop invariant flag.  This used only existing LowIR structure and
+needed no PA13 contract or producer change.
+
+The isolated plan appeared promising: the result moved from a frame slot to
+`r15` and the nominal frame fell from 800 to 784 bytes.  The complete lowering
+census showed the destructive interference, however.  Pinning `r15` across
+the 241-block, 68-call, 38-EH outer loop displaced shorter-lived values:
+`ParsePostfixSuffixes` grew from 1,959 to 1,972 MIR instructions, scalar
+loads/stores rose from 421/344 to 427/347, frame bindings rose from 391 to 401,
+and the outer loop's frame operands rose from 893 to 899.  Its two profiled
+copies grew by 33,469 and 18,221 instructions.  Other newly admitted phis also
+recolored functions in both directions, confirming that this was a broad
+register-plan change rather than a parser-only effect.
+
+An explicit-32-way G1/G2 build was exact at compiler hash
+`a4b04f4a1ac8eafc11ce3ecd8ee52965501fb0b7449f5df1b48276b9d8d445a1`,
+and all self/GCC hot outputs matched the retained hash `fa3fd1899...`.
+Nevertheless, self Callgrind instructions regressed from 3,710,968,687 to
+3,711,676,614 (`1.000190766x`), while same-source GCC was effectively flat at
+2,426,040,715 (`0.999999294x`).  The normalized ratio was `1.000191472x` and
+the absolute gap would rise from `1.529638825x` to `1.529931708x`.  The
+prototype was therefore removed before contract movement; the existing
+nested-invariant exclusion is intentional until a bounded plan can prove that
+the long phi claim will not displace more valuable interval residents.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4382,6 +4415,7 @@ Fill one row for every retained or rejected dose.
 | D.forwarded-boolean-inversion | thread a one-use zero/one equality or inequality after a forwarded Boolean truncation onto its acyclic phi predecessors | none; rejected before contract movement | hot lookup 377 to 324 bytes; macro -48 text; producer -1,576 text; hot objects exact | self Ir `0.997630x`; GCC `1.000005x`; normalized `0.997625x`; gap `1.561319x` to `1.557611x` | explicit-32-way G1 and deterministic self/GCC hot controls; prototype removed | rejected alone; sound 0.2375% source-diverse saving remains below the 1% floor |
 | D.terminal-staged-object-swap | replace a structurally complete terminal private-slot object swap with aligned scalar exchanges | PA37 README plus O0--O2 isolation, aggregate/field-wise positives, incomplete/volatile/escape/nonterminal negatives, identical-address and ordinary behavior | deque helper 241 to 157 bytes and loses 160-byte frame/dead initialization/three `rep movsb`; producer +20,164 linked text; hot objects exact | self Ir `0.979693x`; GCC `0.999983x`; normalized `0.979709x`; gap `1.561319x` to `1.529639x` | PA37 189/189; PA38 45/45; 5,472/5,472; zero-fatal file audit; exact explicit-32-way 221-object G1/G2 and final | retained in this checkpoint; existing PA13 `copyobj` semantics supply the whole correctness proof |
 | D.loop-scalar-reference | clone a bounded read-only by-address scalar parameter by value so repeated loop callers can promote their induction slots | none; rejected before contract movement | two macro calls redirected; induction slots removed; `AnnotateParentheses` 525 to 490 bytes; macro +683 text | self Ir `0.998472x`; GCC `1.000227x`; normalized `0.998245x`; gap `1.529639x` to `1.526954x` | exact hot object; explicit-32-way G2/G3 fixed point exact; prototype removed | rejected; sound source-independent slot recovery is only a 0.176% normalized gain |
+| D.nested-loop-phi-residency | admit loop-carried phis that are also invariant relative to nested loops to the preserved-register planner | none; rejected before contract movement | suffix parser 1,959 to 1,972 MIR, scalar loads/stores 421/344 to 427/347, frame bindings 391 to 401; producer -701 text bytes | self Ir `1.000191x`; GCC `0.999999x`; normalized `1.000191x`; gap `1.529639x` to `1.529932x` | exact hot outputs; explicit-32-way G1/G2 exact; prototype removed | rejected; whole-loop register pinning destructively displaces more valuable short intervals |
 | D.call-plan | keep reactive call results out of future cyclic spans and grant a cyclic call result after its completed arguments retire | PA38 README plus O2/O1 register-agnostic structural/behavioral control | `Run` -181 MIR, scalar loads/stores -89/-77, frame homes -3; tokenizer -234 `.text`; O3 producer +292 text bytes; O1 object exact; unrelated EH/branch fixtures exact | O1 workload +0.11% wall/-0.40% CPU; GCC CPU -0.21%; normalized CPU -0.18%; O3 workload -1.42% wall/-0.30% CPU, five of six pairs favorable | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; frozen O2/O3 exact; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.epilogue | share repeated optimized return sequences, with broad and bounded variants | none; rejected before contract movement | broad: `Run` -161 native instructions and -23 physical epilogues; O3 producer -94,192 text bytes; bounded variants -17,928/-16,120 bytes | broad O1 user +1.5%; return-bounded +0.26%; bounded/excluded O3 CPU +0.32% and wall +1.5% | exact-output all-32 screens; all variants removed | rejected; taken return branches cost more than duplicate bytes |
 | D.copy-pair | fuse staged adjacent 64-bit predecessor loads/successor stores into one vector copy | none; rejected before contract movement | clone -3 MIR/-8 bytes; generic -8 bytes; tokenizer -22 text bytes; producer +8,744 text bytes | twelve-lane hot TU +4.1% wall/user, every candidate lane slower | exact hot outputs; candidate removed | rejected; exposed entry-address sensitivity |
