@@ -1,9 +1,9 @@
 #include "native/encoding/scalar_memory.h"
 
 #include "native/analysis/data_layout.h"
+#include "native/errors.h"
 #include "native/encoding/instructions.h"
 
-#include <stdexcept>
 
 namespace lowir_native {
 
@@ -37,7 +37,7 @@ void emit_address_load(elf_detail::CodeBuffer & out,
   } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
     emit_load(out, destination, XR_RBP,
               actual_frame_offset(function, address.offset), width);
-  } else throw std::logic_error("unsupported native load address");
+  } else native_errors::ThrowInternal("unsupported native load address");
 }
 
 namespace {
@@ -100,7 +100,7 @@ void emit_address_normalized_load(
   } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
     emit_normalized_load(out, destination, XR_RBP,
       actual_frame_offset(function, address.offset), width, sign_extend);
-  } else throw std::logic_error("unsupported normalized native load address");
+  } else native_errors::ThrowInternal("unsupported normalized native load address");
 }
 
 void emit_normalized_register_move(
@@ -132,7 +132,7 @@ void emit_address_store(elf_detail::CodeBuffer & out,
   } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
     emit_store(out, XR_RBP, actual_frame_offset(function, address.offset),
                source, width);
-  } else throw std::logic_error("unsupported native store address");
+  } else native_errors::ThrowInternal("unsupported native store address");
 }
 
 namespace {
@@ -149,7 +149,7 @@ X64Register immediate_store_scratch(const mir_model::MirOperand & address)
   if(address.kind == mir_model::MirOperand::OP_GLOBAL) return XR_R10;
   if(!address_uses_register(address, XR_R10)) return XR_R10;
   if(!address_uses_register(address, XR_R11)) return XR_R11;
-  throw std::logic_error(
+  native_errors::ThrowInternal(
     "large immediate store address occupies both encoder scratch registers");
 }
 
@@ -177,7 +177,7 @@ void emit_address_immediate_store(
   } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
     emit_immediate_store(out, XR_RBP,
       actual_frame_offset(function, address.offset), value, width);
-  } else throw std::logic_error("unsupported native immediate-store address");
+  } else native_errors::ThrowInternal("unsupported native immediate-store address");
 }
 
 bool emit_small_copy_bytes(
@@ -187,7 +187,7 @@ bool emit_small_copy_bytes(
 {
   const std::size_t bytes = instruction.byte_count;
   if(instruction.operands.size() != 2)
-    throw std::logic_error("native copy requires two address operands");
+    native_errors::ThrowInternal("native copy requires two address operands");
   const mir_model::MirOperand & destination_operand = instruction.operands[0];
   const mir_model::MirOperand & source_operand = instruction.operands[1];
   const bool frame_sided =
@@ -204,7 +204,7 @@ bool emit_small_copy_bytes(
         mir_model::MirInstruction::MBC_DIRECT_CHUNKS));
   if(bytes == 0 || !direct_chunks) {
     if(frame_sided)
-      throw std::logic_error("large native copy requires address registers");
+      native_errors::ThrowInternal("large native copy requires address registers");
     return false;
   }
   const auto side_base = [&](const mir_model::MirOperand & operand) {
@@ -212,7 +212,7 @@ bool emit_small_copy_bytes(
     if(operand.kind == mir_model::MirOperand::OP_DEREF &&
        !operand.has_index) return operand.reg;
     if(operand.kind != mir_model::MirOperand::OP_FRAME || !function)
-      throw std::logic_error(
+      native_errors::ThrowInternal(
         "small native copy requires register or frame operands");
     return XR_RBP;
   };
@@ -266,9 +266,9 @@ bool emit_preserving_dynamic_copy(
 {
   if(!instruction.copy_preserves_pointers) return false;
   if(instruction.operands.size() != 3)
-    throw std::logic_error("invalid explicit dynamic-copy operands");
+    native_errors::ThrowInternal("invalid explicit dynamic-copy operands");
   if(!function)
-    throw std::logic_error("explicit dynamic copy outside function");
+    native_errors::ThrowInternal("explicit dynamic copy outside function");
   emit_register_move(out, XR_R10, XR_RDI);
   emit_register_move(out, XR_R11, XR_RSI);
   const auto remap_saved_parameter = [](mir_model::MirOperand operand) {
@@ -302,7 +302,7 @@ bool emit_preserving_dynamic_copy(
                 operand.kind == mir_model::MirOperand::OP_GLOBAL)
         emit_symbol_move(out, destination, operand.symbol,
                          operand.address_binding);
-      else throw std::logic_error(
+      else native_errors::ThrowInternal(
         "unsupported explicit dynamic-copy address");
       return;
     }

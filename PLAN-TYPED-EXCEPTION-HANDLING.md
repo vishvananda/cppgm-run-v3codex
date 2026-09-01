@@ -733,7 +733,8 @@ Append one row for each retained or rejected increment:
 | E7i | polymorphic layout, construction VTT, and virtual-base lowering | vtable/VTT/RTTI graph contradictions and finite slot ceilings shared generic bases | lowering internal/resource types through the cold boundary; hierarchy traversal and optional ABI facts remain ordinary flow | PA18 polymorphism and PA22 object-model behavior | successful frozen remains 0; generic logic/runtime sites -41/-2 | -4,608 text, neutral rodata, -16 EH header, -104 unwind, -404 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA18 37/37; PA22 311/311; through-PA26 3,822/3,822; frozen object exact | `b1aafa26` | retained |
 | E7j | force-inline lowering transform | cloned LowIR identity/CFG contradictions and finite temp/slot/block ceilings shared generic bases | lowering internal/resource types through the cold boundary; candidate selection and recursive rejection remain ordinary flow | PA37 forced-inlining structure and cumulative optimizer behavior | successful frozen remains 0; generic logic/runtime sites -18/-7; lowering generic census reaches zero | -128 text, neutral rodata/EH header/unwind, +12 exception table | cumulative frozen 0.450/0.450 s; paired neutral; full O1 +0.53%, O3 -0.17% CPU | PA37 190/190; through-PA37 5,432/5,432; 222 O1/O3 objects and final binaries exact | `c8f7b6f5` | retained |
 | E7k | native driver, MIR model/optimizer, allocation, layout, and frame planning | invocation/I/O, malformed LowIR facts, resource ceilings, and allocation/MIR invariants shared generic bases | native invocation/I/O/LowIR-input/resource/internal types through one cold boundary; allocation decisions remain ordinary flow | PA38 native structural and generated-behavior surface | successful frozen remains 0; generic logic/runtime sites -23/-10 | -128 text, neutral rodata, +40 EH header, -160 unwind, -600 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `808ea131` | retained |
-| E7l | native instruction, operand, ABI, intrinsic, phi, and wide-value lowering | malformed LowIR combinations, unsupported target forms, allocation limits, and lowering invariants shared generic bases in hot selectors | native LowIR-input/source/resource/internal types through the cold boundary; selection and allocation alternatives remain ordinary flow | PA38 native structural and generated-behavior surface | successful frozen remains 0; generic logic/runtime sites -15/-40 | -320 text, +192 rodata, neutral EH header, -320 unwind, -1,096 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | pending | retained |
+| E7l | native instruction, operand, ABI, intrinsic, phi, and wide-value lowering | malformed LowIR combinations, unsupported target forms, allocation limits, and lowering invariants shared generic bases in hot selectors | native LowIR-input/source/resource/internal types through the cold boundary; selection and allocation alternatives remain ordinary flow | PA38 native structural and generated-behavior surface | successful frozen remains 0; generic logic/runtime sites -15/-40 | -320 text, +192 rodata, neutral EH header, -320 unwind, -1,096 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `aac2b352` | retained |
+| E7m | native host-EH analysis/LSDA and x86 encoding | MIR/region/encoding contradictions and one EH range ceiling shared generic logic base in hot backend owners | centralized native internal/resource/source cold boundary; encoder availability and EH traversal remain ordinary flow | PA38 native EH, encoding, structural, and generated behavior | successful frozen remains 0; generic logic sites -62 | -768 text, -64 rodata, -8 EH header, -360 unwind, -988 exception table | cumulative frozen user 0.440/0.445 s; paired +0.56% (neutral) | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1888,6 +1889,32 @@ medians both measure 0.450 seconds and paired candidate time is exactly
 neutral.  Since expected selector/allocation alternatives did not unwind
 before and remain ordinary flow, replacing terminal checks with returned
 status would only add hot caller plumbing.
+
+### E7m execution record
+
+Native host-EH analysis, LSDA construction, and x86 encoding have no recovery
+catches around their generic failures.  EH traversal, immediate-encoding
+availability, address folding, and copy-shape selection keep their existing
+ordinary branches.  Contradictory MIR regions, operands, addresses, ranges,
+and encoder inputs now use native internal failure; EH range overflow uses the
+native resource type; and unsupported source global-data forms use the native
+source type.
+
+The first header-inline version duplicated typed construction across backend
+translation units and grew `.text` by 3,072 bytes, so it was rejected before
+validation.  Moving the native boundary into `native/errors.cpp` and wiring it
+into both native source sets amortizes that cost across all backend owners.
+The retained form removes 62 generic logic sites and all nine owners from the
+inventory, bringing the audit to 264/246/33.  Against E7l, `.text` changes
+6,461,926 -> 6,461,158, `.rodata` 214,784 -> 214,720, `.eh_frame_hdr` 51,628 ->
+51,620, `.eh_frame` 321,264 -> 320,904, and `.gcc_except_table` 127,912 ->
+126,924.
+
+PA38 passes 45/45 and through-PA38 passes 5,477/5,477.  Four cumulative frozen
+A/B/B/A blocks reproduce object hash `8545fec6...`; baseline/candidate user
+medians are 0.440/0.445 seconds and paired candidate time is +0.56%, below
+timer resolution.  Centralizing the failure-only code improves the linked
+footprint without adding a status edge to encoder or EH success paths.
 
 ## Initial code map
 

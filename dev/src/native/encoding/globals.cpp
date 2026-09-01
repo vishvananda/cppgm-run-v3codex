@@ -1,10 +1,10 @@
 #include "native/encoding/globals.h"
 
 #include "native/driver/stats.h"
+#include "native/errors.h"
 #include "native/analysis/data_layout.h"
 
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 
 namespace lowir_native {
@@ -22,7 +22,8 @@ void emit_integer_data(CodeBuffer & out, long long value,
     out.little(static_cast<std::uint64_t>(value), static_cast<unsigned>(size));
     return;
   }
-  if(size != 16) throw std::logic_error("unsupported wide integer data size");
+  if(size != 16)
+    native_errors::ThrowSource("unsupported wide integer data size");
   out.little(static_cast<std::uint64_t>(value), 8);
   out.little(high, 8);
 }
@@ -74,7 +75,7 @@ void emit_global(CodeBuffer & out,
     else if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT)
       emit_float_data(out, item.literal_low, item.literal_high, item.type);
     else
-      throw std::logic_error("unsupported native global data item");
+      native_errors::ThrowSource("unsupported native global data item");
   }
 }
 

@@ -1,10 +1,10 @@
 #include "native/encoding/address_folding.h"
 #include "native/analysis/data_layout.h"
+#include "native/errors.h"
 #include "native/encoding/instructions.h"
 #include "native/encoding/scalar_memory.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace lowir_native {
 namespace address_folding {
@@ -85,7 +85,7 @@ bool emit_folded_store(
     base = XR_R11;
     offset = 0;
   } else if(address.kind != MirOperand::OP_DEREF) {
-    throw std::logic_error("folded native store address is not memory-shaped");
+    native_errors::ThrowInternal("folded native store address is not memory-shaped");
   }
   emit_store(out, base, offset, source, data_layout::type_width(type));
   return true;
@@ -217,7 +217,7 @@ std::size_t emit_dead_setup_load(
   const MirInstruction & load = instructions[start + count - 1];
   if(address.kind != MirOperand::OP_FRAME &&
      address.kind != MirOperand::OP_DEREF) {
-    throw std::logic_error("folded native load address is not memory-shaped");
+    native_errors::ThrowInternal("folded native load address is not memory-shaped");
   }
   emit_address_normalized_load(
     out, load.operands[0].reg, address, load.type, function);

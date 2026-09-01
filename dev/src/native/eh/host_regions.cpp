@@ -1,7 +1,7 @@
 #include "native/eh/host_regions.h"
+#include "native/errors.h"
 #include "native/mir/control_flow.h"
 
-#include <stdexcept>
 #include <unordered_map>
 #include <utility>
 
@@ -57,7 +57,7 @@ void collect_host_eh_clauses(mir_model::MirFunction * function)
                   mir_model::MirInstruction::MI_EH_FILTER) {
 		if(instruction.operands.empty() ||
 		   instruction.operands[0].kind != mir_model::MirOperand::OP_IMM)
-		  throw std::logic_error("invalid MIR host EH filter clause");
+		  native_errors::ThrowInternal("invalid MIR host EH filter clause");
         clause.kind = mir_model::MirHostEhClause::HC_FILTER;
         clause.selector = instruction.operands[0].imm;
         for(std::size_t type = 1; type < instruction.operands.size(); ++type)
@@ -142,14 +142,14 @@ public:
   std::size_t Consume(std::size_t state)
   {
     if(state == 0 || state >= states_.size() || states_[state].consumed)
-      throw std::logic_error("invalid host EH cleanup landing state");
+      native_errors::ThrowInternal("invalid host EH cleanup landing state");
     return Push(states_[state].parent, states_[state].landing_block, true);
   }
 
   std::size_t Parent(std::size_t state) const
   {
     if(state == 0 || state >= states_.size())
-      throw std::logic_error("host EH protected-region stack underflow");
+      native_errors::ThrowInternal("host EH protected-region stack underflow");
     std::size_t parent = states_[state].parent;
     // Consumed landing frames preserve unwind ownership without introducing
     // an extra source-level region for a later EH_END to close.  A nested
@@ -163,14 +163,14 @@ public:
   std::size_t Active(std::size_t state) const
   {
     if(state >= states_.size())
-      throw std::logic_error("invalid host EH protected-region state");
+      native_errors::ThrowInternal("invalid host EH protected-region state");
     return states_[state].active;
   }
 
   bool Consumed(std::size_t state) const
   {
     if(state >= states_.size())
-      throw std::logic_error("invalid host EH protected-region state");
+      native_errors::ThrowInternal("invalid host EH protected-region state");
     return state != 0 && states_[state].consumed;
   }
 
@@ -191,7 +191,7 @@ public:
   {
     const std::size_t active = Active(state);
     if(active == 0)
-      throw std::logic_error("host EH protected call has no landing pad");
+      native_errors::ThrowInternal("host EH protected call has no landing pad");
     return states_[active].landing_block;
   }
 
@@ -266,10 +266,10 @@ void validate_protected_region_markers(
       if(instruction.operands.size() != 2 ||
          instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL ||
          !instruction.operands[0].block.valid())
-        throw std::logic_error("invalid MIR host EH protected-region marker");
+        native_errors::ThrowInternal("invalid MIR host EH protected-region marker");
       const std::uint32_t target = instruction.operands[0].block;
       if(target >= block_index.size() || block_index[target] == unknown)
-        throw std::logic_error(
+        native_errors::ThrowInternal(
           "host EH landing pad has no MIR block: block #" +
           std::to_string(target));
     }
@@ -291,7 +291,7 @@ HostEhRegionPlan analyze_host_eh_regions(
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const std::uint32_t id = function.blocks[i].id;
     if(id >= block_index.size() || block_index[id] != unknown)
-      throw std::logic_error("duplicate or invalid MIR block identity in host EH analysis");
+      native_errors::ThrowInternal("duplicate or invalid MIR block identity in host EH analysis");
     block_index[id] = i;
     result.call_landing_blocks[i].resize(
       function.blocks[i].instructions.size());
@@ -304,7 +304,7 @@ HostEhRegionPlan analyze_host_eh_regions(
       -> std::string {
     const std::uint32_t index = id;
     if(!id.valid() || index >= function.block_labels.size())
-      throw std::logic_error("invalid MIR block identity");
+      native_errors::ThrowInternal("invalid MIR block identity");
     if(!function.block_labels[index].valid())
       return std::string("block #") + std::to_string(index);
     return strings.get(function.block_labels[index]);
@@ -362,7 +362,7 @@ HostEhRegionPlan analyze_host_eh_regions(
             mir_model::MirInstruction::MI_RESUME &&
           existing_active == 0 && incoming_active == 0))
         return;
-      throw std::logic_error(
+      native_errors::ThrowInternal(
         "host EH protected-region state mismatch in " + function_name +
         " at MIR block " + std::to_string(
           static_cast<std::uint32_t>(function.blocks[block].id)) +
@@ -376,7 +376,7 @@ HostEhRegionPlan analyze_host_eh_regions(
                                std::vector<std::size_t> * pending) {
     const std::size_t target = block_position(label);
     if(target == unknown)
-      throw std::logic_error("host EH control-flow target has no MIR block: " +
+      native_errors::ThrowInternal("host EH control-flow target has no MIR block: " +
                              block_name(label));
     merge_entry(target, state, pending);
   };
@@ -391,10 +391,10 @@ HostEhRegionPlan analyze_host_eh_regions(
       if(!is_branch(instruction.opcode)) continue;
       if(instruction.operands.size() != 1 ||
          instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL)
-        throw std::logic_error("invalid MIR branch in host EH analysis");
+        native_errors::ThrowInternal("invalid MIR branch in host EH analysis");
       const std::size_t target = block_position(instruction.operands[0].block);
       if(target == unknown)
-        throw std::logic_error(
+        native_errors::ThrowInternal(
           "host EH control-flow target has no MIR block: " +
           block_name(instruction.operands[0].block));
       catch_entry_blocks[target] = true;
@@ -416,7 +416,7 @@ HostEhRegionPlan analyze_host_eh_regions(
         catch_entry_states[target] = state;
       else if(!states.EquivalentAfterLanding(
                 catch_entry_states[target], state))
-        throw std::logic_error(
+        native_errors::ThrowInternal(
           "host EH catch-entry state mismatch at MIR block: " +
           block_name(function.blocks[target].id));
       merge_entry(target, state, pending);
@@ -447,17 +447,17 @@ HostEhRegionPlan analyze_host_eh_regions(
         if(instruction.operands.size() != 2 ||
            instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL ||
            !instruction.operands[0].block.valid())
-          throw std::logic_error(
+          native_errors::ThrowInternal(
             "invalid MIR host EH protected-region marker");
         const std::size_t parent = state;
         const std::size_t landing = block_position(instruction.operands[0].block);
         if(landing == unknown)
-          throw std::logic_error(
+          native_errors::ThrowInternal(
             "host EH landing pad has no MIR block: " +
             block_name(instruction.operands[0].block));
         state = states.Push(state, landing + 1);
         if(instruction.operands[1].kind != mir_model::MirOperand::OP_IMM)
-          throw std::logic_error(
+          native_errors::ThrowInternal(
             "invalid MIR host EH protected-region kind");
         const bool cleanup_landing = instruction.operands[1].imm != 0 ||
           landing_pad_has_cleanup_clause(function.blocks[landing]) ||
@@ -469,10 +469,10 @@ HostEhRegionPlan analyze_host_eh_regions(
       } else if(instruction.opcode ==
                   mir_model::MirInstruction::MI_EH_POP) {
         if(!instruction.operands.empty())
-          throw std::logic_error(
+          native_errors::ThrowInternal(
             "invalid MIR host EH protected-region end marker");
         if(state == 0)
-          throw std::logic_error(
+          native_errors::ThrowInternal(
             "host EH protected-region stack underflow at MIR block: " +
             block_name(block.id));
         state = states.Parent(state);
@@ -494,17 +494,17 @@ HostEhRegionPlan analyze_host_eh_regions(
       if(is_branch(instruction.opcode)) {
         if(instruction.operands.size() != 1 ||
            instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL)
-          throw std::logic_error("invalid MIR branch in host EH analysis");
+          native_errors::ThrowInternal("invalid MIR branch in host EH analysis");
         ++result.edge_count;
         const std::size_t target = block_position(instruction.operands[0].block);
         if(target == unknown)
-          throw std::logic_error(
+          native_errors::ThrowInternal(
             "host EH control-flow target has no MIR block: " +
             block_name(instruction.operands[0].block));
         merge_control_flow_edge(block_number, target, state, &worklist);
       }
       if(is_function_exit(instruction) && state != 0)
-        throw std::logic_error(
+        native_errors::ThrowInternal(
           "host EH protected region remains active at function exit: " +
           function_name + " block " + block_name(block.id));
       if(mir_control_flow::ends_unconditional_control_flow(instruction.opcode))

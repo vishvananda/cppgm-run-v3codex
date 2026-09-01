@@ -1,9 +1,9 @@
 #include "native/encoding/instructions.h"
 #include "native/analysis/data_layout.h"
+#include "native/errors.h"
 
 #include <climits>
 #include <cstdint>
-#include <stdexcept>
 
 namespace lowir_native {
 
@@ -157,7 +157,7 @@ unsigned scale_code(unsigned scale)
   if(scale == 2) return 1;
   if(scale == 4) return 2;
   if(scale == 8) return 3;
-  throw std::logic_error("invalid x86 indexed-address scale");
+  native_errors::ThrowInternal("invalid x86 indexed-address scale");
 }
 
 }  // namespace
@@ -167,7 +167,7 @@ void emit_indexed_memory_modrm(CodeBuffer & out, unsigned reg,
                                unsigned scale, long long displacement)
 {
   if(index == XR_RSP)
-    throw std::logic_error("rsp cannot be an x86 address index");
+    native_errors::ThrowInternal("rsp cannot be an x86 address index");
   const unsigned base_code = static_cast<unsigned>(base) & 7;
   unsigned mode = 2;
   unsigned displacement_bytes = 4;
@@ -209,7 +209,7 @@ void emit_integer_extension(
 {
   if(instruction.operands.size() != 1 ||
      instruction.operands[0].kind != mir_model::MirOperand::OP_REG)
-    throw std::logic_error("invalid integer-extension operands");
+    native_errors::ThrowInternal("invalid integer-extension operands");
   const X64Register reg = instruction.operands[0].reg;
   const unsigned width = data_layout::type_width(instruction.type);
   if(width == 64) return;
@@ -416,7 +416,7 @@ std::size_t immediate_store_encoding_size(X64Register base,
 	long long displacement, unsigned width)
 {
 	if (width != 8 && width != 16 && width != 32 && width != 64)
-		throw std::logic_error("invalid integer immediate-store width");
+		native_errors::ThrowInternal("invalid integer immediate-store width");
 	const bool prefix = width == 16;
 	const bool rex = width == 64 || base >= XR_R8;
 	const bool sib = (static_cast<unsigned>(base) & 7) == 4;
@@ -431,7 +431,7 @@ void emit_immediate_store(CodeBuffer & out, X64Register base,
                           unsigned width)
 {
   if(!immediate_store_encoding_available(width, value))
-    throw std::logic_error("integer immediate is not encodable by memory store");
+    native_errors::ThrowInternal("integer immediate is not encodable by memory store");
   emit_size_prefix(out, width);
   emit_rex(out, width == 64, XR_RAX, base);
   out.byte(width == 8 ? 0xc6 : 0xc7);
@@ -445,7 +445,7 @@ void emit_indexed_immediate_store(CodeBuffer & out, X64Register base,
                                   std::uint64_t value, unsigned width)
 {
   if(!immediate_store_encoding_available(width, value))
-    throw std::logic_error(
+    native_errors::ThrowInternal(
       "integer immediate is not encodable by indexed memory store");
   emit_size_prefix(out, width);
   emit_indexed_rex(out, width == 64, XR_RAX, base, index);

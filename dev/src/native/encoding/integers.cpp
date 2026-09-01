@@ -1,12 +1,12 @@
 #include "native/encoding/integers.h"
 
 #include "native/analysis/data_layout.h"
+#include "native/errors.h"
 #include "native/encoding/instructions.h"
 #include "native/encoding/scalar_memory.h"
 
 #include <climits>
 #include <cstdint>
-#include <stdexcept>
 
 namespace lowir_native {
 namespace {
@@ -15,13 +15,13 @@ void require_operands(const mir_model::MirInstruction & instruction,
                       std::size_t count)
 {
   if(instruction.operands.size() != count)
-    throw std::logic_error("invalid MIR operand count for integer encoding");
+    native_errors::ThrowInternal("invalid MIR operand count for integer encoding");
 }
 
 X64Register require_register(const mir_model::MirOperand & operand)
 {
   if(operand.kind != mir_model::MirOperand::OP_REG)
-    throw std::logic_error("integer encoder expected a register operand");
+    native_errors::ThrowInternal("integer encoder expected a register operand");
   return operand.reg;
 }
 
@@ -51,7 +51,7 @@ MemoryAddress prepare_memory_address(
     emit_symbol_move(out, XR_R11, operand.symbol, operand.address_binding);
     address.base = XR_R11;
   } else {
-    throw std::logic_error("integer memory operand is not address-shaped");
+    native_errors::ThrowInternal("integer memory operand is not address-shaped");
   }
   return address;
 }
@@ -95,7 +95,7 @@ void emit_integer_alu(
      source.kind == mir_model::MirOperand::OP_GLOBAL ||
      source.kind == mir_model::MirOperand::OP_DEREF) {
     if(!function)
-      throw std::logic_error("integer memory operation outside function");
+      native_errors::ThrowInternal("integer memory operation outside function");
     const unsigned memory_width = data_layout::type_width(instruction.type);
     emit_register_memory_operation(out, destination, source, memory_width,
       register_opcode + 1, register_opcode + 2, *function);
@@ -124,7 +124,7 @@ void emit_integer_alu(
     register_form.operands[1].reg = XR_R11;
     emit_integer_alu(out, register_form, register_opcode,
                      immediate_extension, function, width);
-  } else throw std::logic_error("unsupported native ALU operand");
+  } else native_errors::ThrowInternal("unsupported native ALU operand");
 }
 
 void emit_integer_multiply(
@@ -139,10 +139,10 @@ void emit_integer_multiply(
      source.kind == mir_model::MirOperand::OP_GLOBAL ||
      source.kind == mir_model::MirOperand::OP_DEREF) {
     if(!function)
-      throw std::logic_error("integer memory multiply outside function");
+      native_errors::ThrowInternal("integer memory multiply outside function");
     const unsigned width = data_layout::type_width(instruction.type);
     if(width == 8)
-      throw std::logic_error("two-operand memory multiply requires 16+ bits");
+      native_errors::ThrowInternal("two-operand memory multiply requires 16+ bits");
     emit_register_memory_operation(
       out, destination, source, width, 0xaf, 0xaf, *function, true);
     return;
@@ -190,7 +190,7 @@ void emit_integer_multiply(
     out.byte(0x69);
     emit_modrm(out, 3, destination, destination);
     out.little(static_cast<std::uint32_t>(source.imm), 4);
-  } else throw std::logic_error("unsupported native multiply operand");
+  } else native_errors::ThrowInternal("unsupported native multiply operand");
 }
 
 void emit_integer_memory_compare(
@@ -230,7 +230,7 @@ void emit_integer_memory_compare(
     const unsigned immediate_bytes =
       width == 8 ? 1 : (width == 16 ? 2 : 4);
     out.little(static_cast<std::uint64_t>(source.imm), immediate_bytes);
-  } else throw std::logic_error("unsupported memory compare source");
+  } else native_errors::ThrowInternal("unsupported memory compare source");
 }
 
 void emit_integer_register_memory_compare(

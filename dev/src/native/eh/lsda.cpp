@@ -1,10 +1,10 @@
 #include "native/eh/lsda.h"
 
 #include "native/driver/stats.h"
+#include "native/errors.h"
 #include "native/object/elf_format.h"
 
 #include <algorithm>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -24,7 +24,7 @@ bool same_handler(const HostFunctionLayout::CallSite & left,
 std::size_t range_end(std::size_t start, std::size_t length)
 {
   if(length > static_cast<std::size_t>(-1) - start)
-    throw std::logic_error("host EH range overflow");
+    native_errors::ThrowResourceLimit("host EH range overflow");
   return start + length;
 }
 
@@ -41,7 +41,7 @@ void append_sparse_entry(std::vector<CallSiteTableEntry> & entries,
   CallSiteTableEntry & previous = entries.back();
   const std::size_t previous_end = range_end(previous.start, previous.length);
   if(entry.start < previous_end)
-    throw std::logic_error("overlapping host EH call-site ranges");
+    native_errors::ThrowInternal("overlapping host EH call-site ranges");
   if(entry.start == previous_end && !entry.has_landing_pad &&
      !previous.has_landing_pad) {
     previous.length = end - previous.start;
@@ -123,7 +123,7 @@ void sparse_call_site_table(
         unprotected_sites[unprotected_index++];
       const std::size_t end = range_end(source.start, source.length);
       if(end > protected_site.start)
-        throw std::logic_error("overlapping protected host EH range");
+        native_errors::ThrowInternal("overlapping protected host EH range");
       if(unprotected_hull.length == 0) {
         unprotected_hull.start = source.start;
         unprotected_hull.length = source.length;
@@ -131,7 +131,7 @@ void sparse_call_site_table(
         const std::size_t hull_end = range_end(
           unprotected_hull.start, unprotected_hull.length);
         if(source.start < hull_end)
-          throw std::logic_error("overlapping unprotected host EH ranges");
+          native_errors::ThrowInternal("overlapping unprotected host EH ranges");
         unprotected_hull.length = end - unprotected_hull.start;
       }
     }
@@ -144,7 +144,7 @@ void sparse_call_site_table(
     entry.action_block = protected_site.action_block;
     entry.has_landing_pad = true;
     if(entry.landing_pad_offset == 0)
-      throw std::logic_error("zero host EH landing-pad offset");
+      native_errors::ThrowInternal("zero host EH landing-pad offset");
     append_sparse_entry(result, entry);
   }
 
@@ -160,7 +160,7 @@ void sparse_call_site_table(
       const std::size_t hull_end = range_end(
         trailing_hull.start, trailing_hull.length);
       if(source.start < hull_end)
-        throw std::logic_error("overlapping unprotected host EH ranges");
+        native_errors::ThrowInternal("overlapping unprotected host EH ranges");
       trailing_hull.length = end - trailing_hull.start;
     }
   }
@@ -168,7 +168,7 @@ void sparse_call_site_table(
 
   if(!result.empty() && range_end(result.back().start,
                                    result.back().length) > function.size)
-    throw std::logic_error("host EH coverage exceeds function size");
+    native_errors::ThrowInternal("host EH coverage exceeds function size");
   if(stats) {
     std::size_t covered_bytes = 0;
     for(std::size_t i = 0; i < result.size(); ++i) {

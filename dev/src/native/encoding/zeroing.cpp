@@ -1,10 +1,10 @@
 #include "native/encoding/zeroing.h"
 
+#include "native/errors.h"
 #include "native/encoding/instructions.h"
 
 #include <climits>
 #include <cstdint>
-#include <stdexcept>
 
 namespace lowir_native {
 namespace {
@@ -89,7 +89,7 @@ void emit_zero_bytes(elf_detail::CodeBuffer & out, X64Register destination,
 	std::size_t byte_count)
 {
 	if (byte_count == 0)
-		throw std::logic_error("native zero-byte span is empty");
+		native_errors::ThrowInternal("native zero-byte span is empty");
 	if (byte_count == 16)
 	{
 		emit_vector_zero_16(out, destination);

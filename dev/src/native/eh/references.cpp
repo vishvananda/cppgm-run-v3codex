@@ -1,7 +1,7 @@
 #include "native/eh/references.h"
+#include "native/errors.h"
 
 #include <algorithm>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -20,7 +20,7 @@ void emit_host_eh_reference_data(
   const auto record_eh_type = [&](lowir_model::SymbolId symbol) {
     const std::uint32_t index = symbol;
     if(!symbol.valid() || index >= catch_type_seen.size())
-      throw std::logic_error("invalid EH type symbol identity");
+      native_errors::ThrowInternal("invalid EH type symbol identity");
     catch_type_seen[index] = 1;
   };
   for(std::size_t i = 0; i < functions.size(); ++i) {
