@@ -4938,6 +4938,42 @@ All variants miss the 1% gate before implementation footprint, so the
 matcher, selected inliner, and transient clones were removed without PA37 or
 PA38 contract movement.
 
+### Rejected grouped loop-leaf inlining
+
+The next screen revisited the late grouped specializations themselves.  Eight
+surviving scalar clones were only 11 LowIR instructions each, call-free, and
+shared by loop and non-loop users.  Three of them were called from the central
+loop in `AnnotateParentheses`; those calls accounted for about 19.34 million
+flat instructions, while GCC had folded the equivalent predicates into the
+loop.  A producer-selected late-inline wave therefore admitted only newly
+created, non-EH scalar grouped clones of at most 12 instructions, and only at
+call blocks proven to belong to natural loops.  Ordinary late-inline caller
+and translation-unit budgets still applied.  No source name or program-text
+match participated.
+
+Inlining every use grew the macro object by 2,491 text bytes and improved an
+isolated producer only `0.998381287x`.  Restricting the dose to natural-loop
+sites removed the three calls from `AnnotateParentheses`, but grew that body
+from 525 to 776 bytes and the macro object by 1,815 text bytes.  Its isolated
+12-per-side pinned task-clock result was `0.987787789x`, so it advanced to a
+fresh explicit-32-way G1.  The complete implementing compiler grew 8,664
+linked text bytes.  Ten five-compile pinned ABBA batches measured
+`0.991382860x` by aggregate means, `0.991153185x` by trimmed means, and
+`0.991903553x` by medians: a real but sub-1% native saving.
+
+The deterministic escalation rejected the dose.  Candidate and baseline
+emitted the identical object
+`09d9fdc0bdd901d35c4f46075a4109b1a0c29ddb51fd5a17428335a2379dabba`,
+but total Callgrind instructions increased from 3,553,692,388 to
+3,557,188,669 (`1.000983853x`).  The transformed
+`AnnotateParentheses` inclusive cost did fall from about 87.92 million to
+84.40 million instructions, but duplicated predicate code, pass work, and
+producer footprint offset it.  The selected-inliner API and clone tracking
+were removed without PA37/PA38 movement.  The follow-up target is the more
+general native inefficiency exposed by this experiment: each surviving
+45-byte predicate contains redundant narrow-value extensions and a
+constant-register compare.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -5060,6 +5096,7 @@ Fill one row for every retained or rejected dose.
 | D.prefix-consumer-boundary | serialize a source-produced prefix consumer so O3 can inline only its unique call-free consuming arm after an available index-zero stable-prefix query | none; provisional PA13/PA17/PA37/PA38 movement removed after rejection | tokenizer final O3 LowIR 4,608 to 4,204 instructions and 345,678 to 316,192 bytes; temporary clone fully pruned; producer +14,864 text | self Ir `0.999817522x` (-0.018248%); same-source normalization not escalated after missing the deterministic 1% gate | exact frozen object; explicit-32 G1/G2 and final hash exact; prototype fully removed | rejected; the measured benefit is too small to justify a new PA13 LowIR promise and compiler-object version |
 | D.once-cap | lower the existing global one-shot inline cap so GCC-like helper partitioning reduces `Lexer::Run` pressure | none; public diagnostic override only | caps 64/96/256 retain 2,934-byte `ScanPunctuator`; `Run` becomes 1,166/2,266/7,075 bytes vs 9,313 | cap 64 +3.185%/+2.027% wall/user; cap 96 +2.548%/+3.356%; cap 256 +2.532%/+2.027% | deterministic isolated probe outputs exact | rejected; smaller global layout loses useful locality and call removal |
 | D.post-state-query-inline | expand only index-zero guarded query calls structurally reached after same-object state changes, with full-body and shared-fast-return variants | none; rejected before PA37/PA38 movement | six-site full `Run` +558/object +560 bytes; six-site inverse split `Run` +684/object +740; 12-site split `Run` +1,199/object +1,780 | pinned task-clock `0.996629370x`, `0.994878446x`, and `0.997201623x` respectively | exact hot output for every dose; isolated probe links; prototypes removed before full self-host | rejected; best 0.51% generated-code result misses 1% before pass footprint |
+| D.grouped-loop-leaf-inline | inline only tiny call-free grouped clones at natural-loop sites while retaining their shared non-loop bodies | none; rejected before PA37/PA38 movement | three hot calls removed; `AnnotateParentheses` 525 to 776 bytes; macro +1,815 text; producer +8,664 text | isolated task-clock `0.987787789x`; full G1 batched mean/trimmed/median `0.991382860x`/`0.991153185x`/`0.991903553x`; self Ir `1.000983853x` | exact hot output; explicit-32-way G1; candidate Callgrind; prototype removed | rejected; sub-1% native result contradicts deterministic total and duplicated code; optimize the shared predicate encoding instead |
 | C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
 | D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
 | Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
