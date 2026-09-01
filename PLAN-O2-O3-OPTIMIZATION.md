@@ -4602,6 +4602,50 @@ sequence or establish a stronger source-diverse native win; merely recovering
 every hidden constant divide repeats the previously measured
 retired-instruction regression.
 
+### Current complete-workload matrix checkpoint
+
+The first complete native matrix after `D.complete-object-memory` used fresh
+self O1/O2/O3 and same-source GCC O1/O2/O3 producers. Each comparison is one
+position-balanced ABBA block, every lane uses an explicit 32-way build, and
+each cell contains two observations per producer. The fixed O1, O2, and O3
+workloads each contain 221 objects. Within each workload all self and GCC
+producers emit the same manifest and linked compiler:
+
+| Workload | Manifest | Linked compiler |
+| --- | --- | --- |
+| O1 | `891cb5d15e24cc064ee6bbe6aff9bb2e632580be41133d4bd13f806a02ef8a1f` | `182e670fccec5ae60efdc07cd1e6bfbbaacedfbe3835f1a40d05d6e63f2b3821` |
+| O2 | `94785f0fff7623f791cbb5854afc8b0273243356a3dad12dede85e2cd1a757fe` | `fb027c911e09da251d9d7e500519973ffcc6ee6dcc403b8b1e21a92815b3354c` |
+| O3 | `9819456f89c0149f1575fdccdf6d04d6996a699b6b7f36ee63c16f304cb75bff` | `30132bf283fb14479319c3103f17e839414bef9c3a0fcb64fac3687283f0a810` |
+
+The pair-local ratios are:
+
+| Workload | Ratio | Wall | Aggregate CPU | Same GCC ratio | Normalized wall / CPU |
+| --- | --- | ---: | ---: | ---: | ---: |
+| O1 | self O2/O1 | `0.981739x` | `0.977720x` | `0.889954x` / `0.890990x` | `1.103135x` / `1.097342x` |
+| O2 | self O2/O1 | `0.981031x` | `0.985111x` | `0.929568x` / `0.928782x` | `1.055363x` / `1.060648x` |
+| O3 | self O2/O1 | `0.993572x` | `0.988435x` | `0.894231x` / `0.892353x` | `1.111091x` / `1.107673x` |
+| O1 | self O3/O1 | `0.870853x` | `0.864519x` | `0.837747x` / `0.840538x` | `1.039518x` / `1.028530x` |
+| O2 | self O3/O1 | `0.872822x` | `0.855679x` | `0.869012x` / `0.866371x` | `1.004383x` / `0.987659x` |
+| O3 | self O3/O1 | `0.876790x` | `0.866759x` | `0.880547x` / `0.873533x` | `0.995734x` / `0.992245x` |
+
+O2 now meets the hard raw no-regression floor on every workload, but its gain
+is only 1.2--2.2% rather than 5%, and it remains 6.1--10.8% behind the GCC
+producer-level transition after normalization. O3 improves complete native
+CPU by 13.3--14.4%. It has reached normalized parity on the O2 and O3
+workloads and is within 2.9% on O1, but another 5.6--6.7 raw percentage points
+are needed for the 20% stretch target. The deterministic hot result of
+`0.698859x` therefore remains a useful upper bound, not a substitute for the
+complete native criterion.
+
+The next O2 screen should promote an already retained, source-independent O3
+transformation rather than inventing new LowIR surface. Fixed O1 workloads
+separate generated-code quality from added O2 pass cost; only a successful
+producer is then measured on requested O2 work. The strongest candidates are
+terminal staged-object swaps, private-table prefiltering, and complete-object
+memory analysis. Promote them individually in that order of implementation
+cost, retaining only a structural dose that improves the complete normalized
+matrix without eroding O3.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4715,6 +4759,6 @@ Fill one row for every retained or rejected dose.
 | D.complete-object-memory | serialize a positive complete parameter-object extent, derive body effects/capture intervals, and consume disjoint regions at O3 | PA13/PA17/PA37/PA38 README plus pointer-only syntax/transport, source-production, level, structural positive/negative, replay, native-pressure, and behavior properties; no complete-program matching | compiler object v6; 1,387 populated extents on the largest TU; indexed 9,336-site analysis; linked producer +55,956 text/+752 data; final G1/G2 exact | self Ir `0.976039x`; GCC `1.000713x`; normalized `0.975343x`; gap `1.529720x` to `1.492001x`; Clang-normalized `0.975533x`; final O1/O3 native CPU `0.988085x`/`0.988883x` | 221-object all-32 fixed point at `30132bf2...`; focused suites, full report, debug/round-trip, and all zero-fatal audits clean | retained; populated O0 semantic fact justifies the narrow LowIR addition, while indexed fixed points remove the initial critical-path regression |
 | D.external-write-stable-reuse | preserve an established repeat-stable query result across calls proven not to write outside their own frame | none; rejected behavior was not moved into PA37 | static reuses 31 to 53; 882,230 dynamic query calls removed; producer +4,424 text | self Ir `0.996729x`, below the 1% gate | `lowiropt` and PA37 190/190; exact fixed point `c18cd945...`; prototype removed | rejected; sound whole-program summary has too little source-diverse benefit |
 | D.compared-quotient-encoding | let existing constant-division encoding consume a quotient read directly by the adjacent comparison | none; rejected behavior was not moved into PA38; LowIR/MIR contracts unchanged | hot `idiv 104` removed; object +20 text; producer +30,316 text; 221-object G1/G2 exact | self task-clock `0.991361x`, GCC `1.001352x`, normalized `0.990022x`; self Ir `1.003239x` over its direct control and combined Ir `0.999957x` vs retained | PA38 45/45; exact fixed point `cc7c277f...`; prototypes removed | rejected; borderline native win contradicts deterministic instruction cost and adds footprint |
-| C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
-| D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
-| Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
+| C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
+| D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
+| Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
