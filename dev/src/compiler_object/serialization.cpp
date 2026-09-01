@@ -1,4 +1,5 @@
 #include "compiler_object/serialization.h"
+#include "compiler_object/errors.h"
 #include "lowir/io/prepare.h"
 
 #include <algorithm>
@@ -9,7 +10,6 @@
 #include <iterator>
 #include <limits>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -68,7 +68,7 @@ private:
 	void Ensure(std::size_t additional)
 	{
 		if (additional > output_.max_size() - output_.size())
-			throw std::runtime_error("compiler object is too large");
+			ThrowCompilerObjectResourceLimit("compiler object is too large");
 		if (output_.size() + additional > output_.capacity() && stats_)
 			++stats_->buffer_growths;
 	}
@@ -125,7 +125,7 @@ public:
 		Take(1);
 		const int value = input_.get();
 		if (value == std::char_traits<char>::eof())
-			throw std::runtime_error("truncated compiler object");
+			ReadFailure();
 		return static_cast<std::uint8_t>(value);
 	}
 
@@ -144,7 +144,7 @@ public:
 	bool Bool()
 	{
 		const std::uint8_t value = Byte();
-		if (value > 1) throw std::runtime_error("invalid compiler object boolean");
+		if (value > 1) ThrowCompilerObjectInputError("invalid compiler object boolean");
 		return value != 0;
 	}
 
@@ -158,7 +158,7 @@ public:
 		const std::size_t value = Size();
 		if (minimum_element_bytes &&
 			value > remaining_ / minimum_element_bytes)
-			throw std::runtime_error("invalid compiler object collection size");
+			ThrowCompilerObjectInputError("invalid compiler object collection size");
 		return value;
 	}
 
@@ -166,7 +166,7 @@ public:
 	{
 		if (value > kMaxObjectElements ||
 			value > std::numeric_limits<std::size_t>::max())
-			throw std::runtime_error("compiler object collection is too large");
+			ThrowCompilerObjectResourceLimit("compiler object collection is too large");
 		return static_cast<std::size_t>(value);
 	}
 
@@ -174,26 +174,35 @@ public:
 	{
 		const std::size_t size = CheckedSize(U64());
 		if (size > remaining_)
-			throw std::runtime_error("truncated compiler object");
+			ThrowCompilerObjectInputError("truncated compiler object");
 		std::string result(size, '\0');
 		if (size) Take(size);
 		if (size && !input_.read(&result[0], static_cast<std::streamsize>(size)))
-			throw std::runtime_error("truncated compiler object");
+			ReadFailure();
 		return result;
 	}
 
 	void RequireEnd()
 	{
 		if (remaining_ != 0)
-			throw std::runtime_error("trailing bytes in compiler object");
-		if (input_.bad()) throw std::runtime_error("unable to read compiler object");
+			ThrowCompilerObjectInputError("trailing bytes in compiler object");
+		if (input_.bad())
+			ThrowCompilerObjectInputOutputError("unable to read compiler object");
 	}
 
 private:
+	__attribute__((cold, noinline, noreturn))
+	void ReadFailure() const
+	{
+		if (input_.bad())
+			ThrowCompilerObjectInputOutputError("unable to read compiler object");
+		ThrowCompilerObjectInputError("truncated compiler object");
+	}
+
 	void Take(std::uint64_t size)
 	{
 		if (size > remaining_)
-			throw std::runtime_error("truncated compiler object");
+			ThrowCompilerObjectInputError("truncated compiler object");
 		remaining_ -= size;
 	}
 
@@ -202,7 +211,7 @@ private:
 		Take(width);
 		char bytes[8];
 		if (!input_.read(bytes, width))
-			throw std::runtime_error("truncated compiler object");
+			ReadFailure();
 		std::uint64_t value = 0;
 		for (unsigned i = 0; i < width; ++i)
 			value |= static_cast<std::uint64_t>(
@@ -244,10 +253,10 @@ lowir_model::LowType ReadType(BinaryReader& in)
 	value.storage_size = in.Size();
 	const std::size_t alignment = in.Size();
 	if (alignment > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("compiler object type alignment is too large");
+		ThrowCompilerObjectInputError("compiler object type alignment is too large");
 	value.alignment = static_cast<std::uint32_t>(alignment);
 	if (serialized_width != lowir_model::lowir_type_bit_width(value))
-		throw std::runtime_error("compiler object type width is inconsistent");
+		ThrowCompilerObjectInputError("compiler object type width is inconsistent");
 	return value;
 }
 
@@ -259,21 +268,21 @@ void WriteOperand(BinaryWriter& out, const lowir_model::Operand& value,
 	if (value.kind == lowir_model::Operand::OP_LABEL)
 	{
 		if (!function)
-			throw std::logic_error("compiler object block target lacks a function");
+			ThrowCompilerObjectInternalError("compiler object block target lacks a function");
 		out.String(lowir_model::lowir_block_label(
 			program.strings, *function, value.block));
 	}
 	else if (value.kind == lowir_model::Operand::OP_SLOT)
 	{
 		if (!function)
-			throw std::logic_error("compiler object slot lacks a function");
+			ThrowCompilerObjectInternalError("compiler object slot lacks a function");
 		out.String(lowir_model::lowir_slot_name(
 			program.strings, *function, value.slot));
 	}
 	else if (value.kind == lowir_model::Operand::OP_TEMP)
 	{
 		if (!function)
-			throw std::logic_error("compiler object value lacks a function");
+			ThrowCompilerObjectInternalError("compiler object value lacks a function");
 		out.String(lowir_model::lowir_value_name(
 			program.strings, *function, value.value));
 	}
@@ -920,10 +929,12 @@ void Write(const std::string& path,
 		Serialize(object, stats);
 	std::ofstream output(path.c_str(),
 		std::ios::out | std::ios::binary | std::ios::trunc);
-	if (!output) throw std::runtime_error("unable to open object output: " + path);
+	if (!output)
+		ThrowCompilerObjectInputOutputError("unable to open object output: " + path);
 	if (!bytes.empty()) output.write(reinterpret_cast<const char*>(&bytes[0]),
 		static_cast<std::streamsize>(bytes.size()));
-	if (!output) throw std::runtime_error("unable to write object output: " + path);
+	if (!output)
+		ThrowCompilerObjectInputOutputError("unable to write object output: " + path);
 }
 
 std::vector<unsigned char> Serialize(
@@ -961,23 +972,41 @@ bool IsObject(const std::string& path)
 Object Read(const std::string& path)
 {
 	std::ifstream file(path.c_str(), std::ios::in | std::ios::binary);
-	if (!file) throw std::runtime_error("unable to open object file: " + path);
+	if (!file)
+		ThrowCompilerObjectInputOutputError("unable to open object file: " + path);
 	const CompilerPayloadLocation location = FindCompilerPayload(file);
 	if (!location.found)
-		throw std::runtime_error("not a cppgm compiler object: " + path);
+	{
+		if (file.bad())
+			ThrowCompilerObjectInputOutputError("unable to read object file: " + path);
+		ThrowCompilerObjectInputError("not a cppgm compiler object: " + path);
+	}
 	file.clear();
 	file.seekg(static_cast<std::streamoff>(location.offset), std::ios::beg);
+	if (!file)
+		ThrowCompilerObjectInputOutputError("unable to seek object file: " + path);
 	char magic[sizeof(kMagic) - 1];
 	file.read(magic, sizeof(magic));
 	if (file.gcount() != static_cast<std::streamsize>(sizeof(magic)) ||
 		!std::equal(magic, magic + sizeof(magic), kMagic))
-		throw std::runtime_error("not a cppgm compiler object: " + path);
+	{
+		if (file.bad())
+			ThrowCompilerObjectInputOutputError("unable to read object file: " + path);
+		ThrowCompilerObjectInputError("not a cppgm compiler object: " + path);
+	}
 	BinaryReader input(file, location.size - (sizeof(kMagic) - 1));
 	if (input.U32() != kVersion)
-		throw std::runtime_error("unsupported cppgm object version");
+		ThrowCompilerObjectInputError("unsupported cppgm object version");
 	Object result;
 	result.target = input.String();
-	result.lowir = ReadProgram(input);
+	try
+	{
+		result.lowir = ReadProgram(input);
+	}
+	catch (const SerializedInputError& error)
+	{
+		ThrowCompilerObjectInputError(error.what());
+	}
 	input.RequireEnd();
 	return result;
 }

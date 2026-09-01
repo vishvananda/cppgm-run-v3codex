@@ -1,11 +1,11 @@
 #include "compiler_object/linker.h"
+#include "compiler_object/errors.h"
 #include "lowir/io/prepare.h"
 
 #include <chrono>
 #include <cstdint>
 #include <iterator>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -125,7 +125,7 @@ lowir_model::LowirProgram Link(
 	lowir_model::PresentationPolicy presentation_policy,
 	LinkStats* stats)
 {
-	if (objects.empty()) throw std::runtime_error("no linker inputs");
+	if (objects.empty()) throw InvocationError("no linker inputs");
 	if (stats) *stats = LinkStats();
 	std::chrono::steady_clock::time_point started;
 	if (stats) started = std::chrono::steady_clock::now();
@@ -136,7 +136,7 @@ lowir_model::LowirProgram Link(
 	for (std::size_t i = 0; i < objects.size(); ++i)
 	{
 		if (objects[i].target != target)
-			throw std::runtime_error("link input target mismatch");
+			throw InvocationError("link input target mismatch");
 		RenameMap names;
 		for (std::size_t j = 0; j < objects[i].lowir.exported_symbols.size(); ++j)
 		{
@@ -220,7 +220,7 @@ lowir_model::LowirProgram Link(
 				result.globals[found] = std::move(item);
 				if (stats) ++stats->coalesced_weak_definitions;
 			}
-			else throw std::runtime_error("duplicate global definition: " +
+			else ThrowCompilerObjectInputError("duplicate global definition: " +
 				lowir_model::lowir_symbol_name(result, item.symbol));
 		}
 		for (std::size_t i = 0; i < program.functions.size(); ++i)
@@ -252,7 +252,7 @@ lowir_model::LowirProgram Link(
 				result.functions[found] = std::move(item);
 				if (stats) ++stats->coalesced_weak_definitions;
 			}
-			else throw std::runtime_error("duplicate function definition: " +
+			else ThrowCompilerObjectInputError("duplicate function definition: " +
 				lowir_model::lowir_symbol_name(result, item.symbol));
 		}
 		result.object_aliases.insert(result.object_aliases.end(),
@@ -298,14 +298,14 @@ lowir_model::LowirProgram Link(
 		const lowir_model::ObjectAlias& alias = result.object_aliases[i];
 		const std::uint32_t spelling = alias.object_symbol;
 		if (!alias.object_symbol.valid() || spelling >= aliases.size())
-			throw std::logic_error("invalid linked object alias spelling");
+			ThrowCompilerObjectInternalError("invalid linked object alias spelling");
 		if (!aliases[spelling].valid())
 		{
 			aliases[spelling] = alias.target_id;
 			unique_aliases.push_back(alias);
 		}
 		else if (aliases[spelling] != alias.target_id)
-			throw std::runtime_error("conflicting object alias: " +
+			ThrowCompilerObjectInputError("conflicting object alias: " +
 				result.strings.get(alias.object_symbol));
 	}
 	result.object_aliases.swap(unique_aliases);

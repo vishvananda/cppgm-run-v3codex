@@ -1,10 +1,10 @@
 #include "compiler_object/elf_import.h"
+#include "compiler_object/errors.h"
 
 #include <cstdint>
 #include <fstream>
 #include <iterator>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -22,9 +22,12 @@ public:
 	explicit ElfObjectReader(const std::string& path)
 	{
 		std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
-		if (!input) throw std::runtime_error("unable to open ELF object: " + path);
+		if (!input)
+			ThrowCompilerObjectInputOutputError("unable to open ELF object: " + path);
 		bytes_.assign(std::istreambuf_iterator<char>(input),
 			std::istreambuf_iterator<char>());
+		if (input.bad())
+			ThrowCompilerObjectInputOutputError("unable to read ELF object: " + path);
 	}
 
 	std::uint16_t U16(std::size_t at) const { return Read(at, 2); }
@@ -37,7 +40,7 @@ public:
 	void Range(std::size_t at, std::size_t size) const
 	{
 		if (at > bytes_.size() || size > bytes_.size() - at)
-			throw std::runtime_error("truncated ELF relocatable object");
+			ThrowCompilerObjectInputError("truncated ELF relocatable object");
 	}
 	std::vector<unsigned char> Bytes(std::size_t at, std::size_t size) const
 	{
@@ -48,11 +51,11 @@ public:
 	std::string String(std::size_t table, std::size_t table_size,
 		std::size_t offset) const
 	{
-		if (offset >= table_size) throw std::runtime_error("invalid ELF string offset");
+		if (offset >= table_size) ThrowCompilerObjectInputError("invalid ELF string offset");
 		Range(table, table_size);
 		std::size_t end = offset;
 		while (end < table_size && bytes_[table + end] != 0) ++end;
-		if (end == table_size) throw std::runtime_error("unterminated ELF string");
+		if (end == table_size) ThrowCompilerObjectInputError("unterminated ELF string");
 		return std::string(bytes_.begin() + table + offset,
 			bytes_.begin() + table + end);
 	}
@@ -85,7 +88,7 @@ struct SectionHeader
 std::size_t Size(std::uint64_t value)
 {
 	if (value > std::numeric_limits<std::size_t>::max())
-		throw std::runtime_error("ELF object exceeds host limits");
+		ThrowCompilerObjectResourceLimit("ELF object exceeds host limits");
 	return static_cast<std::size_t>(value);
 }
 
@@ -111,13 +114,14 @@ lowir_native::RelocatableObject ImportElfRelocatable(
 	const ElfObjectReader in(path);
 	if (in.U32(0) != UINT32_C(0x464c457f) || in.U16(16) != 1 ||
 		in.U16(18) != 62 || in.U32(20) != 1)
-		throw std::runtime_error("unsupported ELF relocatable object: " + path);
-	if (in.U16(58) != 64) throw std::runtime_error("invalid ELF section header size");
+		ThrowCompilerObjectInputError("unsupported ELF relocatable object: " + path);
+	if (in.U16(58) != 64)
+		ThrowCompilerObjectInputError("invalid ELF section header size");
 	const std::size_t section_count = in.U16(60);
 	const std::size_t section_names = in.U16(62);
 	const std::size_t section_at = Size(in.U64(40));
 	if (section_names >= section_count)
-		throw std::runtime_error("invalid ELF section-name table");
+		ThrowCompilerObjectInputError("invalid ELF section-name table");
 	std::vector<SectionHeader> headers(section_count);
 	for (std::size_t i = 0; i < section_count; ++i)
 	{
@@ -142,7 +146,7 @@ lowir_native::RelocatableObject ImportElfRelocatable(
 		names[i] = in.String(Size(shstr.offset), Size(shstr.size), headers[i].name);
 		if (!ImportSection(names[i])) continue;
 		if (headers[i].type != 1 && headers[i].type != 8)
-			throw std::runtime_error("unsupported allocatable ELF section: " + names[i]);
+			ThrowCompilerObjectInputError("unsupported allocatable ELF section: " + names[i]);
 		lowir_native::RelocatableSection section;
 		section.alignment = headers[i].alignment ? Size(headers[i].alignment) : 1;
 		if (headers[i].type == 8) section.bytes.resize(Size(headers[i].size), 0);
@@ -155,10 +159,10 @@ lowir_native::RelocatableObject ImportElfRelocatable(
 	for (std::size_t i = 0; i < section_count; ++i)
 		if (headers[i].type == 2) { symbol_section = i; break; }
 	if (symbol_section == section_count)
-		throw std::runtime_error("ELF relocatable object has no symbol table");
+		ThrowCompilerObjectInputError("ELF relocatable object has no symbol table");
 	const SectionHeader& symtab = headers[symbol_section];
 	if (symtab.entry_size != 24 || symtab.link >= section_count)
-		throw std::runtime_error("invalid ELF symbol table");
+		ThrowCompilerObjectInputError("invalid ELF symbol table");
 	const SectionHeader& strtab = headers[symtab.link];
 	const std::size_t symbol_count = Size(symtab.size / symtab.entry_size);
 	std::vector<std::string> symbols(symbol_count);
@@ -182,7 +186,7 @@ lowir_native::RelocatableObject ImportElfRelocatable(
 			label.name = symbols[i];
 			label.offset = value;
 			if (label.offset > result.sections[output_section[defined]].bytes.size())
-				throw std::runtime_error("ELF symbol lies outside imported section");
+				ThrowCompilerObjectInputError("ELF symbol lies outside imported section");
 			result.sections[output_section[defined]].labels.push_back(label);
 		}
 		else if (defined == 0) symbols[i] = name;
@@ -193,7 +197,7 @@ lowir_native::RelocatableObject ImportElfRelocatable(
 		const SectionHeader& rela = headers[i];
 		if (rela.type != 4 || !output_section.count(rela.info)) continue;
 		if (rela.entry_size != 24 || rela.link != symbol_section)
-			throw std::runtime_error("invalid ELF relocation section");
+			ThrowCompilerObjectInputError("invalid ELF relocation section");
 		lowir_native::RelocatableSection& target =
 			result.sections[output_section[rela.info]];
 		const std::size_t count = Size(rela.size / rela.entry_size);
@@ -204,7 +208,7 @@ lowir_native::RelocatableObject ImportElfRelocatable(
 			const std::size_t symbol = Size(info >> 32);
 			const std::uint32_t type = static_cast<std::uint32_t>(info);
 			if (symbol >= symbols.size() || symbols[symbol].empty())
-				throw std::runtime_error("ELF relocation has unavailable symbol");
+				ThrowCompilerObjectInputError("ELF relocation has unavailable symbol");
 			lowir_native::RelocatableRelocation relocation;
 			relocation.offset = Size(in.U64(at));
 			relocation.target = symbols[symbol];
@@ -215,7 +219,7 @@ lowir_native::RelocatableObject ImportElfRelocatable(
 					relocation.offset > target.bytes.size() ||
 					target.bytes[relocation.offset - 2] != 0x8b ||
 					(target.bytes[relocation.offset - 1] & 0xc7) != 0x05)
-					throw std::runtime_error(
+					ThrowCompilerObjectInputError(
 						"unsupported x86_64 GOTPCRELX instruction");
 				// Relax a local GOT load to a direct RIP-relative address.
 				target.bytes[relocation.offset - 2] = 0x8d;
@@ -226,13 +230,13 @@ lowir_native::RelocatableObject ImportElfRelocatable(
 				relocation.kind = lowir_native::RelocatableRelocation::RELATIVE32;
 			else if (type == 1)
 				relocation.kind = lowir_native::RelocatableRelocation::ABSOLUTE64;
-			else throw std::runtime_error("unsupported x86_64 ELF relocation type: " +
+			else ThrowCompilerObjectInputError("unsupported x86_64 ELF relocation type: " +
 				std::to_string(type));
 			const std::size_t width = relocation.kind ==
 				lowir_native::RelocatableRelocation::RELATIVE32 ? 4 : 8;
 			if (relocation.offset > target.bytes.size() ||
 				width > target.bytes.size() - relocation.offset)
-				throw std::runtime_error("ELF relocation lies outside imported section");
+				ThrowCompilerObjectInputError("ELF relocation lies outside imported section");
 			target.relocations.push_back(relocation);
 		}
 	}

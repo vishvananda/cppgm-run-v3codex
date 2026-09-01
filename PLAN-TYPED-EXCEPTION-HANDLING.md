@@ -717,7 +717,8 @@ Append one row for each retained or rejected increment:
 | E5b | lexical input and preprocessing-token paste | generic lexical failures plus broad runtime translation for generated-token cardinality | lexical source/internal types; direct one-token status; preprocessing source failure; explicit cursor inlining boundary | PA1 source tokenization and PA4 valid/invalid paste behavior | successful full remains 0; generic logic/runtime sites -5/-20; internal runtime catches -1 | -16,000 text, -64 rodata, -2,104 exception table, -280 unwind | frozen -6.19% user; full O1 -1.91% CPU, O3 -2.34% CPU | PA1 53/53; PA4 75/75; through-PA4 174/174; 222 O1/O3 objects exact | `71d6deba` | retained |
 | E5c | post-tokenization, recognition, and hosted intrinsic registry | API/invariant, embedded-grammar, resource-limit, and invalid-token failures shared generic bases | lexical/recognition internal, recognition resource, and lexical source dispositions; explicit shared string-flush boundary | PA2 literal/token behavior, PA5 preprocessing, PA6 invalid-token and grammar acceptance | successful frozen remains 0; generic logic/runtime sites -26/-3 | -640 text, +96 rodata, -200 exception table, -48 unwind | frozen user median 0.450/0.450 s; paired +0.55% noise | PA2 26/26; PA5 70/70; PA6 48/48; through-PA6 292/292; frozen objects exact | `8311aeb4` | retained |
 | E5d | PA3-PA5 macro processor | source, invocation, transport, resource, and state-machine failures shared generic bases | preprocessing source/I/O/resource/internal dispositions and driver invocation type; expected probes/invocation alternatives remain status flow | PA3 controlling expressions, PA4 macro replacement, PA5 directives/includes | successful frozen remains 0; generic logic/runtime sites -22/-56 | -4,800 text, +96 rodata, -708 exception table, +136 unwind | frozen paired user -0.56%; full O1 -0.85%, O3 -0.29% CPU | PA3 20/20; PA4 75/75; PA5 70/70; PA6 48/48; through-PA14 1,082/1,082; 222 O1/O3 objects and 32-way inception exact | `7cf04f4b` | retained |
-| E6a | LowIR text, model identity, serialization, and PA13 CY86 adapter | one parse type mixed malformed input, I/O, limits, and invariants; model helpers used generic bases | format/domain-specific serialized-input, I/O, resource, invocation, and internal failures; valid flow unchanged | PA13 malformed/valid text, identity, role, metadata, phi, and adapter behavior | successful frozen remains 0; 126 `ParseError` sites removed; generic logic/runtime sites -41/-9 | -14,528 text, -64 rodata, +56 EH header, -168 unwind, -2,536 exception table | frozen user -1.12%; full O1 -0.39%, O3 -0.26% CPU | PA13 122/122; through-PA13 965/965; LowIR contract unchanged; 222 O1/O3 objects exact | pending | retained |
+| E6a | LowIR text, model identity, serialization, and PA13 CY86 adapter | one parse type mixed malformed input, I/O, limits, and invariants; model helpers used generic bases | format/domain-specific serialized-input, I/O, resource, invocation, and internal failures; valid flow unchanged | PA13 malformed/valid text, identity, role, metadata, phi, and adapter behavior | successful frozen remains 0; 126 `ParseError` sites removed; generic logic/runtime sites -41/-9 | -14,528 text, -64 rodata, +56 EH header, -168 unwind, -2,536 exception table | frozen user -1.12%; full O1 -0.39%, O3 -0.26% CPU | PA13 122/122; through-PA13 965/965; LowIR contract unchanged; 222 O1/O3 objects exact | `23294aa9` | retained |
+| E6b | compiler-object serialization, ELF import, and join | malformed bytes, I/O, size ceilings, link conflicts, and invariants shared generic bases | compiler-object serialized-input/I/O/resource/internal types; no-input and target mismatch are invocation failures; probes stay status-based | PA30 separate/direct/mixed compilation, helper ELF import, duplicate/missing/unresolved link behavior | successful frozen remains 0; generic logic/runtime sites -4/-41 | -5,568 text, +128 rodata, -72 EH header, -480 unwind, -2,060 exception table | frozen 0.450/0.450 s; full O1 -0.23%, O3 neutral CPU | PA30 100/100; through-PA30 4,355/4,355; malformed/I/O fail; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1496,6 +1497,36 @@ reproduce all 222 objects and final compilers: O1 aggregate CPU averages
 also repairs its two inherited file-audit failures; rebuilding after that
 consolidation produces the exact same candidate compiler, and the audit is
 back to the established 32 advisory warnings with no fatal finding.
+
+### E6b execution record
+
+Compiler-object transport now distinguishes malformed private-object and ELF
+bytes from stream failures, checked representation ceilings, link invocation
+errors, and impossible serializer/linker state.  The private-object reader
+translates only a nested LowIR `SerializedInputError` at the enclosing format
+boundary; LowIR resource/internal failures and allocation failures propagate.
+ELF open/read failures are I/O, unsupported or inconsistent section, symbol,
+and relocation records are compiler-object input failures, and host-size
+overflow is a resource limit.  Duplicate definitions and conflicting aliases
+are rejected as incompatible compiler-object inputs; no inputs and target
+mismatch are invalid link invocations.
+
+Normal control flow is unchanged.  `IsObject` and payload discovery remain
+nonthrowing probes, and successful serialization, import, and linking add no
+returned status branch.  The instrumented frozen compile remains at zero
+throws.  The generic audit falls by four logic throws, 41 runtime throws, and
+three files, to 812/446/123.  A generated private object truncated to 17 bytes
+and an unwritable output path both fail without relying on diagnostic text.
+PA30 passes 100/100 and through-PA30 passes 4,355/4,355.
+
+Against `23294aa9`, `.text` changes 6,511,206 -> 6,505,638, `.rodata`
+214,336 -> 214,464, `.eh_frame_hdr` 51,548 -> 51,476, `.eh_frame`
+322,600 -> 322,120, and `.gcc_except_table` 141,076 -> 139,016.  Four frozen
+A/B/B/A blocks reproduce object hash `8545fec6...` and tie at a 0.450-second
+user median; the paired -1.66% result is below timer resolution and recorded as
+neutral.  The final 32-way full controls reproduce all 222 objects and final
+compilers: O1 aggregate CPU averages 501.17/500.02 seconds (-0.23%) and O3
+averages 503.76/503.78 seconds (neutral).
 
 ## Initial code map
 
