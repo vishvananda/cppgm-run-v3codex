@@ -4829,6 +4829,33 @@ and native-ownership audits all pass.  Explicit-32 G1/G2 is exact.  Retain this
 dose; refresh the complete O1/O2/O3 matrix after the next checkpoint rather
 than substituting this incremental result for the existing raw O3/O1 row.
 
+### Rejected scalar fast/slow extension
+
+The immediate follow-up re-evaluated the old grouped scalar fast-wrapper idea
+because its marginal conditions had materially changed.  The general call
+graph analysis, complete-frame sibling transfer, and layout-stable helper
+implementation are now retained, so the retry needed only scalar-return
+fallback support and a second bounded candidate slot.  The experimental small
+class required an internal non-hinted 24--127-instruction scalar function, at
+least one call, a call-free return corridor, and at least one pre-effect
+bailout.  Two functions and 1,024 cloned instructions per TU bounded the
+combined large/small dose.  No LowIR contract addition was involved.
+
+The compiler population included the intended 32-instruction specialized
+query called 11,498,094 times.  It became a 47-byte fast wrapper around its
+unchanged 116-byte body, and the frozen output remained exact at
+`09d9fdc0...`.  The explicit-32 G1 producer grew from 8,786,048 to 8,809,908 text
+bytes and by 16 data bytes.  Deterministic instructions nevertheless regressed
+from 3,553,692,388 to 3,569,164,614 (`1.004353845x`).
+
+Call-edge counts explain the reversal: only 4,342,853 calls used the proposed
+fast arm, while 7,155,241 calls took the slow edge.  The fast arm removes three
+native instructions, but the majority path adds the wrapper-to-clone transfer.
+Inclusive work in the query family consequently rose from 626,202,337 to
+641,122,175 instructions.  This is a generated-code loss, not another unknown
+compiler layout effect.  The prototype was removed before test or README
+movement and the worktree returned exactly to the retained checkpoint.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4947,6 +4974,7 @@ Fill one row for every retained or rejected dose.
 | C.complete-memory-o2 | run the retained whole-program parameter-memory analysis at O2 while keeping its companion cleanups at O3 | none; existing PA37 O3 contract retained after rejection | O2 producer -2,584 text bytes; requested-O1 workload exact | hot mean/median `0.994103x`/`0.995585x`; full wall/CPU `1.005060x`/`1.000808x` | focused O2 population; 20 exact hot observations per side; one exact all-32 221-object ABBA block | rejected; complete raw throughput regresses before pass-cost or normalized escalation |
 | D.edge-live-color-components | split final-MIR physical-color components across adjacent blocks only when the source is live on their edge | none; rejected behavior was not moved into PA38 | tokenizer -42 text, `Lexer::Run` -12 bytes, producer -816 text; `AppendUTF8` unchanged | complete hot Ir `0.999640086x` (-0.035991%) | exact hot object; explicit-32-way 221-object G1/G2; prototype removed before G3/full timing | rejected; real but immaterial register-choice refinement, far below the 1% D5 floor |
 | D.fast-slow-function-versioning | keep one bounded call-free return corridor under the original identity, restart every bailout in a complete slow clone, and lower the exact final call as a sibling transfer | PA37/PA38 READMEs plus level-isolated structural, guard, replay, native-relationship, and behavior properties; no source-name or whole-program matching | no LowIR contract addition; producer +34,376 text/+160 data; selected original 98 bytes plus unchanged 1,814-byte slow clone | self Ir `0.981190163x`, GCC `0.999989823x`, normalized `0.981200149x`; two full-build normalized CPU blocks `0.992312127x`/`0.991831466x` | focused controls; 5,473/5,473; serial debug/round-trip and all zero-fatal audits clean; explicit-32 G1/G2 and every measured output exact | retained; clears deterministic D5 and stable full CPU corroboration after removing measured source-layout interference |
+| D.scalar-fast-slow-extension | reuse the retained versioning and complete-frame sibling machinery for one additional small non-hinted scalar-return function | none; rejected behavior was not moved into PA37/PA38 | intended 32-instruction query becomes 47-byte wrapper plus unchanged 116-byte clone; producer +23,860 text/+16 data; output exact | self Ir `1.004353845x`; query inclusive Ir `1.023825906x` because 7.16M/11.50M calls take the slow edge | exact frozen object; explicit-32 G1 producer; prototype removed before fixed point/full timing | rejected; majority-slow population makes the extra transfer a deterministic generated-code loss |
 | C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
 | D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
 | Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
