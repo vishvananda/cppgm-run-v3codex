@@ -2570,6 +2570,13 @@ void finish_optimizer_pipeline(
   // final O1 load-reuse pass has exposed their shared SSA value.  Restrict the
   // repeated CFG proof to callers that an inlining wave actually changed.
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    if(level >= 3 &&
+       lower_terminal_staged_object_swap(&program.functions[i], stats)) {
+      lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
+      timed_dce(&program.functions[i], boundaries, stats, &dce_scratch);
+      timed_function_pass(remove_dead_slots, &program.functions[i], stats,
+        &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
+    }
     if(level >= 3)
       fold_zero_bounded_signed_branch(&program.functions[i], stats);
     if(level >= 3 &&

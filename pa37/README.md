@@ -577,6 +577,25 @@ for the complete clone.  Redirect only the matching calls and remove scalar
 parameters made dead by substitution.  The unlike calls and original target
 remain unchanged.
 
+After all inlining waves have exposed their final object traffic, `-O3` may
+also lower a terminal, complete object swap through scalar exchanges.  The
+ordinary form saves every byte of the first object in a private object slot,
+copies the non-overlapping second object over the first, copies the saved bytes
+over the second, and then returns.  The saved value may have been assembled by
+one complete `copyobj` or by nonvolatile field copies that cover every byte;
+write-only construction of another private value which is overwritten by the
+second-object copy may disappear with the swap staging.
+
+This rewrite must preserve every byte, including padding, and use only the
+serialized PA13 object-copy and scalar-memory semantics.  Retain the staged
+form when coverage is partial, an access is volatile, staging storage escapes,
+observable work intervenes, the copies are not one terminal straight-line
+exchange, or byte count and alignment do not agree.  `-O0` through `-O2`
+retain the staged form.  The focused control checks these relationships and
+generated behavior, including PA13's permitted identical-address case; it does
+not require generated value names, a particular register choice, or complete
+LowIR text.
+
 This grouped specialization considers at most one integer or table group per
 target, tracks at most 64 distinct parameter/value groups for that target,
 and creates at most 24 clones and 1,536 cloned LowIR instructions per

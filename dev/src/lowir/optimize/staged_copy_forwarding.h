@@ -27,4 +27,12 @@ bool eliminate_fully_overwritten_zero_inits(
 bool coalesce_adjacent_scalar_copies(
   lowir_model::Function * function, Stats * stats);
 
+// Replace a complete terminal object swap that stages the old first object in
+// one private slot with ordinary scalar exchanges.  The proof accepts the
+// aggregate copy itself or the field-wise form exposed by inlining, requires
+// every staged byte to come from the first object before that object is
+// overwritten, and rejects escaping staging storage or observable work.
+bool lower_terminal_staged_object_swap(
+  lowir_model::Function * function, Stats * stats);
+
 }

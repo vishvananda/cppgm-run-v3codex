@@ -4278,6 +4278,50 @@ prototype was removed before README/test movement or a full native workload;
 future work may include this relationship only as part of a broader Boolean
 or string-lookup simplification whose combined population clears the gate.
 
+### Retained terminal staged-object-swap lowering
+
+The next residual revisited the hot deque exchange at the LowIR layer instead
+of teaching the native backend an exact 80-byte encoding.  PA13 already gives
+`copyobj` the necessary correctness contract: the source and destination do
+not overlap, except that identical addresses are permitted.  Consequently no
+new opcode, metadata, producer fact, native-only preparation path, or object
+version was justified.  A late O3 pass instead recognizes a terminal complete
+swap which saves the first object in one nonescaping object slot, copies the
+second object over the first, copies the saved bytes over the second, and
+returns.  The proof accepts either one aggregate capture or nonvolatile scalar
+captures covering every byte.  It rejects partial coverage, volatile access,
+calls or escape, observable intervening work, multiple blocks, nonterminal
+traffic, and mismatched sizes or alignments.  Selection is entirely structural
+and does not use function, symbol, source, or exact program identity.
+
+The replacement is ordinary serialized LowIR: paired scalar loads followed by
+paired stores in chunks justified by the declared alignment.  Loading both
+values before either store also preserves PA13's identical-address no-op case.
+The PA37 handout describes the relationship at student level, and its focused
+control checks O0--O2 isolation, two positive construction forms, balanced
+scalar transfer structure, incomplete/volatile/escaped/nonterminal negatives,
+serialized replay, and O0/O3 behavior without fixing temporary names, register
+choices, or complete LowIR text.
+
+On the stable-prefix fixed workload, the self-built compiler falls from
+3,787,890,268 to 3,710,968,687 Callgrind instructions (`0.979692764x`).  The
+same source compiled by GCC moves from 2,426,082,982 to 2,426,042,427
+(`0.999983284x`), so the normalized ratio is `0.979709141x`, a 2.029086%
+source-diverse improvement.  The absolute self/GCC gap moves from
+`1.561319335x` to `1.529638825x`.  The 80-byte deque helper loses its 160-byte
+frame, dead 80-byte initialization, and three `rep movsb` sequences, shrinking
+from 241 to 157 bytes; the fixed-point compiler grows 20,164 linked text bytes.
+Both baseline and candidate hot objects remain byte-identical at
+`fa3fd1899...`, so no source-output drift explains the result.
+
+The focused check, PA37 189/189, PA38 45/45, and the complete 5,472/5,472
+through-PA38 report pass.  The PA38 file audit has zero fatal findings.  The
+required explicit-32-way G1/G2 build reproduces all 221 objects and the final
+compiler byte-for-byte at
+`898abea36dd40c8e6d3bcd8173f06458f9035133c2c2db7b5ed9d0769260b2f4`.
+The increment is retained, but `1.529638825x` remains above the 1.5 target, so
+profiling and measured O3 work continue from this checkpoint.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4306,6 +4350,7 @@ Fill one row for every retained or rejected dose.
 | D.stable-prefix-query | serialize a general stable-prefix query promise and reuse established lower prefixes at O3 | PA13/PA17/PA37/PA38 READMEs plus shape, source-production, level, relationship, barrier, replay, object-roundtrip, stats, and behavior properties | object version 5; tokenizer query fact; 6.60M dynamic full calls removed; fixed-point producer +13,556 text bytes | self Ir `0.975652x`; GCC `1.000117x`; normalized `0.975538x`; gap `1.600470x` to `1.561319x`; full raw wall/CPU `0.969113x`/`0.984335x`, GCC-normalized CPU `0.979699x`, Clang-normalized CPU `0.985227x` | PA37 188/188; PA38 45/45; 5,472/5,472; debug/round-trip and all audits clean; exact 221-object G1/G2/G3 | retained in `d54e7e03`; contract-backed general reuse clears deterministic and complete-workload gates |
 | D.stable-prefix-fast-wrapper-retry | split one repeat-stable query into a bounded fast wrapper and shared slow body, then inline all callers or only the largest caller population | none; rejected before contract movement | all: 26 calls and producer +12,544 text; narrow: 16 calls, 7/2/1 left, producer +14,456 text; hot objects exact | all self Ir `1.000798x`; narrow self `1.000846x`, GCC `1.000015x`, normalized `1.000831x`; gap `1.561319x` to `1.562616x` | explicit-32-way G1 for both forms; deterministic self/GCC hot objects; prototypes removed | rejected; current stable-prefix baseline reproduces the earlier fast-prefix loss under the corrected normalized metric |
 | D.forwarded-boolean-inversion | thread a one-use zero/one equality or inequality after a forwarded Boolean truncation onto its acyclic phi predecessors | none; rejected before contract movement | hot lookup 377 to 324 bytes; macro -48 text; producer -1,576 text; hot objects exact | self Ir `0.997630x`; GCC `1.000005x`; normalized `0.997625x`; gap `1.561319x` to `1.557611x` | explicit-32-way G1 and deterministic self/GCC hot controls; prototype removed | rejected alone; sound 0.2375% source-diverse saving remains below the 1% floor |
+| D.terminal-staged-object-swap | replace a structurally complete terminal private-slot object swap with aligned scalar exchanges | PA37 README plus O0--O2 isolation, aggregate/field-wise positives, incomplete/volatile/escape/nonterminal negatives, identical-address and ordinary behavior | deque helper 241 to 157 bytes and loses 160-byte frame/dead initialization/three `rep movsb`; producer +20,164 linked text; hot objects exact | self Ir `0.979693x`; GCC `0.999983x`; normalized `0.979709x`; gap `1.561319x` to `1.529639x` | PA37 189/189; PA38 45/45; 5,472/5,472; zero-fatal file audit; exact explicit-32-way 221-object G1/G2 and final | retained in this checkpoint; existing PA13 `copyobj` semantics supply the whole correctness proof |
 | D.call-plan | keep reactive call results out of future cyclic spans and grant a cyclic call result after its completed arguments retire | PA38 README plus O2/O1 register-agnostic structural/behavioral control | `Run` -181 MIR, scalar loads/stores -89/-77, frame homes -3; tokenizer -234 `.text`; O3 producer +292 text bytes; O1 object exact; unrelated EH/branch fixtures exact | O1 workload +0.11% wall/-0.40% CPU; GCC CPU -0.21%; normalized CPU -0.18%; O3 workload -1.42% wall/-0.30% CPU, five of six pairs favorable | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; frozen O2/O3 exact; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.epilogue | share repeated optimized return sequences, with broad and bounded variants | none; rejected before contract movement | broad: `Run` -161 native instructions and -23 physical epilogues; O3 producer -94,192 text bytes; bounded variants -17,928/-16,120 bytes | broad O1 user +1.5%; return-bounded +0.26%; bounded/excluded O3 CPU +0.32% and wall +1.5% | exact-output all-32 screens; all variants removed | rejected; taken return branches cost more than duplicate bytes |
 | D.copy-pair | fuse staged adjacent 64-bit predecessor loads/successor stores into one vector copy | none; rejected before contract movement | clone -3 MIR/-8 bytes; generic -8 bytes; tokenizer -22 text bytes; producer +8,744 text bytes | twelve-lane hot TU +4.1% wall/user, every candidate lane slower | exact hot outputs; candidate removed | rejected; exposed entry-address sensitivity |
