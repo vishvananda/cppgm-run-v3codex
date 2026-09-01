@@ -11,6 +11,13 @@ namespace lowir_opt {
 struct InlineCleanup;
 struct Stats;
 
+struct StablePrefixSpecializationIndex
+{
+  std::vector<unsigned char> known;
+  std::vector<lowir_model::SymbolId> family;
+  std::vector<std::uint64_t> index;
+};
+
 // Propagate arguments agreed by every direct caller into non-address-observable
 // internal functions and remove scalar parameters that become unused.
 std::size_t specialize_interprocedural_arguments(
@@ -27,13 +34,15 @@ std::size_t specialize_o3_constant_groups(
     const InlineCallGraph & call_graph,
     std::vector<unsigned char> * rewritten_symbols,
     Stats * stats,
-    const InlineCleanup * cleanup);
+    const InlineCleanup * cleanup,
+    StablePrefixSpecializationIndex * stable_prefix_specializations = 0);
 
 // Reuse a normally returned result from a structurally repeat-stable query
 // until an intervening operation may change memory.
 std::size_t eliminate_repeated_stable_calls(
     lowir_model::LowirProgram & program,
     std::vector<unsigned char> * rewritten_symbols,
-    Stats * stats = 0);
+    Stats * stats = 0,
+    const StablePrefixSpecializationIndex * stable_prefix_specializations = 0);
 
 }  // namespace lowir_opt

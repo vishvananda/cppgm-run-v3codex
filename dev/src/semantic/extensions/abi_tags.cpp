@@ -89,6 +89,14 @@ std::uint8_t DirectFunctionControlAttributeMask(
 			result |= FUNCTION_CONTROL_PURE;
 		else if (spelling == "const" || spelling == "__const__")
 			result |= FUNCTION_CONTROL_CONST;
+		else if (spelling == "cppgm_stable_prefix" ||
+			spelling == "__cppgm_stable_prefix__")
+		{
+			if (arena.FirstEdge(attribute) != kNoEdge)
+				throw std::runtime_error(
+					"cppgm_stable_prefix attribute takes no arguments");
+			result |= FUNCTION_CONTROL_STABLE_PREFIX_QUERY;
+		}
 	}
 	return result;
 }
@@ -141,6 +149,57 @@ void MergeAbiTags(Program* program, const std::vector<NameId>& additions,
 		merged.begin(), merged.end());
 }
 
+bool IsStablePrefixIntegerType(const Program& program, TypeId type)
+{
+	type = program.types.RemoveTopCv(type);
+	const TypeRecord& record = program.types.Get(type);
+	if (record.kind == TYPE_BITINT) return record.bound <= 64;
+	if (record.kind == TYPE_FUNDAMENTAL)
+		return record.fundamental != FUND_VOID &&
+			record.fundamental != FUND_NULLPTR_T &&
+			record.fundamental != FUND_INT128 &&
+			record.fundamental != FUND_UINT128 &&
+			!IsExtendedFloatingFundamental(record.fundamental);
+	if (record.kind != TYPE_NAMED || record.entity >= program.entities.size())
+		return false;
+	return IsEnumNamedFlavor(program.entities[record.entity].flavor);
+}
+
+bool IsStablePrefixScalarResult(const Program& program, TypeId type)
+{
+	type = program.types.RemoveTopCv(type);
+	const TypeRecord& record = program.types.Get(type);
+	if (record.kind == TYPE_POINTER || record.kind == TYPE_BLOCK_POINTER ||
+		record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_RVALUE_REFERENCE)
+		return true;
+	if (record.kind == TYPE_BITINT) return record.bound <= 64;
+	if (record.kind == TYPE_NAMED)
+		return record.entity < program.entities.size() &&
+			IsEnumNamedFlavor(program.entities[record.entity].flavor);
+	return record.kind == TYPE_FUNDAMENTAL &&
+		record.fundamental != FUND_VOID &&
+		record.fundamental != FUND_LONG_DOUBLE &&
+		record.fundamental != FUND_FLOAT64X &&
+		record.fundamental != FUND_INT128 &&
+		record.fundamental != FUND_UINT128 &&
+		record.fundamental != FUND_STDFLOAT128 &&
+		record.fundamental != FUND_FLOAT128;
+}
+
+void ValidateStablePrefixFunction(const Program& program, TypeId type)
+{
+	const TypeRecord& function = program.types.Get(type);
+	if (function.kind != TYPE_FUNCTION || function.variadic ||
+		function.parameter_count == 0 ||
+		!IsStablePrefixIntegerType(program,
+			program.types.Parameters(type)[function.parameter_count - 1]) ||
+		!IsStablePrefixScalarResult(program, function.child))
+		throw std::runtime_error(
+			"cppgm_stable_prefix requires a fixed scalar function "
+			"with a final integer parameter");
+}
+
 }
 
 std::uint8_t FunctionControlAttributeMask(
@@ -165,6 +224,11 @@ void ApplyFunctionControlAttributes(Program* program,
 		record.force_inline = canonical.force_inline = true;
 	if ((attributes & FUNCTION_CONTROL_NO_INLINE) != 0)
 		record.no_inline = canonical.no_inline = true;
+	if ((attributes & FUNCTION_CONTROL_STABLE_PREFIX_QUERY) != 0)
+	{
+		ValidateStablePrefixFunction(*program, record.type);
+		record.stable_prefix_query = canonical.stable_prefix_query = true;
+	}
 	const FunctionMemoryEffects effects =
 		(attributes & FUNCTION_CONTROL_CONST) != 0 ?
 			FUNCTION_EFFECTS_READNONE :

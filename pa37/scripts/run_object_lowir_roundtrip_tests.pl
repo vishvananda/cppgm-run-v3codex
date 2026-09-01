@@ -232,6 +232,13 @@ sub check_mode {
     return "serialized LowIR lost section=cppgmsec: $source $level_name\n"
       unless $metadata =~ /(?:^|,\s*)section=cppgmsec(?:,|$)/;
   }
+  if($source =~ /stable-prefix-query-replay/) {
+    my $lowir_text = read_bytes($lowir);
+    my ($boundary) = $lowir_text =~
+      /^(function \@stable_prefix_query\([^\n]+\)[^\n]+)$/m;
+    return "serialized LowIR lost the stable-prefix query: $source $level_name\n"
+      unless defined($boundary) && $boundary =~ /\bquery=stable_prefix\b/;
+  }
   my $from_lowir_error = run_command($app,
                                      "-c",
                                      @debug_flags,
@@ -252,7 +259,30 @@ sub check_mode {
 
   my $direct_bytes = read_bytes($direct);
   my $from_lowir_bytes = read_bytes($from_lowir);
-  return undef if $direct_bytes eq $from_lowir_bytes;
+  if($direct_bytes eq $from_lowir_bytes) {
+    if($source =~ /stable-prefix-query-replay/) {
+      my $direct_object = "$base.direct.obj";
+      my $replayed_object = "$base.from-lowir.obj";
+      my $object_error = run_command(
+        $app, "-c", @debug_flags, @optimization_flags,
+        "-o", $direct_object, $source);
+      return $object_error if defined $object_error;
+      $object_error = run_command(
+        $app, "-c", @debug_flags, @optimization_flags,
+        "-o", $replayed_object, $lowir);
+      return $object_error if defined $object_error;
+      return "private compiler object differs after LowIR replay: " .
+        "$source $debug_label $level_name\n"
+        unless read_bytes($direct_object) eq read_bytes($replayed_object);
+      my $program = "$base.replayed-program";
+      my $link_error = run_command(
+        $app, @optimization_flags, "-o", $program, $replayed_object);
+      return $link_error if defined $link_error;
+      my $run_error = run_command($program);
+      return $run_error if defined $run_error;
+    }
+    return undef;
+  }
 
   return "object differs after compiling serialized LowIR: $source $debug_label $level_name\n"
     . "direct bytes: " . length($direct_bytes) . "\n"

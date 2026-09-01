@@ -507,6 +507,7 @@ struct Symbol
 	bool force_inline;
 	bool inline_hint;
 	bool no_inline;
+	bool stable_prefix_query;
 
 	Symbol(Kind kind_value, lowir_model::StringId name_value,
 		lowir_model::StringId object_name_value, bool c_linkage_value,
@@ -524,7 +525,7 @@ struct Symbol
 		  declaration_emitted(false), definition_emitted(false), referenced(false),
 		  object_output_root(false), lifecycle_base_entry(false),
 		  force_inline(false),
-		  inline_hint(false), no_inline(false) {}
+		  inline_hint(false), no_inline(false), stable_prefix_query(false) {}
 };
 
 }

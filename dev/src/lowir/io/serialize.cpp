@@ -120,6 +120,10 @@ void write_boundary_metadata(MetadataWriter & metadata,
   case CRM_DEFAULT: break;
   case CRM_NORETURN: metadata.item("return", "noreturn"); break;
   }
+  switch(value.query) {
+  case CQM_DEFAULT: break;
+  case CQM_STABLE_PREFIX: metadata.item("query", "stable_prefix"); break;
+  }
 }
 
 void write_symbol_metadata(MetadataWriter & metadata,

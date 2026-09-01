@@ -100,7 +100,10 @@ bool IsSupportedBuiltinProbe(const std::string& value)
 
 bool IsSupportedAttributeProbe(const std::string& value)
 {
-	static const char* const entries[] = {"__using_if_exists__"};
+	static const char* const entries[] = {
+		"__using_if_exists__",
+		"cppgm_stable_prefix"
+	};
 	return IsSortedMetadataEntry(value, entries,
 		sizeof(entries) / sizeof(entries[0]));
 }

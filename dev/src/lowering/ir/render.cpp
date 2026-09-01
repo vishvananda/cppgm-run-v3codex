@@ -493,6 +493,12 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 		output << "return=noreturn";
 		separator = true;
 	}
+	if (function && symbol.stable_prefix_query)
+	{
+		if (separator) output << ", ";
+		output << "query=stable_prefix";
+		separator = true;
+	}
 	if (function && symbol.runtime_role != Symbol::RUNTIME_ROLE_NONE)
 	{
 		const char* role = RuntimeRoleName(symbol.runtime_role);

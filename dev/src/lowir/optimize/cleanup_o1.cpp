@@ -153,7 +153,8 @@ bool same_boundary(const lowir_model::FunctionBoundaryMetadata & left,
                    const lowir_model::FunctionBoundaryMetadata & right)
 {
   return left.arity == right.arity && left.effects == right.effects &&
-    left.unwind == right.unwind && left.returns == right.returns;
+    left.unwind == right.unwind && left.returns == right.returns &&
+    left.query == right.query;
 }
 
 std::size_t boundary_hash(
@@ -163,6 +164,7 @@ std::size_t boundary_hash(
   combine_hash(&result, static_cast<std::size_t>(boundary.effects));
   combine_hash(&result, static_cast<std::size_t>(boundary.unwind));
   combine_hash(&result, static_cast<std::size_t>(boundary.returns));
+  combine_hash(&result, static_cast<std::size_t>(boundary.query));
   return result;
 }
 

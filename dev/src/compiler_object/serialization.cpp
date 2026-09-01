@@ -22,7 +22,7 @@ namespace
 {
 
 const char kMagic[] = "CPPGMOBJ";
-const std::uint32_t kVersion = 4;
+const std::uint32_t kVersion = 5;
 const std::uint64_t kMaxObjectElements = UINT64_C(1) << 28;
 
 class BinaryWriter
@@ -385,6 +385,7 @@ void WriteBoundary(BinaryWriter& out,
 	WriteEnum(out, value.effects);
 	WriteEnum(out, value.unwind);
 	WriteEnum(out, value.returns);
+	WriteEnum(out, value.query);
 }
 
 lowir_model::FunctionBoundaryMetadata ReadBoundary(BinaryReader& in)
@@ -394,6 +395,7 @@ lowir_model::FunctionBoundaryMetadata ReadBoundary(BinaryReader& in)
 	value.effects = ReadEnum<lowir_model::CallEffectsMode>(in);
 	value.unwind = ReadEnum<lowir_model::CallUnwindMode>(in);
 	value.returns = ReadEnum<lowir_model::CallReturnMode>(in);
+	value.query = ReadEnum<lowir_model::CallQueryMode>(in);
 	return value;
 }
 

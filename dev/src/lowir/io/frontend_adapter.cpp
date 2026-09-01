@@ -362,6 +362,8 @@ void AdaptBoundaryFacts(const Symbol& source,
 		lowir_model::CFXM_READONLY : lowir_model::CFXM_DEFAULT;
 	if (source.nonthrowing) boundary->unwind = lowir_model::CUM_NO;
 	if (source.noreturn) boundary->returns = lowir_model::CRM_NORETURN;
+	if (source.stable_prefix_query)
+		boundary->query = lowir_model::CQM_STABLE_PREFIX;
 }
 
 bool HasNonCallDemand(const Symbol& source)

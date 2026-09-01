@@ -8,6 +8,12 @@
 
 #include "preprocess/tokens/IPPTokenStream.h"
 
+#if __has_attribute(cppgm_stable_prefix)
+#define CPPGM_STABLE_PREFIX_QUERY __attribute__((cppgm_stable_prefix))
+#else
+#define CPPGM_STABLE_PREFIX_QUERY
+#endif
+
 namespace cppgm
 {
 namespace
@@ -592,7 +598,7 @@ private:
 		kAfterInclude
 	};
 
-	int Peek(std::size_t offset)
+	int Peek(std::size_t offset) CPPGM_STABLE_PREFIX_QUERY
 	{
 		while (lookahead_.size() <= offset)
 		{
@@ -1050,6 +1056,8 @@ private:
 };
 
 }
+
+#undef CPPGM_STABLE_PREFIX_QUERY
 
 PPTokenizationStats::PPTokenizationStats()
 	: source_bytes(0), decoded_code_points(0), translated_code_points(0),

@@ -390,8 +390,11 @@ private:
     for(std::size_t i = 0; i < items.size(); ++i) {
       const std::string & key = items[i].first;
       const std::string & value = items[i].second;
-      if(key == "arity" || key == "effects" || key == "unwind" || key == "return") {
+      if(key == "arity" || key == "effects" || key == "unwind" ||
+         key == "return" || key == "query") {
         if(!boundary) throw ParseError("function metadata on non-function");
+        if(call_signature && key == "query")
+          throw ParseError("query metadata requires a direct function");
         apply_boundary_item(key, value, *boundary);
       } else if(call_signature) {
         throw ParseError("symbol metadata on call signature");
@@ -420,6 +423,9 @@ private:
     } else if(key == "return") {
       if(value == "noreturn") out.returns = CRM_NORETURN;
       else throw ParseError("invalid return metadata");
+    } else if(key == "query") {
+      if(value == "stable_prefix") out.query = CQM_STABLE_PREFIX;
+      else throw ParseError("invalid query metadata");
     }
   }
 
@@ -1029,9 +1035,13 @@ public:
     validate_roles_and_tls();
     validate_entry_definition();
     validate_aliases();
-    for(std::size_t i = 0; i < program_.function_declarations.size(); ++i)
+    for(std::size_t i = 0; i < program_.function_declarations.size(); ++i) {
       validate_parameters(program_.function_declarations[i].params,
                           program_.function_declarations[i].return_type);
+      validate_query_boundary(program_.function_declarations[i].params,
+          program_.function_declarations[i].return_type,
+          program_.function_declarations[i].boundary);
+    }
     for(std::size_t i = 0; i < program_.functions.size(); ++i)
       validate_function(program_.functions[i]);
   }
@@ -1191,9 +1201,32 @@ private:
     }
   }
 
+  bool integer_query_type(const LowType & type) const
+  {
+    return type.kind == LTK_I8 || type.kind == LTK_U8 ||
+      type.kind == LTK_I16 || type.kind == LTK_U16 ||
+      type.kind == LTK_I32 || type.kind == LTK_U32 ||
+      type.kind == LTK_I64;
+  }
+
+  void validate_query_boundary(const std::vector<Parameter> & params,
+                               const LowType & result,
+                               const FunctionBoundaryMetadata & boundary)
+  {
+    if(boundary.query != CQM_STABLE_PREFIX) return;
+    if(boundary.arity != CAM_FIXED || params.empty() ||
+       !integer_query_type(params.back().type) ||
+       result.kind == LTK_VOID || result.kind == LTK_OBJECT ||
+       result.kind == LTK_I128 || result.kind == LTK_F80)
+      throw ParseError("stable-prefix query requires a fixed scalar boundary "
+                       "with a final integer parameter");
+  }
+
   void validate_function(const Function & function)
   {
     validate_parameters(function.params, function.return_type);
+    validate_query_boundary(
+      function.params, function.return_type, function.boundary);
     if(function.blocks.empty()) throw ParseError("function has no blocks");
     TypeIndex values;
     TypeIndex all_values;
@@ -1525,6 +1558,8 @@ private:
         "copy elision requires a direct void call with destination and source");
     if(ins.has_call_signature) {
       validate_parameters(ins.call_params, ins.call_return_type);
+      validate_query_boundary(
+        ins.call_params, ins.call_return_type, ins.call_boundary);
       if(!same_lowir_type(ins.call_return_type, ins.type))
         throw ParseError("call signature return mismatch");
       validate_arity(ins.args.size(), ins.call_params.size(), ins.call_boundary.arity);

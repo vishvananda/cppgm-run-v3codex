@@ -651,6 +651,24 @@ different argument tuple prevents reuse.  Callers containing exception
 regions are skipped.  A first call with no available result also clears other
 query facts because its slow path may mutate memory.
 
+A function carrying the PA13 `[query=stable_prefix]` boundary fact supplies a
+second, explicit repeatability proof. For calls with equal earlier typed SSA
+arguments and known nonnegative integer final arguments, a normally returned
+call at index `m` preserves available results at every index `n <= m` in the
+same query family. `-O3` may consequently replace a later call at `n` with its
+available result. The ordinary memory and exception barriers above still
+apply. A lower, unknown, or negative index, different earlier argument, or
+unclassified call clears the affected availability rather than relying on the
+promise.
+
+Constant-group specialization may remove the final index parameter from an
+internal clone. When it does, the same `-O3` invocation must retain the clone's
+origin family and nonnegative index as transformation-derived state so the
+clone and unspecialized calls participate in the same prefix relationship.
+The reduced clone must not retain metadata whose required final parameter was
+removed. `-O0` through `-O2` neither consume the explicit query promise nor
+perform this composition.
+
 The analysis tracks at most 128 query-and-argument signatures per caller.  Its
 forward worklist is limited to eight times
 `(block count + 1) * (signature count + 1)` state updates; exhausting that

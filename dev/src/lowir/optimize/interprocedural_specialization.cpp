@@ -708,6 +708,29 @@ bool count_constant_group(std::vector<ConstantGroup> * groups,
   return true;
 }
 
+void record_stable_prefix_specialization(
+    StablePrefixSpecializationIndex * index,
+    const LowirProgram & program,
+    const Function & target,
+    const ConstantGroup & group,
+    const GroupSelection & selection)
+{
+  if(!index || target.boundary.query != lowir_model::CQM_STABLE_PREFIX ||
+     group.parameter + 1 != target.params.size() ||
+     group.value.kind != Operand::OP_INTEGER || !group.value.has_int_value ||
+     group.value.int_value < 0 || group.value.int_high != 0 ||
+     selection.removed.empty() || !selection.removed.back())
+    return;
+  const std::size_t symbols = program.symbol_names.size();
+  index->known.resize(symbols, 0);
+  index->family.resize(symbols);
+  index->index.resize(symbols, 0);
+  index->known[selection.replacement] = 1;
+  index->family[selection.replacement] = target.symbol;
+  index->index[selection.replacement] =
+    static_cast<std::uint64_t>(group.value.int_value);
+}
+
 void remove_internal_dead_parameters(
     LowirProgram * program,
     std::size_t function_count,
@@ -728,15 +751,22 @@ void remove_internal_dead_parameters(
     const unsigned char * removed = &removed_parameters[first];
     if(!has_removed_parameter(removed, parameter_count)) continue;
     const lowir_model::SymbolId symbol = program->functions[function].symbol;
+    if(removed[parameter_count - 1])
+      program->functions[function].boundary.query = lowir_model::CQM_DEFAULT;
     remove_masked(
       &program->functions[function].params, removed, parameter_count);
     if(has_declaration[function])
       for(std::size_t declaration = 0;
           declaration < program->function_declarations.size(); ++declaration)
         if(program->function_declarations[declaration].symbol == symbol)
+        {
+          if(removed[parameter_count - 1])
+            program->function_declarations[declaration].boundary.query =
+              lowir_model::CQM_DEFAULT;
           remove_masked(
             &program->function_declarations[declaration].params,
             removed, parameter_count);
+        }
   }
 }
 
@@ -980,7 +1010,8 @@ std::size_t specialize_o3_constant_groups(
     const InlineCallGraph & call_graph,
     std::vector<unsigned char> * rewritten_symbols,
     Stats * stats,
-    const InlineCleanup * cleanup)
+    const InlineCleanup * cleanup,
+    StablePrefixSpecializationIndex * stable_prefix_specializations)
 {
   const std::size_t function_count = program.functions.size();
   const ReadonlyByteStringIndex byte_strings(program);
@@ -1180,8 +1211,12 @@ std::size_t specialize_o3_constant_groups(
       selection.removed = removed;
       selection.replacement = allocate_clone_symbol(
         &program, &used_symbol_names, &clone_ordinal, "__o3groupspec");
+      record_stable_prefix_specialization(
+        stable_prefix_specializations, program, target, best, selection);
       make_internal_clone(&clone, selection.replacement);
       const std::size_t parameter_count = clone.params.size();
+      if(selection.removed[parameter_count - 1])
+        clone.boundary.query = lowir_model::CQM_DEFAULT;
       remove_masked(&clone.params, &selection.removed[0], parameter_count);
       cloned_instructions += clone_instructions;
       clones.push_back(std::move(clone));
@@ -1382,7 +1417,11 @@ struct StableCallSignature
 {
   lowir_model::SymbolId symbol;
   std::vector<Operand> arguments;
+  lowir_model::SymbolId prefix_family;
+  std::vector<Operand> prefix_arguments;
   std::size_t calls = 0;
+  std::uint64_t prefix_index = 0;
+  bool stable_prefix = false;
 };
 
 bool same_signature(const StableCallSignature & signature,
@@ -1392,6 +1431,56 @@ bool same_signature(const StableCallSignature & signature,
      signature.arguments.size() != call.args.size()) return false;
   for(std::size_t i = 0; i < call.args.size(); ++i)
     if(!same_operand(signature.arguments[i], call.args[i])) return false;
+  return true;
+}
+
+bool stable_prefix_index(const Instruction & call, std::uint64_t * index)
+{
+  if(call.args.empty()) return false;
+  const Operand & value = call.args.back();
+  if(value.kind != Operand::OP_INTEGER || !value.has_int_value ||
+     value.int_value < 0 || value.int_high != 0)
+    return false;
+  *index = static_cast<std::uint64_t>(value.int_value);
+  return true;
+}
+
+bool same_stable_prefix_family(const StableCallSignature & cached,
+                               const StableCallSignature & current)
+{
+  if(!cached.stable_prefix || !current.stable_prefix ||
+     cached.prefix_family != current.prefix_family ||
+     cached.prefix_arguments.size() != current.prefix_arguments.size() ||
+     cached.prefix_index > current.prefix_index)
+    return false;
+  for(std::size_t i = 0; i < cached.prefix_arguments.size(); ++i)
+    if(!same_operand(
+         cached.prefix_arguments[i], current.prefix_arguments[i]))
+      return false;
+  return true;
+}
+
+bool classify_stable_prefix_call(
+    const Instruction & call,
+    const std::vector<unsigned char> & stable_prefix,
+    const StablePrefixSpecializationIndex * specializations,
+    lowir_model::SymbolId * family,
+    std::uint64_t * index,
+    std::vector<Operand> * arguments)
+{
+  const std::uint32_t symbol = call.first.symbol;
+  if(symbol < stable_prefix.size() && stable_prefix[symbol] &&
+     stable_prefix_index(call, index)) {
+    *family = call.first.symbol;
+    arguments->assign(call.args.begin(), call.args.end() - 1);
+    return true;
+  }
+  if(!specializations || symbol >= specializations->known.size() ||
+     !specializations->known[symbol])
+    return false;
+  *family = specializations->family[symbol];
+  *index = specializations->index[symbol];
+  *arguments = call.args;
   return true;
 }
 
@@ -1448,6 +1537,34 @@ void clear_available(std::vector<AvailableStableCall> * state)
     (*state)[i].valid = false;
 }
 
+void retain_stable_prefix_results(
+    const std::vector<StableCallSignature> & signatures,
+    std::size_t current,
+    std::vector<AvailableStableCall> * state)
+{
+  for(std::size_t signature = 0; signature < state->size(); ++signature)
+    if((*state)[signature].valid &&
+       !same_stable_prefix_family(signatures[signature], signatures[current]))
+      (*state)[signature].valid = false;
+}
+
+bool advance_stable_call(
+    const std::vector<StableCallSignature> & signatures,
+    std::size_t signature,
+    const Instruction & call,
+    std::vector<AvailableStableCall> * state)
+{
+  if((*state)[signature].valid) return true;
+  if(signatures[signature].stable_prefix)
+    retain_stable_prefix_results(signatures, signature, state);
+  else
+    clear_available(state);
+  (*state)[signature].valid = true;
+  (*state)[signature].value.kind = Operand::OP_TEMP;
+  (*state)[signature].value.value = call.dest;
+  return false;
+}
+
 Instruction stable_call_replacement(const Instruction & call,
                                     const Operand & value)
 {
@@ -1465,13 +1582,21 @@ Instruction stable_call_replacement(const Instruction & call,
 std::size_t eliminate_repeated_stable_calls(
     LowirProgram & program,
     std::vector<unsigned char> * rewritten_symbols,
-    Stats * stats)
+    Stats * stats,
+    const StablePrefixSpecializationIndex * stable_prefix_specializations)
 {
   const std::vector<unsigned char> noreturn_symbols =
     noreturn_symbol_index(program);
   std::vector<unsigned char> stable(program.symbol_names.size(), 0);
+  std::vector<unsigned char> stable_prefix(program.symbol_names.size(), 0);
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
+    if(program.function_declarations[i].boundary.query ==
+         lowir_model::CQM_STABLE_PREFIX)
+      stable_prefix[program.function_declarations[i].symbol] = 1;
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     if(stats) ++stats->repeat_stable_function_visits;
+    if(program.functions[i].boundary.query == lowir_model::CQM_STABLE_PREFIX)
+      stable_prefix[program.functions[i].symbol] = 1;
     if(repeat_stable_query(
          program.functions[i], noreturn_symbols, stats)) {
       stable[program.functions[i].symbol] = 1;
@@ -1500,9 +1625,22 @@ std::size_t eliminate_repeated_stable_calls(
         if(instruction.kind != Instruction::IK_CALL ||
            instruction.first.kind != Operand::OP_GLOBAL ||
            instruction.first.symbol >= stable.size() ||
-           !stable[instruction.first.symbol] ||
+           (!stable[instruction.first.symbol] &&
+            !stable_prefix[instruction.first.symbol] &&
+            (!stable_prefix_specializations ||
+             instruction.first.symbol >=
+               stable_prefix_specializations->known.size() ||
+             !stable_prefix_specializations->known[
+               instruction.first.symbol])) ||
            instruction.call_returns_void || !instruction.dest.valid())
           continue;
+        std::uint64_t prefix_index = 0;
+        lowir_model::SymbolId prefix_family;
+        std::vector<Operand> prefix_arguments;
+        const bool prefix = classify_stable_prefix_call(
+          instruction, stable_prefix, stable_prefix_specializations,
+          &prefix_family, &prefix_index, &prefix_arguments);
+        if(!stable[instruction.first.symbol] && !prefix) continue;
         if(stats) ++stats->repeat_stable_call_sites;
         std::size_t signature = 0;
         while(signature < signatures.size() &&
@@ -1513,6 +1651,10 @@ std::size_t eliminate_repeated_stable_calls(
           StableCallSignature added;
           added.symbol = instruction.first.symbol;
           added.arguments = instruction.args;
+          added.prefix_family = prefix_family;
+          added.prefix_arguments.swap(prefix_arguments);
+          added.prefix_index = prefix_index;
+          added.stable_prefix = prefix;
           signatures.push_back(std::move(added));
         }
         ++signatures[signature].calls;
@@ -1522,7 +1664,8 @@ std::size_t eliminate_repeated_stable_calls(
     if(has_eh || signatures.empty()) continue;
     for(std::size_t signature = 0;
         signature < signatures.size(); ++signature) {
-      if(signatures[signature].calls < 2) {
+      if(signatures[signature].calls < 2 &&
+         !signatures[signature].stable_prefix) {
         for(std::size_t block = 0; block < call_signatures.size(); ++block)
           for(std::size_t index = 0;
               index < call_signatures[block].size(); ++index)
@@ -1552,8 +1695,8 @@ std::size_t eliminate_repeated_stable_calls(
         outgoing.capacity() * sizeof(StableState);
       for(std::size_t signature = 0;
           signature < signatures.size(); ++signature)
-        analysis_bytes += signatures[signature].arguments.capacity() *
-          sizeof(Operand);
+        analysis_bytes += (signatures[signature].arguments.capacity() +
+          signatures[signature].prefix_arguments.capacity()) * sizeof(Operand);
       for(std::size_t block = 0; block < function.blocks.size(); ++block) {
         analysis_bytes += call_signatures[block].capacity() *
           sizeof(std::size_t);
@@ -1589,13 +1732,10 @@ std::size_t eliminate_repeated_stable_calls(
       for(std::size_t index = 0; index < instructions.size(); ++index) {
         const std::size_t signature = call_signatures[block][index];
         if(signature < signatures.size() &&
-           signatures[signature].calls >= 2) {
-          if(!state[signature].valid) {
-            clear_available(&state);
-            state[signature].valid = true;
-            state[signature].value.kind = Operand::OP_TEMP;
-            state[signature].value.value = instructions[index].dest;
-          }
+           (signatures[signature].calls >= 2 ||
+            signatures[signature].stable_prefix)) {
+          advance_stable_call(
+            signatures, signature, instructions[index], &state);
         } else if(stable_call_barrier(instructions[index]))
           clear_available(&state);
       }
@@ -1638,8 +1778,10 @@ std::size_t eliminate_repeated_stable_calls(
       for(std::size_t index = 0; index < instructions.size(); ++index) {
         const std::size_t signature = call_signatures[block][index];
         if(signature < signatures.size() &&
-           signatures[signature].calls >= 2) {
-          if(state[signature].valid) {
+           (signatures[signature].calls >= 2 ||
+            signatures[signature].stable_prefix)) {
+          if(advance_stable_call(
+               signatures, signature, instructions[index], &state)) {
             instructions[index] = stable_call_replacement(
               instructions[index], state[signature].value);
             ++rewrites;
@@ -1649,11 +1791,6 @@ std::size_t eliminate_repeated_stable_calls(
             }
             if(rewritten_symbols)
               (*rewritten_symbols)[function.symbol] = 1;
-          } else {
-            clear_available(&state);
-            state[signature].valid = true;
-            state[signature].value.kind = Operand::OP_TEMP;
-            state[signature].value.value = instructions[index].dest;
           }
         } else if(stable_call_barrier(instructions[index]))
           clear_available(&state);

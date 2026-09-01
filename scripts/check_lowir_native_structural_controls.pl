@@ -95,7 +95,7 @@ if (scalar(@ARGV) != 3)
 
 	my ($app, $driver, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks|composite-copy-pointer-preservation|selected-parameter-index-home|adjacent-integer-normalizations|o3-common-path-memory).*\.t$/);
+	qr/(?:acyclic-phi-frame-home|cyclic-choice-region-residency|call-result-plan-reservation|call-free-fast-loop-phi-residency|call-free-callee-save-recoloring|adjacent-frame-compare-forwarding|local-loop-phi-activation|historical-placement-contracts|conditional-fallthrough-layout|deferred-carrier-lifetime-reset|o3-large-function-alignment|medium-copy-direct-chunks|composite-copy-pointer-preservation|selected-parameter-index-home|adjacent-integer-normalizations|o3-common-path-memory|stable-prefix-boundary-replay).*\.t$/);
 die "No native structural-control tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -127,6 +127,53 @@ for my $test (@tests)
 	die "$test: generated program failed with status $run_status\n" if $run_status != 0;
 
 	my $mir = read_file($mir_path);
+	if ($test =~ /stable-prefix-boundary-replay/) {
+		for my $requested_level (qw(-O0 -O1 -O2 -O3)) {
+			my $name = substr($requested_level, 1);
+			my $level_mir = "$directory/$name.mir";
+			my $level_program = "$directory/$name.program";
+			$status = run_command_capture(
+				cmd => [$app, $requested_level, '--dump-machine-ir',
+					$level_mir, '-o', $level_program, $test],
+				stdout => "$directory/$name.compile.stdout",
+				stderr => "$directory/$name.compile.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level native replay failed\n" .
+				read_file("$directory/$name.compile.stderr") if $status != 0;
+			my $level_text = read_file($level_mir);
+			function_body($test, $level_text, 'prefix_query');
+			$run_status = run_command_capture(
+				cmd => [$level_program],
+				stdout => "$directory/$name.program.stdout",
+				stderr => "$directory/$name.program.stderr",
+				timeout => 30,
+			);
+			die "$test: $requested_level replay behavior returned " .
+				"$run_status\n" if $run_status != 0;
+		}
+		my $driver_input = "$directory/driver.lowir";
+		copy($test, $driver_input) or
+			die "$test: unable to prepare driver replay: $!\n";
+		my $driver_program = "$directory/driver.program";
+		$status = run_command_capture(
+			cmd => [$driver, '-O3', '-o', $driver_program, $driver_input],
+			stdout => "$directory/driver.compile.stdout",
+			stderr => "$directory/driver.compile.stderr",
+			timeout => 60,
+		);
+		die "$test: O3 driver replay failed\n" .
+			read_file("$directory/driver.compile.stderr") if $status != 0;
+		$run_status = run_command_capture(
+			cmd => [$driver_program],
+			stdout => "$directory/driver.program.stdout",
+			stderr => "$directory/driver.program.stderr",
+			timeout => 30,
+		);
+		die "$test: O3 driver replay behavior returned $run_status\n"
+			if $run_status != 0;
+		next;
+	}
 	if ($test =~ /o3-common-path-memory/) {
 		my %level_mir;
 		for my $request (['O0', '-O0'], ['O1', '-O1'],

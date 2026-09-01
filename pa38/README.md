@@ -361,6 +361,13 @@ source is live. A call clobber, implicit use, debug dependency, or unproved
 interference rejects the complete source color; partial elimination is not
 permitted.
 
+Call-boundary facts that have no machine-level encoding, including PA13
+`query=stable_prefix`, remain valid input at every PA38 optimization level.
+PA37 may consume the fact and rewrite calls before native lowering; PA38 must
+also accept a surviving marked definition without inventing a hidden side
+channel or changing behavior. The focused control exercises direct backend
+lowering at `-O0` through `-O3` and the combined `cppgm++ -O3` replay path.
+
 After each eliminated color, recompute complete MIR liveness. An eliminated
 color cannot become a later destination, and a surviving callee-saved color
 used as a destination cannot itself be eliminated. This monotonic policy

@@ -332,6 +332,7 @@ function @sum(%count : i64) -> i64 [arity=variadic] {
   ...
 }
 declare function @trap() -> void [effects=readnone, unwind=no, return=noreturn]
+declare function @lookup(%table : ptr, %index : i64) -> i64 [query=stable_prefix]
 ```
 
 The currently defined function metadata keys are:
@@ -340,6 +341,7 @@ The currently defined function metadata keys are:
 - `effects`
 - `unwind`
 - `return`
+- `query`
 
 The currently defined arity values are:
 
@@ -372,8 +374,34 @@ cheap non-text-based implementation.
 The currently defined return value is `noreturn`. Omission means the call returns normally
 and has no explicit spelling.
 
+The currently defined query value is `stable_prefix`. It is valid only on a
+fixed-arity function with at least one parameter, a final integer parameter,
+and a scalar result representable by the PA13 call boundary. The final
+parameter is the prefix index; all earlier parameters identify the queried
+object or family. After a normally returning call at index `n`, a normally
+returning call with the same earlier arguments at index `m >= n` preserves the
+result that another call at `n` would produce. The function may extend private
+or caller-supplied cache state while answering the higher query, but that work
+must not make the lower-prefix observation differ. Omission makes no such
+promise. A producer that emits this metadata is asserting the relationship;
+consumers need not rediscover it from the function body.
+
+More precisely, after that return at `m`, replacing a later call at `n <= m`
+with the previously observed result at `n` has no other observable effect.
+This is the permission that lets a consumer remove the later call; merely
+returning an equal value while performing unrelated observable work does not
+satisfy the contract.
+
+This contract only relates normal returns. An intervening store, volatile or
+atomic operation, unclassified call, exceptional operation, different earlier
+argument, unknown index, negative index, or lower index does not establish the
+preservation relationship. Optimizers must retain those conservative
+boundaries unless another independent proof applies.
+
 Call signatures only accept call-boundary metadata such as `arity=...`, `effects=...`,
-`unwind=...`, and `return=...`. Top-level symbol metadata such as `role=...`, `linkage=...`,
+`unwind=...`, and `return=...`. The `query=stable_prefix` promise requires a
+direct function declaration or definition so consumers have a stable query-family
+identity; it is not valid on an indirect call signature. Top-level symbol metadata such as `role=...`, `linkage=...`,
 `binding=...`, `object=...`, `keep_alias=...`, `prefer_local=...`, `object_root=...`, and
 `force_inline=...`, `inline_hint=...`, and
 `no_inline=...` are not valid on `as (...) -> ...`
@@ -1105,7 +1133,8 @@ The PA13 subset requires direct calls and calls through pointer-valued operands.
 For indirect calls, the explicit `as (...) -> ...` call signature is part of the
 stable LowIR surface because the callee operand alone does not describe the
 semantic boundary. That call signature may also carry call-boundary metadata
-such as `arity=variadic`, `effects=readonly`, `unwind=no`, or `return=noreturn`
+such as `arity=variadic`, `effects=readonly`, `unwind=no`, `return=noreturn`,
+or `query=stable_prefix`
 when needed.
 
 `[elision=copy]` is a source-language permission on a direct `void` call with

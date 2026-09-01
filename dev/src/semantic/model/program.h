@@ -712,7 +712,7 @@ struct BindingRecord
 		conversion_function : 1, constructor : 1,
 		constructor_base_entry : 1, destructor : 1,
 		destructor_base_entry : 1, inline_function : 1, force_inline : 1,
-		no_inline : 1,
+		no_inline : 1, stable_prefix_query : 1,
 		virtual_function : 1, pure_virtual : 1, final_virtual : 1,
 		override_specifier : 1, weak_odr : 1, weak_symbol : 1,
 		object_output_root : 1, emission_demanded : 1;

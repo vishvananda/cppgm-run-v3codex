@@ -2464,6 +2464,7 @@ void finish_optimizer_pipeline(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - post_prune_inline_started).count());
   }
+  StablePrefixSpecializationIndex stable_prefix_specializations;
   if(level >= 3) {
     const std::chrono::steady_clock::time_point loop_inline_started = stats ?
       std::chrono::steady_clock::now() :
@@ -2511,7 +2512,7 @@ void finish_optimizer_pipeline(
     grouped_cleanup.context = &grouped_context;
     const std::size_t grouped_rewrites = specialize_o3_constant_groups(
       program, grouped_call_graph, &grouped_rewritten_symbols, stats,
-      &grouped_cleanup);
+      &grouped_cleanup, &stable_prefix_specializations);
     if(stats) {
       stats->rewrites += grouped_rewrites;
       stats->ipa_nanoseconds += static_cast<std::uint64_t>(
@@ -2631,7 +2632,8 @@ void finish_optimizer_pipeline(
     std::vector<unsigned char> repeat_rewritten_symbols(
       program.symbol_names.size(), 0);
     const std::size_t repeat_rewrites = eliminate_repeated_stable_calls(
-      program, &repeat_rewritten_symbols, stats);
+      program, &repeat_rewritten_symbols, stats,
+      &stable_prefix_specializations);
     if(stats)
       stats->repeat_stable_nanoseconds += static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(

@@ -324,6 +324,7 @@ BindingId Analyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	binding.inline_function = source_binding.inline_function;
 	binding.force_inline = source_binding.force_inline;
 	binding.no_inline = source_binding.no_inline;
+	binding.stable_prefix_query = source_binding.stable_prefix_query;
 	binding.function_effects = source_binding.function_effects;
 	binding.weak_odr = source_binding.weak_odr;
 	binding.weak_symbol = source_binding.weak_symbol;

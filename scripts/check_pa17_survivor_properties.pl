@@ -72,13 +72,25 @@ if(scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:constructor-alias-boundaries|enclosing-temporary-lifetime|out-of-class-move-assignment-boundary|conditional-copy-elision-permission)\.cpp$/);
+	qr/(?:constructor-alias-boundaries|enclosing-temporary-lifetime|out-of-class-move-assignment-boundary|conditional-copy-elision-permission|stable-prefix-query-boundary|rejected-stable-prefix-query-[^.]+)\.cpp$/);
 die "No PA17 survivor-property tests found under $root\n" if !@tests;
 
 for my $test (@tests)
 {
 	my $directory = tempdir('pa17-survivor-property-XXXXXX',
 		TMPDIR => 1, CLEANUP => 1);
+	if($test =~ /rejected-stable-prefix-query/) {
+		my $output = "$directory/rejected.lowir";
+		my $status = run_command_capture(
+			cmd => [$app, '--emit-lowir', '-O0', '-o', $output, $test],
+			stdout => "$directory/source.stdout",
+			stderr => "$directory/source.stderr",
+			timeout => 60,
+		);
+		die "$test: frontend accepted an invalid stable-prefix query\n"
+			if $status == 0;
+		next;
+	}
 	my ($path, $lowir) = compile_source($app, $test, $directory);
 
 	if($test =~ /constructor-alias-boundaries/) {
@@ -147,6 +159,18 @@ for my $test (@tests)
 			if $incoming < 2 || $producers < 2;
 		die "$test: O0 permission removed the ordinary source cleanup\n"
 			if $after !~ /^\s+call void \@\w+\(\Q$source\E\)$/m;
+		compile_and_run($app, $test, $directory, $path);
+		next;
+	}
+	if($test =~ /stable-prefix-query-boundary/) {
+		my ($header) = $lowir =~
+			/^(function \@stable_prefix_query\([^\n]+\)[^\n]+\{)$/m;
+		die "$test: generated LowIR has no stable-prefix query boundary\n"
+			if !defined($header);
+		die "$test: source attribute did not emit query=stable_prefix\n"
+			if $header !~ /\bquery=stable_prefix\b/;
+		die "$test: query boundary lacks its final integer index or scalar result\n"
+			if $header !~ /%\w+\s*:\s*(?:i|u)(?:8|16|32|64)\)\s*->\s*(?:i|u)(?:8|16|32|64)\b/;
 		compile_and_run($app, $test, $directory, $path);
 		next;
 	}

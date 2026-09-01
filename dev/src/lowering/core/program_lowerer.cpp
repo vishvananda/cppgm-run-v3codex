@@ -500,6 +500,8 @@ private:
 			symbol.inline_hint |= binding.inline_function ||
 				canonical_binding.inline_function;
 			symbol.no_inline |= binding.no_inline || canonical_binding.no_inline;
+			symbol.stable_prefix_query |= binding.stable_prefix_query ||
+				canonical_binding.stable_prefix_query;
 			lowering::abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function,
 				binding.hosted_memory_intrinsic);
@@ -542,6 +544,8 @@ private:
 		output_.symbols.back().inline_hint = binding.inline_function ||
 			canonical_binding.inline_function;
 		output_.symbols.back().no_inline = binding.no_inline || canonical_binding.no_inline;
+		output_.symbols.back().stable_prefix_query = binding.stable_prefix_query ||
+			canonical_binding.stable_prefix_query;
 		const FunctionMemoryEffects effects =
 			std::max(binding.function_effects,
 				canonical_binding.function_effects);

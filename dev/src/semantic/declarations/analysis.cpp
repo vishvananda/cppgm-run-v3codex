@@ -2599,6 +2599,7 @@ BindingId Analyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	binding.inline_function = source_binding_copy.inline_function;
 	binding.force_inline = source_binding_copy.force_inline;
 	binding.no_inline = source_binding_copy.no_inline;
+	binding.stable_prefix_query = source_binding_copy.stable_prefix_query;
 	binding.function_effects = source_binding_copy.function_effects;
 	binding.weak_odr = source_binding_copy.weak_odr;
 	binding.weak_symbol = source_binding_copy.weak_symbol;
@@ -2649,6 +2650,7 @@ void Analyzer::PublishUsingAccess(BindingId alias,
 	target.inline_function = original.inline_function;
 	target.force_inline = original.force_inline;
 	target.no_inline = original.no_inline;
+	target.stable_prefix_query = original.stable_prefix_query;
 	target.function_effects = original.function_effects;
 }
 

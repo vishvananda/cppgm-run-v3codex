@@ -172,6 +172,15 @@ also carry LowIR boundary metadata such as `[unwind=no]` when the compiler can d
 that the synthesized body is semantically non-throwing. That metadata is part of the
 accepted PA17 output contract when it appears in the checked-in `.ref` files.
 
+PA17 also recognizes the argument-free GNU function attribute
+`cppgm_stable_prefix` (and its double-underscore spelling). It is valid on a
+fixed-arity function with a supported scalar result and a final integer
+parameter. The frontend emits the PA13 `[query=stable_prefix]` boundary fact;
+`-O0` preserves the call and program behavior. The attribute is a semantic
+promise that a normally returning query at a higher or equal final index
+preserves the observable result at an already queried lower index for the same
+earlier arguments. It does not request an optimization by itself.
+
 For supported synthesized destructors, trivial union subobject destructor steps may be
 omitted from enclosing synthesized destructors.
 

@@ -268,6 +268,12 @@ enum CallReturnMode
   CRM_NORETURN
 };
 
+enum CallQueryMode
+{
+  CQM_DEFAULT,
+  CQM_STABLE_PREFIX
+};
+
 enum GlobalStorageMode
 {
   GSM_DEFAULT,
@@ -308,6 +314,7 @@ struct FunctionBoundaryMetadata
   CallEffectsMode effects = CFXM_DEFAULT;
   CallUnwindMode unwind = CUM_DEFAULT;
   CallReturnMode returns = CRM_DEFAULT;
+  CallQueryMode query = CQM_DEFAULT;
 };
 
 struct ParameterMetadata
