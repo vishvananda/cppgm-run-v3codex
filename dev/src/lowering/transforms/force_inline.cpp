@@ -2,13 +2,13 @@
 
 #include "lowering/core/reachability.h"
 #include "lowering/presentation/local_names.h"
+#include "lowering/support/errors.h"
 #include "lowering/api.h"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -174,12 +174,12 @@ private:
 		{
 			const Function& function = program_.functions[i];
 			if (function.symbol >= program_.symbols.size())
-				throw std::logic_error("force-inline function has no symbol");
+				ThrowLoweringInternal("force-inline function has no symbol");
 			if (!program_.symbols[function.symbol].force_inline ||
 				function.variadic) continue;
 			std::size_t& candidate = candidate_by_symbol_[function.symbol];
 			if (candidate != kNoFunction)
-				throw std::runtime_error(
+				ThrowLoweringInternal(
 					"multiple force-inline function definitions");
 			candidate = i;
 			++candidate_count_;
@@ -284,7 +284,7 @@ private:
 	static TempId AllocateTemp(std::uint32_t* next)
 	{
 		if (*next >= kNoLowId)
-			throw std::runtime_error("too many force-inline temporaries");
+			ThrowLoweringResourceLimit("too many force-inline temporaries");
 		return static_cast<TempId>((*next)++);
 	}
 
@@ -301,7 +301,7 @@ private:
 			{
 				const TempId dest = callee.blocks[i].instructions[j].dest;
 				if (dest != kNoLowId && dest >= temporaries->size())
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"force-inline temporary exceeds its dense limit");
 				if (dest != kNoLowId && (*temporaries)[dest] == kNoLowId)
 					(*temporaries)[dest] = AllocateTemp(next);
@@ -316,7 +316,7 @@ private:
 		if (source.kind == Operand::PARAMETER)
 		{
 			if (source.id >= parameters.size())
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"force-inline parameter identity is invalid");
 			result.kind = Operand::TEMP;
 			result.id = parameters[source.id];
@@ -325,14 +325,14 @@ private:
 		{
 			if (source.id >= temporaries.size() ||
 				temporaries[source.id] == kNoLowId)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"force-inline temporary identity is invalid");
 			result.id = temporaries[source.id];
 		}
 		else if (source.kind == Operand::SLOT)
 		{
 			if (source.id >= kNoLowId || slot_base > kNoLowId - source.id)
-				throw std::runtime_error("too many force-inline slots");
+				ThrowLoweringResourceLimit("too many force-inline slots");
 			result.id = static_cast<std::uint32_t>(slot_base + source.id);
 		}
 		return result;
@@ -348,7 +348,7 @@ private:
 		{
 			if (source.dest >= temporaries.size() ||
 				temporaries[source.dest] == kNoLowId)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"force-inline result identity is invalid");
 			result.dest = temporaries[source.dest];
 		}
@@ -361,13 +361,13 @@ private:
 		if (source.target != kNoLowId)
 		{
 			if (source.target >= blocks.size())
-				throw std::logic_error("force-inline block target is invalid");
+				ThrowLoweringInternal("force-inline block target is invalid");
 			result.target = blocks[source.target];
 		}
 		if (source.alternate != kNoLowId)
 		{
 			if (source.alternate >= blocks.size())
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"force-inline alternate block target is invalid");
 			result.alternate = blocks[source.alternate];
 		}
@@ -395,7 +395,7 @@ private:
 			source.extra_first > program_.call_argument_object_bytes.size() ||
 			source.extra_count > program_.call_argument_object_bytes.size() -
 				source.extra_first)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"force-inline call argument range is invalid");
 		result->extra_first = static_cast<std::uint32_t>(
 			program_.call_arguments.size());
@@ -421,7 +421,7 @@ private:
 			source.extra_first > program_.switch_case_targets.size() ||
 			source.extra_count > program_.switch_case_targets.size() -
 				source.extra_first)
-			throw std::logic_error("force-inline switch range is invalid");
+			ThrowLoweringInternal("force-inline switch range is invalid");
 		result->extra_first = static_cast<std::uint32_t>(
 			program_.switch_case_values.size());
 		for (std::size_t i = 0; i < source.extra_count; ++i)
@@ -431,7 +431,7 @@ private:
 			const BlockId target =
 				program_.switch_case_targets[source.extra_first + i];
 			if (target >= blocks.size())
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"force-inline switch target is invalid");
 			program_.switch_case_targets.push_back(blocks[target]);
 		}
@@ -469,7 +469,7 @@ private:
 			{
 				if (instruction.kind != Instruction::RETURN_VALUE ||
 					result_slot == kNoLowId)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"force-inline value return has no result slot");
 				Instruction store(Instruction::STORE);
 				store.type = callee.result;
@@ -491,7 +491,7 @@ private:
 		std::vector<BlockId>::iterator position = std::find(
 			caller->block_order.begin(), caller->block_order.end(), after);
 		if (position == caller->block_order.end())
-			throw std::logic_error("force-inline caller block is unordered");
+			ThrowLoweringInternal("force-inline caller block is unordered");
 		caller->block_order.insert(position + 1,
 			inserted.begin(), inserted.end());
 	}
@@ -508,7 +508,7 @@ private:
 			  call.extra_first > program_.call_arguments.size() ||
 			  call.extra_count > program_.call_arguments.size() -
 				call.extra_first)))
-			throw std::runtime_error(
+			ThrowLoweringInternal(
 				"force-inline call argument count mismatch");
 		std::vector<Operand> arguments;
 		arguments.reserve(call.extra_count);
@@ -522,7 +522,7 @@ private:
 		if (callee.result.kind != LOW_VOID)
 		{
 			if (caller->slots.size() >= kNoLowId)
-				throw std::runtime_error("too many force-inline slots");
+				ThrowLoweringResourceLimit("too many force-inline slots");
 			result_slot = static_cast<SlotId>(caller->slots.size());
 			Slot slot;
 			slot.name = names->SlotName();
@@ -533,7 +533,7 @@ private:
 		for (std::size_t i = 0; i < callee.slots.size(); ++i)
 		{
 			if (caller->slots.size() >= kNoLowId)
-				throw std::runtime_error("too many force-inline slots");
+				ThrowLoweringResourceLimit("too many force-inline slots");
 			Slot slot = callee.slots[i];
 			slot.name = names->SlotName();
 			// The cloned home belongs to an inlined local value, not to a
@@ -547,13 +547,13 @@ private:
 				instruction_index + 1,
 			caller->blocks[block_index].instructions.end());
 		if (tail.empty())
-			throw std::logic_error("force-inline continuation is empty");
+			ThrowLoweringInternal("force-inline continuation is empty");
 		const std::size_t cloned_count = callee.block_order.size();
 		if (cloned_count == 0)
-			throw std::logic_error("force-inline callee has no ordered blocks");
+			ThrowLoweringInternal("force-inline callee has no ordered blocks");
 		const std::size_t added_count = cloned_count + 2;
 		if (caller->blocks.size() > kNoLowId - added_count)
-			throw std::runtime_error("too many force-inline blocks");
+			ThrowLoweringResourceLimit("too many force-inline blocks");
 		const BlockId prologue = static_cast<BlockId>(caller->blocks.size());
 		std::vector<BlockId> cloned(callee.blocks.size(), BlockId(kNoLowId));
 		for (std::size_t i = 0; i < cloned_count; ++i)
@@ -561,7 +561,7 @@ private:
 			const BlockId source_block = callee.block_order[i];
 			if (source_block >= callee.blocks.size() ||
 				cloned[source_block] != kNoLowId)
-				throw std::logic_error("invalid force-inline block order");
+				ThrowLoweringInternal("invalid force-inline block order");
 			cloned[source_block] = static_cast<BlockId>(
 				caller->blocks.size() + 1 + i);
 		}
@@ -603,7 +603,7 @@ private:
 		if (callee.result.kind != LOW_VOID)
 		{
 			if (call.dest == kNoLowId)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"force-inline value call has no result identity");
 			Instruction load(Instruction::LOAD);
 			load.dest = call.dest;
@@ -645,7 +645,7 @@ private:
 				if (callee_index == kNoFunction || recursive_[callee_index])
 					continue;
 				if (callee_index == function_index)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"nonrecursive force-inline self call");
 				const Function& callee = program_.functions[callee_index];
 				InlineCall(&caller, block, instruction, callee,
@@ -676,7 +676,7 @@ private:
 void RewriteProgram(lowering::ir::Program* program, lowering::Stats* stats,
 	bool prune_unreachable_weak_functions)
 {
-	if (!program) throw std::logic_error("force-inline program is null");
+	if (!program) ThrowLoweringInternal("force-inline program is null");
 	ClassifyPresentationReservations(program);
 	const lowering::reachability::Summary reachability =
 		prune_unreachable_weak_functions ?

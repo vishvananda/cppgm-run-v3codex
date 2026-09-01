@@ -730,7 +730,8 @@ Append one row for each retained or rejected increment:
 | E7f | constants, control, expression, and extension lowering | CFG/EH contradictions, unsupported source shapes, and fixed graph/count limits shared generic bases | lowering internal/source/resource types through the cold boundary; semantic checkpoint, operator, and initializer eligibility remains ordinary flow | PA15 control/expression lowering, PA16 lifetime/goto policy, PA23 extensions, and PA26 EH behavior | successful frozen remains 0; generic logic/runtime sites -53/-42 | -11,136 text, +32 rodata, +40 EH header, +56 unwind, -1,456 exception table | cumulative frozen 0.450/0.450 s; paired +1.67% (noise) | PA15 121/121; PA16 58/58; PA23 414/414; PA26 114/114; through-PA26 3,822/3,822; frozen object exact | `61011cc8` | retained |
 | E7g | object initialization, arrays, temporaries, and cleanup lowering | semantic-dump contradictions, unsupported initializer shapes, and fixed cleanup/extent identities shared generic bases | lowering internal/source/resource types through the cold boundary; optional initialization and cleanup decisions remain ordinary flow | PA15 initialization, PA17 object lifetime, and PA26 cleanup/EH behavior | successful frozen remains 0; generic logic/runtime sites -57/-28 | -6,528 text, +32 rodata, neutral EH header, -144 unwind, -916 exception table | cumulative frozen 0.450/0.450 s; paired +0.56% (neutral) | PA15 121/121; PA17 247/247; PA26 114/114; through-PA26 3,822/3,822; frozen object exact | `a184f038` | retained |
 | E7h | storage, static lifetime, RTTI, member-pointer, and thunk lowering | emitted-symbol/storage/RTTI facts and semantic action shapes shared generic bases | lowering internal/source types through the cold boundary; storage lookup and object-model applicability remain ordinary flow | PA15 storage, PA16 static lifetime, PA18 polymorphism, and PA22 member pointers | successful frozen remains 0; generic logic/runtime sites -22/-9 | -5,760 text, neutral rodata, -16 EH header, -128 unwind, -692 exception table | cumulative frozen user 0.460/0.450 s; paired -1.09% (neutral) | PA15 121/121; PA16 300/300; PA18 37/37; PA22 311/311; through-PA26 3,822/3,822; frozen object exact | `fb0bb947` | retained |
-| E7i | polymorphic layout, construction VTT, and virtual-base lowering | vtable/VTT/RTTI graph contradictions and finite slot ceilings shared generic bases | lowering internal/resource types through the cold boundary; hierarchy traversal and optional ABI facts remain ordinary flow | PA18 polymorphism and PA22 object-model behavior | successful frozen remains 0; generic logic/runtime sites -41/-2 | -4,608 text, neutral rodata, -16 EH header, -104 unwind, -404 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA18 37/37; PA22 311/311; through-PA26 3,822/3,822; frozen object exact | pending | retained |
+| E7i | polymorphic layout, construction VTT, and virtual-base lowering | vtable/VTT/RTTI graph contradictions and finite slot ceilings shared generic bases | lowering internal/resource types through the cold boundary; hierarchy traversal and optional ABI facts remain ordinary flow | PA18 polymorphism and PA22 object-model behavior | successful frozen remains 0; generic logic/runtime sites -41/-2 | -4,608 text, neutral rodata, -16 EH header, -104 unwind, -404 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA18 37/37; PA22 311/311; through-PA26 3,822/3,822; frozen object exact | `b1aafa26` | retained |
+| E7j | force-inline lowering transform | cloned LowIR identity/CFG contradictions and finite temp/slot/block ceilings shared generic bases | lowering internal/resource types through the cold boundary; candidate selection and recursive rejection remain ordinary flow | PA37 forced-inlining structure and cumulative optimizer behavior | successful frozen remains 0; generic logic/runtime sites -18/-7; lowering generic census reaches zero | -128 text, neutral rodata/EH header/unwind, +12 exception table | cumulative frozen 0.450/0.450 s; paired neutral; full O1 +0.53%, O3 -0.17% CPU | PA37 190/190; through-PA37 5,432/5,432; 222 O1/O3 objects and final binaries exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1811,6 +1812,32 @@ baseline/candidate user medians both measure 0.450 seconds and paired candidate
 time is exactly neutral.  These are terminal graph-contract checks, so a
 returned failure channel would burden successful vtable construction without
 a recovery owner.
+
+### E7j execution record
+
+The force-inline lowering transform has no recovery catch around its generic
+failures.  Candidate selection, recursive-call rejection, reachability, and
+non-applicable inlining already use ordinary indices, Boolean state, or
+sentinels.  Contradictory symbols, dense identities, call ranges, CFG targets,
+returns, and block ordering now use the lowering internal type; exhausted
+temporary, slot, and block identities use the lowering resource type.
+
+The successful frozen compile records zero throws.  Generic logic/runtime
+sites fall by 18/7 and the final lowering owner leaves the generic inventory,
+bringing the repository audit to 364/296/62 and the lowering generic census to
+zero.  Against E7i, `.text` changes 6,462,502 -> 6,462,374; `.rodata` remains
+214,592; `.eh_frame_hdr` remains 51,588; `.eh_frame` remains 321,744; and
+`.gcc_except_table` changes 129,596 -> 129,608.
+
+PA37 passes 190/190 and through-PA37 passes 5,432/5,432.  Four cumulative
+frozen A/B/B/A blocks reproduce object hash `8545fec6...`; baseline/candidate
+user medians both measure 0.450 seconds and paired candidate time is exactly
+neutral.  A 32-way full self-build against the E6c baseline reproduces all 222
+objects and final binaries at both requested levels.  Aggregate CPU is
+500.825/503.500 seconds at O1 (+0.53%, neutral, with one slower candidate run)
+and 508.005/507.145 seconds at O3 (-0.17%).  The absence of a recovery consumer
+and the exact full outputs favor the typed terminal boundary over adding
+success-path status plumbing.
 
 ## Initial code map
 
