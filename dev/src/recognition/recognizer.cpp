@@ -1,4 +1,5 @@
 #include "recognition/recognizer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <chrono>
@@ -19,6 +20,30 @@ namespace recognition
 {
 namespace
 {
+
+__attribute__((cold, noinline, noreturn))
+void ThrowRecognitionSourceError(const std::string& message)
+{
+	throw SourceError(message, CompilerErrorDomain::LEXICAL);
+}
+
+__attribute__((cold, noinline, noreturn))
+void ThrowRecognitionResourceLimit(const char* message)
+{
+	throw ResourceLimitError(message, CompilerErrorDomain::RECOGNITION);
+}
+
+__attribute__((cold, noinline, noreturn))
+void ThrowRecognitionInternalError(const char* message)
+{
+	throw InternalCompilerError(message, CompilerErrorDomain::RECOGNITION);
+}
+
+__attribute__((cold, noinline, noreturn))
+void ThrowRecognitionInternalError(const std::string& message)
+{
+	throw InternalCompilerError(message, CompilerErrorDomain::RECOGNITION);
+}
 
 const std::uint16_t kSimpleTokenCount =
 	static_cast<std::uint16_t>(OP_ARROW) + 1;
@@ -114,7 +139,7 @@ public:
 		}
 		if (identifiers_.size() >
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many identifiers");
+			ThrowRecognitionResourceLimit("too many identifiers");
 		const std::uint32_t id =
 			static_cast<std::uint32_t>(identifiers_.size());
 		identifiers_.push_back(IdentifierInfo(spelling,
@@ -185,7 +210,7 @@ class RecognitionTokenSink : public IPostTokenStream
 public:
 	void EmitInvalid(const std::string& source)
 	{
-		throw std::runtime_error("invalid phase-7 token: " + source);
+		ThrowRecognitionSourceError("invalid phase-7 token: " + source);
 	}
 
 	void EmitSimple(const std::string&, SimpleTokenKind kind)
@@ -528,13 +553,14 @@ std::vector<RawRule> ReadRawGrammar()
 			if (!std::isspace(static_cast<unsigned char>(line[0])))
 			{
 				if (!continued.empty() || line[line.size() - 1] != ':')
-					throw std::logic_error("invalid embedded PA6 grammar");
+					ThrowRecognitionInternalError("invalid embedded PA6 grammar");
 				rules.push_back(RawRule());
 				rules.back().name = Trim(line.substr(0, line.size() - 1));
 			}
 			else
 			{
-				if (rules.empty()) throw std::logic_error("grammar body without rule");
+				if (rules.empty())
+					ThrowRecognitionInternalError("grammar body without rule");
 				std::string body = Trim(line);
 				if (!continued.empty()) body = continued + " " + body;
 				if (!body.empty() && body[body.size() - 1] == '\\')
@@ -551,7 +577,8 @@ std::vector<RawRule> ReadRawGrammar()
 		if (newline == std::string::npos) break;
 		start = newline + 1;
 	}
-	if (!continued.empty()) throw std::logic_error("unterminated grammar line");
+	if (!continued.empty())
+		ThrowRecognitionInternalError("unterminated grammar line");
 	return rules;
 }
 
@@ -586,7 +613,7 @@ public:
 		for (std::size_t i = 0; i < raw.size(); ++i)
 		{
 			if (rule_ids_.count(raw[i].name) != 0)
-				throw std::logic_error("duplicate grammar rule");
+				ThrowRecognitionInternalError("duplicate grammar rule");
 			const std::uint32_t id = static_cast<std::uint32_t>(rules_.size());
 			rule_ids_[raw[i].name] = id;
 			rules_.push_back(GrammarRule(raw[i].name));
@@ -658,7 +685,8 @@ private:
 	{
 		std::unordered_map<std::string, std::uint32_t>::const_iterator found =
 			rule_ids_.find(name);
-		if (found == rule_ids_.end()) throw std::logic_error("missing grammar rule");
+		if (found == rule_ids_.end())
+			ThrowRecognitionInternalError("missing grammar rule");
 		return found->second;
 	}
 
@@ -731,7 +759,7 @@ void Grammar::ResolveTerminal(const std::string& symbol,
 		std::unordered_map<std::string, std::uint32_t>::const_iterator found =
 			simple_tokens_.find(symbol);
 		if (found == simple_tokens_.end())
-			throw std::logic_error("unknown grammar terminal: " + symbol);
+			ThrowRecognitionInternalError("unknown grammar terminal: " + symbol);
 		node->value = found->second;
 	}
 	const bool angle_terminal = symbol == "OP_LT" || symbol == "OP_GT" ||
@@ -781,7 +809,8 @@ std::string GrammarExpressionReader::Peek() const
 
 std::string GrammarExpressionReader::Take()
 {
-	if (position_ == tokens_.size()) throw std::logic_error("incomplete EBNF");
+	if (position_ == tokens_.size())
+		ThrowRecognitionInternalError("incomplete EBNF");
 	return tokens_[position_++];
 }
 
@@ -795,7 +824,8 @@ std::uint32_t GrammarExpressionReader::ParseSequence()
 		{
 			Take();
 			child = ParseSequence();
-			if (Take() != ")") throw std::logic_error("unclosed EBNF group");
+			if (Take() != ")")
+				ThrowRecognitionInternalError("unclosed EBNF group");
 		}
 		else
 		{
@@ -816,7 +846,8 @@ std::uint32_t GrammarExpressionReader::ParseSequence()
 std::uint32_t GrammarExpressionReader::Parse()
 {
 	const std::uint32_t root = ParseSequence();
-	if (position_ != tokens_.size()) throw std::logic_error("extra EBNF token");
+	if (position_ != tokens_.size())
+		ThrowRecognitionInternalError("extra EBNF token");
 	return root;
 }
 
@@ -836,7 +867,7 @@ public:
 		  memo_(grammar_.RuleCount() * stride_, kMemoUnvisited)
 	{
 		if (tokens.size() >= kParseFailure)
-			throw std::runtime_error("too many recognition tokens");
+			ThrowRecognitionResourceLimit("too many recognition tokens");
 		if (stats_)
 		{
 			stats_->memo_entries = memo_.size();

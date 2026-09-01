@@ -1,6 +1,6 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E3 complete; E4 semantic migration is in progress
+Status: in progress; E0-E4 complete; E5 frontend/adapter migration is in progress
 
 Date: 2026-09-01
 
@@ -714,7 +714,8 @@ Append one row for each retained or rejected increment:
 | E4i | semantic graph/model and source presentation | model diagnostics, capacity, and identity invariants shared generic bases | typed semantic/resource/internal failures; semantic generic-throw census reaches zero | PA12 graph/type model and cumulative PA23 presentation behavior | successful full remains 0; semantic generic logic/runtime sites -36/-41 | -19,136 text, -4,424 exception table, -696 unwind | frozen exact tie; clean mirrored full O1 -0.09% CPU, O3 -0.52% CPU | PA12 184/184; PA23 414/414; through-PA26 3,821/3,821; 32-way inception exact | `3bc47eb5` | retained |
 | E4j | semantic state restoration | 49 semantic catch-alls manually restored counters, values, or container depth | 39 simple regions use scoped restoration; 10 transactional/scratch cleanup-and-rethrow regions remain explicit | PA12, PA17, PA21, PA23, PA26 and cumulative semantic behavior | successful full remains 0; catch-all sites -39 | -896 text, -840 exception table, neutral unwind | frozen -1.04% user; 32-way full O1 -0.04% CPU, O3 -0.09% CPU | PA12 184/184; PA17 247/247; PA21 151/151; PA23 414/414; PA26 114/114; through-PA26 3,821/3,821; 222 O1/O3 objects and inception exact | `7f46e61e` | retained |
 | E5a | PA14 ABI fact adapter | broad standard catches translated numeric, allocation, encoder, and I/O failures alike | coded `SerializedInputError` with line context; only invalid/range numeric exceptions translate; typed I/O/internal propagation | PA14 normalized/malformed facts and cumulative through-PA14 behavior | successful full remains 0; generic logic sites -24; internal standard catches -3 | +192 text, +4 exception table, +104 unwind | frozen -1.04% user | PA14 117/117; through-PA14 1,081/1,081; frozen object exact | `538b79f7` | retained |
-| E5b | lexical input and preprocessing-token paste | generic lexical failures plus broad runtime translation for generated-token cardinality | lexical source/internal types; direct one-token status; preprocessing source failure; explicit cursor inlining boundary | PA1 source tokenization and PA4 valid/invalid paste behavior | successful full remains 0; generic logic/runtime sites -5/-20; internal runtime catches -1 | -16,000 text, -64 rodata, -2,104 exception table, -280 unwind | frozen -6.19% user; full O1 -1.91% CPU, O3 -2.34% CPU | PA1 53/53; PA4 75/75; through-PA4 174/174; 222 O1/O3 objects exact | pending | retained |
+| E5b | lexical input and preprocessing-token paste | generic lexical failures plus broad runtime translation for generated-token cardinality | lexical source/internal types; direct one-token status; preprocessing source failure; explicit cursor inlining boundary | PA1 source tokenization and PA4 valid/invalid paste behavior | successful full remains 0; generic logic/runtime sites -5/-20; internal runtime catches -1 | -16,000 text, -64 rodata, -2,104 exception table, -280 unwind | frozen -6.19% user; full O1 -1.91% CPU, O3 -2.34% CPU | PA1 53/53; PA4 75/75; through-PA4 174/174; 222 O1/O3 objects exact | `71d6deba` | retained |
+| E5c | post-tokenization, recognition, and hosted intrinsic registry | API/invariant, embedded-grammar, resource-limit, and invalid-token failures shared generic bases | lexical/recognition internal, recognition resource, and lexical source dispositions; explicit shared string-flush boundary | PA2 literal/token behavior, PA5 preprocessing, PA6 invalid-token and grammar acceptance | successful frozen remains 0; generic logic/runtime sites -26/-3 | -640 text, +96 rodata, -200 exception table, -48 unwind | frozen user median 0.450/0.450 s; paired +0.55% noise | PA2 26/26; PA5 70/70; PA6 48/48; through-PA6 292/292; frozen objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1396,6 +1397,35 @@ throws, one generic-throw file, and the last internal runtime catch.  Against
 214,272 -> 214,208, `.eh_frame_hdr` 51,452 -> 51,420, `.eh_frame`
 323,000 -> 322,752, and `.gcc_except_table` 146,624 -> 144,520.
 PA1 passes 53/53, PA4 passes 75/75, and through-PA4 passes 174/174.
+
+### E5c execution record
+
+Post-tokenization now reports impossible enum values, fixed-storage overflow,
+and missing output destinations as lexical-domain internal compiler failures.
+Recognition distinguishes an invalid phase-7 token (lexical source failure),
+checked identifier/token ceilings (recognition resource limits), and defects
+in the embedded PA6 grammar or its EBNF reader (recognition internal failures).
+Invalid hosted-intrinsic enum values are project-owned internal failures.  The
+normal literal-decoding, grammar no-match, and identifier lookup paths remain
+boolean/status flow; no successful alternative was converted to an exception.
+
+The first typed build grew `.text` by 17,344 bytes even though none of these
+exceptions executed.  The smaller cold throw bodies caused GCC to inline the
+roughly 1 KiB pending-string flush state machine into nearly every token
+callback.  The retained version marks that shared state machine `noinline`,
+which restores a single copy and makes the boundary independent of cold error
+details.  This is the same unthrown-exception/inliner interference class found
+in E5b, not dynamic unwind cost.
+
+Against `71d6deba`, `.text` changes 6,531,174 -> 6,530,534,
+`.rodata` 214,208 -> 214,304, `.eh_frame_hdr` 51,420 -> 51,428,
+`.eh_frame` 322,752 -> 322,696, and `.gcc_except_table` 144,520 ->
+144,320.  Four exact ABBA blocks tie at a 0.450/0.450-second user median;
+the paired +0.55% difference is below timer resolution and accompanied by
+identical frozen objects.  PA2 passes 26/26, PA5 70/70, PA6 48/48, and the
+cumulative through-PA6 report passes 292/292.  The exception audit ratchets by
+26 generic logic throws, three generic runtime throws, and three generic-throw
+files.
 
 ## Initial code map
 

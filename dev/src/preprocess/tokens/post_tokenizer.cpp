@@ -1,4 +1,5 @@
 #include "preprocess/tokens/post_tokenizer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <chrono>
@@ -17,6 +18,12 @@ namespace cppgm
 {
 namespace
 {
+
+__attribute__((cold, noinline, noreturn))
+void ThrowPostTokenInternalError(const char* message)
+{
+	throw InternalCompilerError(message, CompilerErrorDomain::LEXICAL);
+}
 
 struct SimpleEntry
 {
@@ -233,7 +240,7 @@ void StoreLittleEndian(std::uint64_t value, std::size_t width,
 	unsigned char (&bytes)[Size])
 {
 	if (width > Size)
-		throw std::logic_error("scalar literal exceeds fixed storage");
+		ThrowPostTokenInternalError("scalar literal exceeds fixed storage");
 	for (std::size_t i = 0; i < width; ++i)
 	{
 		bytes[i] = static_cast<unsigned char>(value & 0xFF);
@@ -368,7 +375,7 @@ std::uint64_t FundamentalMaximum(FundamentalType type)
 	case FT_UNSIGNED_LONG_INT:
 	case FT_UNSIGNED_LONG_LONG_INT:
 		return std::numeric_limits<std::uint64_t>::max();
-	default: throw std::logic_error("non-integer candidate type");
+	default: ThrowPostTokenInternalError("non-integer candidate type");
 	}
 }
 
@@ -394,7 +401,7 @@ std::size_t FundamentalWidth(FundamentalType type)
 	case FT_DOUBLE: case FT_FLOAT32X: case FT_FLOAT64: return 8;
 	case FT_LONG_DOUBLE: case FT_FLOAT64X: case FT_FLOAT128:
 		return sizeof(long double);
-	default: throw std::logic_error("type has no PA2 object width");
+	default: ThrowPostTokenInternalError("type has no PA2 object width");
 	}
 }
 
@@ -854,7 +861,7 @@ std::size_t EncodingWidth(StringEncoding encoding)
 	case ENCODING_UTF32:
 	case ENCODING_WIDE: return 4;
 	}
-	throw std::logic_error("unknown string encoding");
+	ThrowPostTokenInternalError("unknown string encoding");
 }
 
 FundamentalType EncodingType(StringEncoding encoding)
@@ -867,7 +874,7 @@ FundamentalType EncodingType(StringEncoding encoding)
 	case ENCODING_UTF32: return FT_CHAR32_T;
 	case ENCODING_WIDE: return FT_WCHAR_T;
 	}
-	throw std::logic_error("unknown string encoding");
+	ThrowPostTokenInternalError("unknown string encoding");
 }
 
 bool AppendStringUnit(std::uint32_t value, StringEncoding encoding,
@@ -1341,7 +1348,10 @@ private:
 			stats_->peak_phase_storage_bytes, phase_storage);
 	}
 
-	void FlushStrings()
+	// This routine is shared by nearly every token callback.  Keep one copy:
+	// small changes to its cold error edges otherwise make GCC duplicate the
+	// string-flush state machine into every callback.
+	__attribute__((noinline)) void FlushStrings()
 	{
 		if (pending_string_tokens_ == 0)
 			return;
@@ -1533,7 +1543,7 @@ bool DecodeOrdinaryStringLiteral(const std::string& source,
 	std::string* value)
 {
 	if (!value)
-		throw std::logic_error("missing decoded string destination");
+		ThrowPostTokenInternalError("missing decoded string destination");
 	StringPart parsed;
 	if (!ParseStringPart(source, &parsed) ||
 		parsed.encoding != ENCODING_ORDINARY || parsed.raw ||
@@ -1552,7 +1562,7 @@ bool DecodeNarrowStringLiteral(const std::string& source,
 	std::string* value)
 {
 	if (!value)
-		throw std::logic_error("missing decoded string destination");
+		ThrowPostTokenInternalError("missing decoded string destination");
 	StringPart parsed;
 	if (!ParseStringPart(source, &parsed) ||
 		(parsed.encoding != ENCODING_ORDINARY &&
@@ -1572,7 +1582,7 @@ bool DecodeNarrowStringLiteralSequence(const std::string& source,
 	std::string* value)
 {
 	if (!value)
-		throw std::logic_error("missing decoded string destination");
+		ThrowPostTokenInternalError("missing decoded string destination");
 	FundamentalType type = FT_VOID;
 	std::vector<std::uint32_t> units;
 	if (!DecodeStringLiteralCodeUnits(source, &type, &units) ||
@@ -1603,7 +1613,7 @@ bool DecodeStringLiteralCodeUnits(const std::string& source,
 {
 	++string_decode_calls;
 	if (!type || !units)
-		throw std::logic_error("missing typed string literal destination");
+		ThrowPostTokenInternalError("missing typed string literal destination");
 	std::vector<StringPart> parts;
 	StringEncoding encoding = ENCODING_ORDINARY;
 	std::size_t position = 0;
@@ -1694,7 +1704,8 @@ bool DecodeStringLiteralCodeUnits(const std::string& source,
 bool DecodeOrdinaryMulticharacterLiteral(const std::string& source,
 	std::uint32_t* value)
 {
-	if (!value) throw std::logic_error("missing multicharacter destination");
+	if (!value)
+		ThrowPostTokenInternalError("missing multicharacter destination");
 	QuotedSyntax syntax;
 	if (!ParseCharacterSyntax(source, &syntax) || syntax.type != FT_CHAR ||
 		!syntax.suffix.empty()) return false;
@@ -1731,7 +1742,7 @@ const char* FundamentalTypeName(FundamentalType type)
 		"_Float64", "_Float64x", "_Float128"
 	};
 	if (type < FT_SIGNED_CHAR || type > FT_FLOAT128)
-		throw std::logic_error("unknown fundamental type");
+		ThrowPostTokenInternalError("unknown fundamental type");
 	return names[type];
 }
 
@@ -1771,7 +1782,7 @@ const char* SimpleTokenKindName(SimpleTokenKind kind)
 		"OP_DEC", "OP_COMMA", "OP_ARROWSTAR", "OP_ARROW"
 	};
 	if (kind < KW_ALIGNAS || kind > OP_ARROW)
-		throw std::logic_error("unknown simple token kind");
+		ThrowPostTokenInternalError("unknown simple token kind");
 	return names[kind];
 }
 

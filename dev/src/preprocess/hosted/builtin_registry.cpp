@@ -1,4 +1,5 @@
 #include "preprocess/hosted/builtin_registry.h"
+#include "support/exceptions.h"
 
 #include <cstddef>
 #include <stdexcept>
@@ -323,7 +324,7 @@ const IntegerIntrinsic* FindIntegerIntrinsic(const std::string& spelling)
 const IntegerIntrinsic& GetIntegerIntrinsic(IntegerIntrinsicKind kind)
 {
 	if (kind <= INTEGER_INTRINSIC_NONE || kind >= INTEGER_INTRINSIC_COUNT)
-		throw std::logic_error("invalid hosted integer intrinsic kind");
+		ThrowInternalCompilerError("invalid hosted integer intrinsic kind");
 	return kIntegerIntrinsics[static_cast<std::size_t>(kind) - 1];
 }
 
@@ -346,7 +347,7 @@ const FloatingIntrinsic* FindFloatingIntrinsic(const std::string& spelling)
 const FloatingIntrinsic& GetFloatingIntrinsic(FloatingIntrinsicKind kind)
 {
 	if (kind <= FLOATING_INTRINSIC_NONE || kind >= FLOATING_INTRINSIC_COUNT)
-		throw std::logic_error("invalid hosted floating intrinsic kind");
+		ThrowInternalCompilerError("invalid hosted floating intrinsic kind");
 	return kFloatingIntrinsics[static_cast<std::size_t>(kind) - 1];
 }
 
@@ -369,7 +370,7 @@ const MemoryIntrinsic* FindMemoryIntrinsic(const std::string& spelling)
 const MemoryIntrinsic& GetMemoryIntrinsic(MemoryIntrinsicKind kind)
 {
 	if (kind <= MEMORY_INTRINSIC_NONE || kind >= MEMORY_INTRINSIC_COUNT)
-		throw std::logic_error("invalid hosted memory intrinsic kind");
+		ThrowInternalCompilerError("invalid hosted memory intrinsic kind");
 	return kMemoryIntrinsics[static_cast<std::size_t>(kind) - 1];
 }
 
@@ -392,7 +393,7 @@ const VectorIntrinsic* FindVectorIntrinsic(const std::string& spelling)
 const VectorIntrinsic& GetVectorIntrinsic(VectorIntrinsicKind kind)
 {
 	if (kind <= VECTOR_INTRINSIC_NONE || kind >= VECTOR_INTRINSIC_COUNT)
-		throw std::logic_error("invalid hosted vector intrinsic kind");
+		ThrowInternalCompilerError("invalid hosted vector intrinsic kind");
 	return kVectorIntrinsics[static_cast<std::size_t>(kind) - 1];
 }
 
@@ -415,7 +416,7 @@ const AtomicIntrinsic* FindAtomicIntrinsic(const std::string& spelling)
 const AtomicIntrinsic& GetAtomicIntrinsic(AtomicIntrinsicKind kind)
 {
 	if (kind <= ATOMIC_INTRINSIC_NONE || kind >= ATOMIC_INTRINSIC_COUNT)
-		throw std::logic_error("invalid hosted atomic intrinsic kind");
+		ThrowInternalCompilerError("invalid hosted atomic intrinsic kind");
 	return kAtomicIntrinsics[static_cast<std::size_t>(kind) - 1];
 }
 
