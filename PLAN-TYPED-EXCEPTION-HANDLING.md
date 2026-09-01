@@ -1,6 +1,7 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E6 complete; E7 compiler-core and tool migration is next
+Status: in progress; E0-E6 and the E7 optimizer slice are complete; E7
+compiler-core and tool migration continues
 
 Date: 2026-09-01
 
@@ -719,7 +720,8 @@ Append one row for each retained or rejected increment:
 | E5d | PA3-PA5 macro processor | source, invocation, transport, resource, and state-machine failures shared generic bases | preprocessing source/I/O/resource/internal dispositions and driver invocation type; expected probes/invocation alternatives remain status flow | PA3 controlling expressions, PA4 macro replacement, PA5 directives/includes | successful frozen remains 0; generic logic/runtime sites -22/-56 | -4,800 text, +96 rodata, -708 exception table, +136 unwind | frozen paired user -0.56%; full O1 -0.85%, O3 -0.29% CPU | PA3 20/20; PA4 75/75; PA5 70/70; PA6 48/48; through-PA14 1,082/1,082; 222 O1/O3 objects and 32-way inception exact | `7cf04f4b` | retained |
 | E6a | LowIR text, model identity, serialization, and PA13 CY86 adapter | one parse type mixed malformed input, I/O, limits, and invariants; model helpers used generic bases | format/domain-specific serialized-input, I/O, resource, invocation, and internal failures; valid flow unchanged | PA13 malformed/valid text, identity, role, metadata, phi, and adapter behavior | successful frozen remains 0; 126 `ParseError` sites removed; generic logic/runtime sites -41/-9 | -14,528 text, -64 rodata, +56 EH header, -168 unwind, -2,536 exception table | frozen user -1.12%; full O1 -0.39%, O3 -0.26% CPU | PA13 122/122; through-PA13 965/965; LowIR contract unchanged; 222 O1/O3 objects exact | `23294aa9` | retained |
 | E6b | compiler-object serialization, ELF import, and join | malformed bytes, I/O, size ceilings, link conflicts, and invariants shared generic bases | compiler-object serialized-input/I/O/resource/internal types; no-input and target mismatch are invocation failures; probes stay status-based | PA30 separate/direct/mixed compilation, helper ELF import, duplicate/missing/unresolved link behavior | successful frozen remains 0; generic logic/runtime sites -4/-41 | -5,568 text, +128 rodata, -72 EH header, -480 unwind, -2,060 exception table | frozen 0.450/0.450 s; full O1 -0.23%, O3 neutral CPU | PA30 100/100; through-PA30 4,355/4,355; malformed/I/O fail; 222 O1/O3 objects exact | `fd1c98ff` | retained |
-| E6c | integrated typed-LowIR adapter | lowering-model identity, bounds, operation, CFG, EH, and presentation invariants used a generic logic base inside adapter loops | LowIR-domain internal failures through the existing shared cold boundary; successful checks unchanged | PA15 source-to-LowIR plus PA37 optimizer and PA38 native consumers | successful frozen remains 0; generic logic sites -23 | -1,280 text, -16 EH header, -72 unwind, -180 exception table | frozen 0.450/0.450 s; full O1 -0.39%, O3 -0.09% CPU | PA15 121/121; PA37 190/190; PA38 45/45; through-PA38 5,477/5,477; 222 O1/O3 objects and 32-way inception exact | pending | retained |
+| E6c | integrated typed-LowIR adapter | lowering-model identity, bounds, operation, CFG, EH, and presentation invariants used a generic logic base inside adapter loops | LowIR-domain internal failures through the existing shared cold boundary; successful checks unchanged | PA15 source-to-LowIR plus PA37 optimizer and PA38 native consumers | successful frozen remains 0; generic logic sites -23 | -1,280 text, -16 EH header, -72 unwind, -180 exception table | frozen 0.450/0.450 s; full O1 -0.39%, O3 -0.09% CPU | PA15 121/121; PA37 190/190; PA38 45/45; through-PA38 5,477/5,477; 222 O1/O3 objects and 32-way inception exact | `9ab20e02` | retained |
+| E7a | LowIR analyses and optimizer invariants | invocation rejection, call-graph/CFG/SSA corruption, and inliner shape contradictions shared generic logic/runtime bases in hot optimizer owners | invalid inline overrides use typed invocation failure; true optimizer invariants use one cold optimizer-domain boundary; ordinary optimization rejection remains status flow | PA37 invocation, structural, optimization-level, inlining, specialization, and generated-behavior controls | successful frozen remains 0; generic logic/runtime sites -23/-3 | -2,048 text, +32 rodata, +16 EH header, -8 unwind, -240 exception table | frozen 0.450/0.450 s and paired -0.55%; full O1 -0.18%, repeated O3 +0.39% CPU (neutral) | PA37 190/190; through-PA37 5,432/5,432; audits pass; frozen and 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1558,6 +1560,37 @@ matches every object plus the final `cppgm++`.  E6 therefore changes no LowIR
 field or serialized fact while separating malformed LowIR/compiler objects,
 transport failures, limits, link invocation failures, and internal typed-model
 corruption.
+
+### E7a execution record
+
+The first E7 slice covers the shared CFG, phi-edge, reachability, direct-call,
+inlining, force-inlining, slot-promotion, and interprocedural-specialization
+owners.  Its 26 generic failures are not ordinary optimizer rejection: four
+validate the optional `--inline-limit` invocation and the other 22 diagnose
+producer-owned LowIR/optimizer contradictions after the PA13 parser has
+already validated external LowIR.  Invalid overrides now throw
+`InvocationError`; the invariant arms use one cold, non-inlined
+optimizer-domain `InternalCompilerError` boundary.  The existing Boolean and
+eligibility returns continue to represent "cannot optimize" without an
+exception, and the two deliberate allocator-protocol `std::bad_alloc` throws
+remain unchanged.
+
+The successful frozen compiler records zero throws.  Generic logic/runtime
+sites fall by 23/3 and eight files leave the generic inventory, bringing the
+audit to 766/443/114.  Against `9ab20e02`, `.text` changes 6,504,358 ->
+6,502,310, `.rodata` 214,464 -> 214,496, `.eh_frame_hdr` 51,460 -> 51,476,
+`.eh_frame` 322,048 -> 322,040, and `.gcc_except_table` 138,836 -> 138,596.
+Four frozen A/B/B/A blocks reproduce object hash `8545fec6...` and tie at a
+0.450-second user median; paired candidate time is -0.55%, below resolution.
+
+PA37 passes 190/190 and through-PA37 passes 5,432/5,432.  Layout, source-set,
+LowIR-contract, and exception audits pass.  The 32-way full O1 control
+reproduces all 222 objects and its final compiler, with baseline/candidate
+aggregate CPU averages 498.86/497.96 seconds (-0.18%).  Two O3 blocks also
+reproduce all 222 objects and their final compiler; their combined averages
+are 504.03/505.99 seconds (+0.39%), while the repeat alone is +0.13%.  This is
+timer noise below the 1% rejection threshold, not evidence for adding returned
+status checks to successful optimizer control flow.
 
 ## Initial code map
 

@@ -1,12 +1,12 @@
 #include "lowir/analysis/inline.h"
 
 #include "lowir/analysis/function.h"
+#include "lowir/optimize/errors.h"
 #include "lowir/optimize/pipeline.h"
 
 #include <algorithm>
 #include <deque>
 #include <limits>
-#include <stdexcept>
 #include <vector>
 
 namespace lowir_opt {
@@ -368,9 +368,10 @@ InlineCallGraph analyze_inline_call_graph(
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     const std::size_t symbol = program.functions[i].symbol;
     if(symbol >= result.definition_by_symbol.size())
-      throw std::logic_error("inline function symbol is out of range");
+      ThrowOptimizerInternalError("inline function symbol is out of range");
     if(result.definition_by_symbol[symbol] != InlineCallGraph::no_function())
-      throw std::logic_error("inline call graph has duplicate definitions");
+      ThrowOptimizerInternalError(
+        "inline call graph has duplicate definitions");
     result.definition_by_symbol[symbol] = i;
   }
   build_edges(program, &result);

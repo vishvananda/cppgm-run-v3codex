@@ -9,6 +9,7 @@
 #include "lowir/optimize/full_unroll_o3.h"
 #include "lowir/optimize/inline_o1.h"
 #include "lowir/optimize/copy_elision.h"
+#include "lowir/optimize/errors.h"
 #include "lowir/analysis/inline.h"
 #include "lowir/optimize/interprocedural_specialization.h"
 #include "lowir/optimize/loops.h"
@@ -1847,7 +1848,7 @@ bool promote_slots_with_analysis(
         const std::size_t predecessor =
           graph.find(instruction.args[incoming - 1].block);
         if(predecessor == kNoBlockIndex)
-          throw std::logic_error("invalid promoted phi predecessor");
+          ThrowOptimizerInternalError("invalid promoted phi predecessor");
         Instruction copy;
         copy.kind = Instruction::IK_COPY;
         copy.type = instruction.type;
@@ -2750,7 +2751,7 @@ void finish_optimizer_pipeline(
 void optimize(LowirProgram & program, int level, Stats * stats, const InlinePolicyOverrides * inline_limits)
 {
   if(level < 0 || level > 3)
-    throw std::logic_error("invalid LowIR optimization level");
+    ThrowOptimizerInternalError("invalid LowIR optimization level");
   std::chrono::steady_clock::time_point started;
   if(stats) {
     started = std::chrono::steady_clock::now();

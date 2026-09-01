@@ -1,12 +1,12 @@
 #include "lowir/analysis/function.h"
 
+#include "lowir/optimize/errors.h"
 #include "lowir/optimize/pipeline.h"
 #include "lowir/optimize/support.h"
 
 #include <algorithm>
 #include <chrono>
 #include <limits>
-#include <stdexcept>
 #include <vector>
 
 namespace lowir_analysis {
@@ -211,7 +211,8 @@ Graph build_graph(const lowir_model::Function & function,
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const std::uint32_t id = function.blocks[i].id;
     if(id >= result.index.size())
-      throw std::logic_error("invalid LowIR block identity in CFG");
+      lowir_opt::ThrowOptimizerInternalError(
+        "invalid LowIR block identity in CFG");
     result.index[id] = i;
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {

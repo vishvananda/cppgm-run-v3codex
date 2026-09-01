@@ -1,6 +1,7 @@
 #include "lowir/optimize/interprocedural_specialization.h"
 
 #include "lowir/analysis/function.h"
+#include "lowir/optimize/errors.h"
 #include "lowir/optimize/inline_o1.h"
 #include "lowir/optimize/pipeline.h"
 #include "lowir/optimize/private_table_prefilter.h"
@@ -10,7 +11,6 @@
 #include <algorithm>
 #include <deque>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -113,7 +113,8 @@ void remove_masked(std::vector<T> * values,
                    std::size_t removed_count)
 {
   if(values->size() != removed_count)
-    throw std::logic_error("interprocedural signature shape mismatch");
+    ThrowOptimizerInternalError(
+      "interprocedural signature shape mismatch");
   std::size_t output = 0;
   for(std::size_t input = 0; input < values->size(); ++input) {
     if(removed[input]) continue;
@@ -249,7 +250,8 @@ bool specialize_function(
     (*parameter_by_value)[function->params[parameter].value] = parameter;
 
   if(function->params.size() != agreement_count)
-    throw std::logic_error("interprocedural parameter agreement mismatch");
+    ThrowOptimizerInternalError(
+      "interprocedural parameter agreement mismatch");
   used->assign(function->params.size(), 0);
   bool substituted = false;
   for(std::size_t block = 0; block < function->blocks.size(); ++block) {

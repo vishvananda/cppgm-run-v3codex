@@ -1,8 +1,9 @@
 #include "lowir/analysis/phi_edges.h"
 
+#include "lowir/optimize/errors.h"
+
 #include <algorithm>
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -141,7 +142,7 @@ void split_function(lowir_model::LowirProgram * program,
     if(predecessor >= block_index.size() || target >= block_index.size() ||
        block_index[predecessor] >= function->blocks.size() ||
        block_index[target] >= function->blocks.size())
-      throw std::logic_error("invalid critical phi edge");
+      lowir_opt::ThrowOptimizerInternalError("invalid critical phi edge");
     lowir_model::StringId label;
     if(has_presentation) {
       std::size_t ordinal = function->next_block_id;

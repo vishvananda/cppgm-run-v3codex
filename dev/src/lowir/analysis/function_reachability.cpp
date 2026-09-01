@@ -1,9 +1,9 @@
 #include "lowir/analysis/function_reachability.h"
 
 #include "lowir/io/prepare.h"
+#include "lowir/optimize/errors.h"
 
 #include <cstdint>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -33,7 +33,7 @@ public:
 		{
 			const SymbolId symbol = program.functions[i].symbol;
 			if (functions_[symbol] != no_function())
-				throw std::logic_error(
+				lowir_opt::ThrowOptimizerInternalError(
 					"function reachability has duplicate definitions");
 			functions_[symbol] = i;
 		}

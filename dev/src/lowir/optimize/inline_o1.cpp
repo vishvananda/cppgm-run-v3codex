@@ -1,4 +1,5 @@
 #include "lowir/optimize/inline_o1.h"
+#include "lowir/optimize/errors.h"
 #include "lowir/optimize/unreachable.h"
 #include "lowir/analysis/function.h"
 #include "lowir/analysis/inline.h"
@@ -13,7 +14,6 @@
 #include <iterator>
 #include <limits>
 #include <numeric>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -27,25 +27,29 @@ void apply_inline_limit_option(InlinePolicyOverrides * limits,
   const std::size_t equals = spec.find('=');
   if(!limits || equals == std::string::npos || equals == 0 ||
      equals + 1 == spec.size())
-    throw std::logic_error("invalid --inline-limit argument: " + spec);
+    ThrowOptimizerInvocationError(
+      "invalid --inline-limit argument: " + spec);
   const std::string name = spec.substr(0, equals);
   const std::string text = spec.substr(equals + 1);
   for(std::size_t i = 0; i < text.size(); ++i)
     if(text[i] < '0' || text[i] > '9')
-      throw std::logic_error("invalid --inline-limit value: " + spec);
+      ThrowOptimizerInvocationError(
+        "invalid --inline-limit value: " + spec);
   char * end = 0;
   const unsigned long long value = std::strtoull(text.c_str(), &end, 10);
   if(end == text.c_str() || *end != '\0' || value == 0 ||
      value > static_cast<unsigned long long>(
        std::numeric_limits<std::size_t>::max()))
-    throw std::logic_error("invalid --inline-limit value: " + spec);
+    ThrowOptimizerInvocationError(
+      "invalid --inline-limit value: " + spec);
   const std::size_t limit = static_cast<std::size_t>(value);
   if(name == "caller-budget") limits->caller_budget = limit;
   else if(name == "once-cap") limits->single_call_limit = limit;
   else if(name == "once-caller-budget")
     limits->single_call_caller_budget = limit;
   else if(name == "hint-late-cap") limits->hint_late_cap = limit;
-  else throw std::logic_error("unknown --inline-limit name: " + spec);
+  else ThrowOptimizerInvocationError(
+    "unknown --inline-limit name: " + spec);
 }
 
 namespace {
@@ -350,7 +354,8 @@ struct Names
       std::uint32_t first_suffix = 1)
   {
     if(!retain)
-      throw std::logic_error("object-only LowIR requested a display name");
+      ThrowOptimizerInternalError(
+        "object-only LowIR requested a display name");
     std::uint32_t suffix = first_suffix;
     while(source.contains(suffix_kind, suffix)) ++suffix;
     return strings.intern(stem + std::to_string(suffix));
@@ -379,7 +384,7 @@ void rename_instruction(Instruction * result, const ValueMap & values,
   if(result->dest.valid()) {
     const Operand * found = values.find(result->dest);
     if(!found || found->kind != Operand::OP_TEMP)
-      throw std::logic_error("inlined result has no value name");
+      ThrowOptimizerInternalError("inlined result has no value name");
     result->dest = found->value;
   }
   rename_operand(&result->first, values, slots, blocks);
@@ -639,7 +644,7 @@ public:
       rewrites_(0)
   {
     if(original_instruction_counts_.size() != program_.functions.size())
-      throw std::logic_error("inline cost summary count mismatch");
+      ThrowOptimizerInternalError("inline cost summary count mismatch");
     contains_eh_.resize(program_.functions.size(), 0);
     loop_inline_shapes_.resize(program_.functions.size(), 0);
     leaf_inline_shapes_.resize(program_.functions.size(), 0);
@@ -1314,7 +1319,7 @@ private:
                   SlotMap * slots, BlockMap * blocks)
   {
     if(callee_function.params.size() != call.args.size())
-      throw std::runtime_error("inline call argument count mismatch");
+      ThrowOptimizerInternalError("inline call argument count mismatch");
     names->inherit_sites(callee_function);
     for(std::size_t i = 0; i < callee_function.params.size(); ++i)
       values->set(callee_function.params[i].value, call.args[i]);

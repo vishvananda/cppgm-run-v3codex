@@ -2,10 +2,10 @@
 #include "lowir/analysis/phi_edges.h"
 
 #include "lowir/analysis/function_reachability.h"
+#include "lowir/optimize/errors.h"
 
 #include <algorithm>
 #include <cstddef>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -142,7 +142,8 @@ private:
          function.boundary.arity == lowir_model::CAM_VARIADIC)
         continue;
       if(candidate_by_symbol_[function.symbol] != kNoFunction)
-        throw std::runtime_error("multiple force-inline function definitions");
+        lowir_opt::ThrowOptimizerInternalError(
+          "multiple force-inline function definitions");
       candidate_by_symbol_[function.symbol] = i;
       ++candidate_count_;
     }
@@ -229,21 +230,24 @@ private:
     if(operand->kind == Operand::OP_LABEL) {
       const std::uint32_t id = operand->block;
       if(id >= blocks.size() || !blocks[id].id.valid())
-        throw std::logic_error("force-inline block has no renamed identity");
+        lowir_opt::ThrowOptimizerInternalError(
+          "force-inline block has no renamed identity");
       operand->block = blocks[id].id;
       return;
     }
     if(operand->kind == Operand::OP_SLOT) {
       const std::uint32_t id = operand->slot;
       if(id >= slots.size() || !slots[id].valid())
-        throw std::logic_error("force-inline slot has no renamed identity");
+        lowir_opt::ThrowOptimizerInternalError(
+          "force-inline slot has no renamed identity");
       operand->slot = slots[id];
       return;
     }
     if(operand->kind != Operand::OP_TEMP) return;
     const std::uint32_t id = operand->value;
     if(id >= values.size() || !values[id].valid())
-      throw std::logic_error("force-inline operand has no renamed identity");
+      lowir_opt::ThrowOptimizerInternalError(
+        "force-inline operand has no renamed identity");
     operand->value = values[id];
   }
 
@@ -256,7 +260,8 @@ private:
     if(result.dest.valid()) {
       const std::uint32_t id = result.dest;
       if(id >= values.size() || !values[id].valid())
-        throw std::logic_error("force-inline result has no renamed identity");
+        lowir_opt::ThrowOptimizerInternalError(
+          "force-inline result has no renamed identity");
       result.dest = values[id];
     }
     RenameOperand(&result.first, values, slots, blocks);
@@ -313,7 +318,8 @@ private:
                       const RenameMap & values, BlockId id, BlockId entry)
   {
     if(call.args.size() != callee.params.size())
-      throw std::runtime_error("force-inline call argument count mismatch");
+      lowir_opt::ThrowOptimizerInternalError(
+        "force-inline call argument count mismatch");
     Block result;
     result.id = id;
     for(std::size_t i = 0; i < callee.params.size(); ++i) {
@@ -371,7 +377,8 @@ private:
     result.id = id;
     if(!call.call_returns_void) {
       if(!call.dest.valid() || !result_slot.valid())
-        throw std::logic_error("force-inline value call has no result identity");
+        lowir_opt::ThrowOptimizerInternalError(
+          "force-inline value call has no result identity");
       Instruction load;
       load.kind = Instruction::IK_LOAD;
       load.dest = call.dest;
@@ -384,7 +391,8 @@ private:
     }
     result.instructions.insert(result.instructions.end(), tail.begin(), tail.end());
     if(result.instructions.empty())
-      throw std::logic_error("force-inline continuation is empty");
+      lowir_opt::ThrowOptimizerInternalError(
+        "force-inline continuation is empty");
     return result;
   }
 
@@ -414,7 +422,8 @@ private:
       caller->blocks[block_index].instructions.begin() + instruction_index + 1,
       caller->blocks[block_index].instructions.end());
     if(tail.empty())
-      throw std::logic_error("force-inline call has no continuation");
+      lowir_opt::ThrowOptimizerInternalError(
+        "force-inline call has no continuation");
     const BlockId old_predecessor = caller->blocks[block_index].id;
     lowir_phi_edges::rewrite_moved_phi_edges(
       caller, tail.back(), old_predecessor, continuation_id);
