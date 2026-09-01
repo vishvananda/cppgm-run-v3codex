@@ -59,7 +59,7 @@ LowOperation::Kind operation_kind(const std::string & text)
   for(std::size_t i = 0; i < sizeof(operations) / sizeof(operations[0]); ++i)
     if(text == operations[i].first) return operations[i].second;
   if(text.empty()) return LowOperation::LOP_NONE;
-  throw ParseError("unknown LowIR operation: " + text);
+  ThrowLowirInputError("unknown LowIR operation: " + text);
 }
 
 struct Token
@@ -140,12 +140,12 @@ bool is_token_safe_section_name(const std::string & value)
 
 std::size_t parse_positive_size(const std::string & text)
 {
-  if(text.empty() || text[0] == '-') throw ParseError("expected positive integer");
+  if(text.empty() || text[0] == '-') ThrowLowirInputError("expected positive integer");
   char * end = 0;
   errno = 0;
   const unsigned long long value = std::strtoull(text.c_str(), &end, 0);
   if(errno || !end || *end || value == 0 || value > SIZE_MAX)
-    throw ParseError("invalid positive integer: " + text);
+    ThrowLowirInputError("invalid positive integer: " + text);
   return static_cast<std::size_t>(value);
 }
 
@@ -159,11 +159,11 @@ void parse_span_text(const std::string & text, std::size_t & bytes,
     return;
   }
   if(split == 0 || split + 1 == text.size())
-    throw ParseError("invalid object span: " + text);
+    ThrowLowirInputError("invalid object span: " + text);
   bytes = parse_positive_size(text.substr(0, split));
   alignment = parse_positive_size(text.substr(split + 1));
   if(!is_power_of_two(alignment))
-    throw ParseError("object alignment is not a power of two");
+    ThrowLowirInputError("object alignment is not a power of two");
 }
 
 LowType make_builtin_type(LowTypeKind kind, std::size_t storage_size,
@@ -191,16 +191,16 @@ LowType parse_type_text(const std::string & text)
     std::size_t bytes = 0;
     std::size_t alignment = 0;
     parse_span_text(text.substr(4, text.size() - 5), bytes, alignment);
-    if(alignment > bytes) throw ParseError("object alignment exceeds size");
+    if(alignment > bytes) ThrowLowirInputError("object alignment exceeds size");
     if(alignment > UINT32_MAX)
-      throw ParseError("object alignment exceeds LowIR limits");
+      ThrowLowirInputError("object alignment exceeds LowIR limits");
     LowType result;
     result.kind = LTK_OBJECT;
     result.storage_size = bytes;
     result.alignment = static_cast<std::uint32_t>(alignment);
     return result;
   }
-  throw ParseError("unknown LowIR type: " + text);
+  ThrowLowirInputError("unknown LowIR type: " + text);
 }
 
 std::size_t integer_width(const LowType & type)
@@ -241,13 +241,13 @@ private:
 
   const std::string & peek(std::size_t offset = 0) const
   {
-    if(at_ + offset >= tokens_.size()) throw ParseError("unexpected end of LowIR");
+    if(at_ + offset >= tokens_.size()) ThrowLowirInputError("unexpected end of LowIR");
     return tokens_[at_ + offset].text;
   }
 
   std::size_t peek_line(std::size_t offset = 0) const
   {
-    if(at_ + offset >= tokens_.size()) throw ParseError("unexpected end of LowIR");
+    if(at_ + offset >= tokens_.size()) ThrowLowirInputError("unexpected end of LowIR");
     return tokens_[at_ + offset].line;
   }
 
@@ -269,13 +269,13 @@ private:
 
   void expect(const std::string & text)
   {
-    if(!accept(text)) throw ParseError("expected '" + text + "', got '" + peek() + "'");
+    if(!accept(text)) ThrowLowirInputError("expected '" + text + "', got '" + peek() + "'");
   }
 
   std::string named(char sigil, const char * description)
   {
     const std::string text = take();
-    if(!starts_with(text, sigil)) throw ParseError(std::string("expected ") + description);
+    if(!starts_with(text, sigil)) ThrowLowirInputError(std::string("expected ") + description);
     return text;
   }
 
@@ -295,7 +295,7 @@ private:
     std::string result;
     if(accept("-")) result = "-";
     const std::string value = take();
-    if(value.empty() || is_punctuation(value[0])) throw ParseError("expected literal");
+    if(value.empty() || is_punctuation(value[0])) ThrowLowirInputError("expected literal");
     return result + value;
   }
 
@@ -311,7 +311,7 @@ private:
       text += take();
       text += take();
     }
-    if(!strings_) throw std::logic_error("LowIR parser has no string pool");
+    if(!strings_) ThrowLowirInternalError("LowIR parser has no string pool");
     const bool named_operand = !text.empty() &&
       (text[0] == '%' || text[0] == '$' || text[0] == '@' || text[0] == '^');
     result.literal = named_operand ?
@@ -359,7 +359,7 @@ private:
         expect("=");
         const std::string value = take();
         if(!keys.insert(key).second)
-          throw ParseError("duplicate metadata key: " + key);
+          ThrowLowirInputError("duplicate metadata key: " + key);
         result.push_back(std::make_pair(key, value));
       } while(accept(","));
       expect("]");
@@ -392,14 +392,14 @@ private:
       const std::string & value = items[i].second;
       if(key == "arity" || key == "effects" || key == "unwind" ||
          key == "return" || key == "query") {
-        if(!boundary) throw ParseError("function metadata on non-function");
+        if(!boundary) ThrowLowirInputError("function metadata on non-function");
         if(call_signature && key == "query")
-          throw ParseError("query metadata requires a direct function");
+          ThrowLowirInputError("query metadata requires a direct function");
         apply_boundary_item(key, value, *boundary);
       } else if(call_signature) {
-        throw ParseError("symbol metadata on call signature");
+        ThrowLowirInputError("symbol metadata on call signature");
       } else if(key == "storage") {
-        if(!storage) throw ParseError("storage metadata on non-global");
+        if(!storage) ThrowLowirInputError("storage metadata on non-global");
         *storage = parse_storage(value);
       } else {
         apply_symbol_item(key, value, symbol, boundary != 0);
@@ -412,20 +412,20 @@ private:
   {
     if(key == "arity") {
       if(value == "variadic") out.arity = CAM_VARIADIC;
-      else throw ParseError("invalid arity metadata");
+      else ThrowLowirInputError("invalid arity metadata");
     } else if(key == "effects") {
       if(value == "readnone") out.effects = CFXM_READNONE;
       else if(value == "readonly") out.effects = CFXM_READONLY;
-      else throw ParseError("invalid effects metadata");
+      else ThrowLowirInputError("invalid effects metadata");
     } else if(key == "unwind") {
       if(value == "no") out.unwind = CUM_NO;
-      else throw ParseError("invalid unwind metadata");
+      else ThrowLowirInputError("invalid unwind metadata");
     } else if(key == "return") {
       if(value == "noreturn") out.returns = CRM_NORETURN;
-      else throw ParseError("invalid return metadata");
+      else ThrowLowirInputError("invalid return metadata");
     } else if(key == "query") {
       if(value == "stable_prefix") out.query = CQM_STABLE_PREFIX;
-      else throw ParseError("invalid query metadata");
+      else ThrowLowirInputError("invalid query metadata");
     }
   }
 
@@ -435,21 +435,21 @@ private:
     if(key == "role") out.role = parse_role(value);
     else if(key == "linkage") {
       if(value == "c") out.linkage = LLM_C;
-      else throw ParseError("invalid linkage metadata");
+      else ThrowLowirInputError("invalid linkage metadata");
     } else if(key == "binding") {
       if(value == "internal") out.binding = SBM_INTERNAL;
       else if(value == "strong") out.binding = SBM_STRONG;
       else if(value == "weak") out.binding = SBM_WEAK;
-      else throw ParseError("invalid binding metadata");
+      else ThrowLowirInputError("invalid binding metadata");
     } else if(key == "object") out.object_symbol = strings_->intern(value);
     else if(key == "section") {
-      if(function_symbol) throw ParseError("section metadata requires a global");
+      if(function_symbol) ThrowLowirInputError("section metadata requires a global");
       if(!is_token_safe_section_name(value))
-        throw ParseError("invalid global section name");
+        ThrowLowirInputError("invalid global section name");
       out.section_name = strings_->intern(value);
     }
     else if(key == "tls_for") {
-      if(!function_symbol) throw ParseError("tls_for metadata requires a function");
+      if(!function_symbol) ThrowLowirInputError("tls_for metadata requires a function");
       out.tls_for_spelling = !value.empty() && value[0] == '@' ?
         strings_->intern_range(value, 1, value.size() - 1) :
         strings_->intern(value);
@@ -461,29 +461,29 @@ private:
     }
     else if(key == "object_root") out.object_output_root = yes_flag(value);
     else if(key == "force_inline") {
-      if(!function_symbol) throw ParseError("force_inline metadata requires a function");
+      if(!function_symbol) ThrowLowirInputError("force_inline metadata requires a function");
       out.force_inline = yes_flag(value);
     } else if(key == "inline_hint") {
-      if(!function_symbol) throw ParseError("inline_hint metadata requires a function");
+      if(!function_symbol) ThrowLowirInputError("inline_hint metadata requires a function");
       out.inline_hint = yes_flag(value);
     } else if(key == "no_inline") {
-      if(!function_symbol) throw ParseError("no_inline metadata requires a function");
+      if(!function_symbol) ThrowLowirInputError("no_inline metadata requires a function");
       out.no_inline = yes_flag(value);
     }
-    else throw ParseError("unknown symbol metadata: " + key);
+    else ThrowLowirInputError("unknown symbol metadata: " + key);
   }
 
   bool yes_flag(const std::string & value)
   {
     if(value == "yes") return true;
-    throw ParseError("metadata flag must be yes");
+    ThrowLowirInputError("metadata flag must be yes");
   }
 
   GlobalStorageMode parse_storage(const std::string & value)
   {
     if(value == "readonly") return GSM_READONLY;
     if(value == "thread_local") return GSM_THREAD_LOCAL;
-    throw ParseError("invalid global storage metadata");
+    ThrowLowirInputError("invalid global storage metadata");
   }
 
   SymbolRole parse_role(const std::string & value)
@@ -504,7 +504,7 @@ private:
     };
     for(std::size_t i = 0; i < sizeof(roles) / sizeof(roles[0]); ++i)
       if(value == roles[i].first) return roles[i].second;
-    throw ParseError("invalid symbol role");
+    ThrowLowirInputError("invalid symbol role");
   }
 
   Parameter parameter()
@@ -533,10 +533,10 @@ private:
     if(key == "pass") {
       if(value == "indirect_result") out.passing = PPM_INDIRECT_RESULT;
       else if(value == "by_address") out.passing = PPM_BY_ADDRESS;
-      else throw ParseError("invalid parameter pass metadata");
+      else ThrowLowirInputError("invalid parameter pass metadata");
     } else if(key == "alias" && value == "noalias") out.alias = PALM_NOALIAS;
     else if(key == "object_bytes") out.object_bytes = parse_positive_size(value);
-    else throw ParseError("invalid parameter metadata");
+    else ThrowLowirInputError("invalid parameter metadata");
   }
 
   void parse_top_level(Program & program)
@@ -544,11 +544,11 @@ private:
     if(accept("declare")) {
       if(accept("global")) parse_global_declaration(program);
       else if(accept("function")) parse_function_declaration(program);
-      else throw ParseError("expected declaration kind");
+      else ThrowLowirInputError("expected declaration kind");
     } else if(accept("global")) parse_global_definition(program);
     else if(accept("function")) parse_function_definition(program);
     else if(accept("alias")) parse_object_alias(program);
-    else throw ParseError("expected top-level LowIR item");
+    else ThrowLowirInputError("expected top-level LowIR item");
   }
 
   void parse_global_declaration(Program & program)
@@ -605,7 +605,7 @@ private:
   void parse_structured_global(GlobalDefinition & result)
   {
     result.structured = true;
-    if(accept("}")) throw ParseError("structured global must contain data");
+    if(accept("}")) ThrowLowirInputError("structured global must contain data");
     while(!accept("}")) {
       GlobalDefinition::DataItem item;
       if(accept("zero")) {
@@ -629,7 +629,7 @@ private:
 
   void parse_scalar_global(GlobalDefinition & result)
   {
-    if(result.type.kind == LTK_INVALID) throw ParseError("scalar global requires type");
+    if(result.type.kind == LTK_INVALID) ThrowLowirInputError("scalar global requires type");
     if(accept("zero")) result.init_kind = GlobalDefinition::INIT_ZERO;
     else if(accept("addr")) {
       result.init_kind = GlobalDefinition::INIT_ADDR;
@@ -654,7 +654,7 @@ private:
     char * end = 0;
     errno = 0;
     const long long value = std::strtoll(text.c_str(), &end, 0);
-    if(errno || !end || *end) throw ParseError("invalid address addend");
+    if(errno || !end || *end) ThrowLowirInputError("invalid address addend");
     return sign * value;
   }
 
@@ -664,7 +664,7 @@ private:
     ObjectAlias result;
     const std::string object_symbol = take();
     if(object_symbol.empty() || is_punctuation(object_symbol[0]))
-      throw ParseError("invalid object alias spelling");
+      ThrowLowirInputError("invalid object alias spelling");
     result.object_symbol = strings_->intern(object_symbol);
     expect("=");
     result.target_spelling = named_id('@', "object alias target");
@@ -690,7 +690,7 @@ private:
     bool terminated = false;
     while(!accept("}")) {
       if(accept("slot")) {
-        if(block) throw ParseError("slot declaration after first block");
+        if(block) ThrowLowirInputError("slot declaration after first block");
         const lowir_model::StringId name = named_id('$', "slot name");
         expect(":");
         append_lowir_slot(function, name, type());
@@ -699,7 +699,7 @@ private:
            (block->instructions.empty() ||
             (block->instructions.back().kind != Instruction::IK_CALL &&
              block->instructions.back().kind != Instruction::IK_EH_END)))
-          throw ParseError("block has no terminator: " +
+          ThrowLowirInputError("block has no terminator: " +
             lowir_block_label(*strings_, function, block->id));
         const lowir_model::StringId label = named_id('^', "block name");
         function.blocks.push_back(Block());
@@ -709,8 +709,8 @@ private:
         expect(":");
         terminated = false;
       } else {
-        if(!block) throw ParseError("instruction outside block");
-        if(terminated) throw ParseError("instruction after terminator");
+        if(!block) ThrowLowirInputError("instruction outside block");
+        if(terminated) ThrowLowirInputError("instruction after terminator");
         block->instructions.push_back(instruction(function));
         terminated = is_terminator(block->instructions.back().kind);
       }
@@ -719,7 +719,7 @@ private:
        (block->instructions.empty() ||
         (block->instructions.back().kind != Instruction::IK_CALL &&
          block->instructions.back().kind != Instruction::IK_EH_END)))
-      throw ParseError("block has no terminator: " +
+      ThrowLowirInputError("block has no terminator: " +
         lowir_block_label(*strings_, function, block->id));
   }
 
@@ -798,7 +798,7 @@ private:
       out.kind = Instruction::IK_EXCEPTION; out.type = type();
     } else if(op == "exception_selector") {
       out.kind = Instruction::IK_EXCEPTION_SELECTOR; out.type = type();
-    } else throw ParseError("unknown rvalue instruction: " + op);
+    } else ThrowLowirInputError("unknown rvalue instruction: " + op);
   }
 
   void parse_typed_unary(Instruction & out, Instruction::Kind kind)
@@ -828,11 +828,11 @@ private:
     if(peek() == "[") {
       const Metadata items = metadata();
       if(items.size() != 1 || items[0].first != "projection")
-        throw ParseError("invalid index metadata");
+        ThrowLowirInputError("invalid index metadata");
       const std::string & value = items[0].second;
       if(value == "array_element") out.index_projection = IPK_ARRAY_ELEMENT;
       else if(value == "field") out.index_projection = IPK_FIELD;
-      else throw ParseError("invalid index projection");
+      else ThrowLowirInputError("invalid index projection");
     }
     out.first = operand();
     expect(",");
@@ -904,7 +904,7 @@ private:
       const Metadata items = metadata();
       if(items.size() != 1 || items[0].first != "elision" ||
          items[0].second != "copy")
-        throw ParseError("invalid call metadata");
+        ThrowLowirInputError("invalid call metadata");
       out.copy_elision_candidate = true;
     }
     if(accept("as")) {
@@ -915,7 +915,7 @@ private:
       apply_symbol_metadata(metadata(), unused, &out.call_boundary, 0, true);
     }
     if(out.copy_elision_candidate && out.has_call_signature)
-      throw ParseError("copy elision requires a direct call");
+      ThrowLowirInputError("copy elision requires a direct call");
   }
 
   void parse_void_instruction(Instruction & out)
@@ -953,7 +953,7 @@ private:
       out.first = operand();
       if(accept(",")) {
         const Operand selector = operand();
-        if(!selector.has_int_value) throw ParseError("invalid catch selector");
+        if(!selector.has_int_value) ThrowLowirInputError("invalid catch selector");
         out.has_eh_selector = true;
         out.eh_selector = selector.int_value;
       }
@@ -968,7 +968,7 @@ private:
       out.kind = Instruction::IK_EH_CATCH_ALL;
       if(accept(",")) {
         const Operand selector = operand();
-        if(!selector.has_int_value) throw ParseError("invalid catch-all selector");
+        if(!selector.has_int_value) ThrowLowirInputError("invalid catch-all selector");
         out.has_eh_selector = true;
         out.eh_selector = selector.int_value;
       }
@@ -981,7 +981,7 @@ private:
     else if(op == "branch") parse_branch(out);
     else if(op == "switch") parse_switch(out);
     else if(op == "return") parse_return(out);
-    else throw ParseError("unknown instruction: " + op);
+    else ThrowLowirInputError("unknown instruction: " + op);
   }
 
   void parse_bulk(Instruction & out, const std::string & op)
@@ -1062,14 +1062,14 @@ private:
   const std::string & operand_spelling(const Operand & operand) const
   {
     if(!operand.has_spelling)
-      throw ParseError("operand has no input spelling");
+      ThrowLowirInputError("operand has no input spelling");
     return program_.strings.get(operand.literal);
   }
 
   void add_top(const std::string & name)
   {
     if(!top_symbols_.insert(name).second)
-      throw ParseError("duplicate top-level symbol: " + name);
+      ThrowLowirInputError("duplicate top-level symbol: " + name);
   }
 
   void index_top_level()
@@ -1104,7 +1104,7 @@ private:
   {
     if(role != SR_NONE && role != SR_RTTI_CLASS && role != SR_RTTI_SI &&
        role != SR_RTTI_VMI && role != SR_RTTI_DATA)
-      throw ParseError("function role on global");
+      ThrowLowirInputError("function role on global");
   }
 
   void validate_roles_and_tls()
@@ -1125,7 +1125,7 @@ private:
   {
     for(std::size_t i = 0; i < program_.function_declarations.size(); ++i) {
       if(program_.function_declarations[i].metadata.role == SR_ENTRY)
-        throw ParseError("entry role requires a function definition");
+        ThrowLowirInputError("entry role requires a function definition");
     }
     bool explicit_entry = false;
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
@@ -1133,7 +1133,7 @@ private:
       explicit_entry = explicit_entry || function.metadata.role == SR_ENTRY;
     }
     if(entry_policy_ == LEP_REQUIRE_ENTRY && !explicit_entry)
-      throw ParseError("LowIR program has no entry definition");
+      ThrowLowirInputError("LowIR program has no entry definition");
   }
 
   void validate_global_initializers()
@@ -1146,11 +1146,11 @@ private:
           if(item.kind == GlobalDefinition::DataItem::ITEM_ADDR &&
              !top_symbols_.count(
                program_.strings.get(item.symbol_spelling)))
-            throw ParseError("undefined structured global address target");
+            ThrowLowirInputError("undefined structured global address target");
         }
       } else if(global.init_kind == GlobalDefinition::INIT_ADDR &&
                 !top_symbols_.count(operand_spelling(global.init_operand))) {
-        throw ParseError("undefined global address initializer target");
+        ThrowLowirInputError("undefined global address initializer target");
       }
     }
   }
@@ -1161,13 +1161,13 @@ private:
   {
     if(metadata.role != SR_NONE && metadata.role != SR_RTTI_DATA &&
        !roles.insert(static_cast<int>(metadata.role)).second)
-      throw ParseError("duplicate singleton role");
+      ThrowLowirInputError("duplicate singleton role");
     if(metadata.tls_for_spelling.valid()) {
       const std::string & target =
         program_.strings.get(metadata.tls_for_spelling);
       if(!globals_.count(target) || global_storage_[target] != GSM_THREAD_LOCAL)
-        throw ParseError("tls_for target is not thread-local global");
-      if(!tls_targets.insert(target).second) throw ParseError("duplicate tls wrapper");
+        ThrowLowirInputError("tls_for target is not thread-local global");
+      if(!tls_targets.insert(target).second) ThrowLowirInputError("duplicate tls wrapper");
     }
   }
 
@@ -1177,9 +1177,9 @@ private:
     for(std::size_t i = 0; i < program_.object_aliases.size(); ++i) {
       const ObjectAlias & alias = program_.object_aliases[i];
       if(!aliases.insert(program_.strings.get(alias.object_symbol)).second)
-        throw ParseError("duplicate object alias");
+        ThrowLowirInputError("duplicate object alias");
       if(!top_symbols_.count(program_.strings.get(alias.target_spelling)))
-        throw ParseError("undefined object alias target");
+        ThrowLowirInputError("undefined object alias target");
     }
   }
 
@@ -1190,17 +1190,17 @@ private:
     for(std::size_t i = 0; i < params.size(); ++i) {
       const Parameter & param = params[i];
       if(!names.insert(lowir_parameter_name(program_, param)).second)
-        throw ParseError("duplicate parameter");
+        ThrowLowirInputError("duplicate parameter");
       const bool pointer = param.type.kind == LTK_PTR;
       if(param.metadata.passing != PPM_DIRECT && !pointer)
-        throw ParseError("non-direct passing requires ptr");
+        ThrowLowirInputError("non-direct passing requires ptr");
       if(param.metadata.alias != PALM_DEFAULT && !pointer)
-        throw ParseError("alias metadata requires ptr");
+        ThrowLowirInputError("alias metadata requires ptr");
       if(param.metadata.object_bytes && !pointer)
-        throw ParseError("object_bytes metadata requires ptr");
+        ThrowLowirInputError("object_bytes metadata requires ptr");
       if(param.metadata.passing == PPM_INDIRECT_RESULT &&
          (i != 0 || result.kind != LTK_VOID))
-        throw ParseError("invalid indirect result parameter");
+        ThrowLowirInputError("invalid indirect result parameter");
     }
   }
 
@@ -1221,7 +1221,7 @@ private:
        !integer_query_type(params.back().type) ||
        result.kind == LTK_VOID || result.kind == LTK_OBJECT ||
        result.kind == LTK_I128 || result.kind == LTK_F80)
-      throw ParseError("stable-prefix query requires a fixed scalar boundary "
+      ThrowLowirInputError("stable-prefix query requires a fixed scalar boundary "
                        "with a final integer parameter");
   }
 
@@ -1230,7 +1230,7 @@ private:
     validate_parameters(function.params, function.return_type);
     validate_query_boundary(
       function.params, function.return_type, function.boundary);
-    if(function.blocks.empty()) throw ParseError("function has no blocks");
+    if(function.blocks.empty()) ThrowLowirInputError("function has no blocks");
     TypeIndex values;
     TypeIndex all_values;
     TypeIndex slots;
@@ -1243,12 +1243,12 @@ private:
       if(!slots.emplace(lowir_slot_name(program_.strings, function,
                                         function.slots[i]),
                         &lowir_slot_type(function, function.slots[i])).second)
-        throw ParseError("duplicate slot");
+        ThrowLowirInputError("duplicate slot");
     }
     for(std::size_t i = 0; i < function.blocks.size(); ++i)
       if(!blocks.insert(lowir_block_label(program_.strings, function,
                                           function.blocks[i].id)).second)
-        throw ParseError("duplicate block");
+        ThrowLowirInputError("duplicate block");
     for(std::size_t i = 0; i < function.blocks.size(); ++i)
       for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
         const Instruction & ins = function.blocks[i].instructions[j];
@@ -1256,7 +1256,7 @@ private:
         const std::string name = lowir_value_name(
           program_.strings, function, ins.dest);
         if(all_values.count(name))
-          throw ParseError("duplicate temporary definition");
+          ThrowLowirInputError("duplicate temporary definition");
         all_values[name] = &lowir_value_type(function, ins.dest);
       }
     PredecessorIndex predecessors;
@@ -1301,13 +1301,13 @@ private:
                       const PredecessorIndex & predecessors,
                       const std::unordered_set<std::string> & exception_targets)
   {
-    if(block.instructions.empty()) throw ParseError("empty block");
+    if(block.instructions.empty()) ThrowLowirInputError("empty block");
     bool saw_non_phi = false;
     for(std::size_t i = 0; i < block.instructions.size(); ++i) {
       const Instruction & ins = block.instructions[i];
       if(ins.kind == Instruction::IK_PHI) {
         if(saw_non_phi)
-          throw ParseError("phi instructions must precede ordinary instructions");
+          ThrowLowirInputError("phi instructions must precede ordinary instructions");
         validate_phi(function, block, ins, all_values, slots, blocks,
                      predecessors, exception_targets);
       } else {
@@ -1329,7 +1329,7 @@ private:
 	  terminal != 0 && instruction_terminates(block.instructions[terminal - 1]) :
 	  instruction_terminates(block.instructions.back());
 	if(!terminated)
-	  throw ParseError("block has no terminator: " +
+	  ThrowLowirInputError("block has no terminator: " +
             lowir_block_label(program_.strings, function, block.id));
   }
 
@@ -1351,13 +1351,13 @@ private:
                     const std::unordered_set<std::string> & exception_targets)
   {
     if(!phi_type_supported(ins.type))
-      throw ParseError("phi requires a directly representable scalar type");
+      ThrowLowirInputError("phi requires a directly representable scalar type");
     if(ins.args.empty() || ins.args.size() % 2)
-      throw ParseError("phi requires predecessor/value pairs");
+      ThrowLowirInputError("phi requires predecessor/value pairs");
     const std::string & block_name = lowir_block_label(
       program_.strings, function, block.id);
     if(exception_targets.count(block_name))
-      throw ParseError("phi is not permitted in an exception handler block");
+      ThrowLowirInputError("phi is not permitted in an exception handler block");
     const PredecessorIndex::const_iterator expected =
       predecessors.find(block_name);
     const std::size_t expected_count = expected == predecessors.end() ? 0 :
@@ -1369,33 +1369,33 @@ private:
       validate_target(predecessor, blocks);
       const std::string & predecessor_name = operand_spelling(predecessor);
       if(!incoming.insert(predecessor_name).second)
-        throw ParseError("duplicate phi predecessor");
+        ThrowLowirInputError("duplicate phi predecessor");
       if(expected == predecessors.end() ||
          !expected->second.count(predecessor_name))
-        throw ParseError("phi label " + predecessor_name +
+        ThrowLowirInputError("phi label " + predecessor_name +
           " is not a predecessor of " + block_name + " in function @" +
           lowir_symbol_name(program_, function.symbol));
       validate_operand(value, all_values, slots);
       if(value.kind == Operand::OP_SLOT || value.kind == Operand::OP_LABEL)
-        throw ParseError("phi incoming operand is not a scalar value");
+        ThrowLowirInputError("phi incoming operand is not a scalar value");
       if(value.kind == Operand::OP_TEMP) {
         const TypeIndex::const_iterator found =
           all_values.find(operand_spelling(value));
         if(found == all_values.end() ||
            !same_lowir_type(*found->second, ins.type))
-          throw ParseError("phi incoming temporary type mismatch");
+          ThrowLowirInputError("phi incoming temporary type mismatch");
       } else if(value.kind == Operand::OP_GLOBAL && ins.type.kind != LTK_PTR) {
-        throw ParseError("phi global operand requires ptr type");
+        ThrowLowirInputError("phi global operand requires ptr type");
       } else if(value.kind == Operand::OP_FLOAT &&
                 ins.type.kind != LTK_F32 && ins.type.kind != LTK_F64) {
-        throw ParseError("phi floating literal type mismatch");
+        ThrowLowirInputError("phi floating literal type mismatch");
       } else if(value.kind == Operand::OP_INTEGER &&
                 (ins.type.kind == LTK_F32 || ins.type.kind == LTK_F64)) {
-        throw ParseError("phi integer literal type mismatch");
+        ThrowLowirInputError("phi integer literal type mismatch");
       }
     }
     if(incoming.size() != expected_count)
-      throw ParseError("phi must name every ordinary predecessor exactly once");
+      ThrowLowirInputError("phi must name every ordinary predecessor exactly once");
   }
 
   bool instruction_terminates(const Instruction & ins) const
@@ -1425,20 +1425,20 @@ private:
   {
     const std::string & spelling = operand_spelling(operand);
     if(operand.kind == Operand::OP_TEMP && !values.count(spelling))
-      throw ParseError("undefined temporary: " + spelling);
+      ThrowLowirInputError("undefined temporary: " + spelling);
     if(operand.kind == Operand::OP_SLOT && !slots.count(spelling))
-      throw ParseError("undefined slot: " + spelling);
+      ThrowLowirInputError("undefined slot: " + spelling);
     if(operand.kind == Operand::OP_GLOBAL && !top_symbols_.count(spelling))
-      throw ParseError("undefined top-level symbol: " + spelling);
+      ThrowLowirInputError("undefined top-level symbol: " + spelling);
     if(operand.kind == Operand::OP_LABEL && !allow_label)
-      throw ParseError("block label used as value");
+      ThrowLowirInputError("block label used as value");
   }
 
   void validate_target(const Operand & target, const std::unordered_set<std::string> & blocks) const
   {
     if(target.kind != Operand::OP_LABEL ||
        !blocks.count(operand_spelling(target)))
-      throw ParseError("undefined or invalid block target");
+      ThrowLowirInputError("undefined or invalid block target");
   }
 
   void validate_instruction(const Function & function, const Instruction & ins,
@@ -1462,28 +1462,28 @@ private:
       validate_operation_types(ins);
     }
     if(kind == Instruction::IK_RETURN && !same_lowir_type(ins.type, function.return_type))
-      throw ParseError("return type does not match function");
+      ThrowLowirInputError("return type does not match function");
 	if(kind == Instruction::IK_VA_START) {
       if(function.boundary.arity != CAM_VARIADIC)
-        throw ParseError("va_start requires a variadic function");
+        ThrowLowirInputError("va_start requires a variadic function");
       const TypeIndex::const_iterator value = values.find(
         operand_spelling(ins.first));
       if(ins.first.kind != Operand::OP_TEMP || value == values.end() ||
          value->second->kind != LTK_PTR)
-        throw ParseError("va_start requires a pointer value");
+        ThrowLowirInputError("va_start requires a pointer value");
 	}
 	if(kind == Instruction::IK_VA_ARG) {
 	  const TypeIndex::const_iterator value = values.find(
         operand_spelling(ins.first));
 	  if(ins.first.kind != Operand::OP_TEMP || value == values.end() ||
 	     value->second->kind != LTK_PTR)
-	    throw ParseError("va_arg requires a pointer value");
+	    ThrowLowirInputError("va_arg requires a pointer value");
 	  if(ins.type.kind != LTK_PTR && ins.type.kind != LTK_I8 &&
 	     ins.type.kind != LTK_U8 && ins.type.kind != LTK_I16 &&
 	     ins.type.kind != LTK_U16 && ins.type.kind != LTK_I32 &&
 	     ins.type.kind != LTK_U32 && ins.type.kind != LTK_I64 &&
 	     ins.type.kind != LTK_F64)
-	    throw ParseError("va_arg scalar type is not supported");
+	    ThrowLowirInputError("va_arg scalar type is not supported");
 	}
 	if(kind == Instruction::IK_STACK_ALLOC) {
 	  LowTypeKind size = ins.first.kind == Operand::OP_INTEGER ?
@@ -1498,7 +1498,7 @@ private:
 	    size = slot->second->kind;
 	  if(size < LTK_I1 || size > LTK_I64 || size == LTK_F32 ||
 	     size == LTK_F64 || size == LTK_F80 || size == LTK_PTR)
-	    throw ParseError("stack_alloc requires an integer size");
+	    ThrowLowirInputError("stack_alloc requires an integer size");
 	}
     if((kind == Instruction::IK_EH_TRY || kind == Instruction::IK_EH_CLEANUP))
       validate_target(ins.first, blocks);
@@ -1521,12 +1521,12 @@ private:
     if(ins.kind == Instruction::IK_UNARY) {
       if(ins.op.kind == LowOperation::LOP_BSWAP && ins.type.kind != LTK_I16 && ins.type.kind != LTK_U16 &&
          ins.type.kind != LTK_I32 && ins.type.kind != LTK_U32 &&
-         ins.type.kind != LTK_I64) throw ParseError("invalid bswap type");
+         ins.type.kind != LTK_I64) ThrowLowirInputError("invalid bswap type");
     }
     if(ins.kind == Instruction::IK_CONVERT) validate_conversion(ins);
     if((ins.kind == Instruction::IK_COPYOBJ || ins.kind == Instruction::IK_ZEROINIT) &&
        (!ins.byte_count || !is_power_of_two(ins.byte_alignment)))
-      throw ParseError("invalid bulk-memory span");
+      ThrowLowirInputError("invalid bulk-memory span");
   }
 
   void validate_conversion(const Instruction & ins)
@@ -1542,7 +1542,7 @@ private:
     if((ins.op.kind == LowOperation::LOP_FPTOSI || ins.op.kind == LowOperation::LOP_FPTOUI) && dst_i && src_f) return;
     if(ins.op.kind == LowOperation::LOP_FPEXT && dst_f && src_f && dst_f > src_f) return;
     if(ins.op.kind == LowOperation::LOP_FPTRUNC && dst_f && src_f && dst_f < src_f) return;
-    throw ParseError("invalid conversion widths or categories");
+    ThrowLowirInputError("invalid conversion widths or categories");
   }
 
   void validate_call(const Instruction & ins,
@@ -1554,21 +1554,21 @@ private:
     const std::unordered_map<std::string, FunctionInfo>::const_iterator found =
       functions_.find(operand_spelling(ins.first));
     const bool direct = ins.first.kind == Operand::OP_GLOBAL && found != functions_.end();
-    if(!direct && !ins.has_call_signature) throw ParseError("indirect call requires signature");
+    if(!direct && !ins.has_call_signature) ThrowLowirInputError("indirect call requires signature");
     if(ins.copy_elision_candidate &&
        (!direct || !ins.call_returns_void || ins.args.size() < 2))
-      throw ParseError(
+      ThrowLowirInputError(
         "copy elision requires a direct void call with destination and source");
     if(ins.has_call_signature) {
       validate_parameters(ins.call_params, ins.call_return_type);
       validate_query_boundary(
         ins.call_params, ins.call_return_type, ins.call_boundary);
       if(!same_lowir_type(ins.call_return_type, ins.type))
-        throw ParseError("call signature return mismatch");
+        ThrowLowirInputError("call signature return mismatch");
       validate_arity(ins.args.size(), ins.call_params.size(), ins.call_boundary.arity);
     } else {
       if(!same_lowir_type(*found->second.result, ins.type))
-        throw ParseError("direct call return mismatch");
+        ThrowLowirInputError("direct call return mismatch");
       validate_arity(ins.args.size(), found->second.params->size(), found->second.boundary->arity);
     }
   }
@@ -1576,7 +1576,7 @@ private:
   void validate_arity(std::size_t actual, std::size_t fixed, CallArityMode mode)
   {
     if((mode == CAM_FIXED && actual != fixed) || (mode != CAM_FIXED && actual < fixed))
-      throw ParseError("call arity mismatch");
+      ThrowLowirInputError("call arity mismatch");
   }
 
   const LowType & result_type(const Instruction & ins) const
@@ -1592,7 +1592,9 @@ private:
 std::string read_file(const std::string & path)
 {
   std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
-  if(!input) throw ParseError("unable to open LowIR source: " + path);
+  if(!input)
+    throw InputOutputError("unable to open LowIR source: " + path,
+                           CompilerErrorDomain::LOWIR);
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
@@ -1606,7 +1608,7 @@ void assign_literal_type(Program & program, Operand & operand,
   if(!operand.has_spelling || !parse_lowir_floating_literal_bits(
       program.strings.get(operand.literal), type,
       &operand.literal_low, &operand.literal_high))
-    throw ParseError("invalid floating literal");
+    ThrowLowirInputError("invalid floating literal");
   operand.has_float_bits = true;
 }
 
@@ -1779,7 +1781,7 @@ const char * lowir_operation_text(LowOperation operation)
   case LowOperation::LOP_FPTRUNC: return "fptrunc";
   case LowOperation::LOP_FPEXT: return "fpext";
   }
-  throw ParseError("invalid compact LowIR operation identity");
+  ThrowLowirInternalError("invalid compact LowIR operation identity");
 }
 
 bool operator==(LowOperation left, LowOperation right)
@@ -1834,7 +1836,7 @@ const LowType & builtin_lowir_type(LowTypeKind kind)
   case LTK_F64: return f64_type;
   case LTK_F80: return f80_type;
   case LTK_PTR: return ptr_type;
-  default: throw ParseError("invalid built-in LowIR type identity");
+  default: ThrowLowirInternalError("invalid built-in LowIR type identity");
   }
 }
 
@@ -1860,7 +1862,7 @@ std::string lowir_type_text(const LowType & type)
     return "obj<" + std::to_string(type.storage_size) + "x" +
       std::to_string(type.alignment) + ">";
   }
-  throw ParseError("invalid compact LowIR type identity");
+  ThrowLowirInternalError("invalid compact LowIR type identity");
 }
 
 bool InstructionDebugLocation::present() const
@@ -1900,7 +1902,7 @@ LowirProgram parse_lowir_program_text(const std::string & text,
 LowirProgram parse_lowir_program_files(const std::vector<std::string> & paths,
                                        LowirEntryPolicy entry_policy)
 {
-  if(paths.empty()) throw ParseError("no LowIR source files");
+  if(paths.empty()) throw InvocationError("no LowIR source files");
   std::vector<Token> tokens;
   std::size_t source_bytes = 0;
   for(std::size_t i = 0; i < paths.size(); ++i) {

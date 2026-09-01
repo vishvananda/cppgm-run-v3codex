@@ -49,7 +49,7 @@ PresentationName PresentationName::pooled(StringId spelling,
 {
   const std::uint32_t id = spelling;
   if(!spelling.valid() || id > kPresentationPayloadMask)
-    throw std::runtime_error("invalid pooled presentation identity");
+    ThrowLowirInternalError("invalid pooled presentation identity");
   return PresentationName(
     id | (preserve_copy ? kPresentationPreserveCopy : 0));
 }
@@ -57,7 +57,7 @@ PresentationName PresentationName::pooled(StringId spelling,
 PresentationName PresentationName::generated_value(std::uint32_t ordinal)
 {
   if(ordinal > kPresentationPayloadMask)
-    throw std::runtime_error("too many generated presentation identities");
+    ThrowLowirResourceLimit("too many generated presentation identities");
   return PresentationName(kPresentationGeneratedValue | ordinal);
 }
 
@@ -65,7 +65,7 @@ PresentationName PresentationName::fixed(FixedPresentationName name)
 {
   const std::uint32_t id = static_cast<std::uint32_t>(name);
   if(id > static_cast<std::uint32_t>(FPN_PHI_CYCLE_SCRATCH))
-    throw std::runtime_error("invalid fixed presentation identity");
+    ThrowLowirInternalError("invalid fixed presentation identity");
   return PresentationName(kPresentationFixedValue | id);
 }
 
@@ -95,24 +95,24 @@ bool PresentationName::preserves_copy() const
 StringId PresentationName::spelling() const
 {
   if(!valid() || generated() || fixed())
-    throw std::logic_error("presentation identity has no pooled spelling");
+    ThrowLowirInternalError("presentation identity has no pooled spelling");
   return StringId(encoded_ & kPresentationPayloadMask);
 }
 
 std::uint32_t PresentationName::generated_ordinal() const
 {
   if(!generated())
-    throw std::logic_error("presentation identity has no generated ordinal");
+    ThrowLowirInternalError("presentation identity has no generated ordinal");
   return encoded_ & kPresentationPayloadMask;
 }
 
 FixedPresentationName PresentationName::fixed_name() const
 {
   if(!fixed())
-    throw std::logic_error("presentation identity has no fixed name");
+    ThrowLowirInternalError("presentation identity has no fixed name");
   const std::uint32_t id = encoded_ & kPresentationPayloadMask;
   if(id > static_cast<std::uint32_t>(FPN_PHI_CYCLE_SCRATCH))
-    throw std::logic_error("invalid fixed presentation identity");
+    ThrowLowirInternalError("invalid fixed presentation identity");
   return static_cast<FixedPresentationName>(id);
 }
 
@@ -126,7 +126,7 @@ const char * fixed_presentation_name_text(FixedPresentationName name)
   case FPN_F80_RETURN: return "%f80-return";
   case FPN_PHI_CYCLE_SCRATCH: return "%phi-cycle-scratch";
   }
-  throw std::logic_error("invalid fixed presentation identity");
+  ThrowLowirInternalError("invalid fixed presentation identity");
 }
 
 namespace {
@@ -217,7 +217,7 @@ std::uint32_t GeneratedNameReservations::claim_first_available(
 {
   const std::uint32_t result = first_available_[kind];
   if(result == std::numeric_limits<std::uint32_t>::max())
-    throw std::runtime_error("too many generated presentation identities");
+    ThrowLowirResourceLimit("too many generated presentation identities");
   reserve(kind, result);
   return result;
 }
@@ -460,7 +460,7 @@ long double lowir_floating_value(std::uint64_t low, std::uint64_t high,
     return value;
   }
   if(type.kind != LTK_F80)
-    throw std::logic_error("non-floating LowIR literal type");
+    ThrowLowirInternalError("non-floating LowIR literal type");
   unsigned char native[sizeof(long double)] = {};
   const std::size_t payload = std::min<std::size_t>(10, sizeof(long double));
   unsigned char bytes[16] = {};
@@ -480,7 +480,7 @@ std::string generated_lowir_literal_text(const Operand & operand)
     return std::to_string(operand.int_value);
   }
   if(operand.kind != Operand::OP_FLOAT || !operand.has_float_bits)
-    throw std::logic_error("LowIR operand has no literal presentation");
+    ThrowLowirInternalError("LowIR operand has no literal presentation");
   const long double value = lowir_floating_value(
     operand.literal_low, operand.literal_high, operand.literal_type);
   if(std::isinf(value)) return value < 0 ? "-inf" : "inf";
@@ -499,7 +499,7 @@ std::string lowir_literal_text(const Operand & operand,
                                const StringPool * strings)
 {
   if(operand.has_spelling) {
-    if(!strings) throw std::logic_error("literal spelling has no string pool");
+    if(!strings) ThrowLowirInternalError("literal spelling has no string pool");
     return strings->get(operand.literal);
   }
   return generated_lowir_literal_text(operand);
@@ -557,9 +557,9 @@ StringId StringPool::intern_range(const std::string & text, std::size_t first,
                                   std::size_t count, StringPoolStats * stats)
 {
   if(storage_->sealed)
-    throw std::logic_error("cannot mutate sealed LowIR presentation storage");
+    ThrowLowirInternalError("cannot mutate sealed LowIR presentation storage");
   if(first > text.size() || count > text.size() - first)
-    throw std::logic_error("invalid LowIR string-pool range");
+    ThrowLowirInternalError("invalid LowIR string-pool range");
   if(stats) {
     ++stats->intern_calls;
     stats->hash_bytes += count;
@@ -579,7 +579,7 @@ StringId StringPool::intern_range(const std::string & text, std::size_t first,
     slot = (slot + 1) & mask;
   }
   if(storage_->strings.size() >= kInvalidCompactId)
-    throw std::runtime_error("too many pooled LowIR strings");
+    ThrowLowirResourceLimit("too many pooled LowIR strings");
   const std::uint32_t id = static_cast<std::uint32_t>(storage_->strings.size());
   storage_->strings.push_back(text.substr(first, count));
   if(!storage_->retained.empty()) storage_->retained.push_back(1);
@@ -593,7 +593,7 @@ StringId StringPool::intern_range(const std::string & text, std::size_t first,
 void StringPool::reserve(std::size_t expected_strings)
 {
   if(storage_->sealed)
-    throw std::logic_error("cannot mutate sealed LowIR presentation storage");
+    ThrowLowirInternalError("cannot mutate sealed LowIR presentation storage");
   if(expected_strings >= kInvalidCompactId)
     expected_strings = kInvalidCompactId - 1;
   storage_->strings.reserve(expected_strings + 1);
@@ -606,9 +606,9 @@ void StringPool::reserve(std::size_t expected_strings)
 void StringPool::retain_only(const std::vector<unsigned char> & retained)
 {
   if(storage_->sealed)
-    throw std::logic_error("cannot prune sealed LowIR presentation storage");
+    ThrowLowirInternalError("cannot prune sealed LowIR presentation storage");
   if(retained.size() != storage_->strings.size())
-    throw std::logic_error("invalid LowIR presentation retention mask");
+    ThrowLowirInternalError("invalid LowIR presentation retention mask");
   const std::vector<unsigned char> previously_retained = storage_->retained;
   storage_->retained.assign(storage_->strings.size(), 0);
   storage_->retained_count = 0;
@@ -631,7 +631,7 @@ const std::string & StringPool::get(StringId id) const
   const std::uint32_t index = id;
   if(index >= storage_->strings.size() ||
      (!storage_->retained.empty() && !storage_->retained[index]))
-    throw std::logic_error("invalid pooled LowIR string identity " +
+    ThrowLowirInternalError("invalid pooled LowIR string identity " +
       std::to_string(index) + " for " +
       std::to_string(storage_->strings.size()) +
       " entries");
@@ -691,11 +691,11 @@ SealedStringPool::SealedStringPool(
 const std::string & SealedStringPool::get(StringId id) const
 {
   if(!storage_)
-    throw std::logic_error("missing sealed LowIR presentation storage");
+    ThrowLowirInternalError("missing sealed LowIR presentation storage");
   const std::uint32_t index = id;
   if(index >= storage_->strings.size() ||
      (!storage_->retained.empty() && !storage_->retained[index]))
-    throw std::logic_error("invalid sealed LowIR string identity " +
+    ThrowLowirInternalError("invalid sealed LowIR string identity " +
       std::to_string(index) + " for " +
       std::to_string(storage_->strings.size()) + " entries");
   return storage_->strings[index];
@@ -732,7 +732,7 @@ bool SealedStringPool::valid() const { return static_cast<bool>(storage_); }
 BlockId allocate_lowir_block_id(Function & function, StringId label)
 {
   if(function.next_block_id == kInvalidCompactId)
-    throw std::runtime_error("too many LowIR blocks");
+    ThrowLowirResourceLimit("too many LowIR blocks");
   const BlockId result(function.next_block_id++);
   function.block_labels.push_back(label);
   function.block_presentation_order.push_back(result);
@@ -745,7 +745,7 @@ const std::string & lowir_block_label(const StringPool & strings,
 {
   const std::uint32_t id = block;
   if(id >= function.block_labels.size())
-    throw std::logic_error("invalid LowIR block identity");
+    ThrowLowirInternalError("invalid LowIR block identity");
   return strings.get(function.block_labels[id]);
 }
 
@@ -753,7 +753,7 @@ SlotId append_lowir_slot(Function & function, StringId name,
                          const LowType & type)
 {
   if(function.slot_names.size() == kInvalidCompactId)
-    throw std::runtime_error("too many LowIR slots");
+    ThrowLowirResourceLimit("too many LowIR slots");
   const SlotId result(static_cast<std::uint32_t>(function.slot_names.size()));
   function.slot_names.push_back(name);
   function.slot_types.push_back(type);
@@ -767,7 +767,7 @@ const std::string & lowir_slot_name(const StringPool & strings,
 {
   const std::uint32_t id = slot;
   if(id >= function.slot_names.size())
-    throw std::logic_error("invalid LowIR slot identity");
+    ThrowLowirInternalError("invalid LowIR slot identity");
   return strings.get(function.slot_names[id]);
 }
 
@@ -775,7 +775,7 @@ const LowType & lowir_slot_type(const Function & function, SlotId slot)
 {
   const std::uint32_t id = slot;
   if(id >= function.slot_types.size())
-    throw std::logic_error("invalid LowIR slot identity");
+    ThrowLowirInternalError("invalid LowIR slot identity");
   return function.slot_types[id];
 }
 
@@ -785,7 +785,7 @@ ValueId append_value_identity(Function & function, PresentationName name,
                               const LowType & type)
 {
   if(function.value_names.size() == kInvalidCompactId)
-    throw std::runtime_error("too many LowIR values");
+    ThrowLowirResourceLimit("too many LowIR values");
   const ValueId result(static_cast<std::uint32_t>(function.value_names.size()));
   function.value_names.push_back(name);
   function.value_types.push_back(type);
@@ -797,7 +797,7 @@ ValueId append_value_identity(Function & function, PresentationName name,
 ValueId append_lowir_value(Function & function, StringId name,
                            const LowType & type, bool preserve_copy)
 {
-  if(!name.valid()) throw std::logic_error("empty named LowIR value");
+  if(!name.valid()) ThrowLowirInternalError("empty named LowIR value");
   return append_value_identity(
     function, PresentationName::pooled(name, preserve_copy), type);
 }
@@ -832,10 +832,10 @@ std::string lowir_value_name(const StringPool & strings,
 {
   const std::uint32_t id = value;
   if(id >= function.value_names.size())
-    throw std::logic_error("invalid LowIR value identity");
+    ThrowLowirInternalError("invalid LowIR value identity");
   const PresentationName name = function.value_names[id];
   if(!name.valid())
-    throw std::logic_error("LowIR value has no presentation identity");
+    ThrowLowirInternalError("LowIR value has no presentation identity");
   if(!name.generated()) return strings.get(name.spelling());
   return "t" + std::to_string(name.generated_ordinal());
 }
@@ -844,7 +844,7 @@ const LowType & lowir_value_type(const Function & function, ValueId value)
 {
   const std::uint32_t id = value;
   if(id >= function.value_types.size())
-    throw std::logic_error("invalid LowIR value type identity");
+    ThrowLowirInternalError("invalid LowIR value type identity");
   return function.value_types[id];
 }
 
@@ -852,7 +852,7 @@ bool lowir_value_preserves_copy(const Function & function, ValueId value)
 {
   const std::uint32_t id = value;
   if(id >= function.value_names.size())
-    throw std::logic_error("invalid LowIR value identity");
+    ThrowLowirInternalError("invalid LowIR value identity");
   return function.value_names[id].preserves_copy();
 }
 
@@ -861,7 +861,7 @@ PresentationName lowir_value_presentation(const Function & function,
 {
   const std::uint32_t id = value;
   if(id >= function.value_names.size())
-    throw std::logic_error("invalid LowIR value identity");
+    ThrowLowirInternalError("invalid LowIR value identity");
   return function.value_names[id];
 }
 
@@ -869,7 +869,7 @@ const std::string & lowir_parameter_name(const Program & program,
                                          const Parameter & parameter)
 {
   if(!parameter.name.valid())
-    throw std::logic_error("LowIR parameter has no presentation identity");
+    ThrowLowirInternalError("LowIR parameter has no presentation identity");
   return program.strings.get(parameter.name);
 }
 
@@ -974,8 +974,8 @@ SymbolId append_lowir_symbol(Program & program, const std::string & name)
 SymbolId append_lowir_symbol(Program & program, StringId name)
 {
   if(program.symbol_names.size() == kInvalidCompactId)
-    throw std::runtime_error("too many LowIR symbols");
-  if(!name.valid()) throw std::logic_error("empty LowIR symbol presentation");
+    ThrowLowirResourceLimit("too many LowIR symbols");
+  if(!name.valid()) ThrowLowirInternalError("empty LowIR symbol presentation");
   const SymbolId result(
     static_cast<std::uint32_t>(program.symbol_names.size()));
   program.symbol_names.push_back(name);
@@ -986,7 +986,7 @@ StringId lowir_symbol_spelling(const Program & program, SymbolId symbol)
 {
   const std::uint32_t id = symbol;
   if(id >= program.symbol_names.size())
-    throw std::logic_error("invalid LowIR symbol identity");
+    ThrowLowirInternalError("invalid LowIR symbol identity");
   return program.symbol_names[id];
 }
 
@@ -1029,17 +1029,17 @@ void resolve_lowir_function_operands(Function & function,
         if(fixed[k]->kind == Operand::OP_LABEL) {
           const std::unordered_map<std::string, BlockId>::const_iterator found =
             blocks.find(spelling);
-          if(found == blocks.end()) throw ParseError("undefined block target");
+          if(found == blocks.end()) ThrowLowirInputError("undefined block target");
           fixed[k]->block = found->second;
         } else if(fixed[k]->kind == Operand::OP_SLOT) {
           const std::unordered_map<std::string, SlotId>::const_iterator found =
             slots.find(spelling);
-          if(found == slots.end()) throw ParseError("undefined slot operand");
+          if(found == slots.end()) ThrowLowirInputError("undefined slot operand");
           fixed[k]->slot = found->second;
         } else if(fixed[k]->kind == Operand::OP_TEMP) {
           const std::unordered_map<std::string, ValueId>::const_iterator found =
             values.find(spelling);
-          if(found == values.end()) throw ParseError("undefined value operand");
+          if(found == values.end()) ThrowLowirInputError("undefined value operand");
           fixed[k]->value = found->second;
         } else continue;
         fixed[k]->has_spelling = false;
@@ -1051,17 +1051,17 @@ void resolve_lowir_function_operands(Function & function,
         if(operand.kind == Operand::OP_LABEL) {
           const std::unordered_map<std::string, BlockId>::const_iterator found =
             blocks.find(spelling);
-          if(found == blocks.end()) throw ParseError("undefined block target");
+          if(found == blocks.end()) ThrowLowirInputError("undefined block target");
           operand.block = found->second;
         } else if(operand.kind == Operand::OP_SLOT) {
           const std::unordered_map<std::string, SlotId>::const_iterator found =
             slots.find(spelling);
-          if(found == slots.end()) throw ParseError("undefined slot operand");
+          if(found == slots.end()) ThrowLowirInputError("undefined slot operand");
           operand.slot = found->second;
         } else if(operand.kind == Operand::OP_TEMP) {
           const std::unordered_map<std::string, ValueId>::const_iterator found =
             values.find(spelling);
-          if(found == values.end()) throw ParseError("undefined value operand");
+          if(found == values.end()) ThrowLowirInputError("undefined value operand");
           operand.value = found->second;
         } else continue;
         operand.has_spelling = false;
@@ -1096,7 +1096,7 @@ void resolve_lowir_program_symbols(Program & program)
   for(std::size_t i = 0; i < program.symbol_names.size(); ++i) {
     const std::uint32_t spelling = program.symbol_names[i];
     if(spelling >= symbols.size())
-      throw std::logic_error("invalid LowIR symbol presentation identity");
+      ThrowLowirInternalError("invalid LowIR symbol presentation identity");
     symbols[spelling] = SymbolId(static_cast<std::uint32_t>(i));
   }
 
@@ -1104,7 +1104,7 @@ void resolve_lowir_program_symbols(Program & program)
                                            const char * error) -> SymbolId {
     const std::uint32_t id = spelling;
     if(!spelling.valid() || id >= symbols.size() || !symbols[id].valid())
-      throw ParseError(error);
+      ThrowLowirInputError(error);
     return symbols[id];
   };
 
@@ -1250,7 +1250,7 @@ void discard_unreferenced_lowir_strings(Program & program)
     if(!id.valid()) return;
     const std::uint32_t index = id;
     if(index >= retained.size())
-      throw std::logic_error("invalid retained LowIR presentation identity");
+      ThrowLowirInternalError("invalid retained LowIR presentation identity");
     retained[index] = 1;
   };
   const auto retain_operand = [&retain](const Operand & operand) {
@@ -1367,10 +1367,10 @@ void remap_lowir_program_symbols(
     Program & program, const std::vector<SymbolId> & symbols)
 {
   if(symbols.size() != program.symbol_names.size())
-    throw std::logic_error("invalid LowIR symbol remap");
+    ThrowLowirInternalError("invalid LowIR symbol remap");
   const auto remap_symbol = [&symbols](SymbolId & symbol) {
     if(!symbol.valid() || static_cast<std::uint32_t>(symbol) >= symbols.size())
-      throw std::logic_error("invalid LowIR symbol identity during remap");
+      ThrowLowirInternalError("invalid LowIR symbol identity during remap");
     symbol = symbols[symbol];
   };
   const auto remap_metadata = [&remap_symbol](SymbolMetadata & metadata) {

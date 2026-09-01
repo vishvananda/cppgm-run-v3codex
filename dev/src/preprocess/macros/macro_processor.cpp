@@ -32,34 +32,15 @@ namespace
 {
 
 __attribute__((cold, noinline, noreturn))
-void ThrowPreprocessingSourceError(const char* message)
-{
-	throw SourceError(message, CompilerErrorDomain::PREPROCESSING);
-}
-
+void ThrowPreprocessingSourceError(const char* message) { throw SourceError(message, CompilerErrorDomain::PREPROCESSING); }
 __attribute__((cold, noinline, noreturn))
-void ThrowPreprocessingResourceLimit(const char* message)
-{
-	throw ResourceLimitError(message, CompilerErrorDomain::PREPROCESSING);
-}
-
+void ThrowPreprocessingResourceLimit(const char* message) { throw ResourceLimitError(message, CompilerErrorDomain::PREPROCESSING); }
 __attribute__((cold, noinline, noreturn))
-void ThrowPreprocessingInternalError(const char* message)
-{
-	throw InternalCompilerError(message, CompilerErrorDomain::PREPROCESSING);
-}
-
+void ThrowPreprocessingInternalError(const char* message) { throw InternalCompilerError(message, CompilerErrorDomain::PREPROCESSING); }
 __attribute__((cold, noinline, noreturn))
-void ThrowPreprocessingInputOutputError(const std::string& message)
-{
-	throw InputOutputError(message, CompilerErrorDomain::PREPROCESSING);
-}
-
+void ThrowPreprocessingInputOutputError(const std::string& message) { throw InputOutputError(message, CompilerErrorDomain::PREPROCESSING); }
 __attribute__((cold, noinline, noreturn))
-void ThrowPreprocessingInvocationError(const char* message)
-{
-	throw InvocationError(message);
-}
+void ThrowPreprocessingInvocationError(const char* message) { throw InvocationError(message); }
 
 typedef std::uint32_t SpellingId;
 typedef std::uint32_t PaintId;
@@ -151,8 +132,7 @@ public:
 			return slots_[position];
 		// The high bit is reserved for allocation-free singleton paint sets.
 		if (spellings_.size() >= static_cast<std::size_t>(kSingletonPaint))
-			ThrowPreprocessingResourceLimit(
-				"too many distinct preprocessing spellings");
+			ThrowPreprocessingResourceLimit("too many distinct preprocessing spellings");
 		if ((spellings_.size() + 1) * 10 >= slots_.size() * 7)
 		{
 			Rehash(slots_.size() * 2);
@@ -820,8 +800,7 @@ public:
 		{
 			if (sources_.empty() ||
 				conditionals_.size() != sources_.back().conditional_base)
-				ThrowPreprocessingSourceError(
-					"unterminated conditional inclusion");
+				ThrowPreprocessingSourceError("unterminated conditional inclusion");
 			line_.clear();
 			line_spelling_bytes_ = 0;
 			return;
@@ -833,8 +812,7 @@ public:
 	void ProcessPrimary(const std::string& path, const std::string& source)
 	{
 		if (!full_preprocessing_ || !sources_.empty())
-			ThrowPreprocessingInternalError(
-				"invalid primary preprocessing session");
+			ThrowPreprocessingInternalError("invalid primary preprocessing session");
 		if (options_->hosted_predefined_source &&
 			*options_->hosted_predefined_source)
 			ProcessSource("<built-in>", options_->hosted_predefined_source,
@@ -968,8 +946,7 @@ private:
 			const std::size_t equal = action.argument.find('=');
 			const std::string name = action.argument.substr(0, equal);
 			if (!IsCommandLineMacroName(name))
-				ThrowPreprocessingInvocationError(
-					"invalid command-line macro name");
+				ThrowPreprocessingInvocationError("invalid command-line macro name");
 			RemoveMacro(name);
 			const std::string replacement = equal == std::string::npos ?
 				"1" : action.argument.substr(equal + 1);
@@ -993,8 +970,7 @@ private:
 	{
 		std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
 		if (!input)
-			ThrowPreprocessingInputOutputError(
-				"unable to open source file: " + path);
+			ThrowPreprocessingInputOutputError("unable to open source file: " + path);
 		input.seekg(0, std::ios::end);
 		const std::streamoff size = input.tellg();
 		if (size < 0)
@@ -1005,8 +981,7 @@ private:
 		if (size != 0)
 			input.read(&result[0], size);
 		if (!input)
-			ThrowPreprocessingInputOutputError(
-				"unable to read source file: " + path);
+			ThrowPreprocessingInputOutputError("unable to read source file: " + path);
 		return result;
 	}
 
@@ -1058,8 +1033,7 @@ private:
 			ThrowPreprocessingInternalError("source line escaped tokenizer EOF");
 		sources_.pop_back();
 		if (source.size() > live_source_bytes_)
-			ThrowPreprocessingInternalError(
-				"invalid source storage accounting");
+			ThrowPreprocessingInternalError("invalid source storage accounting");
 		live_source_bytes_ -= source.size();
 	}
 
@@ -1079,8 +1053,7 @@ private:
 	std::size_t PresumedLine(const SourceFrame& source) const
 	{
 		if (source.current_physical_line < source.physical_base)
-			ThrowPreprocessingInternalError(
-				"physical source line moved backwards");
+			ThrowPreprocessingInternalError("physical source line moved backwards");
 		return source.presumed_base +
 			(source.current_physical_line - source.physical_base);
 	}
@@ -1098,8 +1071,7 @@ private:
 		if (full_preprocessing_)
 		{
 			if (sources_.empty())
-				ThrowPreprocessingInternalError(
-					"source token outside a source frame");
+				ThrowPreprocessingInternalError("source token outside a source frame");
 			const SourceFrame& source = sources_.back();
 			token.source_file = source.presumed_file;
 			token.physical_file = source.physical_file;
@@ -1211,8 +1183,7 @@ private:
 
 		for (std::size_t i = 0; i < line_.size(); ++i)
 			if (IsIdentifier(line_[i], id_va_args_))
-				ThrowPreprocessingSourceError(
-					"__VA_ARGS__ outside a variadic replacement list");
+				ThrowPreprocessingSourceError("__VA_ARGS__ outside a variadic replacement list");
 		if (!line_.empty() && boundary_space_)
 			line_[0].leading_space = true;
 		for (std::size_t i = 0; i < line_.size(); ++i)
@@ -1229,8 +1200,7 @@ private:
 		if (directive[1].kind != TK_IDENTIFIER)
 		{
 			if (IsActive())
-				ThrowPreprocessingSourceError(
-					"invalid preprocessing directive");
+				ThrowPreprocessingSourceError("invalid preprocessing directive");
 			return;
 		}
 		const SpellingId name = directive[1].spelling;
@@ -1393,14 +1363,12 @@ private:
 				if (open >= directive.size() ||
 					!IsOperator(directive[open], "(") ||
 					directive[open].matching_distance == 0)
-					ThrowPreprocessingSourceError(
-						"invalid builtin probe invocation");
+					ThrowPreprocessingSourceError("invalid builtin probe invocation");
 				const std::size_t close = open +
 					directive[open].matching_distance;
 				if (close >= directive.size() ||
 					!IsOperator(directive[close], ")"))
-					ThrowPreprocessingSourceError(
-						"invalid builtin probe invocation");
+					ThrowPreprocessingSourceError("invalid builtin probe invocation");
 				expression->push_back(ProbeValueToken(token,
 					EvaluateBuiltinProbe(token, directive, open + 1, close)));
 				i = close;
@@ -1508,8 +1476,7 @@ private:
 			{
 				if (directive.size() != 3 ||
 					directive[2].kind != TK_IDENTIFIER)
-					ThrowPreprocessingSourceError(
-						"invalid conditional directive");
+					ThrowPreprocessingSourceError("invalid conditional directive");
 				condition = IsMacroDefined(directive[2].spelling);
 				if (directive_name == id_ifndef_)
 					condition = !condition;
@@ -1676,8 +1643,7 @@ private:
 		const bool found = FindInclude(name, true, false, &resolved);
 		sources_.pop_back();
 		if (!found)
-			ThrowPreprocessingInputOutputError(
-				"included file not found: " + name);
+			ThrowPreprocessingInputOutputError("included file not found: " + name);
 		ProcessResolvedInclude(resolved);
 	}
 
@@ -1691,8 +1657,7 @@ private:
 			ThrowPreprocessingSourceError("invalid #include operand");
 		ResolvedInclude resolved;
 		if (!FindInclude(name, quoted, include_next, &resolved))
-			ThrowPreprocessingInputOutputError(
-				"included file not found: " + name);
+			ThrowPreprocessingInputOutputError("included file not found: " + name);
 		ProcessResolvedInclude(resolved);
 	}
 
@@ -1761,8 +1726,7 @@ private:
 			if (!end || *end != '\0' || parsed == 0 ||
 				parsed > std::numeric_limits<std::size_t>::max() ||
 				(parsed & (parsed - 1)) != 0)
-				ThrowPreprocessingSourceError(
-					"invalid #pragma pack alignment");
+				ThrowPreprocessingSourceError("invalid #pragma pack alignment");
 			post_tokens_.EmitPragmaPackPush(static_cast<std::size_t>(parsed));
 		}
 	}
@@ -1812,8 +1776,7 @@ private:
 			replacement_begin = ParseParameters(directive, 4, &macro);
 		}
 		else if (directive.size() > 3 && !directive[3].leading_space)
-			ThrowPreprocessingSourceError(
-				"object-like macro replacement requires whitespace");
+			ThrowPreprocessingSourceError("object-like macro replacement requires whitespace");
 
 		BuildReplacement(directive, replacement_begin, &macro);
 		Macro* old = macros_.Find(macro.name);
@@ -1822,8 +1785,7 @@ private:
 			if (!Equivalent(*old, macro))
 			{
 				if (!replaceable_command_line_macros_.Find(macro.name))
-					ThrowPreprocessingSourceError(
-						"incompatible macro redefinition");
+					ThrowPreprocessingSourceError("incompatible macro redefinition");
 				retained_replacement_tokens_ -= old->replacement.size();
 				macros_.Erase(macro.name);
 				retained_replacement_tokens_ += macro.replacement.size();
@@ -1868,8 +1830,7 @@ private:
 			macro->parameters.push_back(directive[position].spelling);
 			++position;
 			if (position >= directive.size())
-				ThrowPreprocessingSourceError(
-					"unterminated macro parameter list");
+				ThrowPreprocessingSourceError("unterminated macro parameter list");
 			// GNU `name...` denotes the final variadic slot; hosted Linux headers
 			// use this spelling and expansion still uses the contiguous tail.
 			if (IsOperator(directive[position], "..."))
@@ -1880,19 +1841,16 @@ private:
 				++position;
 				if (position >= directive.size() || !IsOperator(
 					directive[position], ")"))
-					ThrowPreprocessingSourceError(
-						"invalid variadic parameter list");
+					ThrowPreprocessingSourceError("invalid variadic parameter list");
 				return position + 1;
 			}
 			if (IsOperator(directive[position], ")"))
 				return position + 1;
 			if (!IsOperator(directive[position], ","))
-				ThrowPreprocessingSourceError(
-					"invalid macro parameter separator");
+				ThrowPreprocessingSourceError("invalid macro parameter separator");
 			++position;
 			if (position >= directive.size())
-				ThrowPreprocessingSourceError(
-					"unterminated macro parameter list");
+				ThrowPreprocessingSourceError("unterminated macro parameter list");
 			if (IsOperator(directive[position], "..."))
 				return ParseVariadicClose(directive, position, macro);
 		}
@@ -1936,8 +1894,7 @@ private:
 				if (found)
 					replacement.parameter = *found;
 				else if (replacement.token.spelling == id_va_args_)
-					ThrowPreprocessingSourceError(
-						"__VA_ARGS__ in a non-variadic replacement list");
+					ThrowPreprocessingSourceError("__VA_ARGS__ in a non-variadic replacement list");
 			}
 			macro->replacement.push_back(replacement);
 		}
@@ -1957,8 +1914,7 @@ private:
 				continue;
 			if (i + 1 >= macro->replacement.size() ||
 				macro->replacement[i + 1].parameter == kNoParameter)
-				ThrowPreprocessingSourceError(
-					"# must precede a macro parameter");
+				ThrowPreprocessingSourceError("# must precede a macro parameter");
 		}
 	}
 
@@ -2105,8 +2061,7 @@ private:
 			 parsed->arguments.size() != macro.parameters.size()) ||
 			(macro.variadic &&
 				 parsed->arguments.size() < macro.parameters.size()))
-				ThrowPreprocessingSourceError(
-					"wrong number of macro arguments");
+				ThrowPreprocessingSourceError("wrong number of macro arguments");
 		const std::size_t binding_count = macro.parameters.size() +
 			(macro.variadic ? 1 : 0);
 		pending->raw_tokens.swap(parsed->tokens);
@@ -2270,8 +2225,7 @@ private:
 			if (IsOperator(replacement.token, "##"))
 			{
 				if (paste_pending || result->empty())
-					ThrowPreprocessingInternalError(
-						"invalid internal paste sequence");
+					ThrowPreprocessingInternalError("invalid internal paste sequence");
 				paste_pending = true;
 				continue;
 			}
@@ -2283,8 +2237,7 @@ private:
 					 IsOperator(macro.replacement[i + 1].token, "##"));
 				Argument& argument = pending->arguments[replacement.parameter];
 				if (!adjacent && !argument.expanded_ready)
-					ThrowPreprocessingInternalError(
-						"undemanded macro argument expansion");
+					ThrowPreprocessingInternalError("undemanded macro argument expansion");
 				const std::vector<Token>& value = adjacent ?
 					pending->raw_tokens : pending->expanded_tokens;
 				const std::size_t value_begin = adjacent ?
@@ -2464,8 +2417,7 @@ private:
 		{
 			const std::size_t released = old_bytes - new_bytes;
 			if (released > *live_bytes)
-				ThrowPreprocessingInternalError(
-					"invalid argument storage accounting");
+				ThrowPreprocessingInternalError("invalid argument storage accounting");
 			*live_bytes -= released;
 		}
 	}
@@ -2600,8 +2552,7 @@ private:
 					if (!argument.preserve_raw)
 					{
 						if (frame.pending.raw_consumers == 0)
-							ThrowPreprocessingInternalError(
-								"missing raw argument consumer");
+							ThrowPreprocessingInternalError("missing raw argument consumer");
 						--frame.pending.raw_consumers;
 						if (frame.pending.raw_consumers == 0)
 							std::vector<Token>().swap(
@@ -2618,15 +2569,13 @@ private:
 				}
 				const Macro* found = macros_.Find(frame.pending.macro_name);
 				if (!found)
-					ThrowPreprocessingInternalError(
-						"pending macro definition disappeared");
+					ThrowPreprocessingInternalError("pending macro definition disappeared");
 				const Token invocation_head = frame.pending.head;
 				Instantiate(*found, invocation_head, &frame.pending,
 					&frame.replacement);
 				const std::size_t released = ArgumentStorageBytes(frame.pending);
 				if (released > live_argument_storage)
-					ThrowPreprocessingInternalError(
-						"invalid argument storage accounting");
+					ThrowPreprocessingInternalError("invalid argument storage accounting");
 				live_argument_storage -= released;
 				frame.pending = PendingExpansion();
 				if (frame.replacement.empty() && invocation_head.leading_space &&
@@ -2685,8 +2634,7 @@ private:
 			if (head.kind == TK_IDENTIFIER)
 			{
 				if (head.spelling == id_va_args_)
-					ThrowPreprocessingSourceError(
-						"__VA_ARGS__ outside a variadic replacement list");
+					ThrowPreprocessingSourceError("__VA_ARGS__ outside a variadic replacement list");
 				if (stats_)
 					++stats_->macro_lookups;
 				if (TryExpandDynamicMacro(&frame))
@@ -2708,8 +2656,7 @@ private:
 							if (!frame.final)
 							{
 								if (!frame.root || frames.size() != 1)
-									ThrowPreprocessingInternalError(
-										"nonfinal nested expansion frame");
+									ThrowPreprocessingInternalError("nonfinal nested expansion frame");
 								if (scan)
 									*scan = frame.scan;
 								frame.input.swap(input);
@@ -2717,8 +2664,7 @@ private:
 							}
 							if (frame.input.size() == 1)
 								goto emit_head;
-							ThrowPreprocessingSourceError(
-								"unterminated macro invocation");
+							ThrowPreprocessingSourceError("unterminated macro invocation");
 						}
 						if (state == NOT_AN_INVOCATION)
 							goto emit_head;
@@ -2803,8 +2749,7 @@ private:
 				EmitPostToken(emitted);
 		}
 		if (live_argument_storage != 0)
-			ThrowPreprocessingInternalError(
-				"macro argument storage escaped expansion");
+			ThrowPreprocessingInternalError("macro argument storage escaped expansion");
 	}
 
 	void EmitPostToken(const Token& token)
@@ -2875,8 +2820,7 @@ private:
 			output.emit_non_whitespace_char(spelling); break;
 		case TK_HEADER: output.emit_header_name(spelling); break;
 		case TK_PLACEMARKER:
-			ThrowPreprocessingInternalError(
-				"placemarker escaped paste resolution");
+			ThrowPreprocessingInternalError("placemarker escaped paste resolution");
 		}
 	}
 
@@ -2913,8 +2857,7 @@ private:
 	{
 		FileIdentity identity;
 		if (!GetFileIdentity(path, &identity))
-			ThrowPreprocessingInputOutputError(
-				"unable to identify pragma-once file");
+			ThrowPreprocessingInputOutputError("unable to identify pragma-once file");
 		if (!once_files_.Find(identity))
 		{
 			once_files_.Insert(identity, 1);

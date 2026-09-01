@@ -11,13 +11,13 @@
 #include <cstdint>
 #include <iosfwd>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "ir_symbol_model.h"
 #include "lowir/model/identity.h"
+#include "support/exceptions.h"
 
 namespace lowir_model {
 
@@ -31,12 +31,29 @@ struct ExportedSymbol
   ir_model::SymbolLinkage linkage = ir_model::SL_EXTERNAL;
 };
 
-struct ParseError : std::runtime_error
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowLowirInputError(const std::string & message)
 {
-  explicit ParseError(const std::string & message)
-    : std::runtime_error(message)
-  {}
-};
+  throw SerializedInputError(SerializedInputFormat::LOWIR, message);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowLowirInternalError(const char * message)
+{
+  throw InternalCompilerError(message, CompilerErrorDomain::LOWIR);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowLowirInternalError(const std::string & message)
+{
+  throw InternalCompilerError(message, CompilerErrorDomain::LOWIR);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowLowirResourceLimit(const char * message)
+{
+  throw ResourceLimitError(message, CompilerErrorDomain::LOWIR);
+}
 
 // LowIR operations are semantic identity, not presentation text.  The compact
 // value is carried through optimization and native lowering; text is decoded

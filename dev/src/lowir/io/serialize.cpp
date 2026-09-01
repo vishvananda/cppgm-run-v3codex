@@ -33,7 +33,7 @@ const char * role_name(SymbolRole role)
   case SR_RTTI_VMI: return "rtti_vmi";
   case SR_RTTI_DATA: return "rtti_data";
   }
-  throw std::logic_error("invalid LowIR symbol role");
+  ThrowLowirInternalError("invalid LowIR symbol role");
 }
 
 struct MetadataWriter
@@ -189,17 +189,17 @@ void write_operand(std::ostream & out, const Operand & operand,
                    const Program & program, const Function * function = 0)
 {
   if(operand.kind == Operand::OP_TEMP) {
-    if(!function) throw std::logic_error("LowIR value lacks a function");
+    if(!function) ThrowLowirInternalError("LowIR value lacks a function");
     out << '%' << lowir_value_name(program.strings, *function, operand.value);
     return;
   }
   if(operand.kind == Operand::OP_LABEL) {
-    if(!function) throw std::logic_error("LowIR block target lacks a function");
+    if(!function) ThrowLowirInternalError("LowIR block target lacks a function");
     out << '^' << lowir_block_label(program.strings, *function, operand.block);
     return;
   }
   if(operand.kind == Operand::OP_SLOT) {
-    if(!function) throw std::logic_error("LowIR slot lacks a function");
+    if(!function) ThrowLowirInternalError("LowIR slot lacks a function");
     out << '$' << lowir_slot_name(program.strings, *function, operand.slot);
     return;
   }
@@ -222,14 +222,14 @@ void write_operand(std::ostream & out, const Operand & operand,
     out << spelling;
     return;
   }
-  throw std::logic_error("unsupported LowIR operand identity");
+  ThrowLowirInternalError("unsupported LowIR operand identity");
 }
 
 void write_result(std::ostream & out, const Instruction & instruction,
                   const Program & program, const Function * function)
 {
   if(!function || !instruction.dest.valid())
-    throw std::logic_error("LowIR result lacks compact identity");
+    ThrowLowirInternalError("LowIR result lacks compact identity");
   out << '%' << lowir_value_name(program.strings, *function, instruction.dest);
 }
 
@@ -240,7 +240,7 @@ const char * projection_name(IndexProjectionKind projection)
   case IPK_ARRAY_ELEMENT: return "array_element";
   case IPK_FIELD: return "field";
   }
-  throw std::logic_error("invalid LowIR index projection");
+  ThrowLowirInternalError("invalid LowIR index projection");
 }
 
 void write_call(std::ostream & out, const Instruction & ins,
@@ -524,9 +524,13 @@ void write_lowir_program_file(const std::string & path,
 {
   std::ofstream output(path.c_str(), std::ios::out | std::ios::trunc |
                                      std::ios::binary);
-  if(!output) throw ParseError("unable to open LowIR output: " + path);
+  if(!output)
+    throw InputOutputError("unable to open LowIR output: " + path,
+                           CompilerErrorDomain::LOWIR);
   output << serialize_lowir_program(program);
-  if(!output) throw ParseError("unable to write LowIR output: " + path);
+  if(!output)
+    throw InputOutputError("unable to write LowIR output: " + path,
+                           CompilerErrorDomain::LOWIR);
 }
 
 }  // namespace lowir_model

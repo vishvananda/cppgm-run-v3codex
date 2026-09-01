@@ -26,7 +26,8 @@ struct TypeShape
 
 TypeShape shape(const LowType & type)
 {
-  if(type.kind == LTK_INVALID) throw ParseError("untyped LowIR value reached CY86 lowering");
+  if(type.kind == LTK_INVALID)
+    ThrowLowirInputError("untyped LowIR value reached CY86 lowering");
   TypeShape result = {
     type.kind == LTK_I1 ? 8 : lowir_type_bit_width(type),
     type.storage_size,
@@ -257,7 +258,7 @@ public:
   {
     if((operand.kind != Operand::OP_FLOAT &&
         operand.kind != Operand::OP_INTEGER) || !operand.has_spelling)
-      throw std::logic_error("CY86 operand has no literal spelling");
+      ThrowLowirInternalError("CY86 operand has no literal spelling");
     return program_.strings.get(operand.literal);
   }
 
@@ -330,7 +331,8 @@ void ProgramEmitter::FindRoles()
   if(!entry_.valid() && main && main->definition) entry_ = main_symbol;
   if(!init_.valid() && init && init->definition) init_ = init_symbol;
   if(!fini_.valid() && fini && fini->definition) fini_ = fini_symbol;
-  if(!entry_.valid()) throw ParseError("LowIR program has no entry definition");
+  if(!entry_.valid())
+    ThrowLowirInputError("LowIR program has no entry definition");
 }
 
 void ProgramEmitter::DetectEh()
@@ -461,7 +463,7 @@ FunctionEmitter::FunctionEmitter(ProgramEmitter & owner, const Function & functi
       for(std::size_t incoming = 0; incoming + 1 < phi.args.size(); incoming += 2) {
         const BlockId predecessor = phi.args[incoming].block;
         if(static_cast<std::uint32_t>(predecessor) >= phi_edge_copies_.size())
-          throw ParseError("invalid phi predecessor identity");
+          ThrowLowirInputError("invalid phi predecessor identity");
         phi_edge_copies_[predecessor].push_back(
           PhiEdgeCopy{block.id, phi.dest, phi.args[incoming + 1], phi.type});
       }
@@ -522,21 +524,21 @@ void FunctionEmitter::BuildLayout()
 std::string FunctionEmitter::ValueMemory(ValueId value) const
 {
   if(static_cast<std::uint32_t>(value) >= value_locations_.size())
-    throw ParseError("missing LowIR value layout");
+    ThrowLowirInternalError("missing LowIR value layout");
   return memory_bp(value_locations_[value].offset);
 }
 
 std::string FunctionEmitter::SlotMemory(SlotId slot) const
 {
   if(static_cast<std::uint32_t>(slot) >= slot_locations_.size())
-    throw ParseError("missing LowIR slot layout");
+    ThrowLowirInternalError("missing LowIR slot layout");
   return memory_bp(slot_locations_[slot].offset);
 }
 
 std::string FunctionEmitter::SlotAddress(SlotId slot) const
 {
   if(static_cast<std::uint32_t>(slot) >= slot_locations_.size())
-    throw ParseError("missing LowIR slot layout");
+    ThrowLowirInternalError("missing LowIR slot layout");
   return std::to_string(slot_locations_[slot].offset);
 }
 
@@ -648,7 +650,8 @@ void FunctionEmitter::EmitInstruction(const Instruction & ins)
   case Instruction::IK_RETURN: EmitReturn(ins); break;
   case Instruction::IK_UNREACHABLE: break;
   case Instruction::IK_PHI: break;
-  default: throw ParseError("unsupported PA13 instruction in CY86 emitter");
+  default:
+    ThrowLowirInputError("unsupported PA13 instruction in CY86 emitter");
   }
 }
 
@@ -812,7 +815,8 @@ void FunctionEmitter::EmitUnary(const Instruction & ins)
 {
   if(is_f80(ins.type)) {
     LoadF80(ins.first, 0);
-    if(ins.op.kind != LowOperation::LOP_NEG) throw ParseError("unsupported f80 unary operation");
+    if(ins.op.kind != LowOperation::LOP_NEG)
+      ThrowLowirInputError("unsupported f80 unary operation");
     out_.Instruction("move80 " + memory_bp(scratch_[1]) + " 0.0L");
     ZeroF80Padding(1);
     out_.Instruction("fsub80 " + memory_bp(scratch_[2]) + " " + memory_bp(scratch_[1]) +
@@ -830,7 +834,7 @@ void FunctionEmitter::EmitUnary(const Instruction & ins)
     out_.Instruction("move64 x64 0"); out_.Instruction("move8 x8 z8");
   } else if(ins.op.kind == LowOperation::LOP_BITNOT) out_.Instruction("not" + width + " x" + width + " x" + width);
   else if(ins.op.kind == LowOperation::LOP_BSWAP) out_.Instruction("bswap" + width + " x" + width + " x" + width);
-  else throw ParseError("unsupported unary operator");
+  else ThrowLowirInputError("unsupported unary operator");
   StoreScalarTemp(ins.dest, instruction_result_type(ins), 'x');
 }
 
@@ -862,7 +866,7 @@ void FunctionEmitter::EmitBinary(const Instruction & ins)
   else if(ins.op.kind == LowOperation::LOP_SHL) opcode = "lshift";
   else if(ins.op.kind == LowOperation::LOP_SHR) opcode = "srshift";
   else if(ins.op.kind == LowOperation::LOP_USHR) opcode = "urshift";
-  else throw ParseError("unsupported binary operator");
+  else ThrowLowirInputError("unsupported binary operator");
   if(ins.op.kind == LowOperation::LOP_SHL || ins.op.kind == LowOperation::LOP_SHR || ins.op.kind == LowOperation::LOP_USHR) {
     out_.Instruction("move64 z64 x64");
     out_.Instruction("move8 x8 z8");
@@ -907,7 +911,8 @@ std::string FunctionEmitter::MemoryAt(const MemoryRef & memory,
                                       std::size_t byte_offset) const
 {
   if(memory.kind == MemoryRef::LOCAL) {
-    if(byte_offset > memory.local_offset) throw ParseError("invalid local memory span");
+    if(byte_offset > memory.local_offset)
+      ThrowLowirInternalError("invalid local memory span");
     return memory_bp(memory.local_offset - byte_offset);
   }
   const std::string reg = register_name(memory.bank, 64);

@@ -1,6 +1,6 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E5 complete; E6 LowIR/compiler-object migration is next
+Status: in progress; E0-E5 and E6a complete; E6 compiler-object migration is next
 
 Date: 2026-09-01
 
@@ -716,7 +716,8 @@ Append one row for each retained or rejected increment:
 | E5a | PA14 ABI fact adapter | broad standard catches translated numeric, allocation, encoder, and I/O failures alike | coded `SerializedInputError` with line context; only invalid/range numeric exceptions translate; typed I/O/internal propagation | PA14 normalized/malformed facts and cumulative through-PA14 behavior | successful full remains 0; generic logic sites -24; internal standard catches -3 | +192 text, +4 exception table, +104 unwind | frozen -1.04% user | PA14 117/117; through-PA14 1,081/1,081; frozen object exact | `538b79f7` | retained |
 | E5b | lexical input and preprocessing-token paste | generic lexical failures plus broad runtime translation for generated-token cardinality | lexical source/internal types; direct one-token status; preprocessing source failure; explicit cursor inlining boundary | PA1 source tokenization and PA4 valid/invalid paste behavior | successful full remains 0; generic logic/runtime sites -5/-20; internal runtime catches -1 | -16,000 text, -64 rodata, -2,104 exception table, -280 unwind | frozen -6.19% user; full O1 -1.91% CPU, O3 -2.34% CPU | PA1 53/53; PA4 75/75; through-PA4 174/174; 222 O1/O3 objects exact | `71d6deba` | retained |
 | E5c | post-tokenization, recognition, and hosted intrinsic registry | API/invariant, embedded-grammar, resource-limit, and invalid-token failures shared generic bases | lexical/recognition internal, recognition resource, and lexical source dispositions; explicit shared string-flush boundary | PA2 literal/token behavior, PA5 preprocessing, PA6 invalid-token and grammar acceptance | successful frozen remains 0; generic logic/runtime sites -26/-3 | -640 text, +96 rodata, -200 exception table, -48 unwind | frozen user median 0.450/0.450 s; paired +0.55% noise | PA2 26/26; PA5 70/70; PA6 48/48; through-PA6 292/292; frozen objects exact | `8311aeb4` | retained |
-| E5d | PA3-PA5 macro processor | source, invocation, transport, resource, and state-machine failures shared generic bases | preprocessing source/I/O/resource/internal dispositions and driver invocation type; expected probes/invocation alternatives remain status flow | PA3 controlling expressions, PA4 macro replacement, PA5 directives/includes | successful frozen remains 0; generic logic/runtime sites -22/-56 | -4,800 text, +96 rodata, -708 exception table, +136 unwind | frozen paired user -0.56%; full O1 -0.85%, O3 -0.29% CPU | PA3 20/20; PA4 75/75; PA5 70/70; PA6 48/48; through-PA14 1,082/1,082; 222 O1/O3 objects and 32-way inception exact | pending | retained |
+| E5d | PA3-PA5 macro processor | source, invocation, transport, resource, and state-machine failures shared generic bases | preprocessing source/I/O/resource/internal dispositions and driver invocation type; expected probes/invocation alternatives remain status flow | PA3 controlling expressions, PA4 macro replacement, PA5 directives/includes | successful frozen remains 0; generic logic/runtime sites -22/-56 | -4,800 text, +96 rodata, -708 exception table, +136 unwind | frozen paired user -0.56%; full O1 -0.85%, O3 -0.29% CPU | PA3 20/20; PA4 75/75; PA5 70/70; PA6 48/48; through-PA14 1,082/1,082; 222 O1/O3 objects and 32-way inception exact | `7cf04f4b` | retained |
+| E6a | LowIR text, model identity, serialization, and PA13 CY86 adapter | one parse type mixed malformed input, I/O, limits, and invariants; model helpers used generic bases | format/domain-specific serialized-input, I/O, resource, invocation, and internal failures; valid flow unchanged | PA13 malformed/valid text, identity, role, metadata, phi, and adapter behavior | successful frozen remains 0; 126 `ParseError` sites removed; generic logic/runtime sites -41/-9 | -14,528 text, -64 rodata, +56 EH header, -168 unwind, -2,536 exception table | frozen user -1.12%; full O1 -0.39%, O3 -0.26% CPU | PA13 122/122; through-PA13 965/965; LowIR contract unchanged; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1463,6 +1464,38 @@ post-tokenization, macro processing, and recognition, and zero in the PA14 ABI
 fact adapters.  Four generic throws intentionally remain in the ABI mangling
 core identity owner; they are not fact-adapter translations and move with the
 remaining compiler core in E7.
+
+### E6a execution record
+
+The PA13 LowIR text/model slice removes the overbroad
+`lowir_model::ParseError` type and classifies all 126 of its producers.
+Malformed textual structure, references, metadata, and unsupported PA13 input
+now use LowIR-format `SerializedInputError`.  Source/output transport failures
+use LowIR-domain `InputOutputError`, an empty path list is an invocation error,
+checked generated identity ceilings are LowIR resource limits, and compact
+identity or layout contradictions are LowIR internal failures.  The typed
+integrated model gains no field or serialized fact; cold, non-inlined throw
+helpers live beside the in-memory model and retain diagnostic strings only in
+the exceptional object.
+
+No successful alternative was converted to an exception or status.  The
+instrumented frozen compile records zero throws, so status propagation would
+add successful-path branches without removing dynamic unwind.  The exception
+audit instead falls by 41 generic logic throws, nine runtime throws, and four
+generic-throw files, to 816/487/126.  PA13 passes 122/122 and through-PA13
+passes 965/965; the 127-row LowIR contract audit is unchanged.
+
+Against `7cf04f4b`, `.text` changes 6,525,734 -> 6,511,206, `.rodata`
+214,400 -> 214,336, `.eh_frame_hdr` 51,492 -> 51,548, `.eh_frame`
+322,768 -> 322,600, and `.gcc_except_table` 143,612 -> 141,076.  Four frozen
+A/B/B/A blocks reproduce object hash `8545fec6...` and move the user median
+from 0.450 to 0.440 seconds (paired -1.12%).  The 32-way full controls
+reproduce all 222 objects and final compilers: O1 aggregate CPU averages
+503.41/501.47 seconds (-0.39%) and O3 averages 507.59/506.28 seconds
+(-0.26%).  A formatting-only consolidation of E5d's typed macro throw calls
+also repairs its two inherited file-audit failures; rebuilding after that
+consolidation produces the exact same candidate compiler, and the audit is
+back to the established 32 advisory warnings with no fatal finding.
 
 ## Initial code map
 
