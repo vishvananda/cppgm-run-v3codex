@@ -1,6 +1,6 @@
 #include "lowering/objects/cleanup_continuations.h"
+#include "lowering/support/errors.h"
 
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -124,7 +124,7 @@ std::uint32_t Interner::InternAction(const ActionKey& key,
 		index = (index + 1) & (action_slots_.size() - 1);
 	}
 	if (actions_.size() >= kNoCleanupState)
-		throw std::logic_error("cleanup action identity overflow");
+		ThrowLoweringResourceLimit("cleanup action identity overflow");
 	const std::uint32_t action = static_cast<std::uint32_t>(actions_.size());
 	actions_.push_back(Action(key, representative_node));
 	action_slots_[index].fingerprint = fingerprint;
@@ -138,7 +138,7 @@ std::uint32_t Interner::InternAction(const ActionKey& key,
 const Action& Interner::GetAction(std::uint32_t action) const
 {
 	if (action >= actions_.size())
-		throw std::logic_error("invalid cleanup action identity");
+		ThrowLoweringInternal("invalid cleanup action identity");
 	return actions_[action];
 }
 
@@ -173,7 +173,7 @@ std::uint32_t Interner::Intern(const Key& key, bool* inserted)
 		index = (index + 1) & (slots_.size() - 1);
 	}
 	if (states_.size() >= kNoCleanupState)
-		throw std::logic_error("cleanup continuation identity overflow");
+		ThrowLoweringResourceLimit("cleanup continuation identity overflow");
 	const std::uint32_t state = static_cast<std::uint32_t>(states_.size());
 	states_.push_back(State(key));
 	slots_[index].fingerprint = fingerprint;
@@ -187,7 +187,7 @@ std::uint32_t Interner::Intern(const Key& key, bool* inserted)
 const State& Interner::Get(std::uint32_t state) const
 {
 	if (state >= states_.size())
-		throw std::logic_error("invalid cleanup continuation identity");
+		ThrowLoweringInternal("invalid cleanup continuation identity");
 	return states_[state];
 }
 
@@ -195,10 +195,10 @@ void Interner::BindBlock(std::uint32_t state,
 	lowering::ir::BlockId block)
 {
 	if (state >= states_.size())
-		throw std::logic_error("invalid cleanup continuation identity");
+		ThrowLoweringInternal("invalid cleanup continuation identity");
 	State& record = states_[state];
 	if (record.block_bound && record.block != block)
-		throw std::logic_error("cleanup continuation acquired a second block");
+		ThrowLoweringInternal("cleanup continuation acquired a second block");
 	record.block = block;
 	record.block_bound = true;
 	const std::uint32_t block_index = block;
@@ -207,7 +207,7 @@ void Interner::BindBlock(std::uint32_t state,
 			kNoCleanupState);
 	if (block_states_[block_index] != kNoCleanupState &&
 		block_states_[block_index] != state)
-		throw std::logic_error("cleanup block acquired a second state");
+		ThrowLoweringInternal("cleanup block acquired a second state");
 	block_states_[block_index] = state;
 }
 

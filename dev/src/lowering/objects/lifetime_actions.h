@@ -2,13 +2,13 @@
 #define CPPGM_LOWERING_LIFETIME_ACTIONS_H
 
 #include "lowering/support/identity_maps.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 #include "lowering/objects/cleanup_continuations.h"
 
 #include <cstdint>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -80,7 +80,7 @@ protected:
 			const std::size_t index = i - 1;
 			if (derived.arena_.nodes[children[index]].kind !=
 				DUMP_DESTRUCTOR_ACTION)
-				throw std::logic_error("invalid planned return cleanup action");
+				ThrowLoweringInternal("invalid planned return cleanup action");
 			if (!ReturnCleanupActionApplies(children, has_value, index)) continue;
 			const ActionKey key = MakeActionKey(
 				derived.arena_.nodes[children[index]]);
@@ -158,7 +158,7 @@ protected:
 			return;
 		}
 		if (derived.current_result_.kind != LOW_OBJECT)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"class construction return has a non-object boundary");
 		const Operand slot(EnsureDirectReturnSlot(node), derived.current_result_);
 		const Operand destination = derived.AddressOfStorage(slot);
@@ -198,7 +198,7 @@ protected:
 		const lowering::cleanup::State& record =
 			derived.cleanup_continuations_.Get(state);
 		if (!record.block_bound)
-			throw std::logic_error("lexical cleanup continuation has no block");
+			ThrowLoweringInternal("lexical cleanup continuation has no block");
 		return record.block;
 	}
 
@@ -268,7 +268,7 @@ protected:
 					derived.Emit(instruction);
 				}
 			}
-			else throw std::logic_error(
+			else ThrowLoweringInternal(
 				"invalid lexical return cleanup continuation mode");
 		}
 		derived.SelectBlock(original);
@@ -313,7 +313,7 @@ protected:
 			if (derived.arena_.nodes[children[0]].direct_return_slot)
 			{
 				if (!derived.current_indirect_result_)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"direct return slot has a direct result boundary");
 			}
 			else if (derived.arena_.nodes[children[0]].kind ==
@@ -337,7 +337,7 @@ protected:
 						children[0], derived.AddressOfStorage(slot));
 					result_value = slot;
 				}
-				else throw std::logic_error(
+				else ThrowLoweringInternal(
 					"class aggregate return has a non-object boundary");
 			}
 			else if (derived.arena_.nodes[children[0]].kind ==
@@ -360,7 +360,7 @@ protected:
 						derived.AddressOfStorage(slot));
 					result_value = slot;
 				}
-				else throw std::logic_error(
+				else ThrowLoweringInternal(
 					"class conditional return has a non-object boundary");
 			}
 			else if (derived.arena_.nodes[children[0]].kind ==
@@ -373,7 +373,7 @@ protected:
 					derived.LowerClassValueTransfer(children[0], destination);
 				}
 				else if (derived.current_result_.kind != LOW_OBJECT)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"class-value return has a non-object boundary");
 				else
 				{
@@ -410,7 +410,7 @@ protected:
 						derived.AddressOfStorage(slot));
 					result_value = slot;
 				}
-				else throw std::logic_error(
+				else ThrowLoweringInternal(
 					"aggregate construction return has a non-object boundary");
 				if (protect)
 				{
@@ -507,7 +507,7 @@ protected:
 		for (std::size_t i = remaining_cleanup; i < children.size(); ++i)
 		{
 			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
-				throw std::logic_error("invalid return cleanup action");
+				ThrowLoweringInternal("invalid return cleanup action");
 			if (has_value &&
 				derived.arena_.nodes[children[0]].direct_return_slot &&
 				derived.arena_.nodes[children[i]].object_binding ==
@@ -534,7 +534,7 @@ protected:
 		else
 		{
 			if (!has_value)
-				throw std::runtime_error("non-void return has no value");
+				ThrowLoweringInternal("non-void return has no value");
 			Instruction instruction(Instruction::RETURN_VALUE);
 			instruction.type = derived.current_result_;
 			instruction.first = result_value;
@@ -549,7 +549,7 @@ protected:
 		for (std::size_t i = first; i < children.size(); ++i)
 		{
 			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
-				throw std::logic_error("invalid destructor suffix action");
+				ThrowLoweringInternal("invalid destructor suffix action");
 			if (i + 1 == children.size())
 			{
 				derived.LowerDestructorAction(derived.arena_.nodes[children[i]]);

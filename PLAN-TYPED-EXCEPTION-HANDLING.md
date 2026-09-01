@@ -727,7 +727,8 @@ Append one row for each retained or rejected increment:
 | E7c | lowering core, typed IR, reachability, identity, rendering, and presentation | source/transport failures, fixed-ID ceilings, and graph/identity/render contradictions shared generic bases in hot LowIR construction owners | typed lowering invocation/I/O/source/resource/internal failures through one cold boundary; successful construction checks unchanged | PA15 typed source-to-LowIR structure and cumulative LowIR contracts | successful frozen remains 0; generic logic/runtime sites -55/-22 | -832 text, +32 rodata, +152 EH header, +336 unwind, -3,680 exception table | cumulative frozen baseline/candidate user 0.445/0.450 s; paired +0.01% (neutral) | PA15 121/121; through-PA15 1,203/1,203; audits and frozen object exact | `071ecc3a` | retained |
 | E7d | lowering ABI fact construction and symbol mangling | semantic recipe/identity invariants, checked cache capacity, and unsupported source representation shared generic bases in a per-symbol hot owner | lowering-domain internal/resource/source failures through the existing cold boundary; optional owner/substitution probes remain Boolean | PA14 ABI spelling plus PA15 source-to-LowIR ABI metadata | successful frozen remains 0; generic logic/runtime sites -68/-5 | -1,920 text, -32 rodata, -16 EH header, -136 unwind, -764 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA14 117/117; PA15 121/121; through-PA15 1,203/1,203; frozen object exact | `567b2fde` | retained |
 | E7e | call, constructor, special-member, intrinsic, and value-boundary lowering | call/cleanup graph contradictions, unsupported object source shapes, and fixed argument/extent limits shared generic bases | lowering internal/source/resource types through the cold boundary; builtin/call eligibility stays Boolean and cleanup routing unchanged | PA15 calls, PA17 object construction/lifetime, and PA26 destruction/EH behavior | successful frozen remains 0; generic logic/runtime sites -65/-10 | -5,056 text, neutral rodata, -72 EH header, -352 unwind, -876 exception table | cumulative frozen 0.445/0.445 s; paired -0.54% (neutral) | PA15 121/121; PA17 247/247; PA26 114/114; through-PA26 3,822/3,822; frozen object exact | `6fb546a1` | retained |
-| E7f | constants, control, expression, and extension lowering | CFG/EH contradictions, unsupported source shapes, and fixed graph/count limits shared generic bases | lowering internal/source/resource types through the cold boundary; semantic checkpoint, operator, and initializer eligibility remains ordinary flow | PA15 control/expression lowering, PA16 lifetime/goto policy, PA23 extensions, and PA26 EH behavior | successful frozen remains 0; generic logic/runtime sites -53/-42 | -11,136 text, +32 rodata, +40 EH header, +56 unwind, -1,456 exception table | cumulative frozen 0.450/0.450 s; paired +1.67% (noise) | PA15 121/121; PA16 58/58; PA23 414/414; PA26 114/114; through-PA26 3,822/3,822; frozen object exact | pending | retained |
+| E7f | constants, control, expression, and extension lowering | CFG/EH contradictions, unsupported source shapes, and fixed graph/count limits shared generic bases | lowering internal/source/resource types through the cold boundary; semantic checkpoint, operator, and initializer eligibility remains ordinary flow | PA15 control/expression lowering, PA16 lifetime/goto policy, PA23 extensions, and PA26 EH behavior | successful frozen remains 0; generic logic/runtime sites -53/-42 | -11,136 text, +32 rodata, +40 EH header, +56 unwind, -1,456 exception table | cumulative frozen 0.450/0.450 s; paired +1.67% (noise) | PA15 121/121; PA16 58/58; PA23 414/414; PA26 114/114; through-PA26 3,822/3,822; frozen object exact | `61011cc8` | retained |
+| E7g | object initialization, arrays, temporaries, and cleanup lowering | semantic-dump contradictions, unsupported initializer shapes, and fixed cleanup/extent identities shared generic bases | lowering internal/source/resource types through the cold boundary; optional initialization and cleanup decisions remain ordinary flow | PA15 initialization, PA17 object lifetime, and PA26 cleanup/EH behavior | successful frozen remains 0; generic logic/runtime sites -57/-28 | -6,528 text, +32 rodata, neutral EH header, -144 unwind, -916 exception table | cumulative frozen 0.450/0.450 s; paired +0.56% (neutral) | PA15 121/121; PA17 247/247; PA26 114/114; through-PA26 3,822/3,822; frozen object exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1737,6 +1738,31 @@ and is treated as neutral alongside the exact output, zero successful-path
 throws, and substantial code/EH-table reduction.  Replacing these terminal
 failures with returned status would add successful-path plumbing without a
 recovering consumer.
+
+### E7g execution record
+
+Object initialization, array construction, temporary lifetime, and cleanup
+continuation lowering contains no recovery catch around its generic failures.
+Optional initialization, elision, branch-cleanup, and continuation decisions
+already use normal Boolean, identity, or operand state.  Semantic-dump and
+cleanup-graph contradictions now use the lowering internal type; unsupported
+bracing and initializer shapes use the lowering source type; and cleanup
+identity or array-extent exhaustion uses the lowering resource type.  The one
+combined constructor-array check was split so malformed graph shape and
+arithmetic extent overflow no longer share a disposition.
+
+The successful frozen compile records zero throws.  Generic logic/runtime
+sites fall by 57/28 and all six owners leave the generic inventory, bringing
+the audit to 445/314/76.  Against E7f, `.text` changes 6,479,398 -> 6,472,870,
+`.rodata` 214,560 -> 214,592, `.eh_frame_hdr` remains 51,620, `.eh_frame`
+322,120 -> 321,976, and `.gcc_except_table` 131,608 -> 130,692.
+
+PA15 passes 121/121, PA17 247/247, PA26 114/114, and through-PA26 passes
+3,822/3,822.  Four cumulative frozen A/B/B/A blocks reproduce object hash
+`8545fec6...`; baseline and candidate user medians both measure 0.450 seconds
+and the paired candidate time is +0.56%, below timer resolution.  Returning
+status from these hot lowering templates would add checks on successful
+construction even though no local consumer recovers from the failures.
 
 ## Initial code map
 

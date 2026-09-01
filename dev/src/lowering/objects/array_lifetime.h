@@ -1,13 +1,13 @@
 #ifndef CPPGM_LOWERING_LIFETIME_ARRAYS_H
 #define CPPGM_LOWERING_LIFETIME_ARRAYS_H
 
-#include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
+#include "lowering/support/sequences.h"
 #include "semantic/model/graph.h"
 
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -33,7 +33,7 @@ protected:
 			return derived.AddressOfStorage(derived.StorageFor(object_binding,
 				derived.LowerStorageType(type)));
 		if (derived.current_this_binding_ == kNoBinding)
-			throw std::logic_error("member object has no this binding");
+			ThrowLoweringInternal("member object has no this binding");
 		Operand address = derived.LoadStorage(
 			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
 		return derived.ProjectAggregateMember(address, object_binding);
@@ -77,7 +77,7 @@ protected:
 		type = derived.RemoveTopQualifiers(type);
 		const TypeRecord& array = derived.program_.types.Get(type);
 		if (array.kind != TYPE_ARRAY || index >= array.bound)
-			throw std::logic_error("invalid bound array element action");
+			ThrowLoweringInternal("invalid bound array element action");
 		return BoundFlatArrayElementAddress(
 			object_binding, type, array.child, index);
 	}
@@ -91,7 +91,7 @@ protected:
 		const NodeChildren values = derived.Children(list_node);
 		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
 			values.size() > array.bound)
-			throw std::runtime_error("invalid bounded array initializer");
+			ThrowLoweringSource("invalid bounded array initializer");
 		const LowType element = derived.LowerExpressionType(array.child);
 		const Operand base = derived.DecayAddress(array_address);
 		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
@@ -102,7 +102,7 @@ protected:
 			{
 				if (i >= values.size() ||
 					derived.arena_.nodes[values[i]].kind != DUMP_BRACED_INIT_LIST)
-					throw std::runtime_error(
+					ThrowLoweringSource(
 						"nested array requires a braced initializer");
 				LowerArrayValues(array.child, values[i], destination);
 				continue;
@@ -131,20 +131,21 @@ protected:
 		{
 			const DumpNode& action = derived.arena_.nodes[node];
 			if (action.operand_type == kNoType)
-				throw std::logic_error("invalid constructor array action");
+				ThrowLoweringInternal("invalid constructor array action");
 			const TypeRecord& array = derived.program_.types.Get(
 				derived.RemoveTopQualifiers(action.operand_type));
 			const NodeChildren children = derived.Children(node);
 			if (array.kind != TYPE_ARRAY || array.bound == 0 ||
-				children.size() != 1 ||
-				array.bound > std::numeric_limits<std::size_t>::max() / *count)
-				throw std::runtime_error("invalid bounded constructor array");
+				children.size() != 1)
+				ThrowLoweringInternal("invalid bounded constructor array");
+			if (array.bound > std::numeric_limits<std::size_t>::max() / *count)
+				ThrowLoweringResourceLimit("constructor array extent overflow");
 			*count *= static_cast<std::size_t>(array.bound);
 			*element_type = array.child;
 			node = children[0];
 		}
 		if (derived.arena_.nodes[node].kind != DUMP_CONSTRUCTOR_ACTION)
-			throw std::logic_error("constructor array has no element action");
+			ThrowLoweringInternal("constructor array has no element action");
 		*element_action = node;
 	}
 
@@ -155,7 +156,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (count > static_cast<std::size_t>(
 			std::numeric_limits<std::int64_t>::max()))
-			throw std::logic_error("constructor array extent exceeds LowIR");
+			ThrowLoweringResourceLimit("constructor array extent exceeds LowIR");
 		const SlotId progress_id = static_cast<SlotId>(
 			derived.function_->slots.size());
 		Slot progress_slot;
@@ -262,7 +263,7 @@ protected:
 		const DumpNode& action = derived.arena_.nodes[node];
 		if (action.kind != DUMP_CONSTRUCTOR_ARRAY_ACTION ||
 			action.operand_type == kNoType)
-			throw std::logic_error("invalid bound constructor array action");
+			ThrowLoweringInternal("invalid bound constructor array action");
 		std::size_t count = 0;
 		TypeId element_type = kNoType;
 		std::uint32_t element_node = kNoDumpEdge;
@@ -323,11 +324,11 @@ protected:
 		const NodeChildren children = derived.Children(call_node);
 		if (call_record.kind != DUMP_CALL_EXPRESSION ||
 			call_record.binding == kNoBinding || children.size() < 2)
-			throw std::logic_error("array allocation has no retained call");
+			ThrowLoweringInternal("array allocation has no retained call");
 		const BindingId binding = call_record.binding;
 		if (binding >= derived.function_symbols_.size() ||
 			derived.function_symbols_[binding] == kNoLowId)
-			throw std::runtime_error("array allocation has no function symbol");
+			ThrowLoweringInternal("array allocation has no function symbol");
 		const TypeId function_type = derived.program_.bindings[binding].type;
 		const TypeRecord& function = derived.program_.types.Get(function_type);
 		const TypeId* parameters = derived.program_.types.Parameters(function_type);
@@ -418,7 +419,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (binding == kNoBinding || binding >= derived.function_symbols_.size() ||
 			derived.function_symbols_[binding] == kNoLowId)
-			throw std::runtime_error("array deallocation has no function symbol");
+			ThrowLoweringInternal("array deallocation has no function symbol");
 		const TypeId function_type = derived.program_.bindings[binding].type;
 		const TypeRecord& function = derived.program_.types.Get(function_type);
 		const TypeId* parameters = derived.program_.types.Parameters(function_type);
@@ -644,7 +645,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.empty() || children.size() > 2)
-			throw std::runtime_error("invalid array new action");
+			ThrowLoweringInternal("invalid array new action");
 		const bool retain_size = !record.array_count_constant &&
 			(record.array_cookie || record.value_initialization ||
 			 children.size() == 2);
@@ -690,7 +691,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 1)
-			throw std::runtime_error("invalid array delete action");
+			ThrowLoweringInternal("invalid array delete action");
 		const Operand pointer = derived.LowerValue(children[0], LowPtr());
 		if (!record.array_cookie)
 		{

@@ -2,11 +2,11 @@
 #define CPPGM_LOWERING_LIFETIME_AGGREGATE_HELPERS_H
 
 #include "lowering/abi/symbol_names.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -62,12 +62,12 @@ protected:
 		{
 			const AggregateHelperInfo& helper = derived.graph_.aggregate_helpers[i];
 			if (helper.entity >= derived.program_.entities.size())
-				throw std::logic_error("aggregate helper has invalid entity");
+				ThrowLoweringInternal("aggregate helper has invalid entity");
 			const EntityRecord& entity = derived.program_.entities[helper.entity];
 			const TypeRecord& object = derived.program_.types.Get(
 				derived.program_.types.RemoveTopCv(helper.object_type));
 			if (object.kind != TYPE_NAMED || object.entity != helper.entity)
-				throw std::logic_error("aggregate helper has invalid object type");
+				ThrowLoweringInternal("aggregate helper has invalid object type");
 			const std::string proposed = abi::NormalizeSymbolName(
 				derived.program_.RenderEntityEmissionName(helper.entity)) +
 				"__" + abi::NormalizeSymbolName(
@@ -96,7 +96,7 @@ protected:
 				helper.member_constructors.size() != helper.members.size() ||
 				helper.member_destructors.size() != helper.members.size() ||
 				helper.trivial_member_constructors.size() != helper.members.size())
-				throw std::logic_error("aggregate helper has invalid function type");
+				ThrowLoweringInternal("aggregate helper has invalid function type");
 			Function result;
 			result.symbol = derived.aggregate_helper_symbols_[i];
 			result.result = LowVoid();
@@ -270,7 +270,7 @@ protected:
 		if (action.kind != DUMP_AGGREGATE_CONSTRUCTION_ACTION ||
 			action.aggregate_helper >= derived.graph_.aggregate_helpers.size() ||
 			action.aggregate_helper >= derived.aggregate_helper_symbols_.size())
-			throw std::logic_error("invalid aggregate helper action identity");
+			ThrowLoweringInternal("invalid aggregate helper action identity");
 		const AggregateHelperInfo& helper =
 			derived.graph_.aggregate_helpers[action.aggregate_helper];
 		const TypeRecord& function_type =
@@ -282,7 +282,7 @@ protected:
 			function_type.parameter_count != children.size() + 1 ||
 			children.size() != helper.parameter_member_count ||
 			helper.parameter_member_count > helper.members.size())
-			throw std::logic_error("aggregate helper boundary mismatch");
+			ThrowLoweringInternal("aggregate helper boundary mismatch");
 		CallArguments arguments;
 		CallArgumentFlags references;
 		arguments.Push(destination);
@@ -302,7 +302,7 @@ protected:
 				const Operand destination = derived.AddressOfStorage(slot);
 				if (derived.arena_.nodes[children[i]].kind !=
 					DUMP_BRACED_INIT_LIST)
-					throw std::runtime_error(
+					ThrowLoweringSource(
 						"aggregate array argument requires braces");
 				derived.LowerRuntimeArrayValues(
 					member_type, children[i], destination, true);

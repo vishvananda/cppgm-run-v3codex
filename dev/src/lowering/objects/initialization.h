@@ -2,13 +2,13 @@
 #define CPPGM_LOWERING_INITIALIZATION_ACTIONS_H
 
 #include "lowering/objects/storage_facts.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 #include "lowering/objects/zero_initialization.h"
 
 #include <cstdint>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -149,11 +149,11 @@ protected:
 		const NodeChildren children = derived.Children(node);
 		if (action.kind != DUMP_CLASS_VALUE_TRANSFER || children.size() != 1 ||
 			!derived.IsClassObjectType(action.type))
-			throw std::logic_error("invalid PA17 class-value transfer action");
+			ThrowLoweringInternal("invalid PA17 class-value transfer action");
 		if (action.selected_binding == kNoBinding ||
 			action.selected_binding >= derived.program_.bindings.size() ||
 			!derived.program_.bindings[action.selected_binding].constructor)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"class-value transfer has no selected constructor fact");
 		const DumpNode& source = derived.arena_.nodes[children[0]];
 		if (elide_empty_call_source &&
@@ -272,7 +272,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 1)
-			throw std::runtime_error("invalid temporary object action");
+			ThrowLoweringInternal("invalid temporary object action");
 		const bool initialize = derived.temporary_initialized_[node] == 0;
 		if (!initialize) return derived.temporary_addresses_[node];
 		const bool branch_initializer =
@@ -308,7 +308,7 @@ protected:
 					const NodeChildren values = derived.Children(children[0]);
 					if (temporary_type.bound == 0 ||
 						values.size() > temporary_type.bound)
-						throw std::runtime_error(
+						ThrowLoweringInternal(
 							"invalid temporary array initializer");
 					if (derived.arena_.nodes[node].initializer_list_backing &&
 						derived.IsClassObjectType(temporary_type.child))
@@ -372,7 +372,7 @@ protected:
 			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_CONDITIONAL_EXPRESSION)
 				derived.LowerClassConditionalResult(children[0], destination);
-			else throw std::runtime_error(
+			else ThrowLoweringSource(
 				"unsupported temporary object initializer");
 			derived.temporary_initialized_[node] = 1;
 			derived.MarkConditionalTemporaryConstructed(node);
@@ -405,7 +405,7 @@ protected:
 		if (record.array_action)
 			return derived.LowerArrayNewExpression(node, record, children);
 		if (children.empty() || children.size() > 2)
-			throw std::runtime_error("invalid scalar new action");
+			ThrowLoweringInternal("invalid scalar new action");
 		const Operand result = derived.LowerValue(children[0], LowPtr());
 		if (children.size() != 2) return result;
 		if (!record.allocation_may_return_null)
@@ -438,7 +438,7 @@ protected:
 		const BindingId binding = record.binding;
 		if (binding == kNoBinding || binding >= derived.function_symbols_.size() ||
 			derived.function_symbols_[binding] == kNoLowId)
-			throw std::runtime_error("delete action has no deallocation symbol");
+			ThrowLoweringInternal("delete action has no deallocation symbol");
 		const TypeId function_type = derived.program_.bindings[binding].type;
 		const TypeRecord& function = derived.program_.types.Get(function_type);
 		const TypeId* parameters = derived.program_.types.Parameters(function_type);
@@ -466,7 +466,7 @@ protected:
 		if (record.array_action)
 			return derived.LowerArrayDeleteExpression(node, record, children);
 		if (children.size() != 1)
-			throw std::runtime_error("invalid scalar delete action");
+			ThrowLoweringInternal("invalid scalar delete action");
 		Operand pointer;
 		const DumpNode& operand = derived.arena_.nodes[children[0]];
 		const NodeChildren operand_children = derived.Children(children[0]);
@@ -559,7 +559,7 @@ protected:
 		const NodeChildren values = derived.Children(list_node);
 		if (array.kind != TYPE_ARRAY || array.IsIncompleteArray() ||
 			values.size() > array.bound)
-			throw std::runtime_error("invalid constructor array initializer");
+			ThrowLoweringSource("invalid constructor array initializer");
 		if (derived.IsClassObjectType(array.child) ||
 			derived.IsArrayType(array.child))
 		{
@@ -607,7 +607,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.arena_.nodes[value].kind != DUMP_CONSTRUCTOR_ACTION)
-			throw std::runtime_error(
+			ThrowLoweringInternal(
 				"class array element has no construction recipe");
 		Operand destination = derived.AddressOfStorage(derived.StorageFor(
 			record.binding, derived.LowerStorageType(record.type)));
@@ -711,7 +711,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (values.size() != 1 ||
 			derived.arena_.nodes[values[0]].kind != DUMP_BRACED_INIT_LIST)
-			throw std::runtime_error("array member requires a braced initializer");
+			ThrowLoweringSource("array member requires a braced initializer");
 		if (retained_destination.kind != Operand::NONE)
 		{
 			derived.LowerArrayValues(action.type, values[0], retained_destination);
@@ -722,7 +722,7 @@ protected:
 		const NodeChildren elements = derived.Children(values[0]);
 		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
 			elements.size() > array.bound)
-			throw std::runtime_error("invalid aggregate array initializer");
+			ThrowLoweringSource("invalid aggregate array initializer");
 		const LowType element = derived.LowerExpressionType(array.child);
 		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
 		{
@@ -877,7 +877,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (variable_children.size() != 1)
-			throw std::runtime_error("invalid PA15 array initializer");
+			ThrowLoweringInternal("invalid PA15 array initializer");
 		const NodeChildren values = derived.Children(variable_children[0]);
 		const TypeRecord& array = derived.program_.types.Get(
 			derived.ExpressionObjectType(record.type));
@@ -885,7 +885,7 @@ protected:
 			(array.IsIncompleteArray() &&
 			 (record.storage_size == 0 || !values.empty())) ||
 			values.size() > array.bound)
-			throw std::runtime_error("invalid PA15 bounded array initializer");
+			ThrowLoweringSource("invalid PA15 bounded array initializer");
 		if (array.IsIncompleteArray())
 		{
 			(void)derived.AddressOfStorage(derived.StorageFor(
@@ -941,7 +941,7 @@ protected:
 			const DumpNode& action = derived.arena_.nodes[actions[i]];
 			if (action.kind != DUMP_INITIALIZER_ACTION ||
 				action.binding == kNoBinding)
-				throw std::logic_error("invalid bound aggregate array action");
+				ThrowLoweringInternal("invalid bound aggregate array action");
 			const NodeChildren values = derived.Children(actions[i]);
 			const bool nested = values.size() == 1 &&
 				derived.arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
@@ -953,13 +953,13 @@ protected:
 			else
 			{
 				if (values.size() > 1 || derived.IsArrayType(action.type))
-					throw std::runtime_error(
+					ThrowLoweringSource(
 						"complex bound aggregate leaf is outside the checkpoint");
 				Instruction store(Instruction::STORE);
 				if (derived.IsReferenceType(action.type))
 				{
 					if (values.empty())
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"aggregate reference action has no value");
 					store.type = LowPtr();
 					store.first = derived.AddressOfStorage(derived.LowerStorage(values[0]));
@@ -1016,7 +1016,7 @@ protected:
 		const NodeChildren values = derived.Children(list_node);
 		if (array.kind != TYPE_ARRAY || array.IsIncompleteArray() ||
 			values.size() > array.bound)
-			throw std::runtime_error("invalid runtime array initializer");
+			ThrowLoweringSource("invalid runtime array initializer");
 		const Operand base = compact_addressing ?
 			array_address : derived.DecayAddress(array_address);
 		const std::size_t element_size = derived.program_.SizeOf(array.child);
@@ -1040,7 +1040,7 @@ protected:
 		if (record.kind == TYPE_ARRAY)
 		{
 			if (derived.arena_.nodes[node].kind != DUMP_BRACED_INIT_LIST)
-				throw std::runtime_error("nested runtime array requires braces");
+				ThrowLoweringSource("nested runtime array requires braces");
 			derived.LowerRuntimeArrayValues(type, node, destination, true);
 			return;
 		}
@@ -1048,7 +1048,7 @@ protected:
 		{
 			if (derived.LowerRuntimeConstructorValue(type, node, destination)) return;
 			if (derived.arena_.nodes[node].kind != DUMP_BRACED_INIT_LIST)
-				throw std::runtime_error("runtime aggregate element requires braces");
+				ThrowLoweringSource("runtime aggregate element requires braces");
 			AggregatePath path;
 			derived.LowerAggregateActions(node, destination, &path, destination);
 			return;
@@ -1097,7 +1097,7 @@ protected:
 		if (derived.stats_) ++derived.stats_->lowered_nodes;
 		const DumpNode& list = derived.arena_.nodes[list_node];
 		if (list.kind != DUMP_BRACED_INIT_LIST)
-			throw std::logic_error("class initializer is not an action list");
+			ThrowLoweringInternal("class initializer is not an action list");
 		const NodeChildren actions = derived.Children(list_node);
 		for (std::size_t i = 0; i < actions.size(); ++i)
 		{
@@ -1105,7 +1105,7 @@ protected:
 			if (action.kind != DUMP_INITIALIZER_ACTION ||
 				action.binding == kNoBinding ||
 				action.binding >= derived.program_.bindings.size())
-				throw std::logic_error("invalid aggregate initializer action");
+				ThrowLoweringInternal("invalid aggregate initializer action");
 			if (derived.stats_) ++derived.stats_->lowered_nodes;
 			const NodeChildren values = derived.Children(actions[i]);
 			const bool nested = values.size() == 1 &&
@@ -1177,7 +1177,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (values.size() > 1)
-			throw std::logic_error("aggregate leaf has multiple values");
+			ThrowLoweringInternal("aggregate leaf has multiple values");
 		if (derived.IsArrayType(action.type))
 		{
 			derived.LowerAggregateArrayLeaf(
@@ -1190,7 +1190,7 @@ protected:
 		if (derived.IsReferenceType(action.type))
 		{
 			if (values.empty())
-				throw std::logic_error("aggregate reference action has no value");
+				ThrowLoweringInternal("aggregate reference action has no value");
 			store.type = LowPtr();
 			store.first = derived.AddressOfStorage(derived.LowerStorage(values[0]));
 		}
@@ -1209,7 +1209,7 @@ protected:
 				store.first = derived.FloatingOperand("0.0", store.type);
 			else if (IsInteger(store.type))
 				store.first = Operand(0, store.type);
-			else throw std::runtime_error(
+			else ThrowLoweringSource(
 				"aggregate leaf requires unsupported construction");
 		}
 		const Operand destination =

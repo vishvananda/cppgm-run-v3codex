@@ -3,12 +3,12 @@
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/objects/cleanup_continuations.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -101,7 +101,7 @@ protected:
 		const lowering::cleanup::State& record =
 			derived.cleanup_continuations_.Get(state);
 		if (!record.block_bound)
-			throw std::logic_error("cleanup continuation has no block");
+			ThrowLoweringInternal("cleanup continuation has no block");
 		return record.block;
 	}
 
@@ -109,7 +109,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (node >= derived.arena_.nodes.size())
-			throw std::logic_error("invalid cleanup action node");
+			ThrowLoweringInternal("invalid cleanup action node");
 		const lowering::cleanup::ActionKey key =
 			lowering::cleanup::MakeActionKey(derived.arena_.nodes[node]);
 		bool inserted = false;
@@ -167,11 +167,11 @@ protected:
 					derived.BeginExceptionTryCleanupDispatch();
 				if (routes_to_try !=
 					derived.ExceptionCleanupRoutesToTry(state.key.context))
-					throw std::logic_error("cleanup exception context changed");
+					ThrowLoweringInternal("cleanup exception context changed");
 				derived.FinishExceptionUnwindCleanupPrefix();
 				derived.EmitJump(ContinuationBlock(state.key.tail));
 			}
-			else throw std::logic_error(
+			else ThrowLoweringInternal(
 				"invalid full-expression cleanup continuation mode");
 		}
 		derived.pending_cleanup_states_.clear();
@@ -406,7 +406,7 @@ protected:
 			{
 				if (!derived.full_expression_branch_cleanup_tails_.Find(
 					owner, child, &tail))
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"branch cleanup head has no ordered tail");
 				derived.full_expression_branch_cleanup_next_[tail] = action;
 			}
@@ -432,7 +432,7 @@ protected:
 			if (record.lifetime_branch_owner != owner ||
 				record.lifetime_branch_child != child ||
 				record.lifetime_object == kNoDumpEdge)
-				throw std::logic_error("invalid branch-local cleanup identity");
+				ThrowLoweringInternal("invalid branch-local cleanup identity");
 			LowerFullExpressionDestructorAction(action);
 			retired.Push(record.lifetime_object);
 			if (derived.stats_) ++derived.stats_->branch_cleanup_actions;
@@ -668,7 +668,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (!derived.full_expression_cleanup_active_)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"noreturn cleanup outside full expression");
 		EnsureFullExpressionCleanupSegment();
 		derived.Emit(Instruction(Instruction::EH_END));
@@ -685,7 +685,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.full_expression_cleanup_active_)
-			throw std::logic_error("nested full-expression cleanup region");
+			ThrowLoweringInternal("nested full-expression cleanup region");
 		derived.full_expression_cleanup_actions_.clear();
 		for (std::size_t i = first_cleanup; i < children.size(); ++i)
 		{
@@ -693,7 +693,7 @@ protected:
 					DUMP_DESTRUCTOR_ACTION ||
 				(derived.arena_.nodes[children[i]].lifetime_object == kNoDumpEdge &&
 				 !derived.arena_.nodes[children[i]].unwind_only))
-				throw std::logic_error("invalid temporary cleanup suffix");
+				ThrowLoweringInternal("invalid temporary cleanup suffix");
 			derived.full_expression_cleanup_actions_.push_back(children[i]);
 		}
 		derived.full_expression_cleanup_active_ = true;
@@ -742,7 +742,7 @@ protected:
 		}
 		if (preferred_dispatch != kNoLowId &&
 			!derived.full_expression_cleanup_actions_.empty())
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"preferred cleanup dispatch has destructor actions");
 		if (defer_segment ||
 			(derived.full_expression_uses_branch_cleanup_ &&
@@ -762,7 +762,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (!derived.full_expression_cleanup_active_)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"temporary transition outside full expression");
 		if (!derived.full_expression_deferred_cleanup_)
 		{
@@ -893,10 +893,10 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (!derived.full_expression_cleanup_active_)
-			throw std::logic_error("missing full-expression cleanup region");
+			ThrowLoweringInternal("missing full-expression cleanup region");
 		if (derived.full_expression_uses_linked_dispatch_ &&
 			derived.full_expression_linked_action_cursor_ != 0)
-			throw std::logic_error("linked cleanup left an unconstructed action");
+			ThrowLoweringInternal("linked cleanup left an unconstructed action");
 		bool has_normal_cleanup = false;
 		for (std::size_t i = 0;
 			i < derived.full_expression_cleanup_actions_.size(); ++i)
@@ -953,7 +953,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.empty())
-			throw std::logic_error("condition cleanup has no value");
+			ThrowLoweringInternal("condition cleanup has no value");
 		if (children.size() == 1)
 		{
 			BeginFullExpressionCleanup(children, 1, false, preferred_dispatch);
@@ -1048,7 +1048,7 @@ protected:
 		for (std::size_t i = 1; i < children.size(); ++i)
 		{
 			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"invalid full-expression cleanup action");
 			derived.LowerDestructorAction(derived.arena_.nodes[children[i]]);
 		}
@@ -1130,7 +1130,7 @@ protected:
 		for (std::size_t i = first_cleanup; i < children.size(); ++i)
 		{
 			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"variable cleanup action is not a suffix");
 			lexical_unwind = lexical_unwind ||
 				derived.arena_.nodes[children[i]].unwind_only;
@@ -1165,7 +1165,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.empty())
-			throw std::logic_error("empty full-expression condition");
+			ThrowLoweringInternal("empty full-expression condition");
 		if (children.size() == 1) return derived.LowerCondition(children[0]);
 		BeginFullExpressionCleanup(children, 1);
 		const Operand value = derived.LowerCondition(children[0]);
@@ -1219,7 +1219,7 @@ protected:
 		const NodeChildren children = derived.Children(node);
 		if (derived.arena_.nodes[node].kind != DUMP_CONDITIONAL_ARM ||
 			children.empty())
-			throw std::logic_error("invalid class conditional arm");
+			ThrowLoweringInternal("invalid class conditional arm");
 		const bool enclosing_cleanup = derived.full_expression_cleanup_active_;
 		if (children.size() != 1)
 		{
@@ -1255,7 +1255,7 @@ protected:
 			children.size() != 3 ||
 			derived.arena_.nodes[children[1]].kind != DUMP_CONDITIONAL_ARM ||
 			derived.arena_.nodes[children[2]].kind != DUMP_CONDITIONAL_ARM)
-			throw std::logic_error("invalid class conditional result");
+			ThrowLoweringInternal("invalid class conditional result");
 		const BlockId then_block = derived.AddBlock(
 			derived.NewLabel("condobj_then"));
 		const BlockId else_block = derived.AddBlock(
@@ -1337,7 +1337,7 @@ protected:
 		const NodeChildren declaration_children = derived.Children(declaration);
 		if (declaration_children.size() != 1 ||
 			derived.arena_.nodes[declaration_children[0]].kind != DUMP_VARIABLE)
-			throw std::runtime_error("invalid PA17 condition declaration");
+			ThrowLoweringInternal("invalid PA17 condition declaration");
 		const DumpNode& variable =
 			derived.arena_.nodes[declaration_children[0]];
 		if (derived.stats_) ++derived.stats_->lowered_nodes;
@@ -1352,7 +1352,7 @@ protected:
 				unwind_actions.Push(condition_children[i]);
 			else if (value_node == kNoDumpEdge)
 				value_node = condition_children[i];
-			else throw std::runtime_error("invalid PA17 condition suffix");
+			else ThrowLoweringInternal("invalid PA17 condition suffix");
 		}
 		if (value_node != kNoDumpEdge)
 		{
