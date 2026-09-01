@@ -4856,6 +4856,42 @@ Inclusive work in the query family consequently rose from 626,202,337 to
 compiler layout effect.  The prototype was removed before test or README
 movement and the worktree returned exactly to the retained checkpoint.
 
+### Rejected serialized prefix-consumer boundary
+
+The next prototype tested the smallest explicit LowIR addition that could
+make the majority-slow scalar query safe to optimize without duplicating its
+slow arm. A fixed scalar function could carry `[prefix=consume]`, produced
+from a source attribute and preserved through textual LowIR and compiler
+objects. The promise identified a state-consuming operation compatible with
+an available index-zero `[query=stable_prefix]` observation on the same typed
+argument tuple. O3 deferred ordinary inlining of marked consumers, derived a
+unique acyclic call-free consuming arm against a call-containing slow arm,
+cloned only that arm, redirected a proved query/consume pair to it, and reused
+the already observed scalar result. Selection was bounded to eight clones,
+256 cloned instructions per translation unit, and 32 instructions per fast
+arm. No filename, source spelling, or function-symbol match participated.
+
+The boundary and transformation were self-host stable: an explicit-32-way G1
+and G2 matched every compiler object and the final binary at
+`8dbb59a78dc81c32890a2343d31254db2b11050eda4ba98b7e49cdd920ef7bfc`.
+On the tokenizer reducer, the final O3 LowIR fell from 4,608 to 4,204
+instructions and from 345,678 to 316,192 bytes; the temporary fast clone was
+fully inlined and pruned. The implementing compiler nevertheless grew by
+14,864 linked text bytes, from 8,786,048 to 8,800,912.
+
+The deterministic complete hot compile rejected the new contract. Baseline
+and candidate emitted the identical object
+`09d9fdc0bdd901d35c4f46075a4109b1a0c29ddb51fd5a17428335a2379dabba`,
+while Callgrind moved only from 3,553,692,388 to 3,553,043,913 instructions
+(`0.999817522x`, a 0.018248% saving). That is far below the 1% D5 boundary
+for a new serialized promise and cannot be described as the large
+optimization needed to justify expanding PA13. The source attribute,
+semantic and LowIR transport, compiler-object version, optimizer machinery,
+and provisional fixtures were removed together. No PA13, PA17, PA37, or PA38
+contract movement remains. The result also closes this specific
+query/consume design: further work must target a source-diverse dynamic cost,
+not add more metadata to expose this scalar edge.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4975,6 +5011,7 @@ Fill one row for every retained or rejected dose.
 | D.edge-live-color-components | split final-MIR physical-color components across adjacent blocks only when the source is live on their edge | none; rejected behavior was not moved into PA38 | tokenizer -42 text, `Lexer::Run` -12 bytes, producer -816 text; `AppendUTF8` unchanged | complete hot Ir `0.999640086x` (-0.035991%) | exact hot object; explicit-32-way 221-object G1/G2; prototype removed before G3/full timing | rejected; real but immaterial register-choice refinement, far below the 1% D5 floor |
 | D.fast-slow-function-versioning | keep one bounded call-free return corridor under the original identity, restart every bailout in a complete slow clone, and lower the exact final call as a sibling transfer | PA37/PA38 READMEs plus level-isolated structural, guard, replay, native-relationship, and behavior properties; no source-name or whole-program matching | no LowIR contract addition; producer +34,376 text/+160 data; selected original 98 bytes plus unchanged 1,814-byte slow clone | self Ir `0.981190163x`, GCC `0.999989823x`, normalized `0.981200149x`; two full-build normalized CPU blocks `0.992312127x`/`0.991831466x` | focused controls; 5,473/5,473; serial debug/round-trip and all zero-fatal audits clean; explicit-32 G1/G2 and every measured output exact | retained; clears deterministic D5 and stable full CPU corroboration after removing measured source-layout interference |
 | D.scalar-fast-slow-extension | reuse the retained versioning and complete-frame sibling machinery for one additional small non-hinted scalar-return function | none; rejected behavior was not moved into PA37/PA38 | intended 32-instruction query becomes 47-byte wrapper plus unchanged 116-byte clone; producer +23,860 text/+16 data; output exact | self Ir `1.004353845x`; query inclusive Ir `1.023825906x` because 7.16M/11.50M calls take the slow edge | exact frozen object; explicit-32 G1 producer; prototype removed before fixed point/full timing | rejected; majority-slow population makes the extra transfer a deterministic generated-code loss |
+| D.prefix-consumer-boundary | serialize a source-produced prefix consumer so O3 can inline only its unique call-free consuming arm after an available index-zero stable-prefix query | none; provisional PA13/PA17/PA37/PA38 movement removed after rejection | tokenizer final O3 LowIR 4,608 to 4,204 instructions and 345,678 to 316,192 bytes; temporary clone fully pruned; producer +14,864 text | self Ir `0.999817522x` (-0.018248%); same-source normalization not escalated after missing the deterministic 1% gate | exact frozen object; explicit-32 G1/G2 and final hash exact; prototype fully removed | rejected; the measured benefit is too small to justify a new PA13 LowIR promise and compiler-object version |
 | C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
 | D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
 | Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
