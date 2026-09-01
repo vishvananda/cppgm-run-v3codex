@@ -5115,6 +5115,43 @@ screen kept PA38 45/45, and no stale Valgrind process was present.  The complete
 prototype was removed without README or test movement; its stronger result
 supersedes, but does not overturn, the earlier terminal-memory rejection.
 
+### Rejected read-only scalar shadow plus compared quotient
+
+The next experiment tested whether the two previously marginal loop
+improvements became worthwhile as one coherent dose.  An O3-only whole-body
+proof found internal or weak by-address scalar parameters whose complete
+`object_bytes` region was observed only by exact-width nonvolatile loads and
+zero-offset pointer carriers.  At a qualifying caller, the argument value was
+copied into a private call-only shadow immediately before the call.  The
+caller's original scalar slot then became address-free and ordinary slot
+promotion kept its loop induction value in SSA.  This used the existing PA13
+complete-object contract and callee body; it required no new LowIR field.  The
+dose also restored the narrow native encoder experiment which consumes an
+architectural quotient read directly by the adjacent comparison.
+
+The intended macro loop changed structurally: its induction slot became a
+loop phi, three repeated index multiplications were shared, the slow vector
+growth edge alone stored the value to an addressed shadow, and the hot
+`idiv 104` became the existing magic-division sequence.  The selected
+`AnnotateParentheses` body shrank from 525 to 515 bytes, but additional sound
+scalar populations grew the macro object by 1,195 text bytes and the
+explicit-32-way G1 producer by 51,004 linked text bytes.  The PA37 suite
+remained clean at 190/190.
+
+Ten balanced software `task-clock` observations per side initially looked
+just strong enough: self means were 784.801/780.350 ms (`0.994328x`), while
+same-source GCC means were 532.355/534.866 ms (`1.004720x`), for a normalized
+`0.989660x`.  The deterministic check rejected that conclusion.  Complete
+hot-workload Callgrind rose from 3,553,692,388 to 3,561,135,639 instructions
+(`1.002094x`), and `AnnotateParentheses` itself rose from 81,243,910 to
+82,339,040 inclusive instructions (`1.013480x`).  Scalar residency therefore
+does not cancel the previously measured retired-instruction cost of replacing
+one hardware `idiv` with a longer magic sequence.  Both prototypes were
+removed without PA37/PA38 README or property movement.  A successor should
+target the stable-query fast/slow body, whose larger slow-edge and unconditional
+save costs can clear the deterministic floor together, rather than retrying
+this division encoding.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -5228,6 +5265,7 @@ Fill one row for every retained or rejected dose.
 | D.complete-object-memory | serialize a positive complete parameter-object extent, derive body effects/capture intervals, and consume disjoint regions at O3 | PA13/PA17/PA37/PA38 README plus pointer-only syntax/transport, source-production, level, structural positive/negative, replay, native-pressure, and behavior properties; no complete-program matching | compiler object v6; 1,387 populated extents on the largest TU; indexed 9,336-site analysis; linked producer +55,956 text/+752 data; final G1/G2 exact | self Ir `0.976039x`; GCC `1.000713x`; normalized `0.975343x`; gap `1.529720x` to `1.492001x`; Clang-normalized `0.975533x`; final O1/O3 native CPU `0.988085x`/`0.988883x` | 221-object all-32 fixed point at `30132bf2...`; focused suites, full report, debug/round-trip, and all zero-fatal audits clean | retained; populated O0 semantic fact justifies the narrow LowIR addition, while indexed fixed points remove the initial critical-path regression |
 | D.external-write-stable-reuse | preserve an established repeat-stable query result across calls proven not to write outside their own frame; later recheck adds path-specific join phis | none; rejected behavior was not moved into PA37 | both screens remove the same 882,230 dynamic query calls; recheck producer +6,488 text | original/recheck self Ir `0.996729x`/`0.996625x`; recheck task-clock `0.999819x` | `lowiropt` and PA37 190/190; original exact fixed point `c18cd945...`; explicit-32 recheck G1/G2 and Callgrind; prototypes removed | rejected; join phis expose no additional surviving reuse and later retained work does not move the sound dose near 1% |
 | D.compared-quotient-encoding | let existing constant-division encoding consume a quotient read directly by the adjacent comparison | none; rejected behavior was not moved into PA38; LowIR/MIR contracts unchanged | hot `idiv 104` removed; object +20 text; producer +30,316 text; 221-object G1/G2 exact | self task-clock `0.991361x`, GCC `1.001352x`, normalized `0.990022x`; self Ir `1.003239x` over its direct control and combined Ir `0.999957x` vs retained | PA38 45/45; exact fixed point `cc7c277f...`; prototypes removed | rejected; borderline native win contradicts deterministic instruction cost and adds footprint |
+| D.readonly-scalar-shadow-plus-quotient | copy a scalar into a call-only shadow after proving the internal by-address callee only reads it, then pair recovered loop SSA residency with adjacent quotient encoding | none; rejected before contract movement; existing PA13 `object_bytes` and callee bodies were sufficient | induction slot becomes phi; `AnnotateParentheses` 525 to 515 bytes; macro +1,195 text; G1 producer +51,004 text | self task-clock `0.994328x`; GCC `1.004720x`; normalized `0.989660x`; self Ir `1.002094x`; selected body inclusive Ir `1.013480x` | PA37 190/190; exact explicit-32-way G1 and deterministic hot output; no stale Valgrind; prototypes removed | rejected; normalized native threshold is contradicted by deterministic regression, so neither PA37 nor PA38 behavior is retained |
 | C.terminal-swap-o2 | promote the retained terminal staged-object swap from O3 to O2 | none; existing PA37 O3 contract retained after rejection | O2 producer -104 text bytes; requested-O1 workload exact | hot task-clock mean/median `0.994194x`/`0.993609x`; full CPU `0.996789x`, wall `1.020660x` | 20 exact hot observations per side; one exact all-32 221-object ABBA block | rejected; complete CPU gain is only 0.321% and wall is unfavorable |
 | C.private-table-o2 | run only the retained private structured-table prefilter at O2 | none; existing PA37 O3 contract retained after rejection | fixture O2/O3 shapes exact; O2 producer -376 text bytes; requested-O1 workload exact | hot normalized `0.970720x`; full self CPU `0.994712x`; full normalized wall/CPU `1.005306x`/`0.994908x` | focused O2 stats; 20 exact hot observations per side; exact all-32 self and position-balanced GCC blocks | rejected; source-diverse full CPU gain is only 0.509% and normalized wall regresses |
 | C.complete-memory-o2 | run the retained whole-program parameter-memory analysis at O2 while keeping its companion cleanups at O3 | none; existing PA37 O3 contract retained after rejection | O2 producer -2,584 text bytes; requested-O1 workload exact | hot mean/median `0.994103x`/`0.995585x`; full wall/CPU `1.005060x`/`1.000808x` | focused O2 population; 20 exact hot observations per side; one exact all-32 221-object ABBA block | rejected; complete raw throughput regresses before pass-cost or normalized escalation |
