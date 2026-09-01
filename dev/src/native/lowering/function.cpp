@@ -1,4 +1,5 @@
 #include "native/driver/stats.h"
+#include "native/errors.h"
 #include "native/lowering/abi.h"
 #include "native/lowering/addresses.h"
 #include "native/lowering/address_replay.h"
@@ -40,7 +41,6 @@
 #include "native/lowering/wide.h"
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 namespace lowir_native { namespace {
@@ -465,7 +465,7 @@ private:
       if(!alias.valid()) continue;
       const std::size_t parameter = parameter_indices[alias];
       if(parameter == FunctionFacts::missing_position())
-        throw std::logic_error("parameter slot alias has no parameter");
+        native_errors::ThrowInternal("parameter slot alias has no parameter");
       slot_offsets_[slot] = homes[parameter];
       slot_offset_known_[slot] = 1;
     }
@@ -694,7 +694,7 @@ private:
   {
     if(operand.kind == Operand::OP_TEMP) {
       if(!value_known_[operand.value])
-        throw std::runtime_error("missing lowered temporary " +
+        native_errors::ThrowInternal("missing lowered temporary " +
           location_planning::diagnostic_value_name(
             program_, source_, operand.value) + " (" +
           std::to_string(static_cast<std::uint32_t>(operand.value)) + ")" +
@@ -721,7 +721,7 @@ private:
            incoming_register_is_available_without_parameter_setup(incoming)) {
           OptionalParameterMove * home = optional_parameter_home(parameter);
           if(!home)
-            throw std::logic_error("selected parameter home has no transfer");
+            native_errors::ThrowInternal("selected parameter home has no transfer");
           home->required = true;
           return values_[operand.value].location;
         }
@@ -731,7 +731,7 @@ private:
     if(operand.kind == Operand::OP_SLOT) {
       const std::uint32_t slot = operand.slot;
       if(slot >= slot_offsets_.size() || !slot_offset_known_[slot])
-        throw std::runtime_error("missing frame slot");
+        native_errors::ThrowInternal("missing frame slot");
       return frame_operand(slot_offsets_[slot]);
     }
     if(operand.kind == Operand::OP_INTEGER)
@@ -745,7 +745,7 @@ private:
       return build::global_operand(MirOperand::OP_SYMBOL, operand);
     if(operand.kind == Operand::OP_LABEL)
       return native_block_operand(source_, operand);
-    throw std::runtime_error("foundation operand kind is not implemented");
+    native_errors::ThrowSource("foundation operand kind is not implemented");
   }
   MirOperand selected_value_location(lowir_model::ValueId value) const
   {
@@ -755,7 +755,7 @@ private:
     if(parameter.valid()) {
       OptionalParameterMove * home = optional_parameter_home(parameter);
       if(!home)
-        throw std::logic_error("selected parameter home has no transfer");
+        native_errors::ThrowInternal("selected parameter home has no transfer");
       home->required = true;
     }
     return location;
@@ -764,7 +764,7 @@ private:
   {
     if(operand.kind == Operand::OP_TEMP) {
       if(!value_known_[operand.value])
-        throw std::runtime_error("missing operand type for " +
+        native_errors::ThrowInternal("missing operand type for " +
           location_planning::diagnostic_value_name(
             program_, source_, operand.value) +
           " in function @" +
@@ -798,12 +798,12 @@ private:
     if(operand.kind == Operand::OP_SLOT) {
       const std::uint32_t slot = operand.slot;
       if(slot >= slot_offsets_.size() || !slot_offset_known_[slot])
-        throw std::runtime_error("missing frame slot");
+        native_errors::ThrowInternal("missing frame slot");
       return frame_operand(slot_offsets_[slot]);
     }
     const MirOperand address = resolve(operand);
     if(address.kind != MirOperand::OP_REG)
-      throw std::runtime_error("storage address is not register-resident");
+      native_errors::ThrowInternal("storage address is not register-resident");
     return dereference(address.reg);
   }
   MirOperand materialized_storage(const Operand & operand,
@@ -939,7 +939,7 @@ private:
     if(operand.kind != Operand::OP_TEMP) return;
     const lowir_model::ValueId id = operand.value;
     if(facts_.uses[id] == 0)
-      throw std::runtime_error("invalid temporary use count");
+      native_errors::ThrowInternal("invalid temporary use count");
     const bool interval_over = facts_.uses[id] == 1 &&
       value_outlives_counted_uses(id) &&
       planned_interval_over(id);
@@ -1046,7 +1046,7 @@ private:
   void set_value_location(lowir_model::ValueId value,
                           const MirOperand & replacement)
   {
-    if(!value_known_[value]) throw std::logic_error("cannot move an unknown native value");
+    if(!value_known_[value]) native_errors::ThrowInternal("cannot move an unknown native value");
     const bool live = value_is_live(value);
     if(live) live_locations_.remove(value, values_[value].location);
     begin_register_lifetime(replacement);
@@ -1173,7 +1173,7 @@ private:
       std::vector<MirInstruction> & out, bool force_preserved = false) {
     X64Register result = XR_RSP;
     if(try_allocate_result(value, out, &result, force_preserved)) return result;
-    throw std::runtime_error("reactive GPR allocation exhausted in " +
+    native_errors::ThrowResourceLimit("reactive GPR allocation exhausted in " +
       lowir_model::lowir_symbol_name(program_, source_.symbol) + " for " +
       location_planning::diagnostic_value_name(program_, source_, value) +
       " at LowIR position " + std::to_string(position_));
@@ -1239,9 +1239,9 @@ private:
       return;
     }
     if(operand.kind != Operand::OP_TEMP)
-      throw std::runtime_error("bulk object operand kind is not addressable");
+      native_errors::ThrowInternal("bulk object operand kind is not addressable");
     if(!value_known_[operand.value])
-      throw std::runtime_error("missing address value");
+      native_errors::ThrowInternal("missing address value");
     const ValueFact & value = values_[operand.value];
     if(value.rematerialized_constant_index) {
       emit_rematerialized_index_base(out, destination, value);
@@ -1270,8 +1270,9 @@ private:
   MirOperand make_addressable(const Operand & operand, std::vector<MirInstruction> & out) {
     if(operand.kind == Operand::OP_SLOT) return storage(operand);
     if(operand.kind == Operand::OP_GLOBAL) return build::global_operand(MirOperand::OP_SYMBOL, operand);
-    if(operand.kind != Operand::OP_TEMP) throw std::runtime_error("call argument cannot be passed by address");
-    if(!value_known_[operand.value]) throw std::runtime_error("missing addressable temporary");
+    if(operand.kind != Operand::OP_TEMP)
+      native_errors::ThrowLowirInput("call argument cannot be passed by address");
+    if(!value_known_[operand.value]) native_errors::ThrowInternal("missing addressable temporary");
     ValueFact & found = values_[operand.value];
     if(found.frame_address || found.location.kind == MirOperand::OP_FRAME) return found.location;
     const MirOperand selected = selected_value_location(operand.value);
@@ -1341,7 +1342,7 @@ private:
     X64Register result = XR_RSP;
     if(!try_allocate_result(instruction.dest, out, &result)) {
       if(!pressure_home)
-        throw std::runtime_error("reactive GPR allocation exhausted");
+        native_errors::ThrowResourceLimit("reactive GPR allocation exhausted");
       *pressure_home = allocate_temp_home(
         instruction.dest, pressure_type ? *pressure_type : instruction.type);
       result = XR_RAX;
@@ -1490,7 +1491,7 @@ private:
                         std::vector<MirInstruction> & out)
   {
     if(instruction.op.kind != LowOperation::LOP_NEG)
-      throw std::runtime_error(std::string("floating unary operation is not implemented: ") +
+      native_errors::ThrowSource(std::string("floating unary operation is not implemented: ") +
                                lowir_model::lowir_operation_text(instruction.op));
     const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
     MirInstruction negate = machine_instruction(MirInstruction::MI_FNEG,
@@ -1535,7 +1536,7 @@ private:
       MirInstruction::Opcode opcode;
       if(instruction.op.kind == LowOperation::LOP_FPTOSI) opcode = MirInstruction::MI_FPTOSI;
       else if(instruction.op.kind == LowOperation::LOP_FPTOUI) opcode = MirInstruction::MI_FPTOUI;
-      else throw std::runtime_error(
+      else native_errors::ThrowSource(
         std::string("floating-to-i128 conversion is not implemented: ") +
         lowir_model::lowir_operation_text(instruction.op));
       MirInstruction conversion = machine_instruction(
@@ -1564,7 +1565,7 @@ private:
       else if(instruction.op.kind == LowOperation::LOP_FPEXT) opcode = MirInstruction::MI_FPEXT;
       else if(instruction.op.kind == LowOperation::LOP_FPTRUNC) opcode = MirInstruction::MI_FPTRUNC;
       else if(instruction.op.kind != LowOperation::LOP_SITOFP)
-        throw std::runtime_error(std::string("floating conversion is not implemented: ") +
+        native_errors::ThrowSource(std::string("floating conversion is not implemented: ") +
                                  lowir_model::lowir_operation_text(instruction.op));
       MirOperand pressure_home;
       MirOperand destination;
@@ -1637,7 +1638,7 @@ private:
              pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
       return;
     }
-    throw std::runtime_error("conversion categories are not implemented");
+    native_errors::ThrowSource("conversion categories are not implemented");
   }
   void emit_direct_compare_branch(const Instruction & comparison,
                                   const Instruction & branch,
@@ -1727,7 +1728,8 @@ private:
       return;
     }
     if(!is_integer_or_pointer(instruction.type))
-      throw std::runtime_error("integer selector received non-integer comparison");
+      native_errors::ThrowLowirInput(
+        "integer selector received non-integer comparison");
     const LowType result_type =
       lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
     MirOperand right;
@@ -1800,7 +1802,8 @@ private:
       return;
     }
     if(!is_integer_or_pointer(instruction.type))
-      throw std::runtime_error("integer selector received non-integer unary operation");
+      native_errors::ThrowLowirInput(
+        "integer selector received non-integer unary operation");
     const MirOperand source = resolve(instruction.first);
     const LowType result_type = instruction.op.kind == LowOperation::LOP_NOT ?
       lowir_model::builtin_lowir_type(lowir_model::LTK_I64) : instruction.type;
@@ -1838,7 +1841,7 @@ private:
       if(instruction.op.kind == LowOperation::LOP_BITNOT) opcode = MirInstruction::MI_NOT;
       else if(instruction.op.kind == LowOperation::LOP_BSWAP) opcode = MirInstruction::MI_BSWAP;
       else if(instruction.op.kind != LowOperation::LOP_NEG)
-        throw std::runtime_error(std::string("integer unary operation is not implemented: ") +
+        native_errors::ThrowSource(std::string("integer unary operation is not implemented: ") +
                                  lowir_model::lowir_operation_text(instruction.op));
       MirInstruction operation = machine_instruction(opcode, instruction.type);
       append_operand(operation, destination);
@@ -1915,7 +1918,7 @@ private:
       std::size_t cycle = 0;
       while(cycle < moves.size() && !moves[cycle].pending) ++cycle;
       if(cycle == moves.size() || moves[cycle].source.kind != MirOperand::OP_REG)
-        throw std::logic_error("invalid parallel GPR move cycle");
+        native_errors::ThrowInternal("invalid parallel GPR move cycle");
       const X64Register saved = moves[cycle].source.reg;
       append_move(out, reg_operand(XR_R11), reg_operand(saved));
       for(std::size_t i = 0; i < moves.size(); ++i)
@@ -1996,7 +1999,7 @@ private:
             (!moves[cycle].pending || moves[cycle].source.kind != MirOperand::OP_XMM))
         ++cycle;
       if(cycle == moves.size())
-        throw std::logic_error("invalid parallel XMM move cycle");
+        native_errors::ThrowInternal("invalid parallel XMM move cycle");
       const XmmRegister saved = moves[cycle].source.xmm;
       const MirOperand scratch = frame_operand(xmm_call_scratch());
       append_float_move(out, scratch, xmm_operand(saved), moves[cycle].type);
@@ -2263,7 +2266,7 @@ private:
       while(cycle < gpr_moves.size() && !gpr_moves[cycle].pending) ++cycle;
       if(cycle == gpr_moves.size() ||
          gpr_moves[cycle].source.kind != MirOperand::OP_REG)
-        throw std::logic_error("invalid extended GPR move cycle");
+        native_errors::ThrowInternal("invalid extended GPR move cycle");
       const X64Register saved = gpr_moves[cycle].source.reg;
       append_move(out, reg_operand(XR_R11), reg_operand(saved));
       for(std::size_t i = 0; i < gpr_moves.size(); ++i)
@@ -2290,7 +2293,7 @@ private:
             (!xmm_moves[cycle].pending ||
              xmm_moves[cycle].source.kind != MirOperand::OP_XMM)) ++cycle;
       if(cycle == xmm_moves.size())
-        throw std::logic_error("invalid extended XMM move cycle");
+        native_errors::ThrowInternal("invalid extended XMM move cycle");
       const XmmRegister saved = xmm_moves[cycle].source.xmm;
       const MirOperand scratch = frame_operand(xmm_call_scratch());
       append_float_move(out, scratch, xmm_operand(saved),
@@ -2339,7 +2342,7 @@ private:
                                      std::vector<MirInstruction> & out)
   {
     if(type.storage_size > 16)
-      throw std::runtime_error("direct object return exceeds two SysV eightbytes");
+      native_errors::ThrowSource("direct object return exceeds two SysV eightbytes");
     MirOperand direct_storage;
     const bool direct = destination ?
       direct_object_chunk_storage(*destination, 0, &direct_storage) : true;
@@ -2979,7 +2982,7 @@ private:
       emit_exception_value(instruction, out);
     else if(instruction.kind == Instruction::IK_THROW) emit_throw(instruction, out);
     else {
-      throw std::runtime_error("foundation LowIR instruction is not implemented");
+      native_errors::ThrowSource("foundation LowIR instruction is not implemented");
     }
   }
 };

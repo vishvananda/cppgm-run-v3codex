@@ -1,7 +1,7 @@
 #include "native/lowering/phi.h"
+#include "native/errors.h"
 
 #include <cstddef>
-#include <stdexcept>
 #include <vector>
 
 namespace lowir_native {
@@ -99,7 +99,7 @@ void plan_transfers(
           incoming + 1 < phi.args.size(); incoming += 2) {
         const std::uint32_t predecessor = phi.args[incoming].block;
         if(predecessor >= transfers->size())
-          throw std::logic_error("invalid native phi predecessor");
+          native_errors::ThrowInternal("invalid native phi predecessor");
         (*transfers)[predecessor].push_back(
           Transfer{phi.dest, phi.args[incoming + 1], phi.type});
       }
@@ -163,7 +163,7 @@ void emit_parallel_transfers(const std::vector<Transfer> & transfers,
         }
     }
     if(cycle == moves.size())
-      throw std::logic_error("invalid native phi transfer cycle");
+      native_errors::ThrowInternal("invalid native phi transfer cycle");
     const mir_model::MirOperand saved_source = moves[cycle].source;
     const mir_model::MirOperand scratch = emitter->PhiCycleScratch();
     emitter->EmitPhiMove(

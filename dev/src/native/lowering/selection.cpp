@@ -1,6 +1,6 @@
 #include "native/lowering/selection.h"
+#include "native/errors.h"
 
-#include <stdexcept>
 
 namespace lowir_native {
 namespace selection {
@@ -10,9 +10,9 @@ using lowir_model::LowOperation;
 long long integer_value(const lowir_model::Operand & operand)
 {
   if(operand.kind != lowir_model::Operand::OP_INTEGER)
-    throw std::runtime_error("integer value requires an integer operand");
+    native_errors::ThrowLowirInput("integer value requires an integer operand");
   if(!operand.has_int_value)
-    throw std::runtime_error("integer operand has no decoded value");
+    native_errors::ThrowLowirInput("integer operand has no decoded value");
   return operand.int_value;
 }
 
@@ -34,7 +34,8 @@ long long canonical_integer_constant(long long value,
 long long atomic_order(const lowir_model::Operand & operand)
 {
   if(operand.kind != lowir_model::Operand::OP_INTEGER)
-    throw std::runtime_error("atomic memory order must be an integer literal");
+    native_errors::ThrowLowirInput(
+      "atomic memory order must be an integer literal");
   return integer_value(operand);
 }
 
@@ -83,7 +84,7 @@ X86Condition predicate_condition(lowir_model::LowOperation predicate)
   if(predicate.kind == LowOperation::LOP_ULE) return XC_BE;
   if(predicate.kind == LowOperation::LOP_UGT) return XC_A;
   if(predicate.kind == LowOperation::LOP_UGE) return XC_AE;
-  throw std::runtime_error(std::string("unsupported integer comparison predicate: ") +
+  native_errors::ThrowSource(std::string("unsupported integer comparison predicate: ") +
                            lowir_model::lowir_operation_text(predicate));
 }
 
@@ -94,7 +95,7 @@ mir_model::MirInstruction::Opcode float_binary_opcode(LowOperation operation)
   if(operation.kind == LowOperation::LOP_SUB) return MirInstruction::MI_FSUB;
   if(operation.kind == LowOperation::LOP_MUL) return MirInstruction::MI_FMUL;
   if(operation.kind == LowOperation::LOP_DIV) return MirInstruction::MI_FDIV;
-  throw std::runtime_error(std::string("floating binary operation is not implemented: ") +
+  native_errors::ThrowSource(std::string("floating binary operation is not implemented: ") +
                            lowir_model::lowir_operation_text(operation));
 }
 
@@ -107,7 +108,7 @@ mir_model::MirInstruction::Opcode float_compare_opcode(LowOperation predicate)
   if(predicate.kind == LowOperation::LOP_GT) return MirInstruction::MI_FGT;
   if(predicate.kind == LowOperation::LOP_LE) return MirInstruction::MI_FLE;
   if(predicate.kind == LowOperation::LOP_GE) return MirInstruction::MI_FGE;
-  throw std::runtime_error(std::string("floating comparison predicate is not implemented: ") +
+  native_errors::ThrowSource(std::string("floating comparison predicate is not implemented: ") +
                            lowir_model::lowir_operation_text(predicate));
 }
 
@@ -121,7 +122,7 @@ X86Condition float_predicate_condition(LowOperation predicate)
   if(predicate.kind == LowOperation::LOP_GT) return XC_B;
   if(predicate.kind == LowOperation::LOP_LE) return XC_AE;
   if(predicate.kind == LowOperation::LOP_GE) return XC_BE;
-  throw std::runtime_error(std::string("floating branch predicate is not implemented: ") +
+  native_errors::ThrowSource(std::string("floating branch predicate is not implemented: ") +
                            lowir_model::lowir_operation_text(predicate));
 }
 

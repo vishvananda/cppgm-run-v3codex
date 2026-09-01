@@ -1,7 +1,7 @@
 #include "native/lowering/abi.h"
+#include "native/errors.h"
 
 #include <algorithm>
-#include <stdexcept>
 
 namespace lowir_native {
 namespace abi {
@@ -56,7 +56,7 @@ X64Register argument_register(std::size_t index)
     XR_RDI, XR_RSI, XR_RDX, XR_RCX, XR_R8, XR_R9
   };
   if(index >= sizeof(registers) / sizeof(registers[0]))
-    throw std::runtime_error("SysV ABI has six INTEGER argument registers");
+    native_errors::ThrowInternal("SysV ABI has six INTEGER argument registers");
   return registers[index];
 }
 

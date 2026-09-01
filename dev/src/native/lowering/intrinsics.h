@@ -1,12 +1,12 @@
 #pragma once
 
+#include "native/errors.h"
 #include "native/mir/construction.h"
 #include "native/lowering/selection.h"
 #include "native/frame/stack.h"
 #include "native/lowering/varargs.h"
 #include "native/lowering/values.h"
 
-#include <stdexcept>
 #include <vector>
 
 namespace lowir_native {
@@ -33,7 +33,7 @@ protected:
   {
     Derived & derived = static_cast<Derived &>(*this);
     if(!derived.variadic_register_save_offset_)
-      throw std::runtime_error("va_start register-save area is unavailable");
+      native_errors::ThrowInternal("va_start register-save area is unavailable");
     derived.emit_operand_address(out, XR_RCX, instruction.first);
     varargs::append_va_start(derived.variadic_state_,
                              derived.variadic_register_save_offset_, out);
@@ -61,7 +61,7 @@ protected:
     Derived & derived = static_cast<Derived &>(*this);
     const bool floating = instruction.type.kind == lowir_model::LTK_F64;
     if(!floating && !selection::is_integer_or_pointer(instruction.type))
-      throw std::runtime_error("va_arg scalar class is not implemented");
+      native_errors::ThrowSource("va_arg scalar class is not implemented");
     derived.emit_operand_address(out, XR_RCX, instruction.first);
     varargs::append_va_arg_address(floating, out);
     derived.consume(instruction.first);

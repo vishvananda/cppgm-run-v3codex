@@ -38,7 +38,19 @@ void ThrowSource(const char* message)
 }
 
 __attribute__((cold, noinline, noreturn)) inline
+void ThrowSource(const std::string& message)
+{
+	throw SourceError(message, CompilerErrorDomain::NATIVE);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
 void ThrowResourceLimit(const char* message)
+{
+	throw ResourceLimitError(message, CompilerErrorDomain::NATIVE);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowResourceLimit(const std::string& message)
 {
 	throw ResourceLimitError(message, CompilerErrorDomain::NATIVE);
 }

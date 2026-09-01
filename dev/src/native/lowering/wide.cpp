@@ -1,9 +1,9 @@
 #include "native/lowering/wide.h"
 
+#include "native/errors.h"
 #include "native/mir/construction.h"
 
 #include <cstdint>
-#include <stdexcept>
 
 namespace lowir_native {
 namespace wide {
@@ -34,13 +34,13 @@ void append_address(std::vector<MirInstruction> & out, X64Register destination,
       append_operand(lea, storage);
       out.push_back(lea);
     }
-  } else throw std::runtime_error("i128 value is not addressable (MIR operand kind " +
+  } else native_errors::ThrowInternal("i128 value is not addressable (MIR operand kind " +
     std::to_string(static_cast<unsigned>(storage.kind)) + ")");
 }
 
 unsigned long long word(const Words & words, std::size_t chunk)
 {
-  if(chunk > 1) throw std::logic_error("invalid i128 chunk");
+  if(chunk > 1) native_errors::ThrowInternal("invalid i128 chunk");
   return chunk ? words.high : words.low;
 }
 
@@ -142,7 +142,8 @@ Value literal_value(const lowir_model::Operand & operand)
 {
   if(operand.kind != lowir_model::Operand::OP_INTEGER ||
      !operand.has_int_value)
-    throw std::logic_error("wide literal requires a decoded integer operand");
+    native_errors::ThrowLowirInput(
+      "wide literal requires a decoded integer operand");
   return literal_value(operand.int_value, operand.int_high);
 }
 
@@ -204,7 +205,7 @@ void append_compare(const Value & left, const Value & right,
                            operation.kind == LowOperation::LOP_GT || operation.kind == LowOperation::LOP_GE;
   if(!less && operation.kind != LowOperation::LOP_GT && operation.kind != LowOperation::LOP_GE &&
      operation.kind != LowOperation::LOP_UGT && operation.kind != LowOperation::LOP_UGE)
-    throw std::runtime_error(std::string("unsupported i128 comparison: ") +
+    native_errors::ThrowSource(std::string("unsupported i128 comparison: ") +
                              lowir_model::lowir_operation_text(operation));
 
   MirInstruction low_compare = machine_instruction(MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
@@ -271,7 +272,7 @@ void append_compare_branch(const Value & left, const Value & right,
       operation.kind == LowOperation::LOP_UGT ||
       operation.kind == LowOperation::LOP_UGE;
     if(!less && !greater)
-      throw std::runtime_error(std::string("unsupported i128 comparison: ") +
+      native_errors::ThrowSource(std::string("unsupported i128 comparison: ") +
         lowir_model::lowir_operation_text(operation));
     const bool signed_high = operation.kind == LowOperation::LOP_LT ||
       operation.kind == LowOperation::LOP_LE ||
@@ -354,7 +355,7 @@ void append_binary(const MirOperand & destination,
       MirInstruction::MI_I128_UDIV : MirInstruction::MI_I128_UMOD;
     out.push_back(machine_instruction(opcode));
   } else {
-    throw std::runtime_error(std::string("unsupported i128 binary operation: ") +
+    native_errors::ThrowSource(std::string("unsupported i128 binary operation: ") +
                              lowir_model::lowir_operation_text(operation));
   }
   append_pair_store(destination, XR_RAX, XR_RDX, XR_R11, out);
@@ -377,7 +378,7 @@ void append_unary(const MirOperand & destination,
       append_condition(XR_R10, XC_B, out);
       append_register_binary(MirInstruction::MI_ADD, XR_RDX, XR_R10, out);
     }
-  } else throw std::runtime_error(std::string("unsupported i128 unary operation: ") +
+  } else native_errors::ThrowSource(std::string("unsupported i128 unary operation: ") +
                                   lowir_model::lowir_operation_text(operation));
   append_pair_store(destination, XR_RAX, XR_RDX, XR_R11, out);
 }

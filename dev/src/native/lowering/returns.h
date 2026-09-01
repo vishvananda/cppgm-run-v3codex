@@ -1,11 +1,11 @@
 #pragma once
 
+#include "native/errors.h"
 #include "native/lowering/abi.h"
 #include "native/mir/construction.h"
 #include "native/lowering/selection.h"
 #include "native/lowering/wide.h"
 
-#include <stdexcept>
 #include <vector>
 
 namespace lowir_native
@@ -35,7 +35,7 @@ protected:
 		else if (instruction.type.kind == lowir_model::LTK_OBJECT)
 		{
 			if (instruction.type.storage_size > 16)
-				throw std::runtime_error(
+				native_errors::ThrowSource(
 					"direct object return exceeds two SysV eightbytes");
 			const std::size_t chunks =
 				(instruction.type.storage_size + 7) / 8;

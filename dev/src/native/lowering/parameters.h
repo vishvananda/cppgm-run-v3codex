@@ -1,5 +1,6 @@
 #pragma once
 
+#include "native/errors.h"
 #include "native/analysis/function.h"
 #include "native/mir/construction.h"
 #include "native/mir/optimize.h"
@@ -7,7 +8,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -38,7 +38,7 @@ protected:
   {
     Derived & lowerer = static_cast<Derived &>(*this);
     if(moves.size() != parameters.size())
-      throw std::logic_error("optional parameter move identity mismatch");
+      native_errors::ThrowInternal("optional parameter move identity mismatch");
     const std::size_t first = lowerer.parameter_moves_.size();
     lowerer.parameter_moves_.insert(
       lowerer.parameter_moves_.end(), moves.begin(), moves.end());
@@ -47,7 +47,7 @@ protected:
       if(move.opcode != mir_model::MirInstruction::MI_MOV ||
          move.operands.empty() ||
          move.operands[0].kind != mir_model::MirOperand::OP_REG)
-        throw std::logic_error("optional parameter setup is not a GPR move");
+        native_errors::ThrowInternal("optional parameter setup is not a GPR move");
       OptionalParameterMove optional = {
         i, move.operands[0].reg, parameters[i - first], false
       };
@@ -79,7 +79,7 @@ protected:
        lowerer.parameter_moves_.back().operands.empty() ||
        lowerer.parameter_moves_.back().operands[0].kind !=
          mir_model::MirOperand::OP_REG)
-      throw std::logic_error("optional parameter setup is not one GPR move");
+      native_errors::ThrowInternal("optional parameter setup is not one GPR move");
     OptionalParameterMove optional = {
       first, lowerer.parameter_moves_.back().operands[0].reg, parameter, false
     };

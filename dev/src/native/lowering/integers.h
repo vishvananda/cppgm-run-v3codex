@@ -1,11 +1,11 @@
 #pragma once
 
+#include "native/errors.h"
 #include "native/lowering/division.h"
 #include "native/mir/construction.h"
 #include "native/lowering/selection.h"
 
 #include <cstddef>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -96,8 +96,8 @@ protected:
       return;
     }
     if(!selection::is_integer_or_pointer(instruction.type))
-      throw std::runtime_error(
-        "integer selector received non-integer binary operation");
+      native_errors::ThrowLowirInput(
+		"integer selector received non-integer binary operation");
 
     const MirOperand left = lowerer.resolve(instruction.first);
     MirOperand right = lowerer.resolve(instruction.second);
@@ -194,8 +194,8 @@ protected:
         destination, pressure_home, out);
       return;
     } else if(instruction.op.kind != LowOperation::LOP_ADD) {
-      throw std::runtime_error(
-        std::string("integer binary operation is not implemented: ") +
+      native_errors::ThrowSource(
+		std::string("integer binary operation is not implemented: ") +
         lowir_model::lowir_operation_text(instruction.op));
     }
 
