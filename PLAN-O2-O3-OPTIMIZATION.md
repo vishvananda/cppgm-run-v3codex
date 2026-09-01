@@ -4716,6 +4716,36 @@ removed before GCC normalization, requested-O2 pass-cost testing, or PA37
 contract movement. The bounded-memory analysis and its companion cleanups
 remain O3-only.
 
+### Rejected edge-live final-MIR color components
+
+The first post-matrix D5 probe refined the retained final-MIR callee-saved
+recoloring proof. The existing component builder joined two adjacent blocks
+whenever both mentioned the same physical source color, even when completed
+liveness proved that color dead across their edge. The prototype joined
+blocks only across an edge on which the source was live out of the predecessor
+and live into the successor. This let independent lifetimes choose independent
+destinations without changing LowIR, serialized MIR, ABI rules, or any O0--O2
+policy.
+
+The refinement changed real O3 register choices in the large tokenizer caller,
+but not the higher-ceiling `AppendUTF8` residue: that function retained its
+208-byte stack allocation, five callee-saved registers, and 1,814-byte body.
+The tokenizer object lost 42 text bytes and `Lexer::Run` lost 12 bytes. An
+explicit-32-way G1 and G2 each completed all 221 compiler objects; the G2
+compiler contained 8,001,138 text bytes, 816 fewer than the retained
+8,001,954-byte producer after including the new implementation.
+
+The deterministic complete-TU gate rejected the dose. Baseline and candidate
+emitted the identical object
+`09d9fdc0bdd901d35c4f46075a4109b1a0c29ddb51fd5a17428335a2379dabba`,
+while Callgrind moved from 3,621,818,198 to 3,620,514,655 instructions
+(`0.999640086x`, only -0.035991%). That is far below the 1% D5 floor and
+shows that separating dead-edge color components is not a material source-
+diverse allocator win. The prototype was removed before G3, native timing,
+or PA38 contract movement. Further allocation work must split values that
+are genuinely live through hot call/branch regions, not merely refine the
+connectivity of already disjoint physical-color lifetimes.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4832,6 +4862,7 @@ Fill one row for every retained or rejected dose.
 | C.terminal-swap-o2 | promote the retained terminal staged-object swap from O3 to O2 | none; existing PA37 O3 contract retained after rejection | O2 producer -104 text bytes; requested-O1 workload exact | hot task-clock mean/median `0.994194x`/`0.993609x`; full CPU `0.996789x`, wall `1.020660x` | 20 exact hot observations per side; one exact all-32 221-object ABBA block | rejected; complete CPU gain is only 0.321% and wall is unfavorable |
 | C.private-table-o2 | run only the retained private structured-table prefilter at O2 | none; existing PA37 O3 contract retained after rejection | fixture O2/O3 shapes exact; O2 producer -376 text bytes; requested-O1 workload exact | hot normalized `0.970720x`; full self CPU `0.994712x`; full normalized wall/CPU `1.005306x`/`0.994908x` | focused O2 stats; 20 exact hot observations per side; exact all-32 self and position-balanced GCC blocks | rejected; source-diverse full CPU gain is only 0.509% and normalized wall regresses |
 | C.complete-memory-o2 | run the retained whole-program parameter-memory analysis at O2 while keeping its companion cleanups at O3 | none; existing PA37 O3 contract retained after rejection | O2 producer -2,584 text bytes; requested-O1 workload exact | hot mean/median `0.994103x`/`0.995585x`; full wall/CPU `1.005060x`/`1.000808x` | focused O2 population; 20 exact hot observations per side; one exact all-32 221-object ABBA block | rejected; complete raw throughput regresses before pass-cost or normalized escalation |
+| D.edge-live-color-components | split final-MIR physical-color components across adjacent blocks only when the source is live on their edge | none; rejected behavior was not moved into PA38 | tokenizer -42 text, `Lexer::Run` -12 bytes, producer -816 text; `AppendUTF8` unchanged | complete hot Ir `0.999640086x` (-0.035991%) | exact hot object; explicit-32-way 221-object G1/G2; prototype removed before G3/full timing | rejected; real but immaterial register-choice refinement, far below the 1% D5 floor |
 | C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
 | D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
 | Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
