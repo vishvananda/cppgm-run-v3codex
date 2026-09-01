@@ -4322,6 +4322,36 @@ compiler byte-for-byte at
 The increment is retained, but `1.529638825x` remains above the 1.5 target, so
 profiling and measured O3 work continue from this checkpoint.
 
+### Rejected loop scalar-reference specialization
+
+The post-swap profile exposed two natural loops whose induction variables
+remained in scalar slots solely because a vector reallocation slow path took
+their address.  A bounded O3 prototype derived a proof from existing LowIR:
+it accepted a by-address parameter only when every use in the complete callee
+body was a same-type, complete, nonvolatile scalar load.  When at least two
+natural-loop calls passed exact scalar-slot addresses, it made one internal
+by-value clone, inserted ordinary loads at those call sites, and reused the
+existing addressed-scalar and SSA promotion passes.  No parameter-access
+metadata or PA13 contract change was needed; the callee body supplied the
+whole no-write/no-capture proof.
+
+The macro translation unit redirected both qualified calls to one clone.  Its
+optimized induction slots disappeared, `AnnotateParentheses` kept the index
+in a register, shared three index multiplications as one, and shrank from 525
+to 490 bytes.  The cold clone was 690 bytes and the macro object grew 683 text
+bytes.  A fresh explicit-32-way fixed point was exact between G2 and G3 at
+compiler hash
+`3c6b4e9d3de308bb29abc7dd11d5b821704dcc034d85dff4bc6fd4f5c1668776`.
+
+The complete deterministic screen rejected the dose.  Self instructions fell
+from 3,710,968,687 to 3,705,297,621 (`0.998471810x`), while same-source GCC
+rose from 2,426,042,427 to 2,426,594,342 (`1.000227496x`).  The normalized
+ratio was `0.998244713x`, only a 0.175529% improvement, and the absolute gap
+would have moved only from `1.529638825x` to `1.526953870x`.  Both compilers
+emitted the exact same hot object at `fa3fd1899...`.  The implementation and
+source-set entry were removed before README or test movement; the existing
+addressed-scalar contract remains unchanged.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4351,6 +4381,7 @@ Fill one row for every retained or rejected dose.
 | D.stable-prefix-fast-wrapper-retry | split one repeat-stable query into a bounded fast wrapper and shared slow body, then inline all callers or only the largest caller population | none; rejected before contract movement | all: 26 calls and producer +12,544 text; narrow: 16 calls, 7/2/1 left, producer +14,456 text; hot objects exact | all self Ir `1.000798x`; narrow self `1.000846x`, GCC `1.000015x`, normalized `1.000831x`; gap `1.561319x` to `1.562616x` | explicit-32-way G1 for both forms; deterministic self/GCC hot objects; prototypes removed | rejected; current stable-prefix baseline reproduces the earlier fast-prefix loss under the corrected normalized metric |
 | D.forwarded-boolean-inversion | thread a one-use zero/one equality or inequality after a forwarded Boolean truncation onto its acyclic phi predecessors | none; rejected before contract movement | hot lookup 377 to 324 bytes; macro -48 text; producer -1,576 text; hot objects exact | self Ir `0.997630x`; GCC `1.000005x`; normalized `0.997625x`; gap `1.561319x` to `1.557611x` | explicit-32-way G1 and deterministic self/GCC hot controls; prototype removed | rejected alone; sound 0.2375% source-diverse saving remains below the 1% floor |
 | D.terminal-staged-object-swap | replace a structurally complete terminal private-slot object swap with aligned scalar exchanges | PA37 README plus O0--O2 isolation, aggregate/field-wise positives, incomplete/volatile/escape/nonterminal negatives, identical-address and ordinary behavior | deque helper 241 to 157 bytes and loses 160-byte frame/dead initialization/three `rep movsb`; producer +20,164 linked text; hot objects exact | self Ir `0.979693x`; GCC `0.999983x`; normalized `0.979709x`; gap `1.561319x` to `1.529639x` | PA37 189/189; PA38 45/45; 5,472/5,472; zero-fatal file audit; exact explicit-32-way 221-object G1/G2 and final | retained in this checkpoint; existing PA13 `copyobj` semantics supply the whole correctness proof |
+| D.loop-scalar-reference | clone a bounded read-only by-address scalar parameter by value so repeated loop callers can promote their induction slots | none; rejected before contract movement | two macro calls redirected; induction slots removed; `AnnotateParentheses` 525 to 490 bytes; macro +683 text | self Ir `0.998472x`; GCC `1.000227x`; normalized `0.998245x`; gap `1.529639x` to `1.526954x` | exact hot object; explicit-32-way G2/G3 fixed point exact; prototype removed | rejected; sound source-independent slot recovery is only a 0.176% normalized gain |
 | D.call-plan | keep reactive call results out of future cyclic spans and grant a cyclic call result after its completed arguments retire | PA38 README plus O2/O1 register-agnostic structural/behavioral control | `Run` -181 MIR, scalar loads/stores -89/-77, frame homes -3; tokenizer -234 `.text`; O3 producer +292 text bytes; O1 object exact; unrelated EH/branch fixtures exact | O1 workload +0.11% wall/-0.40% CPU; GCC CPU -0.21%; normalized CPU -0.18%; O3 workload -1.42% wall/-0.30% CPU, five of six pairs favorable | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; frozen O2/O3 exact; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.epilogue | share repeated optimized return sequences, with broad and bounded variants | none; rejected before contract movement | broad: `Run` -161 native instructions and -23 physical epilogues; O3 producer -94,192 text bytes; bounded variants -17,928/-16,120 bytes | broad O1 user +1.5%; return-bounded +0.26%; bounded/excluded O3 CPU +0.32% and wall +1.5% | exact-output all-32 screens; all variants removed | rejected; taken return branches cost more than duplicate bytes |
 | D.copy-pair | fuse staged adjacent 64-bit predecessor loads/successor stores into one vector copy | none; rejected before contract movement | clone -3 MIR/-8 bytes; generic -8 bytes; tokenizer -22 text bytes; producer +8,744 text bytes | twelve-lane hot TU +4.1% wall/user, every candidate lane slower | exact hot outputs; candidate removed | rejected; exposed entry-address sensitivity |
