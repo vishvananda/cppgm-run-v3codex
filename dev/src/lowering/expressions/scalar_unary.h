@@ -3,11 +3,11 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -28,7 +28,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 1)
-			throw std::runtime_error("invalid semantic unary");
+			ThrowLoweringInternal("invalid semantic unary");
 		const int operation = static_cast<int>(record.operation_kind) - 1;
 		if (operation == OP_AMP)
 		{
@@ -38,7 +38,7 @@ protected:
 			{
 				if (record.binding == kNoBinding ||
 					record.binding >= derived.program_.bindings.size())
-					throw std::runtime_error(
+					ThrowLoweringInternal(
 						"member pointer constant has no binding");
 				const BindingRecord& member =
 					derived.program_.bindings[record.binding];
@@ -56,7 +56,7 @@ protected:
 				if (member.virtual_function)
 				{
 					if (record.virtual_slot == kNoDumpEdge)
-						throw std::logic_error(
+						ThrowLoweringInternal(
 							"virtual member pointer has no slot fact");
 					low_word = Operand(static_cast<std::int64_t>(
 						static_cast<std::uint64_t>(record.virtual_slot) * 8 + 1),
@@ -123,7 +123,7 @@ protected:
 		instruction.op = operation == OP_MINUS ? LOW_OP_NEG :
 			operation == OP_COMPL ? LOW_OP_BITNOT : LOW_OP_NONE;
 		if (instruction.op == LOW_OP_NONE)
-			throw std::runtime_error(
+			ThrowLoweringSource(
 				"increment/address unary lowering is outside the active checkpoint");
 		instruction.type = type;
 		instruction.first = value;

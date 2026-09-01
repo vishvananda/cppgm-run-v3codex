@@ -3,10 +3,10 @@
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 
 #include <cstdint>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -129,7 +129,7 @@ protected:
 		if (!derived.output_.host_object_emission || binding == kNoBinding) return;
 		binding = derived.program_.bindings[binding].canonical;
 		if (binding >= derived.program_.bindings.size())
-			throw std::logic_error("function exception binding is out of range");
+			ThrowLoweringInternal("function exception binding is out of range");
 		if (binding >= function_exception_boundary_needed_.size() ||
 			!function_exception_boundary_needed_[binding]) return;
 		const BindingRecord& record = derived.program_.bindings[binding];
@@ -156,7 +156,7 @@ protected:
 			record.exception_type_count >
 			derived.program_.function_exception_types.size() -
 				record.exception_type_begin)
-			throw std::logic_error("function exception type slice is invalid");
+			ThrowLoweringInternal("function exception type slice is invalid");
 		function_exception_boundary_ = record.exception_boundary;
 		function_exception_type_begin_ = record.exception_type_begin;
 		function_exception_type_count_ = record.exception_type_count;
@@ -478,7 +478,7 @@ protected:
 	std::uint32_t ExceptionCleanupContext() const
 	{
 		if (active_exception_regions_.size() != active_exception_contexts_.size())
-			throw std::logic_error("exception cleanup context stack mismatch");
+			ThrowLoweringInternal("exception cleanup context stack mismatch");
 		return active_exception_contexts_.empty() ? 0 :
 			active_exception_contexts_.back();
 	}
@@ -489,14 +489,15 @@ protected:
 		if (active_exception_regions_.empty() ||
 			active_exception_contexts_.empty() ||
 			active_exception_contexts_.back() != context)
-			throw std::logic_error("exception cleanup context changed");
+			ThrowLoweringInternal("exception cleanup context changed");
 		return active_exception_regions_.back().kind == EXCEPTION_TRY_REGION;
 	}
 
 	void PushExceptionRegion(const ExceptionRegionState& region)
 	{
 		if (next_exception_cleanup_context_ == 0)
-			throw std::logic_error("exception cleanup context identity overflow");
+			ThrowLoweringResourceLimit(
+				"exception cleanup context identity overflow");
 		active_exception_regions_.push_back(region);
 		active_exception_contexts_.push_back(next_exception_cleanup_context_++);
 	}
@@ -505,7 +506,7 @@ protected:
 	{
 		if (active_exception_regions_.empty() ||
 			active_exception_contexts_.empty())
-			throw std::logic_error("exception cleanup context stack underflow");
+			ThrowLoweringInternal("exception cleanup context stack underflow");
 		active_exception_regions_.pop_back();
 		active_exception_contexts_.pop_back();
 	}
@@ -532,7 +533,7 @@ protected:
 		}
 		if (active_exception_regions_.empty() ||
 			active_exception_regions_.back().kind != EXCEPTION_TRY_REGION)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"exception cleanup lost its source try region");
 		if (closes_cleanup_region)
 			derived.Emit(Instruction(Instruction::EH_END));
@@ -578,7 +579,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (exit_count > active_exception_regions_.size())
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"control exit exceeds active exception regions");
 		CallArguments none;
 		std::size_t closed = 0;
@@ -602,7 +603,7 @@ protected:
 		for (std::size_t i = 0; i < children.size(); ++i)
 		{
 			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
-				throw std::logic_error("invalid goto cleanup action");
+				ThrowLoweringInternal("invalid goto cleanup action");
 			derived.LowerDestructorAction(derived.arena_.nodes[children[i]]);
 		}
 		FinishExceptionControlExit(closed, exit_count);
@@ -614,14 +615,14 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		const std::size_t active = ActiveExceptionRegionCount();
 		if (target_depth > active)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"structured control transfer enters an exception region");
 		const std::size_t exits = active - target_depth;
 		for (std::size_t i = 0; i < children.size(); ++i)
 		{
 			if (derived.arena_.nodes[children[i]].kind !=
 				DUMP_DESTRUCTOR_ACTION)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"invalid structured control cleanup action");
 			derived.LowerDestructorAction(derived.arena_.nodes[children[i]]);
 		}
@@ -662,7 +663,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (symbol == kNoLowId)
-			throw std::logic_error("exception runtime support was not emitted");
+			ThrowLoweringInternal("exception runtime support was not emitted");
 		Instruction call = derived.DirectCallInstruction(symbol, result);
 		CallArgumentFlags passing;
 		for (std::size_t i = 0; i < arguments.size(); ++i)
@@ -684,14 +685,14 @@ protected:
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const TypeId type = derived.CanonicalRttiType(requested);
 		if (type >= derived.polymorphism_.type_rtti_symbols.size())
-			throw std::logic_error("exception RTTI type is out of range");
+			ThrowLoweringInternal("exception RTTI type is out of range");
 		const SymbolId external =
 			type < derived.polymorphism_.exception_rtti_symbols.size() ?
 			derived.polymorphism_.exception_rtti_symbols[type] : SymbolId(kNoLowId);
 		const SymbolId symbol = external != kNoLowId ? external :
 			derived.polymorphism_.type_rtti_symbols[type];
 		if (symbol == kNoLowId)
-			throw std::logic_error("exception RTTI fact has no symbol");
+			ThrowLoweringInternal("exception RTTI fact has no symbol");
 		return symbol;
 	}
 
@@ -730,7 +731,7 @@ protected:
 			return Operand(0, LowVoid());
 		}
 		if (children.empty())
-			throw std::logic_error("invalid typed throw expression");
+			ThrowLoweringInternal("invalid typed throw expression");
 		const bool owns_cleanup = children.size() != 1 &&
 			!derived.full_expression_cleanup_active_;
 		if (owns_cleanup)
@@ -776,7 +777,7 @@ protected:
 		{
 			if (record.selected_binding >= derived.function_symbols_.size() ||
 				derived.function_symbols_[record.selected_binding] == kNoLowId)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"exception destructor has no emitted binding");
 			destructor = derived.AddressOfStorage(Operand(Operand::FUNCTION,
 				derived.function_symbols_[record.selected_binding], LowPtr()));
@@ -821,7 +822,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (exit_count > active_exception_regions_.size() ||
 			closed_regions > exit_count)
-			throw std::logic_error("invalid exception control exit count");
+			ThrowLoweringInternal("invalid exception control exit count");
 		CallArguments none;
 		for (std::size_t offset = closed_regions;
 			offset < exit_count; ++offset)
@@ -837,7 +838,7 @@ protected:
 	std::uint32_t HandlerSelector(std::uint32_t handler)
 	{
 		if (handler >= handler_selectors_.size())
-			throw std::logic_error("exception handler selector is out of range");
+			ThrowLoweringInternal("exception handler selector is out of range");
 		if (handler_selector_epochs_[handler] != handler_selector_epoch_)
 		{
 			handler_selector_epochs_[handler] = handler_selector_epoch_;
@@ -882,7 +883,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() < 2 ||
 			derived.arena_.nodes[children[0]].kind != DUMP_COMPOUND_STATEMENT)
-			throw std::runtime_error(
+			ThrowLoweringInternal(
 				"invalid source try region");
 		std::uint32_t first_handler = kNoDumpEdge;
 		std::uint32_t previous_handler = kNoDumpEdge;
@@ -897,11 +898,11 @@ protected:
 				previous_handler = children[i];
 			}
 			else if (child.kind != DUMP_DESTRUCTOR_ACTION || !child.unwind_only)
-				throw std::runtime_error(
+				ThrowLoweringInternal(
 					"invalid source try suffix");
 		}
 		if (first_handler == kNoDumpEdge)
-			throw std::runtime_error("source try region has no handler");
+			ThrowLoweringInternal("source try region has no handler");
 		if (previous_handler != kNoDumpEdge)
 			handler_next_[previous_handler] = kNoDumpEdge;
 		const BlockId dispatch = derived.AddBlock(
@@ -939,7 +940,7 @@ protected:
 		}
 		if (active_exception_regions_.empty() ||
 			active_exception_regions_.back().kind != EXCEPTION_TRY_REGION)
-			throw std::logic_error("source try region stack mismatch");
+			ThrowLoweringInternal("source try region stack mismatch");
 		PopExceptionRegion();
 		derived.SelectBlock(dispatch);
 		EmitTryHandlerClauses(try_node);
@@ -1017,7 +1018,7 @@ protected:
 				derived.PushStatementNode(children[i]);
 				return;
 			}
-		throw std::logic_error("typed exception handler has no body");
+		ThrowLoweringInternal("typed exception handler has no body");
 	}
 
 	void InitializeCatchVariable(std::uint32_t handler_node,
@@ -1042,7 +1043,7 @@ protected:
 			}
 			if (handler.selected_binding >= derived.function_symbols_.size() ||
 				derived.function_symbols_[handler.selected_binding] == kNoLowId)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"catch copy constructor has no emitted binding");
 			CallArguments arguments;
 			arguments.Push(derived.AddressOfStorage(destination));
@@ -1072,7 +1073,7 @@ protected:
 			handler.object_binding == kNoBinding) return;
 		if (handler.object_binding >= derived.function_symbols_.size() ||
 			derived.function_symbols_[handler.object_binding] == kNoLowId)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"catch destructor has no emitted binding");
 		const LowType type = derived.LowerStorageType(handler.type);
 		const Operand storage(derived.EnsureGeneratedSlot(
@@ -1094,7 +1095,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (active_exception_regions_.empty() ||
 			active_exception_regions_.back().kind != EXCEPTION_HANDLER_REGION)
-			throw std::logic_error("source handler region stack mismatch");
+			ThrowLoweringInternal("source handler region stack mismatch");
 		PopExceptionRegion();
 		CallArguments none;
 		if (!derived.CurrentBlock().terminated)
@@ -1362,20 +1363,20 @@ protected:
 		if (task.kind == STATEMENT_SWITCH_AFTER_BODY)
 		{
 			if (derived.break_targets_.empty())
-				throw std::logic_error("missing PA15 switch target");
+				ThrowLoweringInternal("missing PA15 switch target");
 			derived.break_targets_.pop_back();
 			if (!derived.CurrentBlock().terminated) derived.EmitContinuationJump(task.first);
 			derived.SelectBlock(task.first);
 			return;
 		}
 		if (derived.RunExceptionStatementTask(task)) return;
-		throw std::logic_error("invalid PA15 statement task");
+		ThrowLoweringInternal("invalid PA15 statement task");
 	}
 	void PopLoopTargets()
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.break_targets_.empty() || derived.continue_targets_.empty())
-			throw std::logic_error("missing PA15 loop target");
+			ThrowLoweringInternal("missing PA15 loop target");
 		derived.continue_targets_.pop_back();
 		derived.break_targets_.pop_back();
 	}
@@ -1462,7 +1463,7 @@ protected:
 		{
 			if (node >= derived.switch_case_blocks_.size() ||
 				derived.switch_case_blocks_[node] == kNoLowId)
-				throw std::runtime_error("PA15 case has no switch target");
+				ThrowLoweringInternal("PA15 case has no switch target");
 			const BlockId target = derived.switch_case_blocks_[node];
 			if (!derived.CurrentBlock().terminated) derived.EmitContinuationJump(target);
 			derived.SelectBlock(target);
@@ -1495,7 +1496,7 @@ protected:
 		if (record.kind == DUMP_BREAK_STATEMENT)
 		{
 			if (derived.break_targets_.empty())
-				throw std::runtime_error("PA15 break has no target");
+				ThrowLoweringInternal("PA15 break has no target");
 			derived.LowerStructuredControlExit(children, derived.break_targets_.back().region_depth);
 			derived.EmitJump(derived.break_targets_.back().block);
 			return;
@@ -1503,12 +1504,12 @@ protected:
 		if (record.kind == DUMP_CONTINUE_STATEMENT)
 		{
 			if (derived.continue_targets_.empty())
-				throw std::runtime_error("PA15 continue has no target");
+				ThrowLoweringInternal("PA15 continue has no target");
 			derived.LowerStructuredControlExit(children, derived.continue_targets_.back().region_depth);
 			derived.EmitJump(derived.continue_targets_.back().block);
 			return;
 		}
-		throw std::runtime_error("statement is outside the active PA15 checkpoint");
+		ThrowLoweringSource("statement is outside the active PA15 checkpoint");
 	}
 
 	__attribute__((noinline)) Operand LowerControlCondition(
@@ -1517,7 +1518,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		const NodeChildren condition_children = derived.Children(condition_node);
 		if (condition_children.empty())
-			throw std::runtime_error("invalid PA15 control condition");
+			ThrowLoweringInternal("invalid PA15 control condition");
 		const std::uint32_t child = condition_children[0];
 		if (derived.arena_.nodes[child].kind != DUMP_CONDITION_DECLARATION)
 		{
@@ -1532,7 +1533,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		const NodeChildren condition_children = derived.Children(condition_node);
 		if (condition_children.empty())
-			throw std::runtime_error("invalid PA15 switch condition");
+			ThrowLoweringInternal("invalid PA15 switch condition");
 		const std::uint32_t child = condition_children[0];
 		if (derived.arena_.nodes[child].kind != DUMP_CONDITION_DECLARATION)
 			return derived.LowerFullExpressionCondition(condition_children);
@@ -1601,7 +1602,7 @@ protected:
 			if (derived.arena_.nodes[children[i]].kind != DUMP_CONDITION)
 				body = children[i];
 		if (condition == kNoDumpEdge || body == kNoDumpEdge)
-			throw std::runtime_error("invalid PA15 switch statement");
+			ThrowLoweringInternal("invalid PA15 switch statement");
 		SwitchCases cases;
 		derived.CollectSwitchCases(body, &cases);
 		const Operand value = derived.LowerSwitchCondition(condition);
@@ -1629,7 +1630,7 @@ protected:
 			if (derived.arena_.nodes[cases[i]].kind != DUMP_CASE_STATEMENT) continue;
 			const NodeChildren case_children = derived.Children(cases[i]);
 			if (case_children.empty() || !derived.arena_.nodes[case_children[0]].constant)
-				throw std::runtime_error("PA15 case lacks constant value");
+				ThrowLoweringInternal("PA15 case lacks constant value");
 			case_values.Push(derived.arena_.nodes[case_children[0]].constant_value);
 			case_targets.Push(derived.switch_case_blocks_[cases[i]]);
 		}
@@ -1651,13 +1652,13 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (values.size() != targets.size())
-			throw std::logic_error("PA15 switch case fact mismatch");
+			ThrowLoweringInternal("PA15 switch case fact mismatch");
 		if (values.empty()) return;
 		if (values.size() >= kNoLowId ||
 			derived.output_.switch_case_values.size() > kNoLowId - values.size() ||
 			derived.output_.switch_case_values.size() !=
 				derived.output_.switch_case_targets.size())
-			throw std::runtime_error("too many PA15 switch cases");
+			ThrowLoweringResourceLimit("too many PA15 switch cases");
 		instruction->extra_first = static_cast<std::uint32_t>(
 			derived.output_.switch_case_values.size());
 		instruction->extra_count = static_cast<std::uint32_t>(values.size());
@@ -1674,7 +1675,7 @@ protected:
 		const std::uint32_t condition = derived.FindChildKind(children, DUMP_CONDITION);
 		const std::uint32_t body = derived.FindLoopBody(children);
 		if (condition == kNoDumpEdge || body == kNoDumpEdge)
-			throw std::runtime_error("invalid PA15 while statement");
+			ThrowLoweringInternal("invalid PA15 while statement");
 		const BlockId cond_block = derived.AddBlock(derived.NewLabel("while_cond"));
 		const BlockId body_block = derived.AddBlock(derived.NewLabel("while_body"));
 		const BlockId end_block = derived.AddBlock(derived.NewLabel("while_end"));
@@ -1697,7 +1698,7 @@ protected:
 		const std::uint32_t condition = derived.FindChildKind(children, DUMP_CONDITION);
 		const std::uint32_t body = derived.FindLoopBody(children);
 		if (condition == kNoDumpEdge || body == kNoDumpEdge)
-			throw std::runtime_error("invalid PA15 do statement");
+			ThrowLoweringInternal("invalid PA15 do statement");
 		const BlockId body_block = derived.AddBlock(derived.NewLabel("do_body"));
 		const BlockId cond_block = derived.AddBlock(derived.NewLabel("do_cond"));
 		const BlockId end_block = derived.AddBlock(derived.NewLabel("do_end"));
@@ -1722,7 +1723,7 @@ protected:
 		const std::uint32_t iteration = derived.FindChildKind(children, DUMP_ITERATION);
 		const std::uint32_t body = derived.FindLoopBody(children);
 		if (body == kNoDumpEdge)
-			throw std::runtime_error("invalid PA15 for statement");
+			ThrowLoweringInternal("invalid PA15 for statement");
 		if (init != kNoDumpEdge)
 		{
 			StatementTask after(STATEMENT_FOR_AFTER_INIT);
@@ -1774,10 +1775,10 @@ protected:
 			else if (kind == DUMP_ELSE) else_node = children[i];
 		}
 		if (condition == kNoDumpEdge || then_node == kNoDumpEdge)
-			throw std::runtime_error("invalid semantic if statement");
+			ThrowLoweringInternal("invalid semantic if statement");
 		const NodeChildren condition_children = derived.Children(condition);
 		if (condition_children.empty())
-			throw std::runtime_error("condition declarations are outside the active checkpoint");
+			ThrowLoweringInternal("condition declarations are outside the active checkpoint");
 		const BlockId then_block = derived.AddBlock(derived.NewLabel("if_then"));
 		const BlockId else_block = derived.AddBlock(derived.NewLabel("if_else"));
 		const BlockId end_block = derived.AddBlock(derived.NewLabel("if_end"));

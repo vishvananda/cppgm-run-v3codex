@@ -2,11 +2,11 @@
 
 #include "lowering/core/source_types.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "semantic/model/graph.h"
 
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -79,7 +79,7 @@ protected:
 		else if (IsFloating(value.type) && IsFloating(target))
 			instruction.op = target.width < value.type.width ?
 				LOW_OP_FPTRUNC : LOW_OP_FPEXT;
-		else throw std::runtime_error("unsupported PA15 scalar conversion");
+		else ThrowLoweringSource("unsupported PA15 scalar conversion");
 		const Operand result = derived.Temp(target);
 		instruction.dest = result.id;
 		instruction.first = value;
@@ -177,7 +177,7 @@ protected:
 			else
 			{
 				if (!record.constant)
-					throw std::runtime_error("literal is missing its PA12 constant fact");
+					ThrowLoweringInternal("literal is missing its PA12 constant fact");
 				result = Operand(record.constant_value, record.constant_high, type);
 			}
 		}
@@ -220,7 +220,7 @@ protected:
 		else if (record.kind == DUMP_SIZEOF_EXPRESSION)
 		{
 			if (!record.constant)
-				throw std::runtime_error("sizeof is missing its PA12 constant fact");
+				ThrowLoweringInternal("sizeof is missing its PA12 constant fact");
 			const LowType type = derived.LowerExpressionType(record.type);
 			result = derived.Temp(type);
 			Instruction constant(Instruction::CONST);
@@ -250,7 +250,7 @@ protected:
 		else if (record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION)
 			result = derived.LowerSpecialMemberConstruction(node);
 		else if (record.kind == DUMP_CAST_EXPRESSION) {
-			if (children.size() != 1) throw std::runtime_error("invalid semantic cast");
+			if (children.size() != 1) ThrowLoweringInternal("invalid semantic cast");
 			if (derived.IsBooleanType(record.type)) result = derived.LowerBooleanConversion(children[0], derived.LowerExpressionType(record.type));
 			else if (record.member_pointer_conversion)
 				result = derived.LowerMemberPointerConversion(record, children);
@@ -291,9 +291,9 @@ protected:
 			if (children.empty()) result = Operand(0, derived.LowerType(record.type));
 			else if (children.size() == 1) result = derived.LowerValue(children[0],
 				derived.LowerExpressionType(record.type));
-			else throw std::runtime_error("scalar initializer has excess elements");
+			else ThrowLoweringSource("scalar initializer has excess elements");
 		}
-		else throw std::runtime_error("semantic expression kind " +
+		else ThrowLoweringSource("semantic expression kind " +
 			std::to_string(static_cast<unsigned>(record.kind)) +
 			" is outside the active PA15 checkpoint");
 		return expected.kind == LOW_INVALID ? result : derived.Convert(result, expected);
@@ -338,7 +338,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.CurrentBlock().terminated)
-			throw std::logic_error("noreturn call follows a terminator");
+			ThrowLoweringInternal("noreturn call follows a terminator");
 		derived.CurrentBlock().terminated = true;
 	}
 
@@ -346,7 +346,7 @@ protected:
 		const NodeChildren& children, bool discarded = false)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		if (children.size() != 2) throw std::runtime_error("invalid semantic binary");
+		if (children.size() != 2) ThrowLoweringInternal("invalid semantic binary");
 		if (derived.IsMemberPointerApplication(record))
 			return derived.LoadStorage(derived.LowerMemberPointerStorage(record, children),
 				derived.LowerExpressionType(record.type));
@@ -375,7 +375,7 @@ protected:
 			return derived.LowerPointerDifference(children[0], children[1]);
 		if (record.operand_type == kNoType &&
 			!(comparison && (left_pointer || right_pointer)))
-			throw std::runtime_error("binary expression is missing its PA12 operand type");
+			ThrowLoweringInternal("binary expression is missing its PA12 operand type");
 		const LowType operand_type = record.operand_type == kNoType ?
 			LowPtr() : derived.LowerExpressionType(record.operand_type);
 		Operand left = derived.LowerValue(children[0], comparison ?
@@ -446,7 +446,7 @@ protected:
 					(operand_type.is_signed ? LOW_OP_SHR : LOW_OP_USHR) :
 				LOW_OP_NONE;
 			if (instruction.op == LOW_OP_NONE)
-				throw std::runtime_error("unsupported binary operator");
+				ThrowLoweringSource("unsupported binary operator");
 		}
 		derived.Emit(instruction);
 		return result;

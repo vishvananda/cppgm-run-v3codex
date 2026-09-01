@@ -2,9 +2,8 @@
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
-
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -23,7 +22,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (record.kind != DUMP_GNU_ASM_STATEMENT) return false;
 		if (record.array_count != children.size() || record.storage_size != 0)
-			throw std::logic_error("invalid typed GNU asm operands");
+			ThrowLoweringInternal("invalid typed GNU asm operands");
 		if (record.gnu_asm_operation == GNU_ASM_NOP ||
 			record.gnu_asm_operation == GNU_ASM_PAUSE) return true;
 		if (record.gnu_asm_operation == GNU_ASM_COMPILER_FENCE)
@@ -34,13 +33,13 @@ protected:
 			return true;
 		}
 		if (children.size() != 1)
-			throw std::logic_error("GNU asm operation has invalid arity");
+			ThrowLoweringInternal("GNU asm operation has invalid arity");
 		const std::uint32_t operand = children[0];
 		const LowType type = derived.LowerExpressionType(
 			derived.arena_.nodes[operand].type);
 		const Operand storage = derived.LowerStorage(operand);
 		if (!IsInteger(type) || type.width > 64)
-			throw std::logic_error("invalid lowered GNU asm operand type");
+			ThrowLoweringInternal("invalid lowered GNU asm operand type");
 		if (record.gnu_asm_operation == GNU_ASM_LOCK_INCREMENT)
 		{
 			const Operand result = derived.Temp(type);

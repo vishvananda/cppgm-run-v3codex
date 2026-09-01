@@ -2,11 +2,11 @@
 #define CPPGM_LOWERING_EXPRESSIONS_ASSIGNMENT_H
 
 #include "lowering/support/sequences.h"
+#include "lowering/support/errors.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -40,7 +40,7 @@ public:
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const BindingLayoutFact& layout = derived.program_.BindingLayout(field);
 		if (layout.bit_width == 0 || layout.bit_width > 64)
-			throw std::logic_error("invalid canonical bit-field width");
+			ThrowLoweringInternal("invalid canonical bit-field width");
 		return layout.bit_width == 64 ? ~std::uint64_t(0) :
 			(std::uint64_t(1) << layout.bit_width) - 1;
 	}
@@ -286,7 +286,7 @@ public:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 2)
-			throw std::runtime_error("invalid semantic assignment");
+			ThrowLoweringInternal("invalid semantic assignment");
 		const int op = static_cast<int>(record.operation_kind) - 1;
 		const LowType type = derived.LowerExpressionType(record.type);
 		const BindingId bit_field = BitFieldBinding(children[0]);
@@ -300,7 +300,7 @@ public:
 			{
 				Operand left = LoadBitField(bit_field, storage);
 				if (record.operand_type == kNoType)
-					throw std::runtime_error(
+					ThrowLoweringInternal(
 						"bit-field compound assignment has no operand type");
 				const LowType operation_type = derived.LowerType(record.operand_type);
 				const Operand right = derived.LowerConvertedValue(
@@ -321,7 +321,7 @@ public:
 					op == OP_XORASS ? LOW_OP_XOR : op == OP_LSHIFTASS ? LOW_OP_SHL : op == OP_RSHIFTASS ?
 						(operation_type.is_signed ? LOW_OP_SHR : LOW_OP_USHR) : LOW_OP_NONE;
 				if (binary.op == LOW_OP_NONE)
-					throw std::runtime_error(
+					ThrowLoweringSource(
 						"unsupported bit-field compound assignment");
 				derived.Emit(binary);
 				value = derived.Convert(value, type, false);
@@ -385,7 +385,7 @@ public:
 			load.volatile_access = volatile_access;
 			derived.Emit(load);
 			if (record.operand_type == kNoType)
-				throw std::runtime_error(
+				ThrowLoweringInternal(
 					"compound assignment is missing its PA12 operand type");
 			const LowType operation_type = derived.LowerType(record.operand_type);
 			const Operand right = derived.LowerConvertedValue(
@@ -406,7 +406,7 @@ public:
 				op == OP_XORASS ? LOW_OP_XOR : op == OP_LSHIFTASS ? LOW_OP_SHL : op == OP_RSHIFTASS ?
 					(operation_type.is_signed ? LOW_OP_SHR : LOW_OP_USHR) : LOW_OP_NONE;
 			if (binary.op == LOW_OP_NONE)
-				throw std::runtime_error("unsupported PA15 compound assignment");
+				ThrowLoweringSource("unsupported PA15 compound assignment");
 			derived.Emit(binary);
 			value = derived.Convert(value, type, false);
 		}

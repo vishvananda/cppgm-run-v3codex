@@ -1,11 +1,11 @@
 #pragma once
 
 #include "semantic/model/graph.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 
 #include <cstdint>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -80,7 +80,7 @@ protected:
 		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 3)
-			throw std::runtime_error("invalid semantic address conditional");
+			ThrowLoweringInternal("invalid semantic address conditional");
 		const Operand slot(
 			derived.EnsureGeneratedSlot(node, "condaddr", LowPtr()), LowPtr());
 		const BlockId then_block =
@@ -109,7 +109,7 @@ protected:
 		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 3)
-			throw std::runtime_error("invalid semantic conditional");
+			ThrowLoweringInternal("invalid semantic conditional");
 		const LowType type = derived.LowerExpressionType(record.type);
 		if (type.kind == LOW_VOID)
 			return LowerDiscardedConditional(node, children);

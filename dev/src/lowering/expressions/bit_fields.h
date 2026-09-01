@@ -1,12 +1,12 @@
 #pragma once
 
 #include "semantic/model/graph.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -42,7 +42,7 @@ protected:
 			{
 				if (binding.member_owner >=
 					derived.bit_field_storage_transfer_owners_.size())
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"bit-field transfer owner is not indexed");
 				derived.bit_field_storage_transfer_owners_[
 					binding.member_owner] = 1;

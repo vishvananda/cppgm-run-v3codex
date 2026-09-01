@@ -1,6 +1,6 @@
 #include "lowering/constants/templates.h"
+#include "lowering/support/errors.h"
 
-#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -147,7 +147,7 @@ SymbolId Pool::Intern(Global candidate)
 {
 	if (candidate.initializer_kind != Global::STRUCTURED_VALUE ||
 		candidate.type.kind != LOW_OBJECT)
-		throw std::logic_error("invalid automatic constant-data template");
+		ThrowLoweringInternal("invalid automatic constant-data template");
 	const std::size_t hash = Hash(candidate);
 	EnsureCapacity();
 	bool found = false;
@@ -158,7 +158,8 @@ SymbolId Pool::Intern(Global candidate)
 		return output_.globals[entry.global].symbol;
 	}
 	if (entries_.size() >= kEmptySlot)
-		throw std::runtime_error("too many automatic constant-data templates");
+		ThrowLoweringResourceLimit(
+			"too many automatic constant-data templates");
 	const std::string name = "__constexpr_template__" +
 		std::to_string(entries_.size() + 1);
 	const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());

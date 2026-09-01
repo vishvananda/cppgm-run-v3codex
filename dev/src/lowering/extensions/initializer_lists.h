@@ -2,12 +2,12 @@
 #define CPPGM_LOWERING_EXTENSIONS_INITIALIZER_LISTS_H
 
 #include "lowering/support/identity_maps.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -88,7 +88,7 @@ protected:
 		if (node == kNoDumpEdge) return;
 		if (node >= derived.initializer_lists_.backing_symbols.size() ||
 			derived.arena_.nodes[node].kind != DUMP_TEMPORARY_OBJECT)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"invalid namespace initializer-list backing fact");
 		if (derived.initializer_lists_.backing_symbols[node] != kNoLowId) return;
 		const SymbolId symbol = derived.AddSyntheticSymbol(
@@ -143,7 +143,7 @@ protected:
 		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
 			values.size() > array.bound ||
 			!derived.IsClassObjectType(array.child))
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"invalid class initializer-list backing recipe");
 		const BindingId destructor = backing_record.selected_binding;
 		const bool staged_full_expression =
@@ -316,14 +316,14 @@ protected:
 		const SymbolId symbol = derived.initializer_lists_.backing_symbols[
 			action.initializer_list_backing];
 		if (symbol == kNoLowId)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"namespace initializer-list backing has no global");
 		const Operand storage(Operand::GLOBAL, symbol,
 			derived.LowerStorageType(destructor.operand_type));
 		const TypeRecord& array = derived.program_.types.Get(
 			derived.ExpressionObjectType(destructor.operand_type));
 		if (array.kind != TYPE_ARRAY || array.bound == 0)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"namespace initializer-list backing is not an array");
 		const std::size_t element_size = derived.program_.SizeOf(array.child);
 		for (std::size_t i = static_cast<std::size_t>(array.bound);
@@ -357,7 +357,7 @@ protected:
 		if (record.kind == DUMP_INITIALIZER_LIST)
 			return derived.LowerClassArgumentStaging(node, record.type);
 		if (children.size() != 1)
-			throw std::logic_error("initializer-list projection has no object");
+			ThrowLoweringInternal("initializer-list projection has no object");
 		const Operand base = derived.AddressOfStorage(
 			derived.LowerStorage(children[0]));
 		const Operand field = derived.Temp(LowPtr());
@@ -380,7 +380,7 @@ protected:
 		const DumpNode& record = derived.arena_.nodes[node];
 		const NodeChildren children = derived.Children(node);
 		if (record.kind != DUMP_INITIALIZER_LIST || children.size() > 1)
-			throw std::logic_error("invalid initializer-list object recipe");
+			ThrowLoweringInternal("invalid initializer-list object recipe");
 		const Operand backing = children.empty() ?
 			Operand::NullPointer(LowPtr()) : derived.LowerStorage(children[0]);
 		const BlockId dispatch = protect_object ? derived.AddBlock(
@@ -446,7 +446,7 @@ protected:
 		const TypeRecord& record = derived.program_.types.Get(
 			derived.ExpressionObjectType(type));
 		if (record.kind == TYPE_ARRAY || derived.IsClassObjectType(type))
-			throw std::runtime_error(
+			ThrowLoweringSource(
 				"omitted runtime aggregate element is outside the checkpoint");
 		Instruction store(Instruction::STORE);
 		store.type = derived.LowerExpressionType(type);

@@ -2,10 +2,10 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -26,11 +26,11 @@ protected:
 		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 2)
-			throw std::logic_error("invalid complex construction graph");
+			ThrowLoweringInternal("invalid complex construction graph");
 		const TypeId type = derived.ExpressionObjectType(record.type);
 		const TypeRecord& complex = derived.program_.types.Get(type);
 		if (complex.kind != TYPE_COMPLEX)
-			throw std::logic_error("complex construction has non-complex type");
+			ThrowLoweringInternal("complex construction has non-complex type");
 		const LowType object_type = derived.LowerStorageType(type);
 		const LowType element_type = derived.LowerType(complex.child);
 		const Operand slot(derived.EnsureGeneratedSlot(
@@ -56,13 +56,13 @@ protected:
 		using namespace lowering::ir;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 1)
-			throw std::logic_error("invalid complex component graph");
+			ThrowLoweringInternal("invalid complex component graph");
 		const semantic::DumpNode& source =
 			derived.arena_.nodes[children[0]];
 		const semantic::TypeId type = derived.ExpressionObjectType(source.type);
 		const semantic::TypeRecord& complex = derived.program_.types.Get(type);
 		if (complex.kind != semantic::TYPE_COMPLEX)
-			throw std::logic_error("complex component source is not complex");
+			ThrowLoweringInternal("complex component source is not complex");
 		const Operand storage = derived.LowerStorage(children[0]);
 		const Operand base = derived.AddressOfStorage(storage);
 		if (derived.program_.names.Get(record.text) == "__real__") return base;
@@ -130,7 +130,7 @@ protected:
 		if (!derived.IsComplexObjectType(record.type)) return false;
 		if (children.empty()) return true;
 		if (children.size() != 1)
-			throw std::logic_error("invalid complex variable initializer");
+			ThrowLoweringInternal("invalid complex variable initializer");
 		const LowType type = derived.LowerStorageType(record.type);
 		const Operand destination = retained_destination.kind == Operand::NONE ?
 			derived.AddressOfStorage(derived.StorageFor(record.binding, type)) :

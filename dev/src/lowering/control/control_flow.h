@@ -2,9 +2,9 @@
 
 #include "lowering/presentation/local_names.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 
 #include <limits>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -34,7 +34,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.function_->blocks.size() >= kNoLowId)
-			throw std::runtime_error("too many PA15 LowIR blocks");
+			ThrowLoweringResourceLimit("too many PA15 LowIR blocks");
 		const BlockId block = static_cast<BlockId>(
 			derived.function_->blocks.size());
 		derived.function_->blocks.push_back(
@@ -59,10 +59,10 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (block >= derived.block_incoming_.size())
-			throw std::logic_error("CFG edge has no target block");
+			ThrowLoweringInternal("CFG edge has no target block");
 		if (derived.block_incoming_[block] ==
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many incoming CFG edges");
+			ThrowLoweringResourceLimit("too many incoming CFG edges");
 		++derived.block_incoming_[block];
 	}
 

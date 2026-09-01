@@ -2,10 +2,10 @@
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 
 #include <algorithm>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -45,7 +45,7 @@ protected:
 			derived.RunStatementTask(task);
 		}
 		if (derived.statement_tasks_.size() != boundary)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"PA15 statement scheduler crossed its frame");
 	}
 
@@ -89,7 +89,7 @@ protected:
 				if (derived.CurrentBlock().terminated) continue;
 				const NodeChildren result = derived.Children(children[i]);
 				if (result.size() != 1)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"statement expression has invalid result");
 				value = derived.LowerValue(result[0]);
 			}
@@ -98,7 +98,7 @@ protected:
 				LowerRegionStatement(children[i]);
 		}
 		if (!found && value.type.kind != LOW_VOID)
-			throw std::logic_error("non-void statement expression has no result");
+			ThrowLoweringInternal("non-void statement expression has no result");
 		return value;
 	}
 
@@ -117,7 +117,7 @@ protected:
 				if (derived.CurrentBlock().terminated) continue;
 				const NodeChildren result = derived.Children(children[i]);
 				if (result.size() != 1)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"statement expression has invalid class result");
 				derived.LowerClassDestination(result[0], destination);
 			}
@@ -126,7 +126,7 @@ protected:
 				LowerRegionStatement(children[i]);
 		}
 		if (!found)
-			throw std::logic_error("class statement expression has no result");
+			ThrowLoweringInternal("class statement expression has no result");
 	}
 
 	Operand LowerStatementExpressionStorage(std::uint32_t node,

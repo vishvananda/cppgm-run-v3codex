@@ -1,12 +1,12 @@
 #ifndef CPPGM_LOWERING_EXPRESSIONS_MEMBER_ADDRESS_H
 #define CPPGM_LOWERING_EXPRESSIONS_MEMBER_ADDRESS_H
 
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "semantic/model/graph.h"
 
 #include <cstdint>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -27,12 +27,12 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 1 || record.binding == kNoBinding ||
 			record.binding >= derived.program_.bindings.size())
-			throw std::runtime_error("invalid resolved member expression");
+			ThrowLoweringInternal("invalid resolved member expression");
 		const BindingRecord& member = derived.program_.bindings[record.binding];
 		if (!member.non_static_data_member)
 		{
 			if (member.kind != BIND_VARIABLE)
-				throw std::runtime_error(
+				ThrowLoweringInternal(
 					"member expression is not a data-member lvalue");
 			const Operand storage = derived.StorageFor(record.binding,
 				derived.LowerStorageType(member.type), record.text);

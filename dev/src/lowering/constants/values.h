@@ -3,11 +3,11 @@
 
 #include "lowering/core/source_types.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "semantic/model/graph.h"
 
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -67,7 +67,7 @@ protected:
 		const std::string normalized = NormalizeFloatingLiteral(spelling, type);
 		std::uint64_t low = 0, high = 0;
 		if (!DecodeFloatingLiteral(normalized, type, &low, &high))
-			throw std::logic_error("invalid typed floating literal");
+			ThrowLoweringInternal("invalid typed floating literal");
 		return Operand::Floating(derived.output_.retain_local_names ?
 			derived.output_.strings.intern(normalized) :
 			lowir_model::StringId(), type, low, high);
