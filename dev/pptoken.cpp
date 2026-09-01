@@ -6,6 +6,7 @@
 
 #include "preprocess/tokens/DebugPPTokenStream.h"
 #include "preprocess/tokens/pp_tokenizer.h"
+#include "support/exceptions.h"
 
 int main(int argc, char** argv)
 {
@@ -21,6 +22,11 @@ int main(int argc, char** argv)
 		DebugPPTokenStream output;
 		cppgm::TokenizePreprocessingFile(source, output);
 		return EXIT_SUCCESS;
+	}
+	catch (const CompilerError& error)
+	{
+		std::cerr << "ERROR: " << error.what() << std::endl;
+		return EXIT_FAILURE;
 	}
 	catch (const std::exception& error)
 	{

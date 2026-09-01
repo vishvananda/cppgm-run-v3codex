@@ -1,42 +1,17 @@
 // (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
 
 #include <cstdlib>
-#include <ctime>
 #include <fstream>
 #include <iostream>
-#include <iterator>
 #include <stdexcept>
 #include <string>
 
 #include "namespace_initialization/driver.h"
+#include "preprocess/tool_support.h"
+#include "support/exceptions.h"
 
 namespace
 {
-
-std::string ReadSource(const std::string& path)
-{
-	std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
-	if (!input) throw std::runtime_error("unable to open source file: " + path);
-	return std::string(std::istreambuf_iterator<char>(input),
-		std::istreambuf_iterator<char>());
-}
-
-cppgm::PreprocessingOptions BuildOptions()
-{
-	const std::time_t now = std::time(0);
-	const std::tm* local = std::localtime(&now);
-	if (!local) throw std::runtime_error("unable to determine build time");
-	const char* text = std::asctime(local);
-	if (!text) throw std::runtime_error("unable to format build time");
-	const std::string formatted(text);
-	if (formatted.size() < 24) throw std::runtime_error("invalid asctime result");
-
-	cppgm::PreprocessingOptions options;
-	options.build_date = formatted.substr(4, 7) + formatted.substr(20, 4);
-	options.build_time = formatted.substr(11, 8);
-	options.author = "Vishvananda Abrams";
-	return options;
-}
 
 void ReportStats(const cppgm::namespace_initialization::Stats& stats)
 {
@@ -89,11 +64,13 @@ int main(int argc, char** argv)
 			throw std::logic_error("invalid usage");
 		cppgm::namespace_initialization::Stats stats;
 		cppgm::namespace_initialization::Program program(report_stats ? &stats : 0);
-		const cppgm::PreprocessingOptions options = BuildOptions();
+		const cppgm::PreprocessingOptions options =
+			cppgm::BuildPreprocessingOptions();
 		for (int i = 3; i < input_end; ++i)
 		{
 			const std::string path(argv[i]);
-			program.AddTranslationUnit(path, ReadSource(path), options);
+			program.AddTranslationUnit(path,
+				cppgm::ReadPreprocessingSource(path), options);
 		}
 		std::ofstream output(argv[2], std::ios::out | std::ios::binary |
 			std::ios::trunc);
@@ -101,6 +78,11 @@ int main(int argc, char** argv)
 		program.WriteImage(output);
 		if (report_stats) ReportStats(stats);
 		return EXIT_SUCCESS;
+	}
+	catch (const CompilerError& error)
+	{
+		std::cerr << "ERROR: " << error.what() << '\n';
+		return EXIT_FAILURE;
 	}
 	catch (const std::exception& error)
 	{

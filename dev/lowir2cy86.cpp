@@ -1,5 +1,6 @@
 #include "lowir/cy86/converter.h"
 #include "lowir/model/program.h"
+#include "support/exceptions.h"
 #include "support/tool_help_text.h"
 
 #include <chrono>
@@ -97,6 +98,11 @@ int main(int argc, char ** argv)
   try
   {
     return run_lowir2cy86_mode(collect_args(argc, argv));
+  }
+  catch(const CompilerError & e)
+  {
+    cerr << "ERROR: " << e.what() << endl;
+    return EXIT_FAILURE;
   }
   catch(const exception & e)
   {

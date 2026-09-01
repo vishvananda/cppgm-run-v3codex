@@ -1,6 +1,6 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0 baseline and exception-census infrastructure complete
+Status: in progress; E0-E1 baseline, taxonomy, and terminal boundaries complete
 
 Date: 2026-09-01
 
@@ -698,6 +698,7 @@ Append one row for each retained or rejected increment:
 | ID | Family/sites | Old ambiguity | New type/status | Earliest coverage | Dynamic throws before/after | Text/EH/RTTI delta | Fast/full timing | Correctness and hashes | Commit | Result |
 | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- |
 | E0 | baseline and audit | generic standard categories and broad catches | report-only ceilings plus native throw census | PA1-PA39 | frozen 1; full 302; focused counts below | section baseline below | frozen/full baseline below | 5,473/5,473; output hashes below | pending | retained |
+| E1 | taxonomy and terminal boundaries | standard bases and dead not-implemented exit route | compact disposition/domain types; typed terminal adapter before fallback | staged tools and PA10-PA38 integrated driver | valid-input throws unchanged; generic runtime sites -20 | +384 text, -4 exception table, +88 unwind | frozen wall 0.520/0.520 s | through-PA23 3,139/3,139; focused later suites pass | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -769,6 +770,44 @@ O1 and 1.54573x/1.36317x at O3.  Every fixed workload contains 222 objects;
 all three producers at a requested level reproduce the same final compiler.
 The census preload is diagnostic-only and is absent from every timing lane and
 production binary.
+
+### E1 execution record
+
+E1 introduces one compact `CompilerError` base carrying disposition, domain,
+and a 16-bit code, plus only the policy-level subclasses named in the target
+model.  `SemanticError` and `HardSemanticError` are siblings; resource and
+internal failures cannot derive from syntax recovery.  Compile-time assertions
+freeze those relationships.  `HardSemanticError` no longer relies on
+`logic_error` inheritance.  The project base derives directly from
+`std::exception`, so neither legacy `runtime_error` nor `logic_error` recovery
+can accidentally absorb a typed compiler failure.
+
+All 15 staged/integrated terminal standard fallbacks now have a preceding
+`CompilerError` adapter.  The three dead `NotImplementedException` catches,
+their unused type, and exit-86 constant are removed.  The exception audit now
+fails on any reintroduction of that route or any terminal standard fallback
+without a typed adapter, while retaining the E0 generic migration ceilings.
+The file audit exposed five copies of the staged source loader and timestamp
+option builder after the terminal includes changed.  Those copies now have one
+`preprocess/tool_support` owner used by the five tools.  Its four environment
+failure sites are typed at that boundary, reducing the generic runtime census
+from 1,479 to 1,459 without changing successful control flow.
+
+Every affected tool builds.  Focused PA1, PA10, PA14, PA21, PA23, PA37, and
+PA38 suites pass 53/53, 164/164, 117/117, 149/149, 485/485, 17/17, and 83/83;
+the cumulative through-PA23 report passes 3,139/3,139.  Architecture and file
+audits remain clean at their established counts.
+
+A fresh GCC-O3 source-matched comparison against the E0 commit changes
+`.text` 6,623,462 -> 6,623,846 bytes, `.rodata` 214,208 -> 214,176,
+`.eh_frame_hdr` 50,820 -> 50,844, `.eh_frame` 322,880 -> 322,968, and
+`.gcc_except_table` 164,928 -> 164,924.  The project typeinfo population stays
+at two: `CompilerError` replaces dead `NotImplementedException`.  Eight ABBA
+frozen samples give identical 0.520-second wall and 0.475-second user medians,
+with exact 98,736-byte object `8545fec6...`; paired wall and user ratios favor
+the candidate by 0.48% and 1.04%, both within this lane's timer granularity.
+The taxonomy is therefore retained as a neutral correctness boundary, not
+claimed as a performance win.
 
 ## Initial code map
 

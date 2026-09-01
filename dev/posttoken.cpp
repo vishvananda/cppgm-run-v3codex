@@ -5,6 +5,7 @@
 #include <string>
 
 #include "preprocess/tokens/post_tokenizer.h"
+#include "support/exceptions.h"
 
 namespace
 {
@@ -122,6 +123,11 @@ int main(int argc, char** argv)
 		DebugPostTokenStream output(std::cout);
 		cppgm::TokenizePostTokens(source, output);
 		return EXIT_SUCCESS;
+	}
+	catch (const CompilerError& error)
+	{
+		std::cerr << "ERROR: " << error.what() << std::endl;
+		return EXIT_FAILURE;
 	}
 	catch (const std::exception& error)
 	{

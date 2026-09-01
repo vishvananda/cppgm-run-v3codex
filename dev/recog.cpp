@@ -1,42 +1,17 @@
 // (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
 
 #include <cstdlib>
-#include <ctime>
 #include <fstream>
 #include <iostream>
-#include <iterator>
 #include <stdexcept>
 #include <string>
 
+#include "preprocess/tool_support.h"
 #include "recognition/recognizer.h"
+#include "support/exceptions.h"
 
 namespace
 {
-
-std::string ReadSource(const std::string& path)
-{
-	std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
-	if (!input) throw std::runtime_error("unable to open source file: " + path);
-	return std::string(std::istreambuf_iterator<char>(input),
-		std::istreambuf_iterator<char>());
-}
-
-cppgm::PreprocessingOptions BuildOptions()
-{
-	const std::time_t now = std::time(0);
-	const std::tm* local = std::localtime(&now);
-	if (!local) throw std::runtime_error("unable to determine build time");
-	const char* text = std::asctime(local);
-	if (!text) throw std::runtime_error("unable to format build time");
-	const std::string formatted(text);
-	if (formatted.size() < 24) throw std::runtime_error("invalid asctime result");
-
-	cppgm::PreprocessingOptions options;
-	options.build_date = formatted.substr(4, 7) + formatted.substr(20, 4);
-	options.build_time = formatted.substr(11, 8);
-	options.author = "Vishvananda Abrams";
-	return options;
-}
 
 void ReportStats(const std::string& path, const cppgm::recognition::Stats& stats,
 	bool accepted)
@@ -79,7 +54,8 @@ int main(int argc, char** argv)
 		std::ofstream output(argv[2], std::ios::out | std::ios::trunc);
 		if (!output) throw std::runtime_error("unable to open output file");
 		output << "recog " << input_end - 3 << '\n';
-		const cppgm::PreprocessingOptions options = BuildOptions();
+		const cppgm::PreprocessingOptions options =
+			cppgm::BuildPreprocessingOptions();
 
 		for (int i = 3; i < input_end; ++i)
 		{
@@ -87,11 +63,16 @@ int main(int argc, char** argv)
 			bool accepted = false;
 			try
 			{
-				const std::string source = ReadSource(path);
+				const std::string source =
+					cppgm::ReadPreprocessingSource(path);
 				cppgm::recognition::Stats stats;
 				accepted = cppgm::recognition::RecognizeTranslationUnit(path, source,
 					options, report_stats ? &stats : 0);
 				if (report_stats) ReportStats(path, stats, accepted);
+			}
+			catch (const CompilerError& error)
+			{
+				std::cerr << path << ": " << error.what() << '\n';
 			}
 			catch (const std::exception& error)
 			{
@@ -101,6 +82,11 @@ int main(int argc, char** argv)
 		}
 		if (!output) throw std::runtime_error("unable to write output file");
 		return EXIT_SUCCESS;
+	}
+	catch (const CompilerError& error)
+	{
+		std::cerr << "ERROR: " << error.what() << '\n';
+		return EXIT_FAILURE;
 	}
 	catch (const std::exception& error)
 	{

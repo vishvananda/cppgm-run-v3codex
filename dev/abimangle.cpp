@@ -1,6 +1,7 @@
 // Student-facing scaffold for the PA14 `abimangle` binary.
 
 #include "abi/itanium/abi_mangle.h"
+#include "support/exceptions.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -141,6 +142,9 @@ int main(int argc, char ** argv)
 {
   try {
     return run_abimangle(argc, argv);
+  } catch(const CompilerError & e) {
+    cerr << "abimangle: " << e.what() << "\n";
+    return EXIT_FAILURE;
   } catch(const exception & e) {
     cerr << "abimangle: " << e.what() << "\n";
     return EXIT_FAILURE;

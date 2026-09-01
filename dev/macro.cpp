@@ -6,6 +6,7 @@
 #include <string>
 
 #include "preprocess/macros/macro_processor.h"
+#include "support/exceptions.h"
 
 namespace
 {
@@ -141,6 +142,11 @@ int main(int argc, char** argv)
 				<< " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 		}
 		return EXIT_SUCCESS;
+	}
+	catch (const CompilerError& error)
+	{
+		std::cerr << "ERROR: " << error.what() << std::endl;
+		return EXIT_FAILURE;
 	}
 	catch (const std::exception& error)
 	{

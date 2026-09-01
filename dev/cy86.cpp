@@ -1,44 +1,18 @@
 // (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
 
 #include <cstdlib>
-#include <ctime>
 #include <fstream>
 #include <iostream>
-#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "cy86/cy86_program.h"
+#include "preprocess/tool_support.h"
+#include "support/exceptions.h"
 
 namespace
 {
-
-std::string ReadSource(const std::string& path)
-{
-	std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
-	if (!input) throw std::runtime_error("unable to open source file: " + path);
-	return std::string(std::istreambuf_iterator<char>(input),
-		std::istreambuf_iterator<char>());
-}
-
-cppgm::PreprocessingOptions BuildOptions()
-{
-	const std::time_t now = std::time(0);
-	const std::tm* local = std::localtime(&now);
-	if (!local) throw std::runtime_error("unable to determine build time");
-	const char* text = std::asctime(local);
-	if (!text) throw std::runtime_error("unable to format build time");
-	const std::string formatted(text);
-	if (formatted.size() < 24)
-		throw std::runtime_error("invalid asctime result");
-
-	cppgm::PreprocessingOptions options;
-	options.build_date = formatted.substr(4, 7) + formatted.substr(20, 4);
-	options.build_time = formatted.substr(11, 8);
-	options.author = "Vishvananda Abrams";
-	return options;
-}
 
 void ReportStats(const cppgm::Cy86Stats& stats)
 {
@@ -98,15 +72,22 @@ int main(int argc, char** argv)
 
 		cppgm::Cy86Stats stats;
 		cppgm::Cy86Program program(report_stats ? &stats : 0);
-		const cppgm::PreprocessingOptions options = BuildOptions();
+		const cppgm::PreprocessingOptions options =
+			cppgm::BuildPreprocessingOptions();
 		for (std::size_t i = 0; i < source_paths.size(); ++i)
 		{
-			const std::string source = ReadSource(source_paths[i]);
+			const std::string source =
+				cppgm::ReadPreprocessingSource(source_paths[i]);
 			program.AddTranslationUnit(source_paths[i], source, options);
 		}
 		program.WriteExecutable(output_path);
 		if (report_stats) ReportStats(stats);
 		return EXIT_SUCCESS;
+	}
+	catch (const CompilerError& error)
+	{
+		std::cerr << "ERROR: " << error.what() << '\n';
+		return EXIT_FAILURE;
 	}
 	catch (const std::exception& error)
 	{

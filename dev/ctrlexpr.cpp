@@ -10,6 +10,7 @@
 using namespace std;
 
 #include "preprocess/expressions/control_expression.h"
+#include "support/exceptions.h"
 
 // Mock identifier-definition policy for the standalone expression adapter.
 // return true iff first code point is odd
@@ -61,6 +62,11 @@ int main(int argc, char** argv)
 				 << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 		}
 		return EXIT_SUCCESS;
+	}
+	catch (const CompilerError& e)
+	{
+		cerr << "ERROR: " << e.what() << endl;
+		return EXIT_FAILURE;
 	}
 	catch (const exception& e)
 	{

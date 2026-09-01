@@ -2622,10 +2622,10 @@ int main(int argc, char ** argv)
   {
     return run_cppgm(collect_args(argc, argv));
   }
-  catch(const NotImplementedException & e)
+  catch(const CompilerError & e)
   {
     cerr << "ERROR: " << e.what() << endl;
-    return CPPGM_EXIT_NOT_IMPLEMENTED;
+    return EXIT_FAILURE;
   }
   catch(const exception & e)
   {

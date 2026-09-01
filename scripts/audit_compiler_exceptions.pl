@@ -20,7 +20,9 @@ my %ceiling = (
 	catch_all => 59,
 	internal_runtime_catch => 4,
 	internal_exception_catch => 3,
+	legacy_not_implemented => 0,
 	message_policy => 0,
+	terminal_untyped_standard_catch => 0,
 );
 
 sub read_text
@@ -100,6 +102,9 @@ for my $path (@files)
 	my $text = read_text($path);
 	my $code = mask_comments_and_literals($text);
 	my ($file_logic, $file_runtime) = (0, 0);
+	my ($file_terminal_standard, $file_terminal_compiler) = (0, 0);
+	$count{legacy_not_implemented} += () =
+		$code =~ /\b(?:NotImplementedException|CPPGM_EXIT_NOT_IMPLEMENTED)\b/g;
 
 	while ($text =~ /\bthrow\s+(?:std::)?logic_error\b/g)
 	{
@@ -138,9 +143,18 @@ for my $path (@files)
 		}
 		else
 		{
+			++$file_terminal_standard;
 			push @terminal_catch,
 				"$relative:" . line_number($text, $-[0]);
 		}
+	}
+	if ($relative !~ m{\Adev/src/})
+	{
+		$file_terminal_compiler += () =
+			$text =~ /\bcatch\s*\(\s*const\s+CompilerError\s*&/g;
+		$count{terminal_untyped_standard_catch} +=
+			$file_terminal_standard - $file_terminal_compiler
+			if $file_terminal_standard > $file_terminal_compiler;
 	}
 	while ($text =~ /\bcatch\s*\(\s*const\s+std::(?:invalid_argument|out_of_range)\s*&/g)
 	{
@@ -186,7 +200,9 @@ print "Compiler exception audit passed at E0 ceilings: " .
 	"$count{catch_all} catch-all sites, " .
 	"$count{internal_runtime_catch} internal runtime catches, " .
 	"$count{internal_exception_catch} internal standard catches, and " .
-	"$count{message_policy} message-policy sites.\n";
+	"$count{message_policy} message-policy sites; " .
+	"$count{legacy_not_implemented} legacy not-implemented references and " .
+	"$count{terminal_untyped_standard_catch} untyped terminal fallbacks.\n";
 print "Reviewed presentation/cleanup inventory: " . scalar(@terminal_catch) .
 	" terminal standard catches, " . scalar(@cleanup_catch) .
 	" catch-all sites, and " . scalar(@standard_translation) .
