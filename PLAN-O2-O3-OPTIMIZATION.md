@@ -4892,6 +4892,52 @@ contract movement remains. The result also closes this specific
 query/consume design: further work must target a source-diverse dynamic cost,
 not add more metadata to expose this scalar edge.
 
+### Rejected global one-shot inline-cap reduction
+
+The refreshed self/GCC profile showed a superficially attractive layout
+difference: GCC keeps `ScanPunctuator` separate and its surviving scalar query
+calls are overwhelmingly fast, while the accepted self compiler folds
+`ScanPunctuator` into `Lexer::Run` and leaves 7,155,234 of 11,498,094 grouped
+query calls taking the refill arm. The existing public `once-cap` control
+tested whether that discrepancy was simply excess one-shot inlining.
+
+Caps 64, 96, and 256 all retained a separate 2,934-byte
+`ScanPunctuator`; they reduced `Lexer::Run` from 9,313 bytes to 1,166, 2,266,
+and 7,075 bytes respectively. Each output remained exact, but isolated
+tokenizer probe compilers regressed the pinned native hot compile: cap 64 was
++3.185% wall/+2.027% user, cap 96 was +2.548%/+3.356%, and cap 256 was
++2.532%/+2.027%. The smaller outline loses useful locality or introduces
+calls whose cost exceeds the footprint reduction. Global cap changes remain
+rejected; follow-up work must identify individual dynamic sites rather than
+infer profitability from GCC's final partition.
+
+### Rejected post-state refill-site expansion
+
+The next prototype tested the inverse of the rejected scalar fast wrapper
+without adding LowIR metadata. A bounded O3 matcher recognized an internal
+index-zero stable-prefix query whose three-block body guards one refill call
+with a constant parameter-relative load. In natural loops it selected only
+calls for which every nearby predecessor path either stored the guarded field
+or invoked another operation on the identical parameter-derived object. The
+runtime guard retained correctness; the structural relationship was used only
+for profitability. Selection was source-name independent and capped at 12
+sites, 48 query instructions, and 128 predecessor instructions.
+
+Two generated-code forms were screened through isolated probe links against
+the accepted producer. Fully expanding six selected queries removed those
+calls, grew `Lexer::Run` by 558 bytes and the tokenizer object by 560 bytes,
+and improved 12-per-side pinned task-clock only to `0.996629370x`
+(-0.337063%). A refined inverse split expanded the guard/refill arm but sent
+the fast edge to one shared 30-byte fast-return helper. At six sites it grew
+`Lexer::Run` by 684 bytes and the object by 740 bytes for `0.994878446x`
+(-0.512155%); widening to 12 sites grew the function by 1,199 bytes and the
+object by 1,780 bytes while falling back to `0.997201623x` (-0.279838%). Every
+candidate emitted the accepted hot object hash
+`09d9fdc0bdd901d35c4f46075a4109b1a0c29ddb51fd5a17428335a2379dabba`.
+All variants miss the 1% gate before implementation footprint, so the
+matcher, selected inliner, and transient clones were removed without PA37 or
+PA38 contract movement.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -5012,6 +5058,8 @@ Fill one row for every retained or rejected dose.
 | D.fast-slow-function-versioning | keep one bounded call-free return corridor under the original identity, restart every bailout in a complete slow clone, and lower the exact final call as a sibling transfer | PA37/PA38 READMEs plus level-isolated structural, guard, replay, native-relationship, and behavior properties; no source-name or whole-program matching | no LowIR contract addition; producer +34,376 text/+160 data; selected original 98 bytes plus unchanged 1,814-byte slow clone | self Ir `0.981190163x`, GCC `0.999989823x`, normalized `0.981200149x`; two full-build normalized CPU blocks `0.992312127x`/`0.991831466x` | focused controls; 5,473/5,473; serial debug/round-trip and all zero-fatal audits clean; explicit-32 G1/G2 and every measured output exact | retained; clears deterministic D5 and stable full CPU corroboration after removing measured source-layout interference |
 | D.scalar-fast-slow-extension | reuse the retained versioning and complete-frame sibling machinery for one additional small non-hinted scalar-return function | none; rejected behavior was not moved into PA37/PA38 | intended 32-instruction query becomes 47-byte wrapper plus unchanged 116-byte clone; producer +23,860 text/+16 data; output exact | self Ir `1.004353845x`; query inclusive Ir `1.023825906x` because 7.16M/11.50M calls take the slow edge | exact frozen object; explicit-32 G1 producer; prototype removed before fixed point/full timing | rejected; majority-slow population makes the extra transfer a deterministic generated-code loss |
 | D.prefix-consumer-boundary | serialize a source-produced prefix consumer so O3 can inline only its unique call-free consuming arm after an available index-zero stable-prefix query | none; provisional PA13/PA17/PA37/PA38 movement removed after rejection | tokenizer final O3 LowIR 4,608 to 4,204 instructions and 345,678 to 316,192 bytes; temporary clone fully pruned; producer +14,864 text | self Ir `0.999817522x` (-0.018248%); same-source normalization not escalated after missing the deterministic 1% gate | exact frozen object; explicit-32 G1/G2 and final hash exact; prototype fully removed | rejected; the measured benefit is too small to justify a new PA13 LowIR promise and compiler-object version |
+| D.once-cap | lower the existing global one-shot inline cap so GCC-like helper partitioning reduces `Lexer::Run` pressure | none; public diagnostic override only | caps 64/96/256 retain 2,934-byte `ScanPunctuator`; `Run` becomes 1,166/2,266/7,075 bytes vs 9,313 | cap 64 +3.185%/+2.027% wall/user; cap 96 +2.548%/+3.356%; cap 256 +2.532%/+2.027% | deterministic isolated probe outputs exact | rejected; smaller global layout loses useful locality and call removal |
+| D.post-state-query-inline | expand only index-zero guarded query calls structurally reached after same-object state changes, with full-body and shared-fast-return variants | none; rejected before PA37/PA38 movement | six-site full `Run` +558/object +560 bytes; six-site inverse split `Run` +684/object +740; 12-site split `Run` +1,199/object +1,780 | pinned task-clock `0.996629370x`, `0.994878446x`, and `0.997201623x` respectively | exact hot output for every dose; isolated probe links; prototypes removed before full self-host | rejected; best 0.51% generated-code result misses 1% before pass footprint |
 | C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
 | D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
 | Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
