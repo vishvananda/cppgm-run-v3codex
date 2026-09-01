@@ -4178,6 +4178,51 @@ and final compiler
 G1, G2, and G3 take 18.26, 29.85, and 28.73 seconds wall with the required 32
 workers.  The retained implementation, contract, and tests are in `d54e7e03`.
 
+### Rejected native frame-pressure follow-ups
+
+Three native follow-ups were screened against the stable-prefix checkpoint
+without retaining a new backend contract.  First, a conditional-call bridge
+recolored complete parameter regions into caller-saved registers and inserted
+preservation only around an actual call.  It eliminated three saved regions
+in the tokenizer, but not in `AppendUTF8`, added 68 MIR instructions and
+14,592 producer text bytes, and regressed ten balanced frozen-TU task-clock
+pairs from 811.636 to 813.513 ms by means (`1.002352x`; paired median
+`1.002911x`).
+
+Second, final-MIR frame-slot coalescing used exact binding liveness to merge
+scalar compiler-temporary slots.  It reduced `AppendUTF8`'s stack reservation
+from 208 to 80 bytes and its body from 1,814 to 1,655 bytes, but the broad
+form added 19,344 producer text bytes and measured `1.005144x` by paired mean.
+A bounded form restricted to functions with at least eight bindings and a
+128-byte frame added 19,536 text bytes and measured `1.007573x` by paired
+mean.  Both forms were removed.
+
+The cheaper third form sent only O3 acyclic, non-loop-carried fallback `phi`
+homes through the existing reusable temporary-slot pool.  Its first prototype
+exposed a real lifetime-model violation: a pooled pointer-phi home was later
+donated to another phi, but the pool still recorded only the first logical
+value's last use.  A Boolean then overwrote the home while a copied pointer
+still used it, and G1 crashed in `MacroProcessor::EvaluateBuiltinProbe`.
+No source or fixture was changed to conceal the failure.  The corrected
+prototype made pooled homes private; a temporary PA38 relationship/behavior
+reducer proved that sequential Boolean phis reused one slot only while a
+still-live copied pointer retained a different home.
+
+The corrected form reduced `AppendUTF8` from a 208-byte to an 80-byte frame
+and from 1,814 to 1,655 body bytes.  Its fixed-point producer shrank 17,024
+text bytes, and all G1/G2 objects and the final compiler matched at hash
+`49b77e47e8b356d2598d0f687aba60ebe14ebcb83a895ff03d9c1fbbf665e0af`.
+Ten balanced frozen-TU task-clock pairs improved from 817.245 to 814.577 ms
+by aggregate means (`0.996735x`); paired mean and median ratios were
+`0.996853x` and `0.997630x`.  One clean all-32 requested-O1 ABBA block was
+output-exact and improved wall from 27.970 to 27.605 seconds (`0.986950x`),
+but aggregate CPU moved from 783.225 to 783.545 seconds (`1.000409x`).  A
+position-reversed extension had an obvious slow final candidate lane and was
+discarded as a contaminated window; its preceding CPU observations were also
+flat to unfavorable.  The safe implementation therefore remained far below
+the 1% source-diverse CPU gate and was removed together with its provisional
+README and property movement.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4278,6 +4323,9 @@ Fill one row for every retained or rejected dose.
 | D.retained-division-result | preserve the architectural quotient/remainder identity after machine copy forwarding so existing constant-division encoding still applies | none; rejected before contract movement | static `div`/`idiv` 4,823 to 407; hot loop uses magic division; `AnnotateParentheses` +20 bytes; linked producer +93,188 text | self Ir `1.006774x`, GCC `0.999908x`, normalized `1.006867x`; native hot wall/user/CPU `1.005780x`/`1.007150x`/`1.008729x` | PA38 45/45; deterministic candidate self/GCC hot object; explicit-32-way 220-object G1; prototype removed before G2 | rejected; broad strength reduction increases retired work, footprint, and measured hardware CPU |
 | D.hint40-O3 | lower only the default O3 late hinted-nonleaf cap from 48 to 40 while preserving explicit overrides | none; rejected before contract movement | hot token push becomes a 56-byte wrapper; G2 linked producer -304,292 text bytes; O1 hot output exact | self Ir `0.999018x`, GCC `0.999267x`, normalized `0.999752x`; native normalized paired medians `0.994755x` wall/`0.996894x` user | exact self/GCC O3 hot object; explicit-32-way G1/G2; stopped before G3 and removed | rejected; large static shrink yields only 0.025% normalized Ir and sub-1% native gains |
 | D.conditional-prvalue-transfer-prototype | construct both arms of a same-type conditional class prvalue directly in the final copy/move destination | initial prototype had no serialized permission; its rejection established the PA13 boundary now owned by `D.conditional-copy-elision` | G2/G3 exact; 29/220 objects changed, 27 nonimplementation; producer -15,092 text; `AddSourceToken` 1,245 to about 899 bytes | self Ir `0.988362x`, GCC `1.000014x`, normalized `0.988348x`; gap 1.643606x to 1.624456x | identical self/GCC hot object; explicit-32-way G1/G2/G3; PA17 O0 incompatibility reproduced; prototype removed | superseded by retained contract-backed `D.conditional-copy-elision`; this row records why the hidden-metadata form was rejected |
+| D.conditional-call-bridge | recolor complete parameter regions into caller-saved carriers and preserve only around one actual call | none; rejected behavior was not moved into PA38 | three regions outside `AppendUTF8`; +68 MIR instructions; producer +14,592 text | ten-pair task-clock mean `1.002352x`, paired median `1.002911x` | exact frozen output; prototype removed | rejected; preservation traffic and implementation footprint exceed the local saving |
+| D.final-frame-slot-coalescing | merge nonoverlapping scalar compiler-temporary frame bindings after final MIR liveness | none; rejected behavior was not moved into PA38 | `AppendUTF8` frame 208 to 80 and body 1,814 to 1,655 bytes; broad/bounded producer +19,344/+19,536 text | broad paired mean `1.005144x`; bounded `1.007573x` | PA38 45/45 during screening; prototypes removed | rejected; whole-function binding machinery regresses the fast oracle despite local compaction |
+| D.phi-fallback-slot-pool | allocate O3 acyclic fallback phi homes from the existing reusable temporary pool | provisional PA38 README and relationship/behavior reducer removed after rejection | safe `AppendUTF8` frame 208 to 80/body 1,814 to 1,655; fixed-point producer -17,024 text; unsafe precursor overwrote a still-live copied pointer | frozen task-clock aggregate `0.996735x`, paired median `0.997630x`; clean full O1 wall `0.986950x`, CPU `1.000409x` | unsafe G1 crash diagnosed; corrected property passed and 221-object G1/G2 exact at `49b77e47...`; prototype removed | rejected; safe source-diverse CPU is flat and below the 1% gate |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
