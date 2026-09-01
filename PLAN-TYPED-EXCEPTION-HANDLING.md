@@ -1,7 +1,7 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E6 and the E7 optimizer slice are complete; E7
-compiler-core and tool migration continues
+Status: in progress; E0-E6 and the E7 optimizer/integrated-driver slices are
+complete; E7 compiler-core and tool migration continues
 
 Date: 2026-09-01
 
@@ -721,7 +721,8 @@ Append one row for each retained or rejected increment:
 | E6a | LowIR text, model identity, serialization, and PA13 CY86 adapter | one parse type mixed malformed input, I/O, limits, and invariants; model helpers used generic bases | format/domain-specific serialized-input, I/O, resource, invocation, and internal failures; valid flow unchanged | PA13 malformed/valid text, identity, role, metadata, phi, and adapter behavior | successful frozen remains 0; 126 `ParseError` sites removed; generic logic/runtime sites -41/-9 | -14,528 text, -64 rodata, +56 EH header, -168 unwind, -2,536 exception table | frozen user -1.12%; full O1 -0.39%, O3 -0.26% CPU | PA13 122/122; through-PA13 965/965; LowIR contract unchanged; 222 O1/O3 objects exact | `23294aa9` | retained |
 | E6b | compiler-object serialization, ELF import, and join | malformed bytes, I/O, size ceilings, link conflicts, and invariants shared generic bases | compiler-object serialized-input/I/O/resource/internal types; no-input and target mismatch are invocation failures; probes stay status-based | PA30 separate/direct/mixed compilation, helper ELF import, duplicate/missing/unresolved link behavior | successful frozen remains 0; generic logic/runtime sites -4/-41 | -5,568 text, +128 rodata, -72 EH header, -480 unwind, -2,060 exception table | frozen 0.450/0.450 s; full O1 -0.23%, O3 neutral CPU | PA30 100/100; through-PA30 4,355/4,355; malformed/I/O fail; 222 O1/O3 objects exact | `fd1c98ff` | retained |
 | E6c | integrated typed-LowIR adapter | lowering-model identity, bounds, operation, CFG, EH, and presentation invariants used a generic logic base inside adapter loops | LowIR-domain internal failures through the existing shared cold boundary; successful checks unchanged | PA15 source-to-LowIR plus PA37 optimizer and PA38 native consumers | successful frozen remains 0; generic logic sites -23 | -1,280 text, -16 EH header, -72 unwind, -180 exception table | frozen 0.450/0.450 s; full O1 -0.39%, O3 -0.09% CPU | PA15 121/121; PA37 190/190; PA38 45/45; through-PA38 5,477/5,477; 222 O1/O3 objects and 32-way inception exact | `9ab20e02` | retained |
-| E7a | LowIR analyses and optimizer invariants | invocation rejection, call-graph/CFG/SSA corruption, and inliner shape contradictions shared generic logic/runtime bases in hot optimizer owners | invalid inline overrides use typed invocation failure; true optimizer invariants use one cold optimizer-domain boundary; ordinary optimization rejection remains status flow | PA37 invocation, structural, optimization-level, inlining, specialization, and generated-behavior controls | successful frozen remains 0; generic logic/runtime sites -23/-3 | -2,048 text, +32 rodata, +16 EH header, -8 unwind, -240 exception table | frozen 0.450/0.450 s and paired -0.55%; full O1 -0.18%, repeated O3 +0.39% CPU (neutral) | PA37 190/190; through-PA37 5,432/5,432; audits pass; frozen and 222 O1/O3 objects exact | pending | retained |
+| E7a | LowIR analyses and optimizer invariants | invocation rejection, call-graph/CFG/SSA corruption, and inliner shape contradictions shared generic logic/runtime bases in hot optimizer owners | invalid inline overrides use typed invocation failure; true optimizer invariants use one cold optimizer-domain boundary; ordinary optimization rejection remains status flow | PA37 invocation, structural, optimization-level, inlining, specialization, and generated-behavior controls | successful frozen remains 0; generic logic/runtime sites -23/-3 | -2,048 text, +32 rodata, +16 EH header, -8 unwind, -240 exception table | frozen 0.450/0.450 s and paired -0.55%; full O1 -0.18%, repeated O3 +0.39% CPU (neutral) | PA37 190/190; through-PA37 5,432/5,432; audits pass; frozen and 222 O1/O3 objects exact | `7e9450a0` | retained |
+| E7b | integrated compiler driver | invocation, source-token, file/library transport, compiler-object rejection, and unreachable driver states shared generic bases; missing-option helper returned a generic exception object | cold driver invocation/I/O/source/internal boundaries plus compiler-object input type; file-kind and library-path probes remain non-exception status flow | PA30 object/compile/link failures and PA36 hosted compile/link behavior | successful frozen remains 0; generic logic/runtime sites -23/-22; generic return helper -1 | -3,968 text, +32 rodata, +40 EH header, +176 unwind, -212 exception table | frozen 0.450/0.450 s; paired +0.56% (neutral) | PA30 179/179; PA36 1/1; through-PA36 5,242/5,242; invalid option/missing input/unwritable output fail; audits and frozen object exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1591,6 +1592,38 @@ reproduce all 222 objects and their final compiler; their combined averages
 are 504.03/505.99 seconds (+0.39%), while the repeat alone is +0.13%.  This is
 timer noise below the 1% rejection threshold, not evidence for adding returned
 status checks to successful optimizer control flow.
+
+### E7b execution record
+
+The integrated `cppgm++` driver now separates invalid options/mode
+combinations, source-token rejection, source/output/library transport,
+malformed compiler-object input, and impossible dispatch states.  Its
+missing-option helper no longer returns a `logic_error` for a caller to throw;
+it enters the cold typed invocation boundary directly.  Unsupported target and
+language selections are invocation errors, source/output/library failures are
+driver-domain I/O errors, an invalid phase-7 token is a lexical source error,
+and an object-looking input rejected by the link path is compiler-object input.
+Unknown enum/query dispatch remains an internal driver failure.
+
+The ordinary path adds no status propagation.  File-kind checks and candidate
+library-path probes remain Boolean; only exhaustion of all requested library
+paths fails.  The successful frozen compile records zero throws.  Generic
+logic/runtime sites fall by 23/22, the integrated driver leaves the generic
+file inventory, and the generic returned-exception helper reaches zero,
+bringing the audit to 743/421/113/0.  Relative to E7a, `.text` changes
+6,502,310 -> 6,498,342, `.rodata` 214,496 -> 214,528, `.eh_frame_hdr`
+51,476 -> 51,516, `.eh_frame` 322,040 -> 322,216, and
+`.gcc_except_table` 138,596 -> 138,384.
+
+PA30 passes 179/179, PA36 passes 1/1, and through-PA36 passes 5,242/5,242.
+Invalid optimization selection, a missing source, and an unwritable object
+destination all fail by exit status without any diagnostic-text oracle.  The
+layout, source-set, LowIR-contract, exception, and PA38 file audits pass with
+the established 32 file warnings.  Four frozen A/B/B/A blocks against the E6c
+baseline reproduce object hash `8545fec6...`; both user medians are 0.450
+seconds and paired candidate time is +0.56%, below resolution.  E7a was
+independently neutral before this combined guard, so no full-build checkpoint
+is added between the plan's optimizer and native milestones.
 
 ## Initial code map
 

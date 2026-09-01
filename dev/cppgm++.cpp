@@ -1,6 +1,7 @@
 // Student-facing scaffold for the PA10+ `cppgm++` binary.
 
 #include "support/exceptions.h"
+#include "support/driver_errors.h"
 #include "syntax/syntax.h"
 #include "semantic/type_view.h"
 #include "semantic/semantic.h"
@@ -9,6 +10,7 @@
 #include "compiler_object/linker.h"
 #include "compiler_object/serialization.h"
 #include "compiler_object/elf_import.h"
+#include "compiler_object/errors.h"
 #include "lowir/analysis/function_reachability.h"
 #include "lowir/driver/stats_report.h"
 #include "lowir/io/prepare.h"
@@ -28,7 +30,6 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
-#include <stdexcept>
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
@@ -145,7 +146,8 @@ int parse_optimization_level(const string & arg)
   if(arg == "-O1") return 1;
   if(arg == "-O2") return 2;
   if(arg == "-O3") return 3;
-  throw logic_error("unsupported optimization level: " + arg);
+  cppgm::driver_errors::ThrowInvocation(
+    "unsupported optimization level: " + arg);
 }
 
 bool is_debug_info_flag(const string & arg)
@@ -171,10 +173,12 @@ bool is_benign_driver_flag(const string & arg)
       starts_with(arg, "-std=");
 }
 
-logic_error missing_option_argument(const string & option,
-                                    const string & expected)
+__attribute__((cold, noinline, noreturn))
+void missing_option_argument(const string & option,
+                             const string & expected)
 {
-  return logic_error("missing " + expected + " after " + option);
+  cppgm::driver_errors::ThrowInvocation(
+    "missing " + expected + " after " + option);
 }
 
 void consume_required_option_argument(const vector<string> & args,
@@ -183,7 +187,7 @@ void consume_required_option_argument(const vector<string> & args,
                                       const string & expected)
 {
   if(i + 1 >= args.size()) {
-    throw missing_option_argument(option, expected);
+    missing_option_argument(option, expected);
   }
   ++i;
 }
@@ -233,7 +237,8 @@ void consume_emit_flag(vector<string> & args,
   }
 
   if(out != EmitMode::None) {
-    throw logic_error("multiple --emit-* options provided");
+    cppgm::driver_errors::ThrowInvocation(
+      "multiple --emit-* options provided");
   }
   out = value;
   args.swap(kept);
@@ -287,7 +292,8 @@ SourceOutputInvocation parse_source_output_invocation(
     }
     if(allow_lowir_options && is_optimization_flag(args[i])) {
       if(invocation.has_optimization_level)
-        throw logic_error("multiple optimization levels provided");
+        cppgm::driver_errors::ThrowInvocation(
+          "multiple optimization levels provided");
       invocation.has_optimization_level = true;
       invocation.optimization_level = parse_optimization_level(args[i]);
       continue;
@@ -332,16 +338,17 @@ SourceOutputInvocation parse_source_output_invocation(
       continue;
     }
     if(args[i] == "-c" || args[i] == "-E" || is_query_driver_flag(args[i])) {
-      throw logic_error("invalid usage");
+      cppgm::driver_errors::ThrowInvocation("invalid usage");
     }
     if(starts_with(args[i], "-")) {
-      throw logic_error("unsupported option in emit mode: " + args[i]);
+      cppgm::driver_errors::ThrowInvocation(
+        "unsupported option in emit mode: " + args[i]);
     }
     invocation.inputs.push_back(args[i]);
   }
 
   if(invocation.output.empty() || invocation.inputs.empty()) {
-    throw logic_error("invalid usage");
+    cppgm::driver_errors::ThrowInvocation("invalid usage");
   }
   return invocation;
 }
@@ -366,13 +373,14 @@ bool consume_dependency_option(const vector<string> & args, size_t & i)
 DriverInvocation parse_driver_invocation(const vector<string> & args)
 {
   if(args.empty()) {
-    throw logic_error("invalid usage");
+    cppgm::driver_errors::ThrowInvocation("invalid usage");
   }
 
   DriverInvocation invocation;
   if(is_query_driver_flag(args[0])) {
     if(args.size() != 1) {
-      throw logic_error("query flag must be used as a direct invocation");
+      cppgm::driver_errors::ThrowInvocation(
+        "query flag must be used as a direct invocation");
     }
     invocation.mode = DriverMode::Query;
 		invocation.query = args[0];
@@ -386,7 +394,8 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
 
   for(size_t i = 0; i < args.size(); ++i) {
     if(is_query_driver_flag(args[i])) {
-      throw logic_error("query flag must be used as a direct invocation");
+      cppgm::driver_errors::ThrowInvocation(
+        "query flag must be used as a direct invocation");
     }
     if(args[i] == "-c") {
       compile_only = true;
@@ -414,7 +423,8 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
     if(args[i] == "-o") {
       consume_required_option_argument(args, i, "-o", "output file");
       if(explicit_outfile) {
-        throw logic_error("multiple output files provided");
+        cppgm::driver_errors::ThrowInvocation(
+          "multiple output files provided");
       }
       explicit_outfile = true;
       invocation.output = args[i];
@@ -483,7 +493,8 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
 			if(standard == "c++11" || standard == "gnu++11") value = "201103L";
 			else if(standard == "c++14" || standard == "gnu++14") value = "201402L";
 			else if(standard == "c++17" || standard == "gnu++17") value = "201703L";
-			else throw logic_error("unsupported language standard: " + standard);
+			else cppgm::driver_errors::ThrowInvocation(
+				"unsupported language standard: " + standard);
 			invocation.macro_actions.push_back(
 				DriverInvocation::MacroAction(true, "__cplusplus=" + value));
 			continue;
@@ -497,19 +508,23 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
     }
     if(args[i] == "--target") {
       consume_required_option_argument(args, i, "--target", "target");
-      if(!invocation.target.empty()) throw logic_error("multiple targets provided");
+      if(!invocation.target.empty())
+        cppgm::driver_errors::ThrowInvocation("multiple targets provided");
       invocation.target = args[i];
       continue;
     }
     if(starts_with(args[i], "--target=")) {
-      if(!invocation.target.empty()) throw logic_error("multiple targets provided");
+      if(!invocation.target.empty())
+        cppgm::driver_errors::ThrowInvocation("multiple targets provided");
       invocation.target = args[i].substr(string("--target=").size());
-      if(invocation.target.empty()) throw missing_option_argument("--target", "target");
+      if(invocation.target.empty())
+        missing_option_argument("--target", "target");
       continue;
     }
     if(is_optimization_flag(args[i])) {
       if(has_optimization_level)
-        throw logic_error("multiple optimization levels provided");
+        cppgm::driver_errors::ThrowInvocation(
+          "multiple optimization levels provided");
       has_optimization_level = true;
       invocation.optimization_level = parse_optimization_level(args[i]);
       continue;
@@ -523,19 +538,21 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
       continue;
     }
     if(starts_with(args[i], "-")) {
-      throw logic_error("unsupported driver option: " + args[i]);
+      cppgm::driver_errors::ThrowInvocation(
+        "unsupported driver option: " + args[i]);
     }
     invocation.inputs.push_back(args[i]);
   }
 
   if(compile_only && preprocess_only) {
-    throw logic_error("cannot combine -c and -E");
+    cppgm::driver_errors::ThrowInvocation("cannot combine -c and -E");
   }
   if(invocation.inputs.empty()) {
-    throw logic_error("invalid usage");
+    cppgm::driver_errors::ThrowInvocation("invalid usage");
   }
   if((compile_only || preprocess_only) && explicit_outfile && invocation.inputs.size() != 1) {
-    throw logic_error("cannot specify -o when generating multiple output files");
+    cppgm::driver_errors::ThrowInvocation(
+      "cannot specify -o when generating multiple output files");
   }
 
   invocation.mode =
@@ -554,7 +571,8 @@ string normalize_native_target(const string & target)
      target == "x86_64-linux-gnu") {
     return "linux";
   }
-  throw runtime_error("unsupported native target: " + target);
+  cppgm::driver_errors::ThrowInvocation(
+    "unsupported native target: " + target);
 }
 
 bool regular_file_exists(const string & path)
@@ -566,7 +584,9 @@ bool regular_file_exists(const string & path)
 string read_source_file(const string & path)
 {
   ifstream input(path.c_str(), ios::in | ios::binary);
-  if(!input) throw runtime_error("unable to open source file: " + path);
+  if(!input)
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to open source file: " + path);
   input.seekg(0, ios::end);
   const streamoff size = input.tellg();
   if(size < 0)
@@ -575,7 +595,9 @@ string read_source_file(const string & path)
   string result(static_cast<size_t>(size), '\0');
   input.seekg(0, ios::beg);
   if(size != 0) input.read(&result[0], size);
-  if(!input) throw runtime_error("unable to read source file: " + path);
+  if(!input)
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to read source file: " + path);
   return result;
 }
 
@@ -603,7 +625,8 @@ public:
 
 	void EmitInvalid(const string & source)
 	{
-		throw runtime_error("invalid phase-7 token: " + source);
+		cppgm::driver_errors::ThrowLexicalSource(
+			"invalid phase-7 token: " + source);
 	}
 
 	void EmitSimple(const string & source, cppgm::SimpleTokenKind kind)
@@ -715,7 +738,8 @@ int run_preprocess_driver(const DriverInvocation & invocation)
 	if(!invocation.output.empty()) {
 		file_output.open(invocation.output.c_str(), ios::out | ios::trunc);
 		if(!file_output) {
-			throw runtime_error("unable to open output file: " + invocation.output);
+			cppgm::driver_errors::ThrowInputOutput(
+				"unable to open output file: " + invocation.output);
 		}
 		output = &file_output;
 	}
@@ -734,7 +758,9 @@ int run_preprocess_driver(const DriverInvocation & invocation)
 			collect_stats ? &stats : 0);
 		if(collect_stats) report_preprocessor_stats(path, stats);
 	}
-	if(!*output) throw runtime_error("unable to write preprocessor output");
+	if(!*output)
+		cppgm::driver_errors::ThrowInputOutput(
+			"unable to write preprocessor output");
 	return EXIT_SUCCESS;
 }
 
@@ -757,7 +783,7 @@ int run_query_driver(const string & query)
 		cout << cppgm::HostedCompilerSearchDirs();
 		return EXIT_SUCCESS;
 	}
-	throw logic_error("unknown driver query");
+	cppgm::driver_errors::ThrowInternal("unknown driver query");
 }
 
 
@@ -1408,14 +1434,15 @@ string find_library_object(const DriverInvocation & invocation,
     path += "lib" + library + ".o";
     if(regular_file_exists(path)) return path;
   }
-  throw runtime_error("library not found: " + library);
+  cppgm::driver_errors::ThrowInputOutput("library not found: " + library);
 }
 
 int run_compile_driver(const DriverInvocation & invocation,
                        const string & target)
 {
   if(invocation.inputs.size() != 1 || invocation.output.empty())
-    throw logic_error("compile mode requires one input and -o");
+    cppgm::driver_errors::ThrowInvocation(
+      "compile mode requires one input and -o");
 	const bool private_object =
       cppgm::compiler_object::UsesPrivateFormat(invocation.output);
 	const lowir_model::PresentationPolicy presentation_policy =
@@ -1628,7 +1655,8 @@ int run_compile_driver(const DriverInvocation & invocation,
 int run_link_driver(const DriverInvocation & invocation,
                     const string & target)
 {
-  if(invocation.output.empty()) throw logic_error("link mode requires -o");
+  if(invocation.output.empty())
+    cppgm::driver_errors::ThrowInvocation("link mode requires -o");
   const bool collect_stats = invocation.collect_stats;
   vector<cppgm::compiler_object::Object> objects;
   vector<lowir_native::RelocatableObject> foreign_objects;
@@ -1642,7 +1670,7 @@ int run_link_driver(const DriverInvocation & invocation,
             (invocation.inputs[i].size() >= 2 &&
              invocation.inputs[i].compare(
                invocation.inputs[i].size() - 2, 2, ".o") == 0))
-      throw runtime_error(
+      cppgm::compiler_object::ThrowCompilerObjectInputError(
         "native or invalid object cannot be linked by cppgm++: " +
         invocation.inputs[i]);
 	else
@@ -1706,15 +1734,16 @@ cppgm::PreprocessingOptions make_preprocessing_options()
   const time_t now = time(0);
   const tm * local = localtime(&now);
   if(!local) {
-    throw runtime_error("unable to determine build time");
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to determine build time");
   }
   const char * text = asctime(local);
   if(!text) {
-    throw runtime_error("unable to format build time");
+    cppgm::driver_errors::ThrowInputOutput("unable to format build time");
   }
   const string formatted(text);
   if(formatted.size() < 24) {
-    throw runtime_error("invalid asctime result");
+    cppgm::driver_errors::ThrowInternal("invalid asctime result");
   }
   cppgm::PreprocessingOptions options;
   options.build_date = formatted.substr(4, 7) + formatted.substr(20, 4);
@@ -1729,7 +1758,8 @@ int run_emit_ast_mode(const vector<string> & args)
       parse_source_output_invocation(args, false);
   ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
   if(!output) {
-    throw runtime_error("unable to open output file: " + invocation.output);
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to open output file: " + invocation.output);
   }
 
   const cppgm::PreprocessingOptions options = make_preprocessing_options();
@@ -1739,7 +1769,8 @@ int run_emit_ast_mode(const vector<string> & args)
     const string & path = invocation.inputs[i];
     ifstream input(path.c_str(), ios::in | ios::binary);
     if(!input) {
-      throw runtime_error("unable to open source file: " + path);
+      cppgm::driver_errors::ThrowInputOutput(
+        "unable to open source file: " + path);
     }
     const string source((istreambuf_iterator<char>(input)),
                         istreambuf_iterator<char>());
@@ -1777,7 +1808,8 @@ int run_emit_ast_mode(const vector<string> & args)
     output << "end translation unit\n";
   }
   if(!output) {
-    throw runtime_error("unable to write output file: " + invocation.output);
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to write output file: " + invocation.output);
   }
   return EXIT_SUCCESS;
 }
@@ -1788,7 +1820,8 @@ int run_emit_types_mode(const vector<string> & args)
       parse_source_output_invocation(args, false);
   ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
   if(!output) {
-    throw runtime_error("unable to open output file: " + invocation.output);
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to open output file: " + invocation.output);
   }
   const cppgm::PreprocessingOptions options = make_preprocessing_options();
   output << invocation.inputs.size() << " translation units\n";
@@ -1796,7 +1829,8 @@ int run_emit_types_mode(const vector<string> & args)
     const string & path = invocation.inputs[i];
     ifstream input(path.c_str(), ios::in | ios::binary);
     if(!input) {
-      throw runtime_error("unable to open source file: " + path);
+      cppgm::driver_errors::ThrowInputOutput(
+        "unable to open source file: " + path);
     }
     const string source((istreambuf_iterator<char>(input)),
                         istreambuf_iterator<char>());
@@ -1867,7 +1901,8 @@ int run_emit_types_mode(const vector<string> & args)
     output << "end translation unit\n";
   }
   if(!output) {
-    throw runtime_error("unable to write output file: " + invocation.output);
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to write output file: " + invocation.output);
   }
   return EXIT_SUCCESS;
 }
@@ -1942,7 +1977,8 @@ int run_emit_semantics_mode(const vector<string> & args)
       parse_source_output_invocation(args, false);
   ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
   if(!output) {
-    throw runtime_error("unable to open output file: " + invocation.output);
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to open output file: " + invocation.output);
   }
   const cppgm::PreprocessingOptions options = make_preprocessing_options();
   output << invocation.inputs.size() << " translation units\n";
@@ -1950,7 +1986,8 @@ int run_emit_semantics_mode(const vector<string> & args)
     const string & path = invocation.inputs[i];
     ifstream input(path.c_str(), ios::in | ios::binary);
     if(!input) {
-      throw runtime_error("unable to open source file: " + path);
+      cppgm::driver_errors::ThrowInputOutput(
+        "unable to open source file: " + path);
     }
     const string source((istreambuf_iterator<char>(input)),
                         istreambuf_iterator<char>());
@@ -2122,7 +2159,8 @@ int run_emit_semantics_mode(const vector<string> & args)
     output << "end translation unit\n";
   }
   if(!output) {
-    throw runtime_error("unable to write output file: " + invocation.output);
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to write output file: " + invocation.output);
   }
   return EXIT_SUCCESS;
 }
@@ -2136,14 +2174,17 @@ int run_emit_lowir_mode(const vector<string> & args)
 		parse_source_output_invocation(args, true);
 	ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
 	if(!output) {
-		throw runtime_error("unable to open output file: " + invocation.output);
+		cppgm::driver_errors::ThrowInputOutput(
+			"unable to open output file: " + invocation.output);
 	}
 	cppgm::PreprocessingOptions options = make_preprocessing_options();
 	vector<cppgm::lowering::Source> sources;
 	for(size_t i = 0; i < invocation.inputs.size(); ++i) {
 		const string & path = invocation.inputs[i];
 		ifstream input(path.c_str(), ios::in | ios::binary);
-		if(!input) throw runtime_error("unable to open source file: " + path);
+		if(!input)
+			cppgm::driver_errors::ThrowInputOutput(
+				"unable to open source file: " + path);
 		sources.push_back(cppgm::lowering::Source(path,
 			string((istreambuf_iterator<char>(input)), istreambuf_iterator<char>())));
 	}
@@ -2581,7 +2622,7 @@ int run_driver_mode(const vector<string> & args)
   case DriverMode::Link:
     return run_link_driver(invocation, target);
   }
-  throw logic_error("unreachable driver mode");
+  cppgm::driver_errors::ThrowInternal("unreachable driver mode");
 }
 
 int run_cppgm(const vector<string> & raw_args)
@@ -2611,7 +2652,7 @@ int run_cppgm(const vector<string> & raw_args)
     return run_driver_mode(args);
   }
 
-  throw logic_error("unreachable emit mode");
+  cppgm::driver_errors::ThrowInternal("unreachable emit mode");
 }
 
 }  // namespace
