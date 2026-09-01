@@ -4974,6 +4974,46 @@ general native inefficiency exposed by this experiment: each surviving
 45-byte predicate contains redundant narrow-value extensions and a
 constant-register compare.
 
+### Rejected grouped-predicate native cleanup
+
+The grouped-leaf result prompted a source-independent native follow-up.  At
+O2 and O3, a dying register-backed integer input was allowed to carry its
+conversion result, the existing adjacent-normalization pass composed a folded
+narrow-load proof through the immediately following wider normalization, and
+an encodable 32- or 64-bit comparison literal remained an immediate instead of
+being materialized in `rdx`.  These are machine-selection properties only;
+the prototype did not change LowIR or add hidden source/program recognition.
+
+On the macro translation unit, the conversion rule removed 94 MIR
+instructions, immediate comparison selection removed another 142, and
+normalization composition brought the total reduction to 281.  Each hot
+grouped predicate's true arm lost the load-to-register copy, both redundant
+extensions, and the constant-register move.  A fresh explicit-32-way G1
+contained all 221 objects, shrank the implementing compiler by 22,256 linked
+text bytes, successfully compiled the frozen TU, and emitted its exact
+accepted object hash
+`09d9fdc0bdd901d35c4f46075a4109b1a0c29ddb51fd5a17428335a2379dabba`.
+
+The source-diverse saving was nevertheless below the retention floor.  Ten
+per-side pinned software `task-clock` observations measured baseline versus
+candidate means of 786.957/787.852 ms (`1.001137292x`), medians of
+788.535/787.535 ms (`0.998731825x`), and trimmed means of
+787.374/787.911 ms (`1.000682649x`).  The static dynamic ceiling agrees: two
+instructions removed from roughly 11.50 million calls represent only about
+0.65% of the 3.55-billion-instruction frozen compile before considering the
+rest of the workload.  Hardware instruction events were unavailable, so a
+long software-profiler run was not warranted after the fast oracle was flat.
+The prototype was removed without PA38 contract movement.
+
+A more aggressive terminal fold was also rejected for correctness.  It wrote
+the comparison byte directly to `al` and removed the three-instruction
+widen/transfer/narrow return tail, saving another 42 macro MIR instructions.
+The resulting explicit-32-way G1 built, but failed the first frozen-TU compile
+with `invalid internal paste sequence`.  Internal narrow scalar returns
+currently provide a normalized full-register value to their callers; the
+machine ABI's low-byte observation alone is therefore not a sufficient proof
+for this rewrite.  Removing only that fold restored the exact frozen output.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -5097,6 +5137,8 @@ Fill one row for every retained or rejected dose.
 | D.once-cap | lower the existing global one-shot inline cap so GCC-like helper partitioning reduces `Lexer::Run` pressure | none; public diagnostic override only | caps 64/96/256 retain 2,934-byte `ScanPunctuator`; `Run` becomes 1,166/2,266/7,075 bytes vs 9,313 | cap 64 +3.185%/+2.027% wall/user; cap 96 +2.548%/+3.356%; cap 256 +2.532%/+2.027% | deterministic isolated probe outputs exact | rejected; smaller global layout loses useful locality and call removal |
 | D.post-state-query-inline | expand only index-zero guarded query calls structurally reached after same-object state changes, with full-body and shared-fast-return variants | none; rejected before PA37/PA38 movement | six-site full `Run` +558/object +560 bytes; six-site inverse split `Run` +684/object +740; 12-site split `Run` +1,199/object +1,780 | pinned task-clock `0.996629370x`, `0.994878446x`, and `0.997201623x` respectively | exact hot output for every dose; isolated probe links; prototypes removed before full self-host | rejected; best 0.51% generated-code result misses 1% before pass footprint |
 | D.grouped-loop-leaf-inline | inline only tiny call-free grouped clones at natural-loop sites while retaining their shared non-loop bodies | none; rejected before PA37/PA38 movement | three hot calls removed; `AnnotateParentheses` 525 to 776 bytes; macro +1,815 text; producer +8,664 text | isolated task-clock `0.987787789x`; full G1 batched mean/trimmed/median `0.991382860x`/`0.991153185x`/`0.991903553x`; self Ir `1.000983853x` | exact hot output; explicit-32-way G1; candidate Callgrind; prototype removed | rejected; sub-1% native result contradicts deterministic total and duplicated code; optimize the shared predicate encoding instead |
+| D.grouped-predicate-native | reuse a dying conversion input, compose its adjacent load-normalization proof, and retain encodable 32/64-bit comparison immediates at O2/O3 | none; rejected before PA38 movement | macro -281 MIR instructions; grouped true arm -4 MIR; G1 producer -22,256 linked text; hot object exact | ten-per-side task-clock mean/median/trimmed `1.001137292x`/`0.998731825x`/`1.000682649x`; static hot ceiling about -0.65% | explicit-32-way 221-object G1; frozen compile and exact output; hardware events unavailable; prototype removed | rejected; source-diverse timing is flat and deterministic ceiling misses 1% |
+| D.narrow-compare-return | write a terminal narrow comparison directly to the ABI byte return register and remove its widen/transfer/narrow tail | none; rejected before PA38 movement | macro -42 further MIR; G1 producer -800 text vs the safe native pair | explicit-32-way G1 failed its first frozen compile with `invalid internal paste sequence` | build completed, execution gate failed; removing only this fold restored exact output | rejected as unsound; callers rely on the current full-register narrow-return invariant |
 | C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
 | D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
 | Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
