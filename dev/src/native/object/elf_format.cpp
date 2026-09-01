@@ -1,4 +1,5 @@
 #include "native/object/elf_format.h"
+#include "native/errors.h"
 #include "native/object/string_table.h"
 #include "native/eh/lsda.h"
 #include "native/object/fixups.h"
@@ -7,7 +8,6 @@
 #include <chrono>
 #include <cstdint>
 #include <map>
-#include <stdexcept>
 #include <utility>
 
 namespace lowir_native {
@@ -40,7 +40,7 @@ void put_little(std::vector<unsigned char> & out, std::size_t offset,
                 std::uint64_t value, unsigned count)
 {
   if(offset + count > out.size())
-    throw std::logic_error("invalid ELF header field");
+    native_errors::ThrowInternal("invalid ELF header field");
   for(unsigned i = 0; i < count; ++i)
     out[offset + i] = static_cast<unsigned char>(value >> (i * 8));
 }
@@ -97,7 +97,7 @@ void index_symbol_labels(EncodedLabels & result,
     const EncodedSymbolLabel & label = source.symbol_labels[i];
     const std::uint32_t symbol = label.symbol;
     if(!label.symbol.valid() || symbol >= result.symbols.size())
-      throw std::logic_error("invalid encoded symbol label identity");
+      native_errors::ThrowInternal("invalid encoded symbol label identity");
     // Some TLS wrapper identities are also published at their backing
     // storage address.  Preserve the historical text-before-data choice.
     if(result.symbol_known[symbol]) continue;
@@ -115,7 +115,7 @@ void index_object_labels(EncodedLabels & result,
     const EncodedObjectLabel & label = source.object_labels[i];
     const std::uint32_t symbol = label.symbol;
     if(!label.symbol.valid() || symbol >= result.objects.size())
-      throw std::logic_error("invalid encoded object-symbol identity");
+      native_errors::ThrowInternal("invalid encoded object-symbol identity");
     if(result.object_known[symbol]) continue;
     result.objects[symbol].text = text;
     result.objects[symbol].section = section;
@@ -131,7 +131,7 @@ void index_eh_type_ref_labels(EncodedLabels & result,
     const EncodedEhTypeRefLabel & label = source.eh_type_ref_labels[i];
     const std::uint32_t symbol = label.symbol;
     if(!label.symbol.valid())
-      throw std::logic_error("invalid encoded EH type-reference identity");
+      native_errors::ThrowInternal("invalid encoded EH type-reference identity");
     bool known = false;
     for(std::size_t prior = 0; prior < result.eh_type_refs.size(); ++prior)
       known = known || result.eh_type_refs[prior].symbol == label.symbol;
@@ -234,7 +234,7 @@ void publish_object_aliases(
     const std::uint32_t target = target_id;
     if(!target_id.valid() || target >= labels.symbols.size() ||
        !labels.symbol_known[target])
-      throw std::runtime_error("native alias has undefined target: " +
+      native_errors::ThrowSource("native alias has undefined target: " +
         lowir_model::lowir_symbol_name(program, target_id));
     const EncodedLabelLocation location = labels.symbols[target];
     EncodedObjectLabel label;
@@ -245,7 +245,7 @@ void publish_object_aliases(
     else data_sections[location.section].object_labels.push_back(label);
     const std::uint32_t object = alias;
     if(!alias.valid() || object >= labels.objects.size())
-      throw std::logic_error("invalid object-alias identity");
+      native_errors::ThrowInternal("invalid object-alias identity");
     labels.objects[object] = location;
     labels.object_known[object] = 1;
   }
@@ -268,10 +268,10 @@ std::size_t text_slice_at(const std::vector<TextSlice> & slices,
       return value < slice.old_start;
     });
   if(after == slices.begin())
-    throw std::logic_error("encoded text item precedes every function");
+    native_errors::ThrowInternal("encoded text item precedes every function");
   const std::size_t index = static_cast<std::size_t>(after - slices.begin() - 1);
   if(offset > slices[index].old_end)
-    throw std::logic_error("encoded text item is outside a function");
+    native_errors::ThrowInternal("encoded text item is outside a function");
   return index;
 }
 
@@ -291,7 +291,7 @@ std::vector<EncodedSection> partition_weak_text(
     const std::uint32_t internal = symbol.internal_symbol;
     if(object >= weak_objects.size() ||
        !symbol.internal_symbol.valid() || internal >= weak_symbols.size())
-      throw std::logic_error("invalid weak symbol identity");
+      native_errors::ThrowInternal("invalid weak symbol identity");
     weak_objects[object] = 1;
     if(!weak_symbols[internal].valid())
       weak_symbols[internal] = symbol.object_symbol;
@@ -316,9 +316,9 @@ std::vector<EncodedSection> partition_weak_text(
     HostFunctionLayout & function = functions[order[position]];
     if(function.offset > source.bytes.size() ||
        function.size > source.bytes.size() - function.offset)
-      throw std::logic_error("encoded host function is out of bounds");
+      native_errors::ThrowInternal("encoded host function is out of bounds");
     if(position && slices.back().old_end > function.offset)
-      throw std::logic_error("overlapping encoded host functions");
+      native_errors::ThrowInternal("overlapping encoded host functions");
     lowir_model::StringId signature;
     const std::uint32_t program_symbol = function.program_symbol;
     if(function.program_symbol.valid() &&
@@ -327,7 +327,7 @@ std::vector<EncodedSection> partition_weak_text(
     if(function.object_symbol.valid()) {
       const std::uint32_t object = function.object_symbol;
       if(object >= weak_objects.size())
-        throw std::logic_error("invalid function object symbol identity");
+        native_errors::ThrowInternal("invalid function object symbol identity");
       if(weak_objects[object]) signature = function.object_symbol;
     }
 
@@ -346,14 +346,14 @@ std::vector<EncodedSection> partition_weak_text(
     } else {
       const std::uint32_t object = signature;
       if(object >= emitted_weak_objects.size())
-        throw std::logic_error("invalid weak signature identity");
+        native_errors::ThrowInternal("invalid weak signature identity");
       EncodedSection grouped;
       grouped.name = SectionIdentity(SK_TEXT_COMDAT, signature);
       grouped.comdat_signature = signature;
       grouped.flags = source.flags | 0x200;
       grouped.alignment = function.alignment;
       if(emitted_weak_objects[object])
-        throw std::logic_error("duplicate function COMDAT section name");
+        native_errors::ThrowInternal("duplicate function COMDAT section name");
       emitted_weak_objects[object] = 1;
       grouped.bytes.insert(grouped.bytes.end(),
         source.bytes.begin() + function.offset,
@@ -405,7 +405,7 @@ std::vector<EncodedSection> partition_weak_text(
     const TextSlice & slice = slices[text_slice_at(
       slices, source.fixups[i].offset)];
     if(source.fixups[i].offset >= slice.old_end)
-      throw std::logic_error("encoded text fixup is outside a function");
+      native_errors::ThrowInternal("encoded text fixup is outside a function");
     EncodedFixup fixup = source.fixups[i];
     fixup.offset = slice.new_start + fixup.offset - slice.old_start;
     result[slice.section].fixups.push_back(fixup);
@@ -414,7 +414,7 @@ std::vector<EncodedSection> partition_weak_text(
     const TextSlice & slice = slices[text_slice_at(
       slices, source.symbol_fixups[i].offset)];
     if(source.symbol_fixups[i].offset >= slice.old_end)
-      throw std::logic_error("encoded text symbol fixup is outside a function");
+      native_errors::ThrowInternal("encoded text symbol fixup is outside a function");
     EncodedSymbolFixup fixup = source.symbol_fixups[i];
     fixup.offset = slice.new_start + fixup.offset - slice.old_start;
     result[slice.section].symbol_fixups.push_back(fixup);
@@ -508,7 +508,7 @@ void append_sleb128(std::vector<unsigned char> & out, std::int64_t value)
 
 void align_bytes(std::vector<unsigned char> & out, std::size_t alignment)
 {
-  if(!alignment) throw std::logic_error("zero ELF section alignment");
+  if(!alignment) native_errors::ThrowInternal("zero ELF section alignment");
   while(out.size() % alignment) out.push_back(0);
 }
 
@@ -579,7 +579,7 @@ HostSection make_host_lsda(
         ordered < function.clause_order.size(); ++ordered) {
       const std::uint32_t block = function.clause_order[ordered];
       if(block >= function.clauses.size())
-        throw std::logic_error("invalid host EH clause identity");
+        native_errors::ThrowInternal("invalid host EH clause identity");
       const std::vector<mir_model::MirHostEhClause> & list =
         function.clauses[block];
       for(std::size_t clause = 0; clause < list.size(); ++clause) {
@@ -696,7 +696,7 @@ HostSection make_host_lsda(
         append_little(section.bytes, 0, 4);
       }
       if(section.bytes.size() - types_begin != type_bytes)
-        throw std::logic_error("invalid host EH type table size");
+        native_errors::ThrowInternal("invalid host EH type table size");
     }
     section.bytes.insert(section.bytes.end(),
       exception_specs.begin(), exception_specs.end());
@@ -837,12 +837,12 @@ void bind_host_section_targets(
     if(relocation.section_target == HostRelocation::HST_NONE) continue;
     if(relocation.section_target == HostRelocation::HST_TEXT) {
       if(relocation.text_section >= text_section_indexes.size())
-        throw std::logic_error("host function has invalid text section");
+        native_errors::ThrowInternal("host function has invalid text section");
       relocation.section_symbol =
         text_section_indexes[relocation.text_section];
     } else {
       if(!lsda_index)
-        throw std::logic_error("host EH relocation has no LSDA section");
+        native_errors::ThrowInternal("host EH relocation has no LSDA section");
       relocation.section_symbol = lsda_index;
     }
     relocation.section_target = HostRelocation::HST_NONE;
@@ -901,7 +901,7 @@ DeclarationObjectSymbols declaration_object_symbols(
       const std::string & object) {
     const std::uint32_t index = symbol;
     if(!symbol.valid() || index >= result.typed.size())
-      throw std::logic_error("invalid declaration symbol identity");
+      native_errors::ThrowInternal("invalid declaration symbol identity");
     result.typed[index].identity = object_identity;
     result.typed[index].spelling = &object;
   };
@@ -968,7 +968,7 @@ HostRelocation host_relocation_envelope(
     if(!local_address) {
       if(offset < 2 || offset > source.bytes.size() ||
          source.bytes[offset - 2] != 0x8d)
-        throw std::logic_error("symbol-address fixup is not RIP-relative LEA");
+        native_errors::ThrowInternal("symbol-address fixup is not RIP-relative LEA");
       source.bytes[offset - 2] = 0x8b;
     }
   } else {
@@ -1000,7 +1000,7 @@ std::vector<HostRelocation> host_relocations(
     const EncodedSymbolFixup & fixup = source.symbol_fixups[i];
     const std::uint32_t symbol = fixup.target;
     if(!fixup.target.valid() || symbol >= program.symbol_names.size())
-      throw std::logic_error("invalid host relocation symbol identity");
+      native_errors::ThrowInternal("invalid host relocation symbol identity");
     HostRelocation relocation = host_relocation_envelope(
       fixup.kind, fixup.address_binding, fixup.offset, fixup.addend, source);
     const DeclarationObjectSymbol * declared =
@@ -1035,7 +1035,7 @@ void add_unique_symbol(std::vector<HostSymbol> & symbols,
       prior.object_symbol : symbol.object_symbol;
     if(prior.object_symbol.valid() && symbol.object_symbol.valid() &&
        prior.object_symbol != symbol.object_symbol)
-      throw std::logic_error("conflicting ELF object-symbol identities");
+      native_errors::ThrowInternal("conflicting ELF object-symbol identities");
     if(prior.section == 0 && symbol.section != 0) prior = symbol;
     prior.named_lookup = named_lookup;
     if(!prior.object_symbol.valid()) prior.object_symbol = object_symbol;
@@ -1085,7 +1085,7 @@ void collect_host_symbols(
     [&required_program_symbols](lowir_model::SymbolId symbol) {
       const std::uint32_t index = symbol;
       if(!symbol.valid() || index >= required_program_symbols.size())
-        throw std::logic_error("invalid required program symbol identity");
+        native_errors::ThrowInternal("invalid required program symbol identity");
       required_program_symbols[index] = 1;
     };
   const auto require_relocation_labels =
@@ -1101,7 +1101,7 @@ void collect_host_symbols(
         } else if(relocations[i].eh_type_ref_symbol.valid()) {
           const std::uint32_t symbol = relocations[i].eh_type_ref_symbol;
           if(symbol >= required_program_symbols.size())
-            throw std::logic_error(
+            native_errors::ThrowInternal(
               "invalid required EH type-reference identity");
           if(std::find(required_eh_type_refs.begin(),
                        required_eh_type_refs.end(),
@@ -1184,7 +1184,7 @@ void collect_host_symbols(
     const EncodedLabelLocation * location =
       find_eh_type_ref_label(encoded_labels, identity);
     if(!location)
-      throw std::logic_error("required EH type reference has no label");
+      native_errors::ThrowInternal("required EH type reference has no label");
     HostSymbol symbol;
     symbol.name = host_eh_type_ref_symbol(program, declarations, identity);
     symbol.eh_type_ref_symbol = identity;
@@ -1200,7 +1200,7 @@ void collect_host_symbols(
   }
   if(required_eh_personality_ref) {
     if(!encoded_labels.eh_personality_ref_known)
-      throw std::logic_error(
+      native_errors::ThrowInternal(
         "required EH personality reference has no label");
     const EncodedLabelLocation & location =
       encoded_labels.eh_personality_ref;
@@ -1256,7 +1256,7 @@ void collect_host_symbols(
        entry >= encoded_labels.symbol_known.size() ||
        !encoded_labels.symbol_known[entry] ||
        !encoded_labels.symbols[entry].text)
-      throw std::logic_error("entry function has no encoded symbol");
+      native_errors::ThrowInternal("entry function has no encoded symbol");
     const EncodedLabelLocation & at = encoded_labels.symbols[entry];
     HostSymbol symbol;
     symbol.name = "main";
@@ -1281,7 +1281,7 @@ void collect_host_symbols(
     }
     const std::uint32_t object = symbol.object_symbol;
     if(object >= defined_objects.size())
-      throw std::logic_error("invalid defined object-symbol identity");
+      native_errors::ThrowInternal("invalid defined object-symbol identity");
     defined_objects[object] = 1;
   };
   for(std::size_t i = 0; i < locals.size(); ++i) mark_defined(locals[i]);
@@ -1296,7 +1296,7 @@ void collect_host_symbols(
       if(object && object->identity.valid()) {
         const std::uint32_t identity = object->identity;
         if(identity >= declared_tls_objects.size())
-          throw std::logic_error("invalid TLS object-symbol identity");
+          native_errors::ThrowInternal("invalid TLS object-symbol identity");
         declared_tls_objects[identity] = 1;
       } else if(object) declared_tls_symbols.insert(*object->spelling);
     }
@@ -1319,7 +1319,7 @@ void collect_host_symbols(
       if(relocations[i].object_symbol.valid()) {
         const std::uint32_t object = relocations[i].object_symbol;
         if(object >= defined_objects.size())
-          throw std::logic_error("invalid relocation object-symbol identity");
+          native_errors::ThrowInternal("invalid relocation object-symbol identity");
         if(defined_objects[object]) continue;
         HostSymbol symbol;
         symbol.object_symbol = relocations[i].object_symbol;
@@ -1374,7 +1374,7 @@ std::vector<unsigned char> host_external_global_definitions(
       const std::uint32_t object =
         source.global_declarations[i].metadata.object_symbol;
       if(object >= external_objects.size())
-        throw std::logic_error("invalid external RTTI object identity");
+        native_errors::ThrowInternal("invalid external RTTI object identity");
       external_objects[object] = 1;
     }
   std::vector<unsigned char> suppressed(program.symbol_names.size(), 0);
@@ -1410,7 +1410,7 @@ std::vector<unsigned char> make_symbol_table(
     const std::size_t index = table.size() / 24;
     const std::uint16_t section = section_symbols[i];
     if(section >= section_indexes.size())
-      throw std::logic_error("invalid ELF section-symbol identity");
+      native_errors::ThrowInternal("invalid ELF section-symbol identity");
     section_indexes[section] = index;
     append_little(table, 0, 4);
     table.push_back(3);
@@ -1432,13 +1432,13 @@ std::vector<unsigned char> make_symbol_table(
       if(symbol.program_symbol.valid()) {
         const std::uint32_t identity = symbol.program_symbol;
         if(identity >= program_indexes.size())
-          throw std::logic_error("invalid ELF program symbol identity");
+          native_errors::ThrowInternal("invalid ELF program symbol identity");
         program_indexes[identity] = index;
       }
       if(symbol.object_symbol.valid()) {
         const std::uint32_t identity = symbol.object_symbol;
         if(identity >= object_indexes.size())
-          throw std::logic_error("invalid ELF object-symbol identity");
+          native_errors::ThrowInternal("invalid ELF object-symbol identity");
         object_indexes[identity] = index;
       }
       if(symbol.eh_type_ref_symbol.valid()) {
@@ -1485,19 +1485,19 @@ std::vector<unsigned char> make_relocation_table(
       if(relocation.section_symbol < section_symbols.size())
         symbol_index = section_symbols[relocation.section_symbol];
       if(symbol_index == lowir_model::kInvalidCompactId)
-        throw std::logic_error("ELF relocation has no section symbol");
+        native_errors::ThrowInternal("ELF relocation has no section symbol");
     } else if(relocation.program_symbol.valid()) {
       const std::uint32_t identity = relocation.program_symbol;
       if(identity < program_symbols.size())
         symbol_index = program_symbols[identity];
       if(symbol_index == lowir_model::kInvalidCompactId)
-        throw std::logic_error("ELF relocation has no program symbol");
+        native_errors::ThrowInternal("ELF relocation has no program symbol");
     } else if(relocation.object_symbol.valid()) {
       const std::uint32_t identity = relocation.object_symbol;
       if(identity < object_symbols.size())
         symbol_index = object_symbols[identity];
       if(symbol_index == lowir_model::kInvalidCompactId)
-        throw std::logic_error("ELF relocation has no object symbol");
+        native_errors::ThrowInternal("ELF relocation has no object symbol");
     } else if(relocation.eh_type_ref_symbol.valid()) {
       for(std::size_t ref = 0; ref < eh_type_ref_symbols.size(); ++ref)
         if(eh_type_ref_symbols[ref].first ==
@@ -1506,17 +1506,17 @@ std::vector<unsigned char> make_relocation_table(
           break;
         }
       if(symbol_index == lowir_model::kInvalidCompactId)
-        throw std::logic_error("ELF relocation has no EH type reference");
+        native_errors::ThrowInternal("ELF relocation has no EH type reference");
     } else if(relocation.eh_personality_ref) {
       symbol_index = eh_personality_ref_symbol;
       if(symbol_index == lowir_model::kInvalidCompactId)
-        throw std::logic_error(
+        native_errors::ThrowInternal(
           "ELF relocation has no EH personality reference");
     } else {
       const std::unordered_map<std::string, std::size_t>::const_iterator symbol =
         symbols.find(relocation.target);
       if(symbol == symbols.end())
-        throw std::logic_error("ELF relocation has no symbol: " +
+        native_errors::ThrowInternal("ELF relocation has no symbol: " +
                                relocation.target);
       symbol_index = symbol->second;
     }
@@ -1562,7 +1562,7 @@ void append_function_comdat_groups(
     const std::uint32_t object = signature;
     if(object >= object_symbol_indexes.size() ||
        object_symbol_indexes[object] == lowir_model::kInvalidCompactId)
-      throw std::logic_error("function COMDAT has no signature symbol");
+      native_errors::ThrowInternal("function COMDAT has no signature symbol");
     HostSection group;
     group.name = SectionIdentity(SK_GROUP);
     group.type = 17;
@@ -1672,7 +1672,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   const auto append_section = [&sections](HostSection section)
     -> std::uint16_t {
       if(sections.size() >= 0xffff)
-        throw std::runtime_error("too many ELF sections");
+        native_errors::ThrowResourceLimit("too many ELF sections");
       sections.push_back(std::move(section));
       return static_cast<std::uint16_t>(sections.size() - 1);
     };

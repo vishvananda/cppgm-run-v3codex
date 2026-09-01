@@ -735,7 +735,8 @@ Append one row for each retained or rejected increment:
 | E7k | native driver, MIR model/optimizer, allocation, layout, and frame planning | invocation/I/O, malformed LowIR facts, resource ceilings, and allocation/MIR invariants shared generic bases | native invocation/I/O/LowIR-input/resource/internal types through one cold boundary; allocation decisions remain ordinary flow | PA38 native structural and generated-behavior surface | successful frozen remains 0; generic logic/runtime sites -23/-10 | -128 text, neutral rodata, +40 EH header, -160 unwind, -600 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `808ea131` | retained |
 | E7l | native instruction, operand, ABI, intrinsic, phi, and wide-value lowering | malformed LowIR combinations, unsupported target forms, allocation limits, and lowering invariants shared generic bases in hot selectors | native LowIR-input/source/resource/internal types through the cold boundary; selection and allocation alternatives remain ordinary flow | PA38 native structural and generated-behavior surface | successful frozen remains 0; generic logic/runtime sites -15/-40 | -320 text, +192 rodata, neutral EH header, -320 unwind, -1,096 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `aac2b352` | retained |
 | E7m | native host-EH analysis/LSDA and x86 encoding | MIR/region/encoding contradictions and one EH range ceiling shared generic logic base in hot backend owners | centralized native internal/resource/source cold boundary; encoder availability and EH traversal remain ordinary flow | PA38 native EH, encoding, structural, and generated behavior | successful frozen remains 0; generic logic sites -62 | -768 text, -64 rodata, -8 EH header, -360 unwind, -988 exception table | cumulative frozen user 0.440/0.445 s; paired +0.56% (neutral) | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `c87b815a` | retained |
-| E7n | native code buffer, relocations, fixups, labels, and ELF string table | symbol/label/relocation invariants, unresolved source symbols, and finite offset/identity ranges shared generic bases | native internal/source/resource types through the centralized cold boundary; fixup resolution and branch relaxation remain ordinary flow | PA38 native object, relocation, encoding, and generated behavior | successful frozen remains 0; generic logic/runtime sites -50/-19 | -2,368 text, neutral rodata, -24 EH header, -672 unwind, -1,064 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | pending | retained |
+| E7n | native code buffer, relocations, fixups, labels, and ELF string table | symbol/label/relocation invariants, unresolved source symbols, and finite offset/identity ranges shared generic bases | native internal/source/resource types through the centralized cold boundary; fixup resolution and branch relaxation remain ordinary flow | PA38 native object, relocation, encoding, and generated behavior | successful frozen remains 0; generic logic/runtime sites -50/-19 | -2,368 text, neutral rodata, -24 EH header, -672 unwind, -1,064 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `afcdcde4` | retained |
+| E7o | ELF section, symbol, relocation, COMDAT, and host-object layout | object-layout identities/invariants, undefined alias input, and 16-bit section ceiling shared generic bases | native internal/source/resource types through the centralized cold boundary; section/symbol lookup remains ordinary flow | PA38 native object, EH relocation, COMDAT, and generated behavior | successful frozen remains 0; generic logic/runtime sites -43/-2 | -256 text, neutral rodata, -16 EH header, -192 unwind, -456 exception table | cumulative frozen user 0.450/0.455 s; paired +1.67% (noise) | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1938,6 +1939,28 @@ A/B/B/A blocks reproduce object hash `8545fec6...`; baseline/candidate user
 medians both measure 0.450 seconds and paired candidate time is exactly
 neutral.  The centralized cold boundary reduces both hot-owner code and EH
 metadata while successful fixup/relaxation flow remains unchanged.
+
+### E7o execution record
+
+ELF section, symbol, relocation, COMDAT, and host-object layout contains no
+recovery catch around its generic failures.  Section placement, symbol lookup,
+weak grouping, and relocation selection retain their normal table and branch
+flow.  Contradictory section/symbol identities, object bounds, EH tables, and
+relocation envelopes now use native internal failure; an undefined source
+alias uses native source failure; and the 16-bit ELF section ceiling uses
+native resource failure.
+
+The successful frozen compile records zero throws.  Generic logic/runtime
+sites fall by 43/2 and the owner leaves the generic inventory, bringing the
+audit to 171/225/29.  Against E7n, `.text` changes 6,458,790 -> 6,458,534;
+`.rodata` remains 214,720; `.eh_frame_hdr` 51,596 -> 51,580; `.eh_frame`
+320,232 -> 320,040; and `.gcc_except_table` 125,860 -> 125,404.
+
+PA38 passes 45/45 and through-PA38 passes 5,477/5,477.  Four cumulative frozen
+A/B/B/A blocks reproduce object hash `8545fec6...`; baseline/candidate user
+medians are 0.450/0.455 seconds and paired candidate time is +1.67%, one timer
+tick at this sample size.  Exact output plus lower code/EH footprint and the
+surrounding neutral native slices classify that result as noise.
 
 ## Initial code map
 
