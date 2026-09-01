@@ -4417,6 +4417,41 @@ Both implementations were removed before README or test movement; this is
 another measured case where a large isolated loop win destructively
 interferes with the complete producer.
 
+### Rejected argument-memory LowIR boundary restoration
+
+The next prototype tested the contract extension needed to distinguish a
+call that may write arbitrary memory from one whose writes are confined to
+its pointer arguments. It restored the previously removed parameter facts
+`capture=nocapture` and `access=read|write`, added the function effect
+`effects=argmemonly`, carried all three through typed LowIR text and compiler
+objects, and raised the compiler-object version. Source lowering emitted the
+facts for the supported memory builtins rather than matching compiler source
+or symbol spellings in the optimizer.
+
+The O2/O3 memory-GVN consumer used the facts conservatively. A local slot
+passed to a `nocapture` boundary remained a local memory class; an
+`argmemonly` call invalidated every class rooted at a writable slot argument,
+preserved classes rooted at distinct slots, and retained the ordinary unknown
+memory barrier for any nonlocal or unresolved writable argument. A focused
+handwritten probe demonstrated the intended relationship: a load from the
+read-only source slot was reused across a copy call, while the destination
+load remained after the call. Text emission and O0 LowIR replay also
+round-tripped the facts.
+
+The compiler population was zero. The tokenizer object was byte-identical to
+the retained checkpoint. More decisively, a fresh explicit-32-way G1/G2
+compiler build produced identical `.text` for all 221 objects and an
+identical linked compiler at
+`01eaef45d89020d0202b8a8fb6208b306694e4423076840829b44a0f714c2c15`.
+The new consumer therefore changed no compiler code at all. The prototype,
+object-version bump, and transport fields were removed, so PA13 continues to
+exclude the metadata as required by the LowIR minimization audit.
+
+A future retry needs a demonstrably populated producer, such as a sound
+interprocedural body summary or a source-level semantic boundary used by real
+code, before changing PA13. Parser/serializer support and a synthetic
+handwritten optimization are not sufficient justification by themselves.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4526,6 +4561,7 @@ Fill one row for every retained or rejected dose.
 | D.final-frame-slot-coalescing | merge nonoverlapping scalar compiler-temporary frame bindings after final MIR liveness | none; rejected behavior was not moved into PA38 | `AppendUTF8` frame 208 to 80 and body 1,814 to 1,655 bytes; broad/bounded producer +19,344/+19,536 text | broad paired mean `1.005144x`; bounded `1.007573x` | PA38 45/45 during screening; prototypes removed | rejected; whole-function binding machinery regresses the fast oracle despite local compaction |
 | D.phi-fallback-slot-pool | allocate O3 acyclic fallback phi homes from the existing reusable temporary pool | provisional PA38 README and relationship/behavior reducer removed after rejection | safe `AppendUTF8` frame 208 to 80/body 1,814 to 1,655; fixed-point producer -17,024 text; unsafe precursor overwrote a still-live copied pointer | frozen task-clock aggregate `0.996735x`, paired median `0.997630x`; clean full O1 wall `0.986950x`, CPU `1.000409x` | unsafe G1 crash diagnosed; corrected property passed and 221-object G1/G2 exact at `49b77e47...`; prototype removed | rejected; safe source-diverse CPU is flat and below the 1% gate |
 | D.grouped-early-exit-unroll | fully unroll one bounded acyclic private-table loop and group iterations by a folded discriminator | none; rejected before contract movement | `Lexer::Run` 9,110 to 10,290 bytes; tokenizer Ir `0.969695x`; optional scalar `memcmp` lowering regressed to 462.16M Ir | self `1.000256x`, GCC `1.000144x`, normalized `1.000112x`; gap 1.529639x to 1.529810x | exact tokenizer and complete hot objects; fresh explicit-32-way G1; prototype removed | rejected; isolated 3.03% saving is canceled by complete-producer interference |
+| D.argmem-boundary | restore parameter capture/access and an argument-memory-only call effect, then consume them in memory GVN | none; rejected before PA13/PA37 contract movement | focused source-slot reuse works; tokenizer exact; all 221 G1/G2 `.text` sections and linked compiler exact | no timing warranted because generated compiler code is unchanged | explicit-32-way G1/G2; compiler `01eaef45...` exact; prototype removed | rejected; no real compiler population, so the removed LowIR surface remains unjustified |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
