@@ -1,9 +1,9 @@
 #include "preprocess/tokens/pp_tokenizer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstring>
-#include <stdexcept>
 #include <string>
 
 #include "preprocess/tokens/IPPTokenStream.h"
@@ -21,6 +21,18 @@ namespace
 
 const int kEndOfFile = -1;
 
+__attribute__((cold, noinline, noreturn))
+void ThrowLexicalSourceError(const char* message)
+{
+	throw SourceError(message, CompilerErrorDomain::LEXICAL);
+}
+
+__attribute__((cold, noinline, noreturn))
+void ThrowLexicalInternalError(const char* message)
+{
+	throw InternalCompilerError(message, CompilerErrorDomain::LEXICAL);
+}
+
 template <typename T, std::size_t Capacity>
 class FixedQueue
 {
@@ -36,7 +48,7 @@ public:
 	const T& operator[](std::size_t offset) const
 	{
 		if (offset >= size_)
-			throw std::logic_error("fixed lookahead queue underflow");
+			ThrowLexicalInternalError("fixed lookahead queue underflow");
 		return unchecked(offset);
 	}
 
@@ -49,7 +61,7 @@ public:
 	void push_back(const T& value)
 	{
 		if (size_ == Capacity)
-			throw std::logic_error("fixed lookahead queue overflow");
+			ThrowLexicalInternalError("fixed lookahead queue overflow");
 		data_[(begin_ + size_) % Capacity] = value;
 		++size_;
 	}
@@ -57,7 +69,7 @@ public:
 	void pop_front()
 	{
 		if (empty())
-			throw std::logic_error("fixed lookahead queue underflow");
+			ThrowLexicalInternalError("fixed lookahead queue underflow");
 		begin_ = (begin_ + 1) % Capacity;
 		--size_;
 	}
@@ -146,7 +158,7 @@ int HexValue(int c)
 		return c - 'a' + 10;
 	if (c >= 'A' && c <= 'F')
 		return c - 'A' + 10;
-	throw std::logic_error("hex value requested for non-hex character");
+	ThrowLexicalInternalError("hex value requested for non-hex character");
 }
 
 bool IsIdentifierNondigit(int c)
@@ -184,7 +196,7 @@ void AppendUTF8(int code_point, std::string* output)
 {
 	if (code_point < 0 || code_point > 0x10FFFF ||
 		(code_point >= 0xD800 && code_point <= 0xDFFF))
-		throw std::runtime_error("invalid Unicode code point");
+		ThrowLexicalInternalError("invalid Unicode code point");
 	if (code_point <= 0x7F)
 		output->push_back(static_cast<char>(code_point));
 	else if (code_point <= 0x7FF)
@@ -223,7 +235,7 @@ public:
 			source_[source_.size() - 1] != '\n';
 	}
 
-	int Next()
+	__attribute__((noinline)) int Next()
 	{
 		if (position_ < source_.size())
 		{
@@ -273,10 +285,10 @@ private:
 	int Continuation(std::size_t offset) const
 	{
 		if (position_ + offset >= source_.size())
-			throw std::runtime_error("truncated UTF-8 character");
+			ThrowLexicalSourceError("truncated UTF-8 character");
 		const int byte = static_cast<unsigned char>(source_[position_ + offset]);
 		if ((byte & 0xC0) != 0x80)
-			throw std::runtime_error("invalid UTF-8 continuation byte");
+			ThrowLexicalSourceError("invalid UTF-8 continuation byte");
 		return byte & 0x3F;
 	}
 
@@ -300,7 +312,7 @@ private:
 			const int third = Continuation(2);
 			if ((first == 0xE0 && second < 0x20) ||
 				(first == 0xED && second >= 0x20))
-				throw std::runtime_error("invalid UTF-8 scalar value");
+				ThrowLexicalSourceError("invalid UTF-8 scalar value");
 			position_ += 3;
 			return ((first & 0x0F) << 12) | (second << 6) | third;
 		}
@@ -311,7 +323,7 @@ private:
 			const int fourth = Continuation(3);
 			if ((first == 0xF0 && second < 0x10) ||
 				(first == 0xF4 && second >= 0x10))
-				throw std::runtime_error("invalid UTF-8 scalar value");
+				ThrowLexicalSourceError("invalid UTF-8 scalar value");
 			position_ += 4;
 			return ((first & 0x07) << 18) | (second << 12) |
 				(third << 6) | fourth;
@@ -324,7 +336,7 @@ private:
 			++position_;
 			return DecodeWindows1252Byte(first);
 		}
-		throw std::runtime_error("invalid UTF-8 leading byte");
+		ThrowLexicalSourceError("invalid UTF-8 leading byte");
 	}
 
 	const std::string& source_;
@@ -360,7 +372,7 @@ public:
 		  apply_translation_(apply_translation), last_line_(1), last_column_(1)
 	{}
 
-	int Next()
+	__attribute__((noinline)) int Next()
 	{
 		if (!apply_translation_)
 		{
@@ -408,7 +420,8 @@ public:
 	{
 		if (!physical_pending_.empty() || !phase1_pending_.empty() ||
 			!ucn_pending_.empty())
-			throw std::logic_error("raw mode entered with translated lookahead");
+			ThrowLexicalInternalError(
+				"raw mode entered with translated lookahead");
 		const int result = physical_.Next();
 		last_line_ = physical_.LastLine();
 		last_column_ = physical_.LastColumn();
@@ -502,12 +515,12 @@ private:
 		{
 			const int digit = TakePhase1().value;
 			if (!IsHexDigit(digit))
-				throw std::runtime_error("invalid universal character name");
+				ThrowLexicalSourceError("invalid universal character name");
 			value = (value << 4) | HexValue(digit);
 		}
 		if (value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF) ||
 			(value < 0xA0 && value != '$' && value != '@' && value != '`'))
-			throw std::runtime_error("invalid universal character value");
+			ThrowLexicalSourceError("invalid universal character value");
 		return LocatedCodePoint(
 			static_cast<int>(value), current.line, current.column);
 	}
@@ -729,7 +742,7 @@ private:
 			while (!(Peek(0) == '*' && Peek(1) == '/'))
 			{
 				if (Peek(0) == kEndOfFile)
-					throw std::runtime_error("unterminated block comment");
+					ThrowLexicalSourceError("unterminated block comment");
 				Take();
 			}
 			Take();
@@ -751,7 +764,7 @@ private:
 		while (Peek(0) != closing)
 		{
 			if (Peek(0) == '\n' || Peek(0) == kEndOfFile)
-				throw std::runtime_error("unterminated header name");
+				ThrowLexicalSourceError("unterminated header name");
 			AppendTake(&spelling);
 		}
 		AppendTake(&spelling);
@@ -826,7 +839,7 @@ private:
 		while (Peek(0) != quote)
 		{
 			if (Peek(0) == '\n' || Peek(0) == kEndOfFile)
-				throw std::runtime_error("unterminated quoted literal");
+				ThrowLexicalSourceError("unterminated quoted literal");
 			if (Peek(0) == '\\')
 				ScanEscapeSequence(&spelling);
 			else
@@ -861,7 +874,7 @@ private:
 		AppendTake(spelling);
 		const int escaped = Peek(0);
 		if (escaped == '\n' || escaped == kEndOfFile)
-			throw std::runtime_error("unterminated escape sequence");
+			ThrowLexicalSourceError("unterminated escape sequence");
 		AppendTake(spelling);
 		if (IsSimpleEscape(escaped))
 			return;
@@ -874,12 +887,12 @@ private:
 		if (escaped == 'x')
 		{
 			if (!IsHexDigit(Peek(0)))
-				throw std::runtime_error("hex escape has no digits");
+				ThrowLexicalSourceError("hex escape has no digits");
 			while (IsHexDigit(Peek(0)))
 				AppendTake(spelling);
 			return;
 		}
-		throw std::runtime_error("invalid escape sequence");
+		ThrowLexicalSourceError("invalid escape sequence");
 	}
 
 	bool ScanIdentifierSuffix(std::string* spelling)
@@ -914,9 +927,9 @@ private:
 				break;
 			}
 			if (!IsRawDelimiterCharacter(current))
-				throw std::runtime_error("invalid raw string delimiter");
+				ThrowLexicalSourceError("invalid raw string delimiter");
 			if (delimiter_size == 16)
-				throw std::runtime_error("raw string delimiter is too long");
+				ThrowLexicalSourceError("raw string delimiter is too long");
 			delimiter[delimiter_size++] = current;
 			AppendUTF8(current, &spelling);
 		}
@@ -926,7 +939,7 @@ private:
 		{
 			const int current = translation_.NextRawCodePoint();
 			if (current == kEndOfFile)
-				throw std::runtime_error("unterminated raw string literal");
+				ThrowLexicalSourceError("unterminated raw string literal");
 			AppendUTF8(current, &spelling);
 			const int expected = matched == 0 ? ')' :
 				(matched <= delimiter_size ? delimiter[matched - 1] : '"');
@@ -1037,7 +1050,7 @@ private:
 	void ScanNonWhitespaceCharacter()
 	{
 		if (Peek(0) == '\'' || Peek(0) == '"')
-			throw std::runtime_error("unrecognized quote");
+			ThrowLexicalSourceError("unrecognized quote");
 		std::string& spelling = StartTokenSpelling();
 		AppendTake(&spelling);
 		output_.emit_non_whitespace_char(spelling);

@@ -249,4 +249,5 @@ list; parameter substitution breaks the nesting relationship described above.
 For `##`, paste the raw token spellings, retokenize the result, and rescan the
 new token.  Do not simply append the pasted spelling to the final output.  A
 pasted identifier may name a macro, and the next rescan is what decides whether
-it expands.
+it expands.  The pasted spelling must form exactly one preprocessing token;
+otherwise reject the source file.

@@ -24,6 +24,7 @@
 #include "preprocess/tokens/IPPTokenStream.h"
 #include "preprocess/macros/macro_operator_code.h"
 #include "preprocess/tokens/pp_tokenizer.h"
+#include "support/exceptions.h"
 
 namespace cppgm
 {
@@ -638,12 +639,12 @@ public:
 		Add(TK_NON_WHITESPACE, data);
 	}
 
-	Token Result()
+	bool TakeResult(Token* result)
 	{
 		if (count_ != 1)
-			throw std::runtime_error(
-				"token paste did not produce one preprocessing token");
-		return std::move(result_);
+			return false;
+		*result = std::move(result_);
+		return true;
 	}
 
 private:
@@ -2370,14 +2371,11 @@ private:
 			++stats_->pasted_tokens;
 			stats_->pasted_spelling_bytes += spelling.size();
 		}
-		try
-		{
-			return collector.Result();
-		}
-		catch (const std::runtime_error&)
-		{
-			throw std::runtime_error("invalid token paste: " + spelling);
-		}
+		Token result;
+		if (!collector.TakeResult(&result))
+			throw SourceError("invalid token paste: " + spelling,
+				CompilerErrorDomain::PREPROCESSING);
+		return result;
 	}
 
 	static std::size_t ArgumentStorageBytes(const PendingExpansion& pending)

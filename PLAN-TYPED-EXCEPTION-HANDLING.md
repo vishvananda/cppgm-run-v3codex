@@ -713,7 +713,8 @@ Append one row for each retained or rejected increment:
 | E4h | language/host extensions, builtins, range-for, source exceptions, and ABI tags | extension diagnostics, limits, and retained syntax invariants shared generic bases | typed semantic/resource/internal failures; candidate and cleanup status flow unchanged | PA23 builtin/template behavior and PA26 source-language exceptions | successful full remains 0; generic logic/runtime sites -44/-129 | -11,264 text, -1,856 exception table, +264 unwind | frozen neutral; full covered by adjacent periodic checkpoints | PA23 414/414; PA26 114/114; through-PA26 3,821/3,821; frozen object exact | `c3f1bf9d` | retained |
 | E4i | semantic graph/model and source presentation | model diagnostics, capacity, and identity invariants shared generic bases | typed semantic/resource/internal failures; semantic generic-throw census reaches zero | PA12 graph/type model and cumulative PA23 presentation behavior | successful full remains 0; semantic generic logic/runtime sites -36/-41 | -19,136 text, -4,424 exception table, -696 unwind | frozen exact tie; clean mirrored full O1 -0.09% CPU, O3 -0.52% CPU | PA12 184/184; PA23 414/414; through-PA26 3,821/3,821; 32-way inception exact | `3bc47eb5` | retained |
 | E4j | semantic state restoration | 49 semantic catch-alls manually restored counters, values, or container depth | 39 simple regions use scoped restoration; 10 transactional/scratch cleanup-and-rethrow regions remain explicit | PA12, PA17, PA21, PA23, PA26 and cumulative semantic behavior | successful full remains 0; catch-all sites -39 | -896 text, -840 exception table, neutral unwind | frozen -1.04% user; 32-way full O1 -0.04% CPU, O3 -0.09% CPU | PA12 184/184; PA17 247/247; PA21 151/151; PA23 414/414; PA26 114/114; through-PA26 3,821/3,821; 222 O1/O3 objects and inception exact | `7f46e61e` | retained |
-| E5a | PA14 ABI fact adapter | broad standard catches translated numeric, allocation, encoder, and I/O failures alike | coded `SerializedInputError` with line context; only invalid/range numeric exceptions translate; typed I/O/internal propagation | PA14 normalized/malformed facts and cumulative through-PA14 behavior | successful full remains 0; generic logic sites -24; internal standard catches -3 | +192 text, +4 exception table, +104 unwind | frozen -1.04% user | PA14 117/117; through-PA14 1,081/1,081; frozen object exact | pending | retained |
+| E5a | PA14 ABI fact adapter | broad standard catches translated numeric, allocation, encoder, and I/O failures alike | coded `SerializedInputError` with line context; only invalid/range numeric exceptions translate; typed I/O/internal propagation | PA14 normalized/malformed facts and cumulative through-PA14 behavior | successful full remains 0; generic logic sites -24; internal standard catches -3 | +192 text, +4 exception table, +104 unwind | frozen -1.04% user | PA14 117/117; through-PA14 1,081/1,081; frozen object exact | `538b79f7` | retained |
+| E5b | lexical input and preprocessing-token paste | generic lexical failures plus broad runtime translation for generated-token cardinality | lexical source/internal types; direct one-token status; preprocessing source failure; explicit cursor inlining boundary | PA1 source tokenization and PA4 valid/invalid paste behavior | successful full remains 0; generic logic/runtime sites -5/-20; internal runtime catches -1 | -16,000 text, -64 rodata, -2,104 exception table, -280 unwind | frozen -6.19% user; full O1 -1.91% CPU, O3 -2.34% CPU | PA1 53/53; PA4 75/75; through-PA4 174/174; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1357,6 +1358,44 @@ stays 214,272, `.eh_frame_hdr` 51,444 -> 51,452, `.eh_frame`
 frozen outputs remain exact at `8545fec6...`; baseline/candidate user medians
 are 0.480/0.475 seconds.  The small typed-context cost is retained with no
 measured throughput regression.
+
+### E5b execution record
+
+The phase-1 tokenizer now distinguishes invalid source characters, UTF-8,
+UCNs, comments, headers, literals, and escapes (`SourceError`, lexical domain)
+from impossible queue, Unicode-output, hexadecimal, and raw-mode states
+(`InternalCompilerError`, lexical domain).  Macro paste no longer catches all
+`runtime_error` failures.  Its collector returns an explicit boolean for the
+expected “exactly one preprocessing token” decision; the terminal arm reports
+a preprocessing-domain source failure.  Allocation and tokenizer-internal
+failures propagate.  PA4 now states and behaviorally checks the one-token paste
+rule rather than inspecting exception text or implementation source.
+
+The first mechanically typed build was rejected after twelve frozen lanes
+showed a repeatable 25% user-time regression.  Stage telemetry localized the
+entire increase to preprocessing (about 331 ms -> 453 ms); parsing, semantics,
+and lowering were unchanged.  Binary inspection found that changing the cold
+queue throw bodies had altered GCC's inlining decision: the full physical and
+translation cursor pipeline was duplicated into each lexer lookahead clone,
+growing `Lexer::Peek` from roughly 200 bytes to 7.8 KiB and `Lexer::Run` from
+5.5 KiB to 9.2 KiB.  This was code-layout/inlining interference, not exception
+execution—the valid workload still throws zero times.
+
+The retained version explicitly preserves the established `PhysicalCursor`
+and `TranslationCursor` call boundaries with `noinline`; a screened attempt to
+also prevent `Lexer::Peek` inlining regressed 18% and was rejected.  Four final
+ABBA blocks reverse the original result: frozen baseline/candidate user medians
+are 0.485/0.455 seconds (-6.19%), with exact object hash `8545fec6...`.
+The 32-way full A/B/B/A controls reproduce all 222 objects and final compiler
+hashes.  Requested-O1 aggregate CPU averages 514.790/504.940 seconds (-1.91%);
+requested-O3 averages 518.780/506.635 seconds (-2.34%).
+
+The exception audit ratchets by 5 generic logic throws, 20 generic runtime
+throws, one generic-throw file, and the last internal runtime catch.  Against
+`538b79f7`, `.text` changes 6,547,174 -> 6,531,174, `.rodata`
+214,272 -> 214,208, `.eh_frame_hdr` 51,452 -> 51,420, `.eh_frame`
+323,000 -> 322,752, and `.gcc_except_table` 146,624 -> 144,520.
+PA1 passes 53/53, PA4 passes 75/75, and through-PA4 passes 174/174.
 
 ## Initial code map
 
