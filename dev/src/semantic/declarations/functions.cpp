@@ -1,7 +1,6 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 #include "semantic/extensions/function_control_attributes.h"
-
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -15,10 +14,10 @@ void Analyzer::AnalyzeSimpleFunctionDeclaration(NodeId source_declaration,
 	const SpecInfo& spec, DeclaratorInfo parsed)
 {
 	if (FindChild(declarator, ::cppgm::syntax::STAG_VIRT_SPECIFIER) != kNoNode)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"virt-specifier is only allowed in a class definition");
 	if (spec.thread_local_storage)
-		throw std::runtime_error("thread_local function");
+		ThrowSemanticError("thread_local function");
 	const EntityId function_owner =
 		program_->EntityForScope(declaration_scope);
 	if (spec.is_constexpr)

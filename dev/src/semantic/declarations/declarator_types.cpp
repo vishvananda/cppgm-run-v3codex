@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <cstdint>
 #include <unordered_set>
@@ -99,7 +100,7 @@ TypeId Analyzer::BuildArrayDeclaratorType(NodeId suffix,
 		if (expression.value == 0)
 		{
 			if (source_type_view_)
-				throw std::runtime_error("zero-length array is outside PA11");
+				ThrowSemanticError("zero-length array is outside PA11");
 			return CandidateTypeFormation(
 				program_->types.TryZeroLengthArray(element),
 				"invalid zero-length array element type");

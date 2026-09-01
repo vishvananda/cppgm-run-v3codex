@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <sstream>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -21,7 +21,7 @@ void Analyzer::AnalyzeDeclaratorlessSimpleDeclaration(
 	if (anonymous_union)
 	{
 		if (!local && spec.storage_class != STORAGE_CLASS_STATIC)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"namespace anonymous union must be static");
 		DeclareAnonymousUnionObject(class_specifier, scope, output_parent,
 			spec.type, local, spec.storage_class);
@@ -41,7 +41,7 @@ void Analyzer::DeclareAnonymousUnionObject(NodeId source,
 	const EntityId entity = EntityOf(type);
 	if (entity == kNoEntity ||
 		program_->entities[entity].flavor != NAMED_UNION)
-		throw std::logic_error("anonymous union object has no union entity");
+		ThrowInternalCompilerError("anonymous union object has no union entity");
 	std::ostringstream generated;
 	generated << "__anonymous_union_storage__" << arena_->TokenFirst(source)
 		<< '_' << arena_->TokenLast(source);
@@ -81,7 +81,7 @@ void Analyzer::DeclareAnonymousUnionObject(NodeId source,
 		const BindingRecord source_record = program_->bindings[members[i]];
 		if (program_->LookupDirect(scope, source_record.name,
 			LOOKUP_ORDINARY).ordinary != kNoBinding)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"anonymous union member conflicts in enclosing scope");
 		const BindingId injected = program_->AddBinding(scope, BIND_VARIABLE,
 			source_record.name, source_record.type, source_record.constant,

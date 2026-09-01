@@ -1,7 +1,7 @@
 #include "semantic/analysis/index_tables.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -45,7 +45,7 @@ bool UsingFunctionIdentityTable::Insert(const UsingFunctionIdentityKey& key)
 		slot = (slot + 1) & mask;
 	}
 	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many using-function identities");
+		ThrowSemanticResourceLimit("too many using-function identities");
 	entries_.push_back(key);
 	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
 	return true;
@@ -80,7 +80,7 @@ FlatBindingIdSet::FlatBindingIdSet()
 bool FlatBindingIdSet::Insert(BindingId binding)
 {
 	if (binding == kNoBinding)
-		throw std::logic_error("invalid canonical binding identity");
+		ThrowInternalCompilerError("invalid canonical binding identity");
 	if ((size_ + 1) * 10 > slots_.size() * 7)
 		Rehash(slots_.size() * 2);
 	const std::size_t mask = slots_.size() - 1;
@@ -192,7 +192,7 @@ CompactIndexSequence& TemplateArgumentPackBindingTable::Insert(
 	ScopeId scope, NameId name)
 {
 	if (scope == kNoScope || name == 0)
-		throw std::logic_error("template argument pack key is invalid");
+		ThrowInternalCompilerError("template argument pack key is invalid");
 	if ((entries_.size() + 1) * 10 > slots_.size() * 7)
 		Rehash(slots_.size() * 2);
 	const std::uint64_t key =
@@ -202,12 +202,12 @@ CompactIndexSequence& TemplateArgumentPackBindingTable::Insert(
 	while (slots_[slot] != 0)
 	{
 		if (entries_[slots_[slot] - 1].key == key)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"template argument pack rebound in one scope");
 		slot = (slot + 1) & mask;
 	}
 	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many template argument pack bindings");
+		ThrowSemanticResourceLimit("too many template argument pack bindings");
 	if (scope_heads_.size() <= scope)
 		scope_heads_.resize(static_cast<std::size_t>(scope) + 1, 0);
 	entries_.push_back(Entry(key, scope_heads_[scope]));
@@ -238,11 +238,11 @@ void TemplateArgumentPackBindingTable::CopyNames(
 	for (std::uint32_t link = scope_heads_[scope]; link != 0;)
 	{
 		if (link > entries_.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"template argument pack scope index is invalid");
 		const Entry& entry = entries_[link - 1];
 		if (static_cast<ScopeId>(entry.key >> 32) != scope)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"template argument pack scope index owner is invalid");
 		names->push_back(static_cast<NameId>(entry.key));
 		link = entry.next_in_scope;
@@ -301,7 +301,7 @@ CompactIndexSequence& IndexedSequenceTable::Ensure(std::uint64_t key)
 		slot = (slot + 1) & mask;
 	}
 	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many indexed semantic sequences");
+		ThrowSemanticResourceLimit("too many indexed semantic sequences");
 	entries_.push_back(Entry(key));
 	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
 	return entries_.back().values;
@@ -368,7 +368,7 @@ CompactIndexSequence& EnumOperatorCandidateTable::Ensure(
 		slot = (slot + 1) & mask;
 	}
 	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many indexed enum operator sequences");
+		ThrowSemanticResourceLimit("too many indexed enum operator sequences");
 	entries_.push_back(Entry(key));
 	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
 	return entries_.back().values;
@@ -458,7 +458,7 @@ void CallConversionTable::Insert(std::uint64_t key,
 		slot = (slot + 1) & mask;
 	}
 	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many call conversion facts");
+		ThrowSemanticResourceLimit("too many call conversion facts");
 	entries_.push_back(Entry(key, fact));
 	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
 }
@@ -506,7 +506,7 @@ void FunctionSignatureTable::Insert(const FunctionSignatureKey& key,
 		slot = (slot + 1) & mask;
 	}
 	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many function signatures");
+		ThrowSemanticResourceLimit("too many function signatures");
 	entries_.push_back(Entry(key, binding));
 	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
 }
@@ -575,7 +575,7 @@ TemplateArgumentPartitionId TemplateArgumentPartitionTable::Intern(
 	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max() ||
 		offsets_.size() >
 			std::numeric_limits<std::uint32_t>::max() - offsets.size())
-		throw std::runtime_error("too many template argument partitions");
+		ThrowSemanticResourceLimit("too many template argument partitions");
 	const TemplateArgumentPartitionId id =
 		static_cast<TemplateArgumentPartitionId>(entries_.size());
 	const std::uint32_t first = static_cast<std::uint32_t>(offsets_.size());
@@ -656,7 +656,7 @@ FunctionTemplateResultIdentityId FunctionTemplateResultIdentityTable::Intern(
 		atoms.size() > std::numeric_limits<std::uint32_t>::max() ||
 		atoms_.size() >
 			std::numeric_limits<std::uint32_t>::max() - atoms.size())
-		throw std::runtime_error(
+		ThrowSemanticResourceLimit(
 			"too many canonical function-template result identities");
 	const FunctionTemplateResultIdentityId id =
 		static_cast<FunctionTemplateResultIdentityId>(entries_.size());
@@ -673,7 +673,7 @@ void FunctionTemplateResultIdentityTable::CopyAtoms(
 	std::vector<std::uint64_t>* atoms) const
 {
 	if (!atoms || identity >= entries_.size())
-		throw std::logic_error("function template result identity is invalid");
+		ThrowInternalCompilerError("function template result identity is invalid");
 	const Entry& entry = entries_[identity];
 	atoms->assign(atoms_.begin() + entry.first,
 		atoms_.begin() + entry.first + entry.count);
@@ -764,9 +764,9 @@ void TemplateSpecializationTable::SetRequest(
 	BindingId binding)
 {
 	if (state == TEMPLATE_REQUEST_NOT_STARTED)
-		throw std::logic_error("cannot store an unstarted template request");
+		ThrowInternalCompilerError("cannot store an unstarted template request");
 	if (state == TEMPLATE_REQUEST_SUCCEEDED && binding == kNoBinding)
-		throw std::logic_error("successful template request has no binding");
+		ThrowInternalCompilerError("successful template request has no binding");
 	if (state != TEMPLATE_REQUEST_SUCCEEDED) binding = kNoBinding;
 	if ((entries_.size() + 1) * 10 > slots_.size() * 7)
 		Rehash(slots_.size() * 2);
@@ -781,14 +781,14 @@ void TemplateSpecializationTable::SetRequest(
 			{
 				if (state != TEMPLATE_REQUEST_SUCCEEDED ||
 					entry.binding != binding)
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"completed template request changed result");
 				return;
 			}
 			if (entry.state == TEMPLATE_REQUEST_FAILED)
 			{
 				if (state != TEMPLATE_REQUEST_FAILED)
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"failed template request changed result");
 				return;
 			}
@@ -801,7 +801,7 @@ void TemplateSpecializationTable::SetRequest(
 		slot = (slot + 1) & mask;
 	}
 	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many template specializations");
+		ThrowSemanticResourceLimit("too many template specializations");
 	entries_.push_back(Entry(key, binding, state));
 	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
 }
@@ -817,7 +817,7 @@ void TemplateSpecializationTable::ResetInProgressRequest(
 		if (entry.key == key)
 		{
 			if (entry.state != TEMPLATE_REQUEST_IN_PROGRESS)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"cannot reset a completed template request");
 			entry.binding = kNoBinding;
 			entry.state = TEMPLATE_REQUEST_NOT_STARTED;
@@ -825,7 +825,7 @@ void TemplateSpecializationTable::ResetInProgressRequest(
 		}
 		slot = (slot + 1) & mask;
 	}
-	throw std::logic_error("cannot reset an unknown template request");
+	ThrowInternalCompilerError("cannot reset an unknown template request");
 }
 
 void TemplateSpecializationTable::Rehash(std::size_t capacity)

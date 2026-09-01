@@ -8,7 +8,6 @@
 #include <limits>
 #include <ostream>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -93,7 +92,7 @@ FundamentalKind Analyzer::FundamentalOf(TypeId type) const
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
 	if (record.kind != TYPE_FUNDAMENTAL)
-		throw std::logic_error("fundamental kind requested for non-fundamental");
+		ThrowInternalCompilerError("fundamental kind requested for non-fundamental");
 	return record.fundamental;
 }
 bool Analyzer::IsIntegral(TypeId type, bool allow_scoped_enum) const
@@ -211,7 +210,7 @@ TypeId Analyzer::CommonArithmeticType(TypeId left, TypeId right) const
 	case FUND_LONG_LONG_INT: return program_->types.Fundamental(FUND_UNSIGNED_LONG_LONG_INT);
 	case FUND_INT128: return program_->types.Fundamental(FUND_UINT128);
 	default:
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"usual arithmetic conversion has no unsigned counterpart");
 	}
 }
@@ -464,7 +463,7 @@ ExpressionInfo Analyzer::ApplyTarget(ExpressionInfo value,
 			CallConversion(value, target, 0, 0);
 		if (implicit.rank != CONVERSION_INVALID)
 			return ApplyCallArgument(value, target, &implicit);
-		throw std::runtime_error("invalid implicit conversion from " +
+		ThrowSemanticError("invalid implicit conversion from " +
 			program_->RenderType(value.type) + " to " +
 			program_->RenderType(target));
 	}
@@ -535,7 +534,7 @@ ExpressionInfo Analyzer::ApplyTarget(ExpressionInfo value,
 			BaseProjectionCount(value.type, nonreference, &projection_offset);
 		if (projections == std::numeric_limits<std::size_t>::max() ||
 			projections > std::numeric_limits<std::uint32_t>::max())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"derived conversion has no bounded base path");
 		const ValueCategory category = binds_temporary ? VALUE_PRVALUE :
 			target_record.kind == TYPE_LVALUE_REFERENCE ? VALUE_LVALUE :
@@ -645,7 +644,7 @@ bool Analyzer::IsModifiableLvalue(const ExpressionInfo& value) const
 ExpressionInfo Analyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	TypeId target)
 {
-	if (node == kNoNode) throw std::runtime_error("missing expression");
+	if (node == kNoNode) ThrowSemanticError("missing expression");
 	ExpressionInfo prepared;
 	if (ReusePreparedBracedExpression(node, target, &prepared)) return prepared;
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_PARENTHESIZED_EXPRESSION))
@@ -696,7 +695,7 @@ ExpressionInfo Analyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 			result.constant = true;
 			result.value = keyword == KW_TRUE;
 		}
-		else throw std::runtime_error("unsupported keyword literal");
+		else ThrowSemanticError("unsupported keyword literal");
 		return ApplyTarget(result, target);
 	}
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_ID_EXPRESSION))
@@ -768,7 +767,7 @@ ExpressionInfo Analyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_MEMBER_EXPRESSION))
 		return ApplyTarget(AnalyzeMember(node, scope), target);
 	const NodeId first_child = FirstSemanticChild(node);
-	throw std::runtime_error("unsupported PA12 expression " + arena_->Tag(node) +
+	ThrowSemanticError("unsupported PA12 expression " + arena_->Tag(node) +
 		" at " + arena_->SourceFile(node) + ":" +
 		std::to_string(arena_->SourceLine(node)) + ":" +
 		std::to_string(arena_->SourceColumn(node)) + " in " +
@@ -790,7 +789,7 @@ BindingId Analyzer::SelectOverload(ScopeId scope,
 	const std::size_t arity = explicit_arity + (object ? 1 : 0);
 	if (arity != 0 && candidates.size() >
 		std::numeric_limits<std::size_t>::max() / arity)
-		throw std::runtime_error("overload conversion table is too large");
+		ThrowSemanticResourceLimit("overload conversion table is too large");
 	std::vector<ConversionRank> ranks(candidates.size() * arity,
 		CONVERSION_ELLIPSIS);
 	std::vector<std::size_t> base_distances(candidates.size() * arity,
@@ -990,7 +989,7 @@ BindingId Analyzer::SelectOverload(ScopeId scope,
 				(object ? program_->RenderType(object->type) : "<none>");
 			for (std::size_t i = 0; i < arguments.size(); ++i)
 				diagnostic += " argument=" + program_->RenderType(arguments[i].type);
-			throw std::runtime_error(diagnostic);
+			ThrowSemanticError(diagnostic);
 		}
 		return CandidateOverloadFailure("no viable overload");
 	}
@@ -1009,7 +1008,7 @@ BindingId Analyzer::SelectOverload(ScopeId scope,
 			const std::size_t projections = actual_object_distances[champion];
 			if (projections == std::numeric_limits<std::size_t>::max() ||
 				projections > std::numeric_limits<std::uint32_t>::max())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"selected object conversion has no bounded base path");
 			object_conversion->base_projection_count =
 				static_cast<std::uint32_t>(projections);
@@ -1038,7 +1037,7 @@ ExpressionInfo Analyzer::BuildResolvedCall(BindingId selected,
 	{
 		if (CandidateSubstitutionActive())
 			return CandidateSubstitutionFailure();
-		throw std::runtime_error("selected function is deleted");
+		ThrowSemanticError("selected function is deleted");
 	}
 	EntityId object_class = kNoEntity;
 	if (object)
@@ -1059,7 +1058,7 @@ ExpressionInfo Analyzer::BuildResolvedCall(BindingId selected,
 	{
 		if (CandidateSubstitutionActive())
 			return CandidateSubstitutionFailure();
-		throw std::runtime_error("inaccessible member function " +
+		ThrowSemanticError("inaccessible member function " +
 			program_->names.Get(program_->bindings[selected].name) + " on " +
 			(object ? program_->RenderType(object->type) :
 			 std::string("<no object>")) + " in " +
@@ -1112,7 +1111,7 @@ ExpressionInfo Analyzer::BuildResolvedCall(BindingId selected,
 	constexpr_arguments.reserve(function_type.parameter_count);
 	if (function.member_owner != kNoType)
 	{
-		if (!object) throw std::logic_error("selected member call has no object");
+		if (!object) ThrowInternalCompilerError("selected member call has no object");
 		const TypeId object_parameter =
 			program_->types.Parameters(callable_type)[0];
 		ExpressionInfo qualified_object = *object;
@@ -1169,7 +1168,7 @@ ExpressionInfo Analyzer::BuildResolvedCall(BindingId selected,
 	{
 		if (a >= function.parameters.size() ||
 			function.parameters[a].default_argument == kNoNode)
-			throw std::runtime_error("missing default argument fact");
+			ThrowInternalCompilerError("missing default argument fact");
 		ExpressionInfo argument = AnalyzeExpression(
 			function.parameters[a].default_argument,
 			function.parameters[a].default_scope, parameters[a]);
@@ -1274,14 +1273,14 @@ ExpressionInfo Analyzer::BuildResolvedCall(BindingId selected,
 ExpressionInfo Analyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId target)
 {
 	const NodeId callee_syntax = FirstSemanticChild(node);
-	if (callee_syntax == kNoNode) throw std::runtime_error("call without callee");
+	if (callee_syntax == kNoNode) ThrowSemanticError("call without callee");
 	NodeId direct_callee_syntax = callee_syntax;
 	bool parenthesized_callee = false;
 	while (arena_->IsTag(direct_callee_syntax, ::cppgm::syntax::STAG_PARENTHESIZED_EXPRESSION)) {
 		parenthesized_callee = true;
 		direct_callee_syntax = FirstSemanticChild(direct_callee_syntax);
 		if (direct_callee_syntax == kNoNode)
-			throw std::runtime_error("empty parenthesized callee");
+			ThrowSemanticError("empty parenthesized callee");
 	}
 	NodeId arguments_node = kNoNode; std::vector<NodeId> argument_syntax = CollectCallArgumentSyntax(node, &arguments_node);
 	if (NeedsBracedCallContext(argument_syntax)) return AnalyzeCallInBracedContext(node, scope, target);
@@ -1403,7 +1402,7 @@ ExpressionInfo Analyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId target)
 					argument_syntax, arguments_node, target,
 					arguments_analyzed ? &analyzed_arguments : 0);
 			if (argument_syntax.size() > 1)
-				throw std::runtime_error("too many functional cast arguments");
+				ThrowSemanticError("too many functional cast arguments");
 			if (argument_syntax.empty())
 			{
 				ExpressionInfo zero = MakeLiteral(cast_type,
@@ -1516,7 +1515,7 @@ ExpressionInfo Analyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	const std::uint32_t first = arena_->FirstEdge(node);
 	const std::uint32_t second = first == kNoEdge ? kNoEdge :
 		arena_->NextEdge(first);
-	if (second == kNoEdge) throw std::runtime_error("invalid assignment");
+	if (second == kNoEdge) ThrowSemanticError("invalid assignment");
 	const NodeId left_syntax = arena_->EdgeChild(first);
 	const NodeId right_syntax = arena_->EdgeChild(second);
 	const std::string operation = PayloadSource(node);
@@ -1643,7 +1642,7 @@ ExpressionInfo Analyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 	const std::uint32_t first = arena_->FirstEdge(node);
 	const std::uint32_t second = first == kNoEdge ? kNoEdge :
 		arena_->NextEdge(first);
-	if (second == kNoEdge) throw std::runtime_error("invalid subscript");
+	if (second == kNoEdge) ThrowSemanticError("invalid subscript");
 	const NodeId left_syntax = arena_->EdgeChild(first);
 	const NodeId right_syntax = arena_->EdgeChild(second);
 	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
@@ -1701,7 +1700,7 @@ ExpressionInfo Analyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 		const std::size_t index = left.string_unit_begin +
 			static_cast<std::size_t>(right.value);
 		if (index >= string_literal_units_.size())
-			throw std::logic_error("string literal code-unit range is invalid");
+			ThrowInternalCompilerError("string literal code-unit range is invalid");
 		result.constant = true;
 		result.value = NormalizeIntegralConstant(
 			pointer.child, string_literal_units_[index]);
@@ -1791,23 +1790,23 @@ void Analyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		(!arena_->IsTag(target, ::cppgm::syntax::STAG_SIMPLE_DECLARATION) &&
 		 !arena_->IsTag(target, ::cppgm::syntax::STAG_FUNCTION_DEFINITION) &&
 		 !special_member_template))
-		throw std::runtime_error("unsupported PA12 templated declaration");
+		ThrowSemanticError("unsupported PA12 templated declaration");
 	const NodeId specifiers = FindChild(target, special_member_template ?
 		"member-specifiers" : "decl-specifier-seq");
 	if (specifiers == kNoNode && !special_member_template)
-		throw std::runtime_error("invalid PA12 function template");
+		ThrowSemanticError("invalid PA12 function template");
 	const bool definition = arena_->IsTag(target, ::cppgm::syntax::STAG_FUNCTION_DEFINITION) ||
 		arena_->IsTag(target, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DEFINITION);
 	const NodeId declarators = definition ? kNoNode :
 		FindChild(target, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
 	if (!definition && declarators == kNoNode && !special_member_template)
-		throw std::runtime_error("invalid PA12 function template");
+		ThrowSemanticError("invalid PA12 function template");
 	std::vector<NodeId> pattern_declarators;
 	if (definition || special_member_template)
 	{
 		const NodeId declarator = FindChild(target, ::cppgm::syntax::STAG_DECLARATOR);
 		if (declarator == kNoNode)
-			throw std::runtime_error("invalid PA12 function template definition");
+			ThrowSemanticError("invalid PA12 function template definition");
 		pattern_declarators.push_back(declarator);
 	}
 	else
@@ -1917,7 +1916,7 @@ void Analyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 		if (parsed <= 0 ||
 			(static_cast<std::uint64_t>(parsed) &
 			 (static_cast<std::uint64_t>(parsed) - 1)) != 0)
-			throw std::runtime_error("invalid layout packing alignment");
+			ThrowSemanticError("invalid layout packing alignment");
 		pack_alignment_stack_.push_back(current_pack_alignment_);
 		current_pack_alignment_ = static_cast<std::size_t>(parsed);
 		return;
@@ -1984,7 +1983,7 @@ void Analyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 			program_->entities[entity].flavor == NAMED_UNION)
 		{
 			if (!local)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"namespace anonymous union must be static");
 			DeclareAnonymousUnionObject(node, scope, output_parent, type,
 				true, STORAGE_CLASS_NONE);
@@ -2019,7 +2018,7 @@ void Analyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 		current_language_linkage_ = previous_linkage;
 		return;
 	}
-	throw std::runtime_error("unsupported PA12 declaration: " + arena_->Tag(node));
+	ThrowSemanticError("unsupported PA12 declaration: " + arena_->Tag(node));
 }
 
 void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
@@ -2072,7 +2071,7 @@ void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		specifiers, scope, hint, list != kNoNode) :
 		BuildSpecifiers(specifiers, scope, hint, list != kNoNode);
 	if (spec.virtual_specifier)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"virtual specifier is only allowed in a class definition");
 	if (list == kNoNode)
 	{
@@ -2089,7 +2088,7 @@ void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	{
 		const NodeId item = arena_->EdgeChild(edge);
 		const NodeId declarator = FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
-		if (declarator == kNoNode) throw std::runtime_error("missing declarator");
+		if (declarator == kNoNode) ThrowSemanticError("missing declarator");
 		if (IsStructuredBindingDeclarator(declarator)) { AnalyzeStructuredBindingDeclaration(item, declarator, spec, scope, owner, local); continue; }
 		const NamePath declared_path = DeclaratorNamePath(declarator);
 		const ScopeId structured_declaration_scope = qualified_lexical_scope ?
@@ -2101,13 +2100,13 @@ void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			declared_path.global || declared_path.Size() > 1 ?
 				ResolveOwner(scope, declared_path) : scope;
 		if (declaration_scope == kNoScope)
-			throw std::runtime_error("variable owner not found");
+			ThrowSemanticError("variable owner not found");
 		const ScopeId semantic_scope = qualified_lexical_scope ?
 			scope : declaration_scope;
 		ExpressionInfo placeholder_initializer;
 		DeclaratorInfo parsed = BuildVariableDeclarator(item, declarator, spec, semantic_scope, local, &placeholder_initializer);
 		parsed.name = declared_path.Last();
-		if (parsed.name == 0) throw std::runtime_error("unnamed declaration");
+		if (parsed.name == 0) ThrowSemanticError("unnamed declaration");
 		if (spec.is_typedef)
 		{
 			program_->AddBinding(scope, BIND_TYPE_ALIAS, parsed.name, parsed.type);
@@ -2133,13 +2132,13 @@ void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				DestructedEntity(parsed.type));
 		}
 		if (spec.is_constexpr && !IsConstexprLiteralType(parsed.type))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"constexpr variable does not have literal type");
 		const LookupResult occupied =
 			program_->LookupDirect(declaration_scope, parsed.name, LOOKUP_ORDINARY);
 		if (occupied.ordinary != kNoBinding &&
 			program_->bindings[occupied.ordinary].kind == BIND_FUNCTION)
-			throw std::runtime_error("variable conflicts with function binding");
+			ThrowSemanticError("variable conflicts with function binding");
 		if (qualified_lexical_scope)
 			parsed.type = CompleteQualifiedStaticArrayType(
 				occupied.ordinary, parsed.type);
@@ -2158,7 +2157,7 @@ void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			!constexpr_class_default &&
 			!static_constant_definition &&
 			!(qualified_lexical_scope && program_->bindings[binding].constant))
-			throw std::runtime_error("constexpr variable requires initializer");
+			ThrowSemanticError("constexpr variable requires initializer");
 		ExpressionInfo initializer;
 		bool has_initializer = initializer_node != kNoNode;
 		if (initializer_node != kNoNode)
@@ -2296,7 +2295,7 @@ void Analyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		path_owner :
 		structured_owner != kNoScope ? structured_owner :
 		path_owner;
-	if (owner == kNoScope) throw std::runtime_error("function owner not found");
+	if (owner == kNoScope) ThrowSemanticError("function owner not found");
 	const EntityId declaration_class = program_->EntityForScope(owner);
 	if (declaration_class != kNoEntity)
 		current_class_context_ = declaration_class;
@@ -2305,14 +2304,14 @@ void Analyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		semantic_scope, std::string(), true);
 	if (spec.virtual_specifier ||
 		FindChild(declarator, ::cppgm::syntax::STAG_VIRT_SPECIFIER) != kNoNode)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"virtual specifier is only allowed in a class definition");
 	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, semantic_scope,
 		spec.placeholder_auto, declaration_class != kNoEntity && spec.storage_class != STORAGE_CLASS_STATIC);
 	parsed.placeholder_return_cv = spec.placeholder_cv;
 	parsed.name = path.Last();
 	if (!program_->types.IsFunction(parsed.type))
-		throw std::runtime_error("function definition has non-function type");
+		ThrowSemanticError("function definition has non-function type");
 	if (spec.is_constexpr)
 		parsed.type = ApplyConstexprDeclaredFunctionType(parsed.type,
 			owner, parsed.name, declaration_class);
@@ -2342,7 +2341,7 @@ void Analyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	{
 		if (declaration_class == kNoEntity ||
 			program_->bindings[binding].member_owner != declaration_class)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"class template member definition has no declaration");
 		FunctionInfo& function = GetMutableFunction(binding);
 		function.definition_body = FunctionDefinitionPart(node, "compound-statement");
@@ -2623,22 +2622,22 @@ void Analyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_BREAK_STATEMENT))
 	{
 		if (loop_depth_ == 0 && switch_depth_ == 0)
-			throw std::runtime_error("break outside loop or switch");
+			ThrowSemanticError("break outside loop or switch");
 		const std::uint32_t statement = MakeDump(DUMP_BREAK_STATEMENT);
 		dump_.Add(output_parent, statement);
 		if (break_cleanup_stops_.empty())
-			throw std::logic_error("break has no cleanup boundary");
+			ThrowInternalCompilerError("break has no cleanup boundary");
 		AppendScopeDestructionActions(scope, statement,
 			break_cleanup_stops_.back());
 		return;
 	}
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_CONTINUE_STATEMENT))
 	{
-		if (loop_depth_ == 0) throw std::runtime_error("continue outside loop");
+		if (loop_depth_ == 0) ThrowSemanticError("continue outside loop");
 		const std::uint32_t statement = MakeDump(DUMP_CONTINUE_STATEMENT);
 		dump_.Add(output_parent, statement);
 		if (continue_cleanup_stops_.empty())
-			throw std::logic_error("continue has no cleanup boundary");
+			ThrowInternalCompilerError("continue has no cleanup boundary");
 		AppendScopeDestructionActions(scope, statement,
 			continue_cleanup_stops_.back());
 		return;
@@ -2647,7 +2646,7 @@ void Analyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		arena_->IsTag(node, ::cppgm::syntax::STAG_DEFAULT_STATEMENT))
 	{
 		if (switch_depth_ == 0)
-			throw std::runtime_error("case/default outside switch");
+			ThrowSemanticError("case/default outside switch");
 		ValidateSwitchLabelEntry(scope, scope_parents_,
 			scope_switch_entry_barriers_, switch_label_entry_scopes_);
 		const bool is_case = arena_->IsTag(node, ::cppgm::syntax::STAG_CASE_STATEMENT);
@@ -2662,7 +2661,7 @@ void Analyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			if (is_case && first)
 			{
 				ExpressionInfo label = AnalyzeExpression(child, scope);
-				if (!label.constant) throw std::runtime_error("nonconstant case label");
+				if (!label.constant) ThrowSemanticError("nonconstant case label");
 				dump_.Add(statement, label.node);
 				first = false;
 			}
@@ -2678,7 +2677,7 @@ void Analyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		AnalyzeDeclaration(node, scope, output_parent, true);
 		return;
 	}
-	throw std::runtime_error("unsupported PA12 statement: " + arena_->Tag(node));
+	ThrowSemanticError("unsupported PA12 statement: " + arena_->Tag(node));
 }
 
 void Analyzer::RenderNode(std::uint32_t node, std::size_t depth)
@@ -2704,7 +2703,7 @@ void Analyzer::Consume(const SyntaxArena& arena, NodeId root)
 {
 	arena_ = &arena;
 	if (&arena.SharedStrings() != &strings_)
-		throw std::logic_error("semantic analyzer does not own syntax strings");
+		ThrowInternalCompilerError("semantic analyzer does not own syntax strings");
 	Program& program = *program_;
 	ReserveSemanticCapacity(arena);
 	scope_prefixes_.resize(static_cast<std::size_t>(program.GlobalScope()) + 1, 0);

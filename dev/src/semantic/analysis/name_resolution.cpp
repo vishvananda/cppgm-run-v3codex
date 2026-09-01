@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <cctype>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -52,7 +52,7 @@ NamePath Analyzer::ParseNamePath(const std::string& spelling,
 		const std::size_t last = separator == std::string::npos ?
 			spelling.size() : separator;
 		if (last == first)
-			throw std::runtime_error("invalid qualified name");
+			ThrowSemanticError("invalid qualified name");
 		if (first == conversion_terminal)
 		{
 			std::string terminal;

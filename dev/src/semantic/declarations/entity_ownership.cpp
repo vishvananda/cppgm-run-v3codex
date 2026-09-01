@@ -1,6 +1,5 @@
 #include "semantic/analysis/analyzer.h"
-
-#include <stdexcept>
+#include "support/exceptions.h"
 
 namespace cppgm
 {
@@ -10,7 +9,7 @@ namespace semantic
 void Analyzer::RegisterLocalTypeAbiIdentity(EntityId entity)
 {
 	if (entity == kNoEntity || entity >= program_->entities.size())
-		throw std::logic_error("local ABI identity has no entity");
+		ThrowInternalCompilerError("local ABI identity has no entity");
 	EntityRecord& record = program_->entities[entity];
 	if (record.local_context == kNoBinding) return;
 	const std::uint64_t key =
@@ -18,7 +17,7 @@ void Analyzer::RegisterLocalTypeAbiIdentity(EntityId entity)
 		(record.unnamed_class ? 0 : record.identity_name);
 	CompactIndexSequence& occurrences = local_type_occurrences_.Ensure(key);
 	if (occurrences.Size() >= kNoEntity)
-		throw std::runtime_error("too many local ABI type occurrences");
+		ThrowSemanticResourceLimit("too many local ABI type occurrences");
 	record.local_name_ordinal =
 		static_cast<std::uint32_t>(occurrences.Size());
 	occurrences.Push(entity);
@@ -30,12 +29,12 @@ void Analyzer::RegisterInjectedStorageMember(BindingId alias,
 	if (alias >= program_->bindings.size() ||
 		storage >= program_->bindings.size() ||
 		member >= program_->bindings.size())
-		throw std::logic_error("injected storage member identity is invalid");
+		ThrowInternalCompilerError("injected storage member identity is invalid");
 	if (injected_fact_by_binding_.size() <= alias)
 		injected_fact_by_binding_.resize(
 			static_cast<std::size_t>(alias) + 1, kNoDumpEdge);
 	if (injected_members_.size() >= kNoDumpEdge)
-		throw std::runtime_error("too many injected storage members");
+		ThrowSemanticResourceLimit("too many injected storage members");
 	injected_fact_by_binding_[alias] =
 		static_cast<std::uint32_t>(injected_members_.size());
 	injected_members_.push_back(InjectedMemberInfo(storage, member));
@@ -66,7 +65,7 @@ bool Analyzer::RecordInjectedMemberInitializer(BindingId member,
 		injected_constructor_initializer_scratch_.resize(
 			static_cast<std::size_t>(fact) + 1, kNoNode);
 	if (injected_constructor_initializer_scratch_[fact] != kNoNode)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"duplicate constructor member initializer");
 	injected_constructor_initializer_scratch_[fact] = initializer;
 	injected_constructor_initializer_touched_.push_back(fact);
@@ -77,11 +76,11 @@ bool Analyzer::RecordInjectedMemberInitializer(BindingId member,
 			program_->BindingLayout(
 				program_->bindings[storage]).member_ordinal;
 		if (ordinal >= members.size() || members[ordinal] != storage)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"projected union storage has no canonical ordinal");
 		if (!constructor_initializer_touched_.empty() &&
 			constructor_initializer_touched_[0] != storage)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"union constructor initializes multiple variants");
 		if (constructor_initializer_touched_.empty())
 			constructor_initializer_touched_.push_back(storage);
@@ -110,11 +109,11 @@ bool Analyzer::AddInjectedStorageInitializationActions(
 	const EntityId storage_entity = EntityOf(program_->bindings[storage].type);
 	if (storage_entity == kNoEntity ||
 		storage_entity >= program_->entities.size())
-		throw std::logic_error("injected storage has no class entity");
+		ThrowInternalCompilerError("injected storage has no class entity");
 	const bool union_storage =
 		program_->entities[storage_entity].flavor == NAMED_UNION;
 	if (union_storage && explicit_count != 1)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"union constructor initializes multiple variants");
 	for (std::size_t i = 0; i < aliases->Size(); ++i)
 	{

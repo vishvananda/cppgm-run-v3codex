@@ -181,9 +181,27 @@ void ThrowSemanticError(const char* message)
 }
 
 __attribute__((cold, noinline, noreturn)) inline
+void ThrowSemanticError(const std::string& message)
+{
+	throw SemanticError(message);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
 void ThrowInternalCompilerError(const char* message)
 {
 	throw InternalCompilerError(message);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowInternalCompilerError(const std::string& message)
+{
+	throw InternalCompilerError(message);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowSemanticResourceLimit(const char* message)
+{
+	throw ResourceLimitError(message, CompilerErrorDomain::SEMANTIC);
 }
 
 static_assert(!std::is_base_of<SemanticError, HardSemanticError>::value,

@@ -1,7 +1,7 @@
 // Enum declaration analysis: builds enum entities, their enumerators, and
 // their underlying-type facts from syntax.
 #include "semantic/analysis/analyzer.h"
-#include <stdexcept>
+#include "support/exceptions.h"
 #include <string>
 #include <vector>
 
@@ -50,7 +50,7 @@ TypeId Analyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint
 		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0;
 	const NameId name = path.Last();
 	const ScopeId owner = ResolveOwner(scope, path);
-	if (owner == kNoScope) throw std::runtime_error("enum owner not found");
+	if (owner == kNoScope) ThrowSemanticError("enum owner not found");
 	const NodeId underlying_node = FindChild(node, ::cppgm::syntax::STAG_TYPE_ID);
 	TypeId underlying = underlying_node == kNoNode ?
 		program_->types.Fundamental(FUND_INT) :
@@ -65,11 +65,11 @@ TypeId Analyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint
 		 program_->LookupDirect(owner, name, LOOKUP_TYPE));
 	if (elaborated)
 	{
-		if (old.type == kNoType) throw std::runtime_error("unknown enum type");
+		if (old.type == kNoType) ThrowSemanticError("unknown enum type");
 		return old.type;
 	}
 	if (!definition && !scoped && underlying_node == kNoNode)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"opaque unscoped enum requires an underlying type");
 	EntityId entity = kNoEntity;
 	bool created_entity = false;
@@ -78,13 +78,13 @@ TypeId Analyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint
 		const TypeRecord named = program_->types.Get(
 			program_->types.RemoveTopCv(old.type));
 		if (named.kind != TYPE_NAMED)
-			throw std::runtime_error("enum redeclared as non-enum");
+			ThrowSemanticError("enum redeclared as non-enum");
 		entity = named.entity;
 		if (program_->entities[entity].flavor != flavor)
-			throw std::runtime_error("incompatible enum redeclaration");
+			ThrowSemanticError("incompatible enum redeclaration");
 		if (underlying_node != kNoNode &&
 			program_->entities[entity].underlying != underlying)
-			throw std::runtime_error("enum underlying type changed");
+			ThrowSemanticError("enum underlying type changed");
 	}
 	else
 	{
@@ -161,7 +161,7 @@ TypeId Analyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint
 			}
 			constant_evaluation_suppressed_depth_ = outer_suppression;
 			if (!expression.constant)
-				throw std::runtime_error("nonconstant enumerator");
+				ThrowSemanticError("nonconstant enumerator");
 			value = expression.value;
 		}
 		const NameId enumerator_name =
@@ -181,7 +181,7 @@ TypeId Analyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint
 		}
 		if (value < minimum) minimum = value;
 		if (value > maximum) maximum = value;
-		if (value == INT64_MAX) throw std::runtime_error("enumerator overflow");
+		if (value == INT64_MAX) ThrowSemanticError("enumerator overflow");
 		next = value + 1;
 	}
 	if (underlying_node == kNoNode && !scoped)

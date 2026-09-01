@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/extensions/function_control_attributes.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -14,13 +14,13 @@ void Analyzer::AnalyzeFriendFunction(NodeId node,
 {
 	const EntityId owner_entity = EntityOf(owner_type);
 	if (owner_entity == kNoEntity)
-		throw std::logic_error("friend declaration has no class owner");
+		ThrowInternalCompilerError("friend declaration has no class owner");
 	ScopeId friend_owner = program_->entities[owner_entity].owner;
 	while (friend_owner != kNoScope &&
 		program_->KindOfScope(friend_owner) != SCOPE_NAMESPACE)
 		friend_owner = program_->ParentScope(friend_owner);
 	if (friend_owner == kNoScope)
-		throw std::runtime_error("friend function has no namespace owner");
+		ThrowInternalCompilerError("friend function has no namespace owner");
 	std::vector<NodeId> declarators;
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_FUNCTION_DEFINITION))
 	{
@@ -40,14 +40,14 @@ void Analyzer::AnalyzeFriendFunction(NodeId node,
 			}
 	}
 	if (declarators.empty())
-		throw std::runtime_error("friend declaration has no function declarator");
+		ThrowSemanticError("friend declaration has no function declarator");
 	const bool definition = arena_->IsTag(node, ::cppgm::syntax::STAG_FUNCTION_DEFINITION);
 	for (std::size_t i = 0; i < declarators.size(); ++i)
 	{
 		const DeclaratorInfo parsed = BuildDeclarator(
 			declarators[i], spec.type, class_scope);
 		if (!program_->types.IsFunction(parsed.type))
-			throw std::runtime_error("friend declaration is not a function");
+			ThrowSemanticError("friend declaration is not a function");
 		if (spec.is_constexpr)
 			ValidateConstexprCallableType(parsed.type, false);
 		const NamePath declared_name = DeclaratorNamePath(declarators[i]);
@@ -56,7 +56,7 @@ void Analyzer::AnalyzeFriendFunction(NodeId node,
 		const ScopeId declared_owner = qualified_friend ?
 			ResolveOwner(class_scope, declared_name) : friend_owner;
 		if (declared_owner == kNoScope)
-			throw std::runtime_error("qualified friend owner not found");
+			ThrowSemanticError("qualified friend owner not found");
 		const NodeId identifier = FindChild(declarators[i], ::cppgm::syntax::STAG_IDENTIFIER);
 		NamePath template_base;
 		std::vector<NodeId> explicit_arguments;
@@ -68,7 +68,7 @@ void Analyzer::AnalyzeFriendFunction(NodeId node,
 					program_->names.Get(template_base.Last()), parsed.type,
 					identifier);
 			if (targets.size() != 1)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"friend template-id does not select one specialization");
 			const BindingId binding =
 				program_->bindings[targets[0]].canonical;
@@ -98,7 +98,7 @@ void Analyzer::AnalyzeFriendFunction(NodeId node,
 			const BindingId prior = function_declarations_.Find(
 				FunctionSignatureKey(declared_owner, parsed.name, signature));
 			if (prior == kNoBinding || !GetFunction(prior).ordinary_visible)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"qualified friend function was not declared");
 		}
 		const BindingId binding = DeclareFunction(declared_owner, parsed.name,
@@ -153,12 +153,12 @@ void Analyzer::AnalyzeFriendClass(NodeId node,
 {
 	const EntityId owner = EntityOf(owner_type);
 	if (owner == kNoEntity)
-		throw std::logic_error("friend class declaration has no owner");
+		ThrowInternalCompilerError("friend class declaration has no owner");
 	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 	const NodeId declaration = specifiers == kNoNode ? kNoNode :
 		FindChild(specifiers, ::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION);
 	if (declaration == kNoNode)
-		throw std::runtime_error("friend class declaration has no class");
+		ThrowSemanticError("friend class declaration has no class");
 	const std::string spelling = arena_->Payload(declaration);
 	const NodeId structure = FindChild(declaration, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 	NamePath path;
@@ -187,7 +187,7 @@ void Analyzer::AnalyzeFriendClass(NodeId node,
 	TypeId friend_type = found.type;
 	if (friend_type != kNoType && found.type_declaration != kNoBinding &&
 		!CanAccessMember(found.type_declaration, found.naming_class))
-		throw std::runtime_error("inaccessible friend class");
+		ThrowSemanticError("inaccessible friend class");
 	if (friend_type == kNoType)
 	{
 		ScopeId namespace_owner = program_->entities[owner].owner;
@@ -195,7 +195,7 @@ void Analyzer::AnalyzeFriendClass(NodeId node,
 			program_->KindOfScope(namespace_owner) != SCOPE_NAMESPACE)
 			namespace_owner = program_->ParentScope(namespace_owner);
 		if (namespace_owner == kNoScope)
-			throw std::runtime_error("friend class has no namespace owner");
+			ThrowInternalCompilerError("friend class has no namespace owner");
 		friend_type = AnalyzeClass(declaration,
 			!path.global && path.Size() == 1 ?
 				namespace_owner : class_scope,
@@ -203,7 +203,7 @@ void Analyzer::AnalyzeFriendClass(NodeId node,
 	}
 	const EntityId friend_entity = EntityOf(friend_type);
 	if (friend_entity == kNoEntity)
-		throw std::runtime_error("friend declaration does not name a class");
+		ThrowSemanticError("friend declaration does not name a class");
 	const std::uint64_t key =
 		(static_cast<std::uint64_t>(owner) << 32) | friend_entity;
 	CompactIndexSequence& grants = friend_class_grants_.Ensure(key);

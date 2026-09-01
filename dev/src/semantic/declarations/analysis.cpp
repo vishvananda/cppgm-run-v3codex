@@ -1,11 +1,11 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/extensions/hosted_extensions.h"
 #include "semantic/extensions/function_control_attributes.h"
+#include "support/exceptions.h"
 #include <algorithm>
 #include <cctype>
 #include <limits>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,12 +15,12 @@ namespace
 std::size_t AlignUp(std::size_t value, std::size_t alignment)
 {
 	if (alignment == 0 || (alignment & (alignment - 1)) != 0)
-		throw std::runtime_error("invalid class member alignment");
+		ThrowInternalCompilerError("invalid class member alignment");
 	const std::size_t remainder = value & (alignment - 1);
 	if (remainder == 0) return value;
 	const std::size_t addition = alignment - remainder;
 	if (value > std::numeric_limits<std::size_t>::max() - addition)
-		throw std::runtime_error("class layout is too large");
+		ThrowSemanticResourceLimit("class layout is too large");
 	return value + addition;
 }
 OperatorKind ClassifyOperator(const std::string& name,
@@ -147,12 +147,12 @@ TypeId Analyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	NameId typedef_linkage_name)
 {
 	const NodeId key = FindChild(node, ::cppgm::syntax::STAG_CLASS_KEY);
-	if (key == kNoNode) throw std::runtime_error("class without class-key");
+	if (key == kNoNode) ThrowSemanticError("class without class-key");
 	const std::string key_text = PayloadSource(key);
 	const NamedFlavor flavor = key_text == "struct" ? NAMED_STRUCT :
 		key_text == "class" ? NAMED_CLASS :
 		key_text == "union" ? NAMED_UNION : NAMED_NONE;
-	if (flavor == NAMED_NONE) throw std::runtime_error("invalid class-key");
+	if (flavor == NAMED_NONE) ThrowSemanticError("invalid class-key");
 	const bool unnamed_class = specialization_name.empty() &&
 		arena_->Payload(node).empty() && !hint.empty();
 	std::string spelling;
@@ -166,7 +166,7 @@ TypeId Analyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		name : specialization_lookup_name;
 	const ScopeId owner = specialization_owner == kNoScope ?
 		ResolveOwner(scope, path) : specialization_owner;
-	if (owner == kNoScope) throw std::runtime_error("class owner not found");
+	if (owner == kNoScope) ThrowSemanticError("class owner not found");
 	// A generated anonymous/local identity names a fresh entity: it never
 	// matches a source declaration and must not enter ordinary type lookup,
 	// where it could collide with a user type of the same spelling.
@@ -193,17 +193,17 @@ TypeId Analyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		const TypeRecord named = program_->types.Get(
 			program_->types.RemoveTopCv(old.type));
 		if (named.kind != TYPE_NAMED)
-			throw std::runtime_error("class redeclared as non-class");
+			ThrowSemanticError("class redeclared as non-class");
 		entity = named.entity;
 		const NamedFlavor previous = program_->entities[entity].flavor;
 			if ((previous == NAMED_UNION) != (flavor == NAMED_UNION) ||
 				!IsClassNamedFlavor(previous))
-			throw std::runtime_error("incompatible class redeclaration");
+			ThrowSemanticError("incompatible class redeclaration");
 	}
 	else if (entity == kNoEntity)
 	{
 		if ((path.global || path.Size() > 1) && elaborated)
-			throw std::runtime_error("qualified class was not declared");
+			ThrowSemanticError("qualified class was not declared");
 		entity = program_->NewEntity(name, flavor, false,
 			kNoType, owner, specialization_identity == 0 ?
 				(typedef_linkage_name == 0 ? name : typedef_linkage_name) :
@@ -301,7 +301,7 @@ bool Analyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 		saw_base_specifier = true;
 		const NodeId base_name = FindChild(base_specifier, ::cppgm::syntax::STAG_BASE_NAME);
 		if (base_name == kNoNode)
-			throw std::runtime_error("base specifier has no base name");
+			ThrowSemanticError("base specifier has no base name");
 		AccessKind base_access = flavor == NAMED_CLASS ?
 			ACCESS_PRIVATE : ACCESS_PUBLIC;
 		const bool virtual_base =
@@ -323,12 +323,12 @@ bool Analyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 					PayloadSource(base_name));
 				if (entity >= class_template_pattern_by_entity_.size() ||
 					class_template_pattern_by_entity_[entity] == kNoDumpEdge)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"pack expansion contains no unexpanded pack");
 				const std::size_t pattern_index =
 					class_template_pattern_by_entity_[entity];
 				if (pattern_index >= class_templates_.size())
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"invalid class template base-pack owner");
 				const ClassTemplatePattern& pattern =
 					class_templates_[pattern_index];
@@ -341,7 +341,7 @@ bool Analyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 				if (parameter_index == pattern.parameters.size() ||
 					specialization.template_argument_begin == kNoBinding ||
 					parameter_index > specialization.template_argument_count)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"pack expansion contains no bound class pack");
 				const std::vector<TemplateArgument> arguments =
 					StoredTemplateArguments(specialization.template_argument_begin,
@@ -365,7 +365,7 @@ bool Analyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 			if (base_lookup.type == kNoType && CandidateSubstitutionFailed())
 				return false;
 			if (base_lookup.type == kNoType)
-				throw std::runtime_error("direct base type was not found");
+				ThrowSemanticError("direct base type was not found");
 			EnsureClassDefinition(base_lookup.type);
 			const EntityId base = EntityOf(base_lookup.type);
 			if (base == kNoEntity || !program_->entities[base].complete ||
@@ -376,19 +376,19 @@ bool Analyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 					 (program_->entities[base].flavor == NAMED_TYPENAME_PARAMETER &&
 					  program_->entities[base].deferred_template_completion)))
 					return false;
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"direct base must name a complete non-union class");
 			}
 			if (base_lookup.type_declaration != kNoBinding &&
 				!CanAccessMember(base_lookup.type_declaration,
 					base_lookup.naming_class))
-				throw std::runtime_error("inaccessible direct base type");
+				ThrowSemanticError("inaccessible direct base type");
 			direct_bases->push_back(DirectBaseEdge(
 				base, base_access, virtual_base));
 		}
 	}
 	if (!saw_base_specifier)
-		throw std::runtime_error("base clause has no base type");
+		ThrowSemanticError("base clause has no base type");
 	return true;
 }
 
@@ -399,7 +399,7 @@ bool Analyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 {
 		if (program_->entities[entity].complete &&
 			!InitializerListDefinitionReplayInProgress(entity))
-			throw std::runtime_error("duplicate class definition: " +
+			ThrowSemanticError("duplicate class definition: " +
 				program_->RenderEntityEmissionName(entity) + " (" +
 				program_->names.Get(program_->entities[entity].identity_name) + ")");
 		program_->entities[entity].packing_alignment = current_pack_alignment_;
@@ -474,7 +474,7 @@ bool Analyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 					std::string(), kNoScope, 0, !deferred_definition);
 				const EntityId nested = EntityOf(nested_type);
 				if (nested == kNoEntity)
-					throw std::logic_error("nested class has no entity");
+					ThrowInternalCompilerError("nested class has no entity");
 				if (deferred_definition)
 				{
 					if (deferred_class_definition_by_entity_.size() <= nested)
@@ -530,7 +530,7 @@ bool Analyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 						const BindingRecord source = program_->bindings[source_binding];
 						if (program_->LookupDirect(member_scope, source.name,
 							LOOKUP_ORDINARY).ordinary != kNoBinding)
-							throw std::runtime_error(
+							ThrowSemanticError(
 								"anonymous union member conflicts in class scope");
 						const BindingId alias = program_->AddBinding(member_scope,
 							BIND_VARIABLE, source.name, source.type,
@@ -730,7 +730,7 @@ void Analyzer::CompleteClassLayout(EntityId entity)
 		{
 			if (current_owner.union_default_member != kNoBinding &&
 				current_owner.union_default_member != layout.binding)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"union has multiple default member initializers");
 			current_owner.union_default_member = layout.binding;
 		}
@@ -781,7 +781,7 @@ void Analyzer::CompleteClassLayout(EntityId entity)
 				const std::size_t offset = AlignUp(size, member_alignment);
 				if (offset > std::numeric_limits<std::size_t>::max() -
 					allocation_size)
-					throw std::runtime_error("class layout is too large");
+					ThrowSemanticResourceLimit("class layout is too large");
 				if (member_layout)
 				{
 					member_layout->member_offset = offset;
@@ -801,7 +801,7 @@ void Analyzer::CompleteClassLayout(EntityId entity)
 				active_bit_offset = AlignUp(size, member_alignment);
 				if (active_bit_offset >
 					std::numeric_limits<std::size_t>::max() - member_size)
-					throw std::runtime_error("class layout is too large");
+					ThrowSemanticResourceLimit("class layout is too large");
 				size = active_bit_offset + member_size;
 				active_bit_size = member_size;
 				active_bit_alignment = member_alignment;
@@ -823,7 +823,7 @@ void Analyzer::CompleteClassLayout(EntityId entity)
 		alignment = std::max(alignment, member_alignment);
 		active_bit_unit = false;
 		if (!member)
-			throw std::logic_error("ordinary layout member has no binding");
+			ThrowInternalCompilerError("ordinary layout member has no binding");
 		const EntityId overlap_entity = ZeroOffsetClassEntity(layout.type);
 		const bool overlap_candidate = !is_union &&
 			member->potentially_overlapping_member &&
@@ -849,7 +849,7 @@ void Analyzer::CompleteClassLayout(EntityId entity)
 			size = AlignUp(size, member_alignment);
 			member_layout->member_offset = size;
 			if (size > std::numeric_limits<std::size_t>::max() - member_size)
-				throw std::runtime_error("class layout is too large");
+				ThrowSemanticResourceLimit("class layout is too large");
 			size += member_size;
 		}
 		if (member_layout->member_offset == 0)
@@ -965,7 +965,7 @@ const std::vector<BindingId>& Analyzer::ConstructorCandidates(
 	EntityId entity) const
 {
 	if (entity >= entity_constructors_.size())
-		throw std::logic_error("class is missing its constructor index");
+		ThrowInternalCompilerError("class is missing its constructor index");
 	return entity_constructors_[entity];
 }
 void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
@@ -1000,7 +1000,7 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			const EntityId owner = EntityOf(owner_type);
 			const EntityId friend_entity = EntityOf(spec.type);
 			if (owner == kNoEntity || friend_entity == kNoEntity)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"friend type declaration does not name a class");
 			const std::uint64_t key =
 				(static_cast<std::uint64_t>(owner) << 32) | friend_entity;
@@ -1014,7 +1014,7 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_FUNCTION_DEFINITION))
 	{
 		if (spec.thread_local_storage)
-			throw std::runtime_error("thread_local member function");
+			ThrowSemanticError("thread_local member function");
 		const NodeId declarator = FindChild(node, ::cppgm::syntax::STAG_DECLARATOR);
 		DeclaratorInfo parsed = BuildMemberDeclarator(node, declarator, spec, scope, true, 0);
 		const EntityId owner_entity = EntityOf(owner_type);
@@ -1077,7 +1077,7 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		if (program_->types.IsFunction(parsed.type))
 		{
 			if (spec.thread_local_storage)
-				throw std::runtime_error("thread_local member function");
+				ThrowSemanticError("thread_local member function");
 			const EntityId owner_entity = EntityOf(owner_type);
 			if (spec.is_constexpr)
 				parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
@@ -1123,22 +1123,22 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		{
 			if (spec.thread_local_storage &&
 				spec.storage_class != STORAGE_CLASS_STATIC)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"thread_local class member must be static");
 			if (spec.is_constexpr &&
 				spec.storage_class != STORAGE_CLASS_STATIC)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"constexpr class data member must be static");
 			TypeId member_type = parsed.type;
 			if (spec.is_constexpr)
 				member_type = program_->types.Qualify(member_type, CV_CONST);
 			if (spec.is_constexpr && !IsConstexprLiteralType(member_type))
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"constexpr static data member does not have literal type");
 			const LookupResult occupied =
 				program_->LookupDirect(scope, parsed.name, LOOKUP_ORDINARY);
 			if (parsed.name != 0 && occupied.ordinary != kNoBinding)
-				throw std::runtime_error("duplicate or conflicting class member");
+				ThrowSemanticError("duplicate or conflicting class member");
 			const BindingId member = program_->AddBinding(scope, BIND_VARIABLE,
 				parsed.name, member_type, false, 0, NAMED_NONE, 0, kNoBinding,
 				false);
@@ -1169,13 +1169,13 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			{
 				if (!spec.is_constexpr &&
 					!(IsConst(member_type) && IsIntegral(member_type, true)))
-					throw std::runtime_error("invalid in-class static data member initializer for " +
+					ThrowSemanticError("invalid in-class static data member initializer for " +
 						strings_.Get(parsed.name));
 				const ExpressionInfo value = spec.placeholder_auto ? placeholder_initializer :
 					AnalyzeInClassStaticInitializer(
 						FindChild(item, ::cppgm::syntax::STAG_INITIALIZER), scope, member_type);
 				if (!HasConstantInitializerFact(value))
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"nonconstant in-class static data member initializer");
 				const TypeRecord declared_array = program_->types.Get(
 					program_->types.RemoveTopCv(member_type));
@@ -1195,7 +1195,7 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 					FindChild(item, ::cppgm::syntax::STAG_INITIALIZER));
 			}
 			else if (!non_static_data_member && spec.is_constexpr)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"constexpr static data member requires initializer");
 			if (member_initializer_by_binding_.size() <= member)
 				member_initializer_by_binding_.resize(
@@ -1217,16 +1217,16 @@ void Analyzer::AnalyzeBitField(NodeId node, ScopeId scope,
 	const NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
 	const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), true);
 	if (!IsIntegral(spec.type, true) || spec.storage_class != STORAGE_CLASS_NONE)
-		throw std::runtime_error("invalid bit-field type or storage class");
+		ThrowSemanticError("invalid bit-field type or storage class");
 	const EntityId entity = EntityOf(owner_type);
 	if (entity == kNoEntity)
-		throw std::logic_error("bit-field has no class owner");
+		ThrowInternalCompilerError("bit-field has no class owner");
 	if (entity_layout_members_.size() <= entity)
 		entity_layout_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (entity_data_members_.size() <= entity)
 		entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (FindChild(node, ::cppgm::syntax::STAG_ALIGNMENT_SPECIFIER) != kNoNode)
-		throw std::runtime_error("alignment specifier cannot apply to a bit-field");
+		ThrowSemanticError("alignment specifier cannot apply to a bit-field");
 	const TypeId value_type = program_->types.RemoveTopCv(spec.type);
 	const TypeRecord& value_record = program_->types.Get(value_type);
 	const bool boolean_field = value_record.kind == TYPE_FUNDAMENTAL &&
@@ -1247,13 +1247,13 @@ void Analyzer::AnalyzeBitField(NodeId node, ScopeId scope,
 			if (child != declarator) width_node = child;
 		}
 		if (width_node == kNoNode)
-			throw std::runtime_error("bit-field has no width");
+			ThrowSemanticError("bit-field has no width");
 		const ExpressionInfo width_expression =
 			AnalyzeExpression(width_node, scope);
 		if (!width_expression.constant || width_expression.value < 0 ||
 			static_cast<std::uint64_t>(width_expression.value) >
 				std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("invalid bit-field width");
+			ThrowSemanticError("invalid bit-field width");
 		const std::uint32_t width =
 			static_cast<std::uint32_t>(width_expression.value);
 		BindingId binding_id = kNoBinding;
@@ -1264,16 +1264,16 @@ void Analyzer::AnalyzeBitField(NodeId node, ScopeId scope,
 				BuildDeclarator(declarator, spec.type, scope);
 			name = parsed.name;
 			if (name == 0 || parsed.type != spec.type)
-				throw std::runtime_error("invalid bit-field declarator");
+				ThrowSemanticError("invalid bit-field declarator");
 		}
 		if (name != 0)
 		{
 			if (width == 0)
-				throw std::runtime_error("named zero-width bit-field");
+				ThrowSemanticError("named zero-width bit-field");
 			const LookupResult occupied =
 				program_->LookupDirect(scope, name, LOOKUP_ORDINARY);
 			if (occupied.ordinary != kNoBinding)
-				throw std::runtime_error("duplicate or conflicting class member");
+				ThrowSemanticError("duplicate or conflicting class member");
 			binding_id = program_->AddBinding(scope, BIND_VARIABLE, name,
 				spec.type, false, 0, NAMED_NONE, 0, kNoBinding, false);
 			BindingRecord& binding = program_->bindings[binding_id];
@@ -1331,7 +1331,7 @@ void Analyzer::PublishVariableDeclarationFacts(BindingId binding,
 		canonical.storage_class = record.storage_class;
 	if (record.canonical != binding && canonical.thread_local_storage !=
 		record.thread_local_storage)
-		throw std::runtime_error("thread_local redeclaration mismatch");
+		ThrowSemanticError("thread_local redeclaration mismatch");
 	canonical.thread_local_storage = record.thread_local_storage;
 }
 
@@ -1339,7 +1339,7 @@ void Analyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	TypeId owner_type, AccessKind access)
 {
 	const EntityId entity = EntityOf(owner_type);
-	if (entity == kNoEntity) throw std::logic_error("special member has no class");
+	if (entity == kNoEntity) ThrowInternalCompilerError("special member has no class");
 	const NodeId declarator = FindChild(node, ::cppgm::syntax::STAG_DECLARATOR);
 	if (declarator != kNoNode &&
 		FindChild(declarator, ::cppgm::syntax::STAG_CONVERSION_TYPE_ID) != kNoNode)
@@ -1362,12 +1362,12 @@ void Analyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		EntityRecord& class_record = program_->entities[entity];
 		class_record.has_user_declared_destructor = true;
 		if (declarator == kNoNode)
-			throw std::runtime_error("destructor is missing its declarator");
+			ThrowSemanticError("destructor is missing its declarator");
 		const DeclaratorInfo parsed = BuildDeclarator(declarator,
 			program_->types.Fundamental(FUND_VOID), scope, false, true);
 		if (!program_->types.IsFunction(parsed.type) ||
 			!parsed.parameters.empty())
-			throw std::runtime_error("destructor must have no parameters");
+			ThrowSemanticError("destructor must have no parameters");
 		const NodeId initializer = FindChild(node, ::cppgm::syntax::STAG_INITIALIZER);
 		const NodeId special = initializer == kNoNode ? kNoNode :
 			FindChild(initializer, ::cppgm::syntax::STAG_SPECIAL_INITIALIZER);
@@ -1377,7 +1377,7 @@ void Analyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 			arena_->IsTag(initializer_value, ::cppgm::syntax::STAG_LITERAL) &&
 			arena_->Payload(initializer_value) == "0";
 		if (initializer != kNoNode && special == kNoNode && !pure)
-			throw std::runtime_error("invalid destructor initializer");
+			ThrowSemanticError("invalid destructor initializer");
 		const bool defaulted = special != kNoNode &&
 			arena_->Payload(special) == "default";
 		const bool deleted = special != kNoNode &&
@@ -1443,7 +1443,7 @@ void Analyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		if (entity_destructor_by_entity_[entity] != kNoBinding &&
 			program_->bindings[entity_destructor_by_entity_[entity]].canonical !=
 				binding.canonical)
-			throw std::runtime_error("class has multiple destructors");
+			ThrowSemanticError("class has multiple destructors");
 		entity_destructor_by_entity_[entity] = destructor;
 		class_record.destructible = !info.deleted_destructor;
 		class_record.trivial_destructor = defaulted && !deleted;
@@ -1453,16 +1453,16 @@ void Analyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	if (virtual_member_specifier ||
 		(declarator != kNoNode &&
 		 FindChild(declarator, ::cppgm::syntax::STAG_VIRT_SPECIFIER) != kNoNode))
-		throw std::runtime_error("constructor cannot have a virtual specifier");
+		ThrowSemanticError("constructor cannot have a virtual specifier");
 
 	EntityRecord& class_record = program_->entities[entity];
 	class_record.has_user_declared_constructor = true;
 	if (declarator == kNoNode)
-		throw std::runtime_error("constructor is missing its declarator");
+		ThrowSemanticError("constructor is missing its declarator");
 	const DeclaratorInfo parsed = BuildDeclarator(declarator,
 		program_->types.Fundamental(FUND_VOID), scope, false, true);
 	if (!program_->types.IsFunction(parsed.type))
-		throw std::runtime_error("constructor declarator is not a function");
+		ThrowSemanticError("constructor declarator is not a function");
 	const NodeId initializer = FindChild(node, ::cppgm::syntax::STAG_INITIALIZER);
 	const NodeId special = initializer == kNoNode ? kNoNode :
 		FindChild(initializer, ::cppgm::syntax::STAG_SPECIAL_INITIALIZER);
@@ -1540,7 +1540,7 @@ SpecInfo Analyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 	const std::string& hint, bool has_declarators, bool type_id_context,
 	TypeId deferred_type)
 {
-	if (node == kNoNode) throw std::runtime_error("missing type specifiers");
+	if (node == kNoNode) ThrowSemanticError("missing type specifiers");
 	SpecInfo result;
 	std::uint8_t cv = CV_NONE;
 	bool is_unsigned = false;
@@ -1560,7 +1560,7 @@ SpecInfo Analyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		if (arena_->IsTag(child, ::cppgm::syntax::STAG_ATOMIC_TYPE_SPECIFIER)) {
 			const TypeId underlying = BuildTypeId(FirstSemanticChild(child), scope);
 			if (CandidateSubstitutionFailed()) return result;
-			if (program_->types.IsAtomic(underlying)) throw std::runtime_error("nested _Atomic type");
+			if (program_->types.IsAtomic(underlying)) ThrowSemanticError("nested _Atomic type");
 			result.type = program_->types.Qualify(underlying, CV_ATOMIC);
 			continue; }
 		if (arena_->IsTag(child, ::cppgm::syntax::STAG_BUILTIN_TRANSFORM_TYPE))
@@ -1571,7 +1571,7 @@ SpecInfo Analyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		}
 		if (arena_->IsTag(child, ::cppgm::syntax::STAG_BITINT_TYPE_SPECIFIER))
 		{
-			if (bitint_specifier != kNoNode) throw std::runtime_error("duplicate _BitInt type specifier");
+			if (bitint_specifier != kNoNode) ThrowSemanticError("duplicate _BitInt type specifier");
 			bitint_specifier = child;
 			continue;
 		}
@@ -1620,13 +1620,13 @@ SpecInfo Analyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 					RecordCandidateSubstitutionFailure();
 					return result;
 				}
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"structured template type was not found: " +
 					PayloadSource(child));
 			}
 			if (found.type_declaration != kNoBinding &&
 				!CanAccessMember(found.type_declaration, found.naming_class))
-				throw std::runtime_error("inaccessible member type");
+				ThrowSemanticError("inaccessible member type");
 			continue;
 		}
 		if (arena_->IsTag(child, ::cppgm::syntax::STAG_DECLTYPE_SPECIFIER) ||
@@ -1643,17 +1643,17 @@ SpecInfo Analyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 				const ScopeId carrier = program_->ScopeForType(
 					EffectiveType(result.type));
 				if (carrier == kNoScope)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"decltype qualifier does not name a class type");
 				const LookupResult found = LookupStructuredName(
 					qualified, carrier, LOOKUP_TYPE);
 				if (found.type == kNoType)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"qualified decltype type was not found");
 				if (found.type_declaration != kNoBinding &&
 					!CanAccessMember(found.type_declaration,
 						found.naming_class))
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"inaccessible qualified decltype type");
 				result.type = found.type;
 			}
@@ -1700,18 +1700,18 @@ SpecInfo Analyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			{ result.type = deferred_type; continue; }
 			const LookupResult found = LookupSyntaxName(child, scope, LOOKUP_TYPE);
 			if (found.type == kNoType)
-				throw std::runtime_error("unknown type name: " + spelling);
+				ThrowSemanticError("unknown type name: " + spelling);
 			const TypeRecord& named = program_->types.Get(
 				program_->types.RemoveTopCv(found.type));
 			if (named.kind == TYPE_NAMED &&
 				program_->entities[named.entity].flavor ==
 					NAMED_TEMPLATE_PARAMETER)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"class template name requires template arguments");
 			if (found.type_declaration != kNoBinding &&
 				!CanAccessMember(found.type_declaration,
 					found.naming_class))
-				throw std::runtime_error("inaccessible member type");
+				ThrowSemanticError("inaccessible member type");
 			result.type = found.type;
 		}
 	}
@@ -1720,7 +1720,7 @@ SpecInfo Analyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		if (result.type != kNoType || is_short || longs != 0 || is_char ||
 			is_void || is_bool || is_float || is_double || is_wchar ||
 			is_char16 || is_char32 || saw_int)
-			throw std::runtime_error("invalid _BitInt type specifier combination");
+			ThrowSemanticError("invalid _BitInt type specifier combination");
 		result.type = BuildBitIntSpecifierType(
 			bitint_specifier, scope, is_unsigned);
 		if (CandidateSubstitutionFailed()) return result;
@@ -1755,7 +1755,7 @@ SpecInfo Analyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (longs == 1) kind = FUND_LONG_INT;
 		else if (is_unsigned) kind = FUND_UNSIGNED_INT;
 		else if (!saw_int && !is_signed)
-			throw std::runtime_error("declaration has no type specifier");
+			ThrowSemanticError("declaration has no type specifier");
 		result.type = program_->types.Fundamental(kind);
 	}
 	if (is_complex) result.type = BuildComplexSpecifierType(result.type);
@@ -1769,7 +1769,7 @@ SpecInfo Analyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 
 TypeId Analyzer::BuildTypeId(NodeId node, ScopeId scope)
 {
-	if (node == kNoNode) throw std::runtime_error("missing type-id");
+	if (node == kNoNode) ThrowSemanticError("missing type-id");
 	NodeId specifiers = FindChild(node, ::cppgm::syntax::STAG_TYPE_SPECIFIER_SEQ);
 	if (specifiers == kNoNode)
 		specifiers = FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
@@ -2043,7 +2043,7 @@ DeclaratorInfo Analyzer::BuildDeclarator(NodeId node, TypeId base,
 					program_->types.TryMemberPointer(owner, type),
 					"member pointer owner is not a class");
 			}
-			else throw std::runtime_error("invalid pointer operator");
+			else ThrowSemanticError("invalid pointer operator");
 			if (CandidateSubstitutionFailed()) return result;
 		}
 		else if (arena_->IsTag(child, ::cppgm::syntax::STAG_CV_QUALIFIER))
@@ -2060,7 +2060,7 @@ DeclaratorInfo Analyzer::BuildDeclarator(NodeId node, TypeId base,
 		else if (arena_->IsTag(child, ::cppgm::syntax::STAG_REF_QUALIFIER))
 		{
 			if (function_ref != FUNCTION_REF_NONE)
-				throw std::runtime_error("duplicate function ref-qualifier");
+				ThrowSemanticError("duplicate function ref-qualifier");
 			function_ref = PayloadSource(child) == "&" ?
 				FUNCTION_REF_LVALUE : FUNCTION_REF_RVALUE;
 		}
@@ -2114,7 +2114,7 @@ DeclaratorInfo Analyzer::BuildDeclarator(NodeId node, TypeId base,
 		{
 			const NodeId return_type = FindChild(trailing, ::cppgm::syntax::STAG_TYPE_ID);
 			if (return_type == kNoNode)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"trailing return type is missing its type-id");
 			type = BuildTypeId(return_type, return_scope);
 		}
@@ -2182,7 +2182,7 @@ DeclaratorInfo Analyzer::BuildDeclarator(NodeId node, TypeId base,
 	}
 	result.type = type;
 	if (deduced_placeholder && !program_->types.IsFunction(result.type))
-		throw std::runtime_error("placeholder return deduction requires a function definition");
+		ThrowSemanticError("placeholder return deduction requires a function definition");
 	return result;
 }
 
@@ -2193,7 +2193,7 @@ BindingId Analyzer::DeclareFunction(ScopeId owner, NameId name,
 	bool ordinary_visible, bool private_unique)
 {
 	if (private_unique && ordinary_visible)
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"private unique function cannot be ordinary-visible");
 	if (HasInternalLinkageScope(owner)) storage_class = STORAGE_CLASS_STATIC;
 	LookupResult occupied;
@@ -2206,10 +2206,10 @@ BindingId Analyzer::DeclareFunction(ScopeId owner, NameId name,
 	if (occupied.ordinary != kNoBinding &&
 		program_->bindings[occupied.ordinary].kind != BIND_FUNCTION &&
 		!synthesized_constructor_name)
-		throw std::runtime_error("function conflicts with ordinary binding");
+		ThrowSemanticError("function conflicts with ordinary binding");
 	const TypeRecord declared_type = program_->types.Get(type);
 	if (declared_type.kind != TYPE_FUNCTION)
-		throw std::logic_error("function declaration has non-function type");
+		ThrowInternalCompilerError("function declaration has non-function type");
 	std::vector<TypeId> signature_parameters;
 	signature_parameters.reserve(declared_type.parameter_count);
 	const TypeId* declared_parameters = program_->types.Parameters(type);
@@ -2220,7 +2220,7 @@ BindingId Analyzer::DeclareFunction(ScopeId owner, NameId name,
 		const TypeRecord& shape = program_->types.Get(parameter);
 		if (shape.kind == TYPE_NAMED &&
 			program_->entities[shape.entity].abstract_class)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"function parameter has abstract class type");
 		signature_parameters.push_back(declared_parameters[i]);
 	}
@@ -2240,7 +2240,7 @@ BindingId Analyzer::DeclareFunction(ScopeId owner, NameId name,
 	}
 	if (previous == kNoBinding && imported != kNoBinding &&
 		program_->KindOfScope(owner) != SCOPE_CLASS)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"function conflicts with using-declaration");
 	const bool was_ordinary_visible = previous != kNoBinding &&
 		GetFunction(previous).ordinary_visible;
@@ -2256,17 +2256,17 @@ BindingId Analyzer::DeclareFunction(ScopeId owner, NameId name,
 		if (storage_class == STORAGE_CLASS_STATIC &&
 			existing_binding.storage_class != STORAGE_CLASS_STATIC &&
 			!existing_binding.unnamed_namespace_linkage)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"static function declaration follows external declaration");
 		const TypeRecord old_type = program_->types.Get(existing.type);
 		if (old_type.child != declared_type.child)
-			throw std::runtime_error("conflicting function return type");
+			ThrowSemanticError("conflicting function return type");
 		if (program_->bindings[existing.binding].nonthrowing != nonthrowing)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"conflicting function exception specification");
 		canonical = existing.binding;
 		if (definition && existing.defined)
-			throw std::runtime_error("duplicate function definition");
+			ThrowSemanticError("duplicate function definition");
 	}
 	const BindingId declaration = ordinary_visible ?
 		program_->AddBinding(owner, BIND_FUNCTION, name, type, false, 0,
@@ -2327,7 +2327,7 @@ BindingId Analyzer::DeclareFunction(ScopeId owner, NameId name,
 		MergeFunctionRedeclarationParameters(
 			&merged, parameters, definition);
 		if (merged.parameters.size() != parameters.size())
-			throw std::logic_error("PA12 function parameter fact mismatch");
+			ThrowInternalCompilerError("PA12 function parameter fact mismatch");
 		for (std::size_t i = 0; i < parameters.size(); ++i)
 			if (parameters[i].default_argument != kNoNode)
 			{
@@ -2383,14 +2383,14 @@ void Analyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		return;
 	}
 	const NodeId target_node = FindChild(node, ::cppgm::syntax::STAG_TARGET);
-	if (target_node == kNoNode) throw std::runtime_error("missing using target");
+	if (target_node == kNoNode) ThrowSemanticError("missing using target");
 	const std::string target = arena_->Payload(target_node);
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_NAMESPACE_ALIAS_DEFINITION))
 	{
 		const ScopeId target_scope =
 			ResolveScopePath(scope, SyntaxNamePath(target_node));
 		if (target_scope == kNoScope)
-			throw std::runtime_error("namespace alias target not found");
+			ThrowSemanticError("namespace alias target not found");
 		program_->AddNamespaceAlias(scope,
 			program_->names.UseInterned(arena_->PayloadId(node)), target_scope);
 		return;
@@ -2400,7 +2400,7 @@ void Analyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		const ScopeId target_scope =
 			ResolveScopePath(scope, SyntaxNamePath(target_node));
 		if (target_scope == kNoScope)
-			throw std::runtime_error("using namespace target not found");
+			ThrowSemanticError("using namespace target not found");
 		program_->AddUsingEdge(scope, target_scope);
 		return;
 	}
@@ -2422,7 +2422,7 @@ void Analyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		if (terminal_component != kNoNode && FindChild(terminal_component,
 			::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) !=
 			kNoNode)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"using-declaration cannot name a template-id");
 	}
 	const LookupResult ordinary = target_structure != kNoNode ?
@@ -2441,7 +2441,7 @@ void Analyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	{
 		if (type.type_declaration != kNoBinding &&
 			!CanAccessMember(type.type_declaration, type.naming_class))
-			throw std::runtime_error("inaccessible using type");
+			ThrowSemanticError("inaccessible using type");
 		const BindingId alias = program_->AddBinding(scope,
 			program_->types.IsNamed(type.type) ? BIND_TYPE : BIND_TYPE_ALIAS,
 			name, type.type, false, 0, NAMED_NONE, 0,
@@ -2491,7 +2491,7 @@ void Analyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		{
 			const FunctionInfo& function = GetFunction(functions[i]);
 			if (!CanAccessMember(functions[i], ordinary.naming_class))
-				throw std::runtime_error("inaccessible using function");
+				ThrowSemanticError("inaccessible using function");
 			const FunctionSignatureKey signature_key(scope, name, function.signature);
 			++function_signature_lookups_;
 			const BindingId local_declaration = function_declarations_.Find(signature_key);
@@ -2500,7 +2500,7 @@ void Analyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 				if (class_owner != kNoEntity ||
 					program_->bindings[local_declaration].canonical ==
 					program_->bindings[function.binding].canonical) continue;
-				throw std::runtime_error("using function conflicts with declaration");
+				ThrowSemanticError("using function conflicts with declaration");
 			}
 			const UsingFunctionIdentityKey identity(
 				scope, name, function.binding);
@@ -2523,10 +2523,10 @@ void Analyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	{
 		if (hosted_extension::HasGnuAttribute(
 			*arena_, node, "__using_if_exists__")) return;
-		throw std::runtime_error("using-declaration target not found");
+		ThrowSemanticError("using-declaration target not found");
 	}
 	if (!CanAccessMember(ordinary.ordinary, ordinary.naming_class))
-		throw std::runtime_error("inaccessible using declaration");
+		ThrowSemanticError("inaccessible using declaration");
 	const BindingRecord source = program_->bindings[ordinary.ordinary];
 	const BindingId alias = program_->AddBinding(scope, source.kind, name,
 		source.type, source.constant, source.value, source.display_flavor,
@@ -2570,7 +2570,7 @@ BindingId Analyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	const BindingRecord source_binding_copy = source_binding;
 	const FunctionInfo source_info = GetFunction(destructor);
 	if (!source_binding_copy.destructor || !source_info.destructor)
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"destructor base entry requested for non-destructor");
 	// The base entry shares the source destructor's name; the lifecycle
 	// flag is its identity, so it must stay out of ordinary name lookup.
@@ -2630,7 +2630,7 @@ void Analyzer::PublishUsingAccess(BindingId alias,
 	BindingId source, AccessKind access)
 {
 	if (alias == kNoBinding || source == kNoBinding)
-		throw std::logic_error("using declaration has no binding identity");
+		ThrowInternalCompilerError("using declaration has no binding identity");
 	BindingRecord& target = program_->bindings[alias];
 	const BindingRecord original = program_->bindings[source];
 	target.member_owner = original.member_owner;
@@ -2686,7 +2686,7 @@ void Analyzer::ValidateNonmemberOperator(BindingId binding) const
 		const NamedFlavor flavor = program_->entities[shape->entity].flavor;
 		if (IsClassNamedFlavor(flavor) || IsEnumNamedFlavor(flavor)) return;
 	}
-	throw std::runtime_error(
+	ThrowSemanticError(
 		"nonmember operator requires a class or enumeration parameter");
 }
 
@@ -2700,7 +2700,7 @@ void Analyzer::ValidateFunctionRefQualifier(BindingId binding)
 	if (type.ref_qualifier != FUNCTION_REF_NONE &&
 		(!nonstatic_member || record.static_member_function ||
 		 record.constructor || record.destructor))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"ref-qualifier requires an ordinary non-static member function");
 	if (!class_member) return;
 
@@ -2723,7 +2723,7 @@ void Analyzer::ValidateFunctionRefQualifier(BindingId binding)
 		program_->types.Get(GetFunction(prior).type);
 	if ((type.ref_qualifier == FUNCTION_REF_NONE) !=
 		(prior_type.ref_qualifier == FUNCTION_REF_NONE))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"member overload set mixes ref-qualified and unqualified declarations");
 }
 
@@ -2732,7 +2732,7 @@ const FunctionInfo& Analyzer::GetFunction(BindingId binding) const
 	const BindingId canonical = program_->bindings[binding].canonical;
 	if (canonical >= function_fact_by_binding_.size() ||
 		function_fact_by_binding_[canonical] == kNoDumpEdge)
-		throw std::logic_error("missing PA12 function fact");
+		ThrowInternalCompilerError("missing PA12 function fact");
 	return functions_[function_fact_by_binding_[canonical]];
 }
 
@@ -2741,7 +2741,7 @@ FunctionInfo& Analyzer::GetMutableFunction(BindingId binding)
 	const BindingId canonical = program_->bindings[binding].canonical;
 	if (canonical >= function_fact_by_binding_.size() ||
 		function_fact_by_binding_[canonical] == kNoDumpEdge)
-		throw std::logic_error("missing PA12 function fact");
+		ThrowInternalCompilerError("missing PA12 function fact");
 	return functions_[function_fact_by_binding_[canonical]];
 }
 void Analyzer::DemandFunction(BindingId binding,

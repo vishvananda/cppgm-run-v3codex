@@ -1,7 +1,7 @@
 #include "semantic/analysis/switch.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -49,7 +49,7 @@ void RegisterSwitchEntryDeclaration(const Program& program, ScopeId scope,
 			static_cast<std::size_t>(scope) + 1, 0);
 	if ((*barriers)[scope] ==
 		std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many automatic declarations in scope");
+		ThrowSemanticResourceLimit("too many automatic declarations in scope");
 	++(*barriers)[scope];
 }
 
@@ -59,14 +59,14 @@ void ValidateSwitchLabelEntry(ScopeId scope,
 	const std::vector<ScopeId>& switch_boundaries)
 {
 	if (switch_boundaries.empty())
-		throw std::logic_error("switch label has no entry boundary");
+		ThrowInternalCompilerError("switch label has no entry boundary");
 	const ScopeId boundary = switch_boundaries.back();
 	while (scope != boundary)
 	{
 		if (scope == kNoScope || scope >= scope_parents.size())
-			throw std::logic_error("switch label scope is outside its switch");
+			ThrowInternalCompilerError("switch label scope is outside its switch");
 		if (scope < barriers.size() && barriers[scope] != 0)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"case or default label bypasses variable initialization");
 		scope = scope_parents[scope];
 	}

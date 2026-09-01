@@ -1,6 +1,6 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E3 complete; typed semantic migration is next
+Status: in progress; E0-E3 complete; E4 semantic migration is in progress
 
 Date: 2026-09-01
 
@@ -702,7 +702,8 @@ Append one row for each retained or rejected increment:
 | E2 | syntax speculation | runtime exception used for type-id/parameter-clause retry | 8-byte matched/no-match/committed-error result; committed `SyntaxError` | PA10 dependent logical template argument and malformed syntax | frozen 1->0; full syntax 231->0; full total 302->71 | +640 text, -76 exception table, +136 unwind | frozen 0.520/0.520 s; full O1/O3 neutral below | through-PA10 586/586; 222 O1/O3 objects exact | `9109b2d9` | retained |
 | E3a | constexpr constructor initializer access | catch-all converted a lost class context into ordinary non-constant flow | constructor class/function context spans arguments and base/member initializers | PA21 protected base construction in a required constant expression | full 71->0; all events were three valid lookup tables in `lowir/io/parse.cpp` | text/rodata/unwind unchanged; exception table -8 | frozen neutral; full O1 +0.34% CPU, O3 -0.24% CPU | through-PA21 2,416/2,416; PA23 414/414; 222 O1/O3 objects exact | `ee6d0cb8` | retained |
 | E3b | scalar conversion and compound update | two catch-alls swallowed arithmetic failure, invariant failure, allocation, or any future type alike | recover only `SemanticError`; scalar invariants use `InternalCompilerError`; shared cold throw helpers | PA21 scalar/constexpr evaluation, including rejected required constants | successful full 0->0; catch-all sites 59->57 | -512 text, +32 rodata, -352 exception table, +296 unwind | frozen neutral; full O1 -0.23% CPU, O3 -0.31% CPU | PA21 150/150; 222 O1/O3 objects exact | `421d5c1c` | retained |
-| E3c | constructor/function constexpr probe boundaries and selection | four catch-alls converted every unknown failure to non-constant; constructor selection was untyped | recover only `SemanticError`; overload failures are semantic and conversion-table exhaustion is resource | PA17 nonconstant class-array initialization; PA21 ordinary dynamic fallback after a failed constant probe | successful full 0->0; targeted fallback has one typed semantic throw; catch-all sites 57->53 | +128 text, +32 rodata, -48 exception table, +112 unwind | frozen neutral; full O1 -0.32% CPU, O3 -0.71% CPU | through-PA21 2,417/2,417; PA21 151/151; 222 O1/O3 objects exact | pending | retained |
+| E3c | constructor/function constexpr probe boundaries and selection | four catch-alls converted every unknown failure to non-constant; constructor selection was untyped | recover only `SemanticError`; overload failures are semantic and conversion-table exhaustion is resource | PA17 nonconstant class-array initialization; PA21 ordinary dynamic fallback after a failed constant probe | successful full 0->0; targeted fallback has one typed semantic throw; catch-all sites 57->53 | +128 text, +32 rodata, -48 exception table, +112 unwind | frozen neutral; full O1 -0.32% CPU, O3 -0.71% CPU | through-PA21 2,417/2,417; PA21 151/151; 222 O1/O3 objects exact | `4e933284` | retained |
+| E4a | declarations, lookup, and semantic index tables | source diagnostics, resource ceilings, and invariants shared generic standard bases | `SemanticError`, semantic-domain `ResourceLimitError`, and `InternalCompilerError`; cold shared throw helpers | PA12 declarations and expressions, with cumulative PA21/PA23 recovery coverage | successful full remains 0; generic logic/runtime sites -43/-160 | -10,368 text, -32 rodata, -1,972 exception table, -32 unwind | frozen 0.520/0.520 s; full O1 -0.46% CPU, O3 -0.07% CPU | through-PA12 842/842; through-PA23 3,142/3,142; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -980,6 +981,45 @@ interleaved lanes baseline/candidate wall is 19.992/19.985 seconds and CPU is
 497.553/494.015 seconds (-0.71%).  PA21 passes 151/151 and PA23 passes 414/414.
 E3 therefore closes with zero swallowing catch-all sites and zero dynamically
 common valid-input unwinds.
+
+### E4a execution record
+
+The first semantic slice covers declaration analysis, name-path parsing,
+switch-entry validation, and the compact semantic index tables.  It converts
+160 generic runtime throws and 43 generic logic throws.  Ordinary rejected
+programs now use `SemanticError`; checked table cardinality and layout overflow
+use semantic-domain `ResourceLimitError`; and broken identities, impossible
+ownership, invalid compiler-produced alignment, and missing cached facts use
+`InternalCompilerError`.  The explicit candidate-substitution status path is
+unchanged.  In particular, no catch was broadened: the previously established
+constexpr probes can recover only the newly classified ordinary semantic
+diagnostics, while resource and internal failures bypass them.
+
+Cold noinline string overloads centralize construction for the semantic and
+internal types instead of repeating exception setup at each concatenated
+diagnostic.  The helper dependency remains explicit in the implementation
+files rather than leaking through the semantic model header.  The exception
+audit ratchets from 1,410/1,425 generic logic/runtime throws in 217 files to
+1,367/1,265 in 206 files.  Catch and message-policy counts are unchanged.
+
+PA12 passes 184/184, through-PA12 passes 842/842, and the cumulative
+through-PA23 report passes 3,142/3,142.  The PA38 file audit retains its
+established 32 warnings and no fatal finding.  Against `4e933284`, the matched
+GCC-O3 carrier changes `.text` 6,624,102 -> 6,613,734, `.rodata`
+214,272 -> 214,240, `.eh_frame_hdr` 50,980 -> 51,020, `.eh_frame`
+323,512 -> 323,440, and `.gcc_except_table` 164,440 -> 162,468.  The resource
+helper takes literal text directly, avoiding a redundant allocation while
+reporting resource exhaustion.  Twelve final frozen samples are exact at
+`8545fec6...`; both wall and user medians are 0.520 and 0.480 seconds.
+
+The source-matched 32-way full guard reproduces all 222 objects.  Requested
+O1 baseline/candidate aggregate CPU averages 493.355/491.080 seconds (-0.46%);
+requested O3 averages 498.850/498.525 seconds (-0.07%).  Wall time rose with
+machine load across each block, so aggregate CPU and the interleaved ordering
+are the retention signal.  The final refinement reclassified three impossible
+states and moved includes from the model header to direct owners.  Those cold
+classification changes do not alter a successful control-flow path; the final
+resource-helper refinement accounts for the additional size reduction above.
 
 ## Initial code map
 
