@@ -4549,6 +4549,59 @@ PA37 passes 190/190, PA38 passes 45/45, and the through-PA38 report passes
 layout, rename, source-set, and ownership audits pass; and the PA39 file audit
 has zero fatal findings with its 31 established advisories.
 
+### Rejected external-write reuse across stable calls
+
+The first follow-up reused the complete-object memory analysis without adding
+another serialized LowIR fact. It computed a whole-program fixed point for
+whether each internal function can write memory outside its own frame, then
+allowed repeat-stable query values to survive calls whose only writes are to
+callee-local slots. External and indirect calls still required an existing
+`readnone` or `readonly` boundary, and volatile, atomic, parameter, global,
+unknown, and unresolved writes remained barriers. Selection used only call
+and memory structure; it did not inspect source, symbol names, or complete
+program identity.
+
+The proof was populated but too small. Static query reuses rose from 31 to 53
+and removed 882,230 dynamic group-query calls. The exact fixed-point producer
+grew 4,424 text bytes, while the common-input self Callgrind count fell from
+3,621,818,198 to 3,609,969,619 (`0.996728555x`, -0.327144%). That is sound
+progress but remains well below the 1% source-diverse retention floor.
+`lowiropt` and PA37's existing 190 properties passed; no README or test
+contract was added for behavior that was not retained. The prototype was
+removed rather than accumulating another whole-program summary for a
+sub-threshold result.
+
+### Rejected compared-quotient constant-division encoding
+
+The residual macro profile exposed one narrower successor to the rejected
+broad retained-division prototype. MIR copy forwarding can leave an
+immediately following comparison reading the architectural quotient in RAX,
+but the existing constant-division encoder recognized only a result move or
+return. A structural native prototype also accepted an adjacent two-operand
+comparison that directly reads RAX and does not read RDX. It did not change
+LowIR, MIR serialization, source lowering, or optimization-level policy.
+
+The intended `AnnotateParentheses` loop replaced its `idiv 104` with the
+existing magic-division sequence and grew 20 object text bytes. Across the
+fixed-point compiler, the dose grew text by 30,316 bytes. G1 and G2 matched
+all 221 objects and the linked compiler exactly at
+`cc7c277fbe68f233b01a272c6cfa69ebaba603c5c59aa8c8127aaa11aad5a006`.
+Twenty position-balanced software task-clock observations per side improved
+self from 794.301 to 787.439 ms (`0.991360952x`), while the same-source
+GCC-built control moved from 535.797 to 536.522 ms (`1.001352191x`), for a
+promising but borderline `0.990022253x` normalized result.
+
+The deterministic oracle contradicted that native window. Relative to the
+external-write-only prototype, self Callgrind rose from 3,609,969,619 to
+3,621,663,067 instructions (`1.003239210x`). The two experiments together
+were effectively flat against the retained checkpoint at `0.999957168x`,
+despite carrying both implementation and footprint costs. PA38's existing 45
+properties remained clean, but the dose did not justify a new PA38 contract.
+Both prototypes were removed. A future quotient optimization must shorten the
+sequence or establish a stronger source-diverse native win; merely recovering
+every hidden constant divide repeats the previously measured
+retired-instruction regression.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4660,6 +4713,8 @@ Fill one row for every retained or rejected dose.
 | D.grouped-early-exit-unroll | fully unroll one bounded acyclic private-table loop and group iterations by a folded discriminator | none; rejected before contract movement | `Lexer::Run` 9,110 to 10,290 bytes; tokenizer Ir `0.969695x`; optional scalar `memcmp` lowering regressed to 462.16M Ir | self `1.000256x`, GCC `1.000144x`, normalized `1.000112x`; gap 1.529639x to 1.529810x | exact tokenizer and complete hot objects; fresh explicit-32-way G1; prototype removed | rejected; isolated 3.03% saving is canceled by complete-producer interference |
 | D.argmem-boundary | restore parameter capture/access and an argument-memory-only call effect, then consume them in memory GVN | none; rejected before PA13/PA37 contract movement | focused source-slot reuse works; tokenizer exact; all 221 G1/G2 `.text` sections and linked compiler exact | no timing warranted because generated compiler code is unchanged | explicit-32-way G1/G2; compiler `01eaef45...` exact; prototype removed | rejected; no real compiler population, so the removed LowIR surface remains unjustified |
 | D.complete-object-memory | serialize a positive complete parameter-object extent, derive body effects/capture intervals, and consume disjoint regions at O3 | PA13/PA17/PA37/PA38 README plus pointer-only syntax/transport, source-production, level, structural positive/negative, replay, native-pressure, and behavior properties; no complete-program matching | compiler object v6; 1,387 populated extents on the largest TU; indexed 9,336-site analysis; linked producer +55,956 text/+752 data; final G1/G2 exact | self Ir `0.976039x`; GCC `1.000713x`; normalized `0.975343x`; gap `1.529720x` to `1.492001x`; Clang-normalized `0.975533x`; final O1/O3 native CPU `0.988085x`/`0.988883x` | 221-object all-32 fixed point at `30132bf2...`; focused suites, full report, debug/round-trip, and all zero-fatal audits clean | retained; populated O0 semantic fact justifies the narrow LowIR addition, while indexed fixed points remove the initial critical-path regression |
+| D.external-write-stable-reuse | preserve an established repeat-stable query result across calls proven not to write outside their own frame | none; rejected behavior was not moved into PA37 | static reuses 31 to 53; 882,230 dynamic query calls removed; producer +4,424 text | self Ir `0.996729x`, below the 1% gate | `lowiropt` and PA37 190/190; exact fixed point `c18cd945...`; prototype removed | rejected; sound whole-program summary has too little source-diverse benefit |
+| D.compared-quotient-encoding | let existing constant-division encoding consume a quotient read directly by the adjacent comparison | none; rejected behavior was not moved into PA38; LowIR/MIR contracts unchanged | hot `idiv 104` removed; object +20 text; producer +30,316 text; 221-object G1/G2 exact | self task-clock `0.991361x`, GCC `1.001352x`, normalized `0.990022x`; self Ir `1.003239x` over its direct control and combined Ir `0.999957x` vs retained | PA38 45/45; exact fixed point `cc7c277f...`; prototypes removed | rejected; borderline native win contradicts deterministic instruction cost and adds footprint |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
