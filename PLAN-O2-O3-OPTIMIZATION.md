@@ -4385,6 +4385,38 @@ prototype was therefore removed before contract movement; the existing
 nested-invariant exclusion is intentional until a bounded plan can prove that
 the long phi claim will not displace more valuable interval residents.
 
+### Rejected grouped early-exit table unroll
+
+The next tokenizer residual was `IsNamedOperator`: self already inlined the
+helper into `Lexer::Run`, but retained a thirteen-entry table loop while GCC
+grouped the table by string length.  A bounded late-O3 prototype fully
+unrolled only single-latch loops with constant trip counts, acyclic bodies,
+early exits, no EH, no escaping SSA values, and a private structured readonly
+table indexed by the sole induction phi.  It stable-sorted entries by a
+repeated integer discriminator, skipped the remainder of a group after the
+first failed discriminator guard, and folded exact typed table fields from
+the existing serialized initializer.  The proof used only ordinary PA13
+LowIR; it introduced no metadata, opcode, source identity, or hidden native
+preparation path.
+
+A fresh compiler built by the retained fixed point reproduced the intended
+candidate.  `Lexer::Run` grew from 9,110 to 10,290 bytes, while its exact-output
+tokenizer oracle fell from 416,963,964 to 404,332,731 Callgrind instructions
+(`0.969695x`).  A complementary exact-width 1--8-byte scalar lowering of the
+remaining equality-only `memcmp` calls was immediately rejected: despite
+using non-overreading chunks and preserving output, it raised the tokenizer
+count to 462,161,356 instructions.
+
+The grouped unroll itself did not survive the source-diverse gate.  On the
+complete hot translation unit, self rose from 3,710,968,687 to 3,711,919,128
+instructions (`1.000256117x`), while same-source GCC rose from 2,426,042,427
+to 2,426,391,957 (`1.000144074x`).  The normalized ratio therefore regressed
+to `1.000112026x`, and the absolute gap rose from `1.529638825x` to
+`1.529810185x`.  All generated objects remained exact at `fa3fd1899...`.
+Both implementations were removed before README or test movement; this is
+another measured case where a large isolated loop win destructively
+interferes with the complete producer.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4493,6 +4525,7 @@ Fill one row for every retained or rejected dose.
 | D.conditional-call-bridge | recolor complete parameter regions into caller-saved carriers and preserve only around one actual call | none; rejected behavior was not moved into PA38 | three regions outside `AppendUTF8`; +68 MIR instructions; producer +14,592 text | ten-pair task-clock mean `1.002352x`, paired median `1.002911x` | exact frozen output; prototype removed | rejected; preservation traffic and implementation footprint exceed the local saving |
 | D.final-frame-slot-coalescing | merge nonoverlapping scalar compiler-temporary frame bindings after final MIR liveness | none; rejected behavior was not moved into PA38 | `AppendUTF8` frame 208 to 80 and body 1,814 to 1,655 bytes; broad/bounded producer +19,344/+19,536 text | broad paired mean `1.005144x`; bounded `1.007573x` | PA38 45/45 during screening; prototypes removed | rejected; whole-function binding machinery regresses the fast oracle despite local compaction |
 | D.phi-fallback-slot-pool | allocate O3 acyclic fallback phi homes from the existing reusable temporary pool | provisional PA38 README and relationship/behavior reducer removed after rejection | safe `AppendUTF8` frame 208 to 80/body 1,814 to 1,655; fixed-point producer -17,024 text; unsafe precursor overwrote a still-live copied pointer | frozen task-clock aggregate `0.996735x`, paired median `0.997630x`; clean full O1 wall `0.986950x`, CPU `1.000409x` | unsafe G1 crash diagnosed; corrected property passed and 221-object G1/G2 exact at `49b77e47...`; prototype removed | rejected; safe source-diverse CPU is flat and below the 1% gate |
+| D.grouped-early-exit-unroll | fully unroll one bounded acyclic private-table loop and group iterations by a folded discriminator | none; rejected before contract movement | `Lexer::Run` 9,110 to 10,290 bytes; tokenizer Ir `0.969695x`; optional scalar `memcmp` lowering regressed to 462.16M Ir | self `1.000256x`, GCC `1.000144x`, normalized `1.000112x`; gap 1.529639x to 1.529810x | exact tokenizer and complete hot objects; fresh explicit-32-way G1; prototype removed | rejected; isolated 3.03% saving is canceled by complete-producer interference |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |
