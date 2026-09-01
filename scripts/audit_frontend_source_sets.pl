@@ -117,7 +117,7 @@ for my $target (@defined_target)
 }
 
 my @set_variable = sort grep {
-	/_SOURCES\z/ || /^FRONTEND_OBJ_BASENAMES_/
+	/^FRONTEND_(?:SOURCE_IDS|OBJ_BASENAMES)_/
 } keys %value;
 my %owner;
 for my $name (@set_variable)
