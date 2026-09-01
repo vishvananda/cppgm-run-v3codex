@@ -1,6 +1,6 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: ready for implementation
+Status: in progress; E0 baseline and exception-census infrastructure complete
 
 Date: 2026-09-01
 
@@ -123,13 +123,14 @@ not a permanent performance baseline.
 
 ## Frozen exception census
 
-The production tree currently contains 2,855 explicit generic throws in 214
+The production tree currently contains 2,895 explicit generic throws in 218
 files:
 
 | Area | `logic_error` throws | `runtime_error` throws | Existing typed throws |
 | --- | ---: | ---: | ---: |
 | ABI adapters and mangling | 61 | 1 | 0 |
 | compiler-object serialization | 4 | 41 | 0 |
+| CY86 frontend/backend and LowIR conversion | 26 | 13 | 0 |
 | executable/driver sources | 52 | 52 | 0 |
 | typed source-to-LowIR lowering | 379 | 125 | 0 |
 | LowIR model, I/O, and support | 86 | 12 | 126 `lowir_model::ParseError` |
@@ -138,10 +139,10 @@ files:
 | native lowering and object emission | 248 | 80 | 0 |
 | preprocessing | 44 | 76 | 0 |
 | recognition | 9 | 3 | 0 |
-| semantic analysis | 482 | 883 | 1 `HardSemanticError` |
+| semantic analysis | 482 | 884 | 1 `HardSemanticError` |
 | shared support | 1 | 1 | 0 |
 | syntax | 7 | 12 | 89 `throw Error(...)` and 43 extension equivalents |
-| **Total generic** | **1,390** | **1,465** | - |
+| **Total generic** | **1,416** | **1,479** | - |
 
 Two additional explicit `std::bad_alloc` throws implement overflow/failure at
 the LowIR optimizer's allocator boundary.  They are deliberate standard typed
@@ -159,11 +160,20 @@ The three apparent project exception types do not yet form a sound taxonomy:
   and `CPPGM_EXIT_NOT_IMPLEMENTED` are dead candidates unless an assignment
   contract proves otherwise.
 
+The original planning search honored `dev/.gitignore`, whose `cy86` binary
+entry also hides the tracked `dev/src/cy86/` and `dev/src/lowir/cy86/` source
+directories from an ordinary recursive `rg`.  It also counted only same-line
+throw expressions.  E0's filesystem walk found the omitted 39 CY86 throws,
+one multiline semantic throw, four additional files, and one cleanup catch.
+The corrected baseline above is authoritative.  E0 also records two generic-
+return helpers (`missing_option_argument` and `ParserCursor::Error`), rather
+than treating only the parser helper as part of the migration.
+
 Catch-site census:
 
 | Shape | Count | Current role and risk |
 | --- | ---: | --- |
-| `catch (...)` | 58 | 52 restore state/cleanup and rethrow; 6 swallow every failure as an ordinary invalid result |
+| `catch (...)` | 59 | 53 restore state/cleanup and rethrow; 6 swallow every failure as an ordinary invalid result |
 | internal `catch (const std::runtime_error&)` | 4 | two speculative syntax paths, token-paste translation, and exception-specification state routing |
 | internal `catch (const std::exception&)` | 3 | ABI numeric conversion and ABI line-context translation; these also catch `bad_alloc` |
 | terminal generic standard catches | 15 | last-resort diagnostic/exit adapters in staged tools |
@@ -597,7 +607,7 @@ type, and backend hot paths have no unmeasured status overhead.
 
 ### E8. Close cleanup catches and enforce the architecture audit
 
-1. Re-run the 58-site catch-all inventory.  There must be zero swallowing or
+1. Re-run the 59-site catch-all inventory.  There must be zero swallowing or
    classification catch-alls.
 2. Replace straightforward manual depth/context/vector cleanup with RAII and
    record any code-size/performance-sensitive rejection.
@@ -687,12 +697,78 @@ Append one row for each retained or rejected increment:
 
 | ID | Family/sites | Old ambiguity | New type/status | Earliest coverage | Dynamic throws before/after | Text/EH/RTTI delta | Fast/full timing | Correctness and hashes | Commit | Result |
 | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- |
-| E0 | baseline | - | census only | PA1-PA39 | pending | pending | pending | pending | pending | pending |
+| E0 | baseline and audit | generic standard categories and broad catches | report-only ceilings plus native throw census | PA1-PA39 | frozen 1; full 302; focused counts below | section baseline below | frozen/full baseline below | 5,473/5,473; output hashes below | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
 RAII conversion was rejected.  A row saying only “tests pass” or “typed” is
 not sufficient evidence.
+
+### E0 execution record
+
+E0 added `audit-compiler-exceptions` and a repeatable native
+`__cxa_throw` census.  The audit walks the filesystem rather than honoring
+ignore patterns.  This exposed the `dev/.gitignore` `cy86` entry hiding tracked
+source from the planning `rg` census and froze the corrected totals recorded
+above: 1,416 logic throws, 1,479 runtime throws, 218 files, two generic-return
+helpers, 59 catch-all sites, four internal runtime catches, three internal
+standard catches, and zero exception-message policy sites.  The audit passes
+at these E0 ceilings and will be ratcheted down by later phases.
+
+Root `make -j32 test-report-through-pa38` passes 5,473/5,473.  The layout,
+frontend-source-set, LowIR-contract, and PA38 file audits also pass; the file
+audit remains zero-fatal with the established 32 warnings.  The unchanged
+GCC-O3 `dev/cppgm++` is `0f6e3861...` and gives the planning section baseline:
+6,623,398 `.text`, 214,195 `.rodata`, 50,820 `.eh_frame_hdr`, 322,880
+`.eh_frame`, and 164,929 `.gcc_except_table` bytes.
+
+The native throw census produces no per-event I/O and aggregates by mangled
+type and ASLR-relative caller PC at process exit.  Its E0 successful-workload
+results are:
+
+| Workload | Successful cases/TUs | Dynamic throws | Attribution |
+| --- | ---: | ---: | --- |
+| frozen `preprocessor.cpp` | 1 | 1 | `ParserCursor::Expect` |
+| full O1 compiler source | 222 | 302 | 231 `ParserCursor::Expect`; 71 `SelectConstructor` “inaccessible constructor” |
+| PA10 positive syntax | 157 | 0 | none |
+| PA21 positive constexpr | 128 | 0 | none |
+| PA23 positive template/SFINAE | 397 | 3 | two `ParserCursor::Expect`; one `ParseParameterClause` |
+
+The 71 constructor throws are recovered while compiling valid compiler source,
+so E3's constexpr/status work is justified even though the smaller positive
+PA21 corpus does not trigger it.  The rejected PA21 and PA23 batches contained
+21 and 17 cases and produced exactly one terminal exception per case,
+including one `HardSemanticError` in each batch.  Those negative-path events
+are not status-conversion targets.
+
+Three position-varied frozen requested-O0 samples per producer are output-
+exact at object `8545fec6...` and 98,736 bytes:
+
+| Producer | Median wall | Median user | Producer hash |
+| --- | ---: | ---: | --- |
+| self O1 | 0.98 s | 0.93 s | `747d6051...` |
+| self O3 | 0.76 s | 0.71 s | `5846b8b0...` |
+| GCC O3 | 0.52 s | 0.48 s | `470b9adf...` |
+| Clang O3 | 0.62 s | 0.58 s | `acdfaa1a...` |
+
+Fresh one-lane, all-32 full controls provide the E0 orientation baseline.
+Later retention decisions still use interleaved B/A/A/B comparisons rather
+than treating these single lanes as sub-percent evidence:
+
+| Requested workload / producer | Wall | Aggregate CPU | Ratio versus host | Output compiler |
+| --- | ---: | ---: | ---: | --- |
+| O1 / self O1 | 31.94 s | 880.04 s | 1.50945x GCC; 1.46514x Clang | `747d6051...` |
+| O1 / GCC O1 | 21.16 s | 560.27 s | control | `747d6051...` |
+| O1 / Clang O1 | 21.80 s | 579.48 s | control | `747d6051...` |
+| O3 / self O3 | 26.84 s | 723.79 s | 1.47392x GCC; 1.32022x Clang | `5846b8b0...` |
+| O3 / GCC O3 | 18.21 s | 468.25 s | control | `5846b8b0...` |
+| O3 / Clang O3 | 20.33 s | 530.96 s | control | `5846b8b0...` |
+
+The corresponding aggregate-CPU self/host ratios are 1.57074x/1.51867x at
+O1 and 1.54573x/1.36317x at O3.  Every fixed workload contains 222 objects;
+all three producers at a requested level reproduce the same final compiler.
+The census preload is diagnostic-only and is absent from every timing lane and
+production binary.
 
 ## Initial code map
 
