@@ -712,7 +712,8 @@ Append one row for each retained or rejected increment:
 | E4g | class layout, inheritance, virtual dispatch, RTTI, and object attributes | object diagnostics, ABI/resource ceilings, and graph invariants shared generic bases | typed semantic/resource/internal failures; cleanup catches still rethrow | PA17 object model plus cumulative PA18-PA21 inheritance/RTTI behavior | successful full remains 0; generic logic/runtime sites -39/-57 | +1,856 text, +32 rodata, -920 exception table, +336 unwind | frozen neutral; clean mirrored full O1 -0.16% CPU, full O3 -0.34% CPU | PA17 247/247; through-PA21 2,417/2,417; 222 O1/O3 objects exact | `64bfa60b` | retained |
 | E4h | language/host extensions, builtins, range-for, source exceptions, and ABI tags | extension diagnostics, limits, and retained syntax invariants shared generic bases | typed semantic/resource/internal failures; candidate and cleanup status flow unchanged | PA23 builtin/template behavior and PA26 source-language exceptions | successful full remains 0; generic logic/runtime sites -44/-129 | -11,264 text, -1,856 exception table, +264 unwind | frozen neutral; full covered by adjacent periodic checkpoints | PA23 414/414; PA26 114/114; through-PA26 3,821/3,821; frozen object exact | `c3f1bf9d` | retained |
 | E4i | semantic graph/model and source presentation | model diagnostics, capacity, and identity invariants shared generic bases | typed semantic/resource/internal failures; semantic generic-throw census reaches zero | PA12 graph/type model and cumulative PA23 presentation behavior | successful full remains 0; semantic generic logic/runtime sites -36/-41 | -19,136 text, -4,424 exception table, -696 unwind | frozen exact tie; clean mirrored full O1 -0.09% CPU, O3 -0.52% CPU | PA12 184/184; PA23 414/414; through-PA26 3,821/3,821; 32-way inception exact | `3bc47eb5` | retained |
-| E4j | semantic state restoration | 49 semantic catch-alls manually restored counters, values, or container depth | 39 simple regions use scoped restoration; 10 transactional/scratch cleanup-and-rethrow regions remain explicit | PA12, PA17, PA21, PA23, PA26 and cumulative semantic behavior | successful full remains 0; catch-all sites -39 | -896 text, -840 exception table, neutral unwind | frozen -1.04% user; 32-way full O1 -0.04% CPU, O3 -0.09% CPU | PA12 184/184; PA17 247/247; PA21 151/151; PA23 414/414; PA26 114/114; through-PA26 3,821/3,821; 222 O1/O3 objects and inception exact | pending | retained |
+| E4j | semantic state restoration | 49 semantic catch-alls manually restored counters, values, or container depth | 39 simple regions use scoped restoration; 10 transactional/scratch cleanup-and-rethrow regions remain explicit | PA12, PA17, PA21, PA23, PA26 and cumulative semantic behavior | successful full remains 0; catch-all sites -39 | -896 text, -840 exception table, neutral unwind | frozen -1.04% user; 32-way full O1 -0.04% CPU, O3 -0.09% CPU | PA12 184/184; PA17 247/247; PA21 151/151; PA23 414/414; PA26 114/114; through-PA26 3,821/3,821; 222 O1/O3 objects and inception exact | `7f46e61e` | retained |
+| E5a | PA14 ABI fact adapter | broad standard catches translated numeric, allocation, encoder, and I/O failures alike | coded `SerializedInputError` with line context; only invalid/range numeric exceptions translate; typed I/O/internal propagation | PA14 normalized/malformed facts and cumulative through-PA14 behavior | successful full remains 0; generic logic sites -24; internal standard catches -3 | +192 text, +4 exception table, +104 unwind | frozen -1.04% user | PA14 117/117; through-PA14 1,081/1,081; frozen object exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1323,6 +1324,39 @@ hashes in every lane.  Requested-O1 baseline/candidate aggregate CPU averages
 dynamically neutral while reducing duplicated cleanup code and exception
 metadata.  The closing 32-way inception run also matches every object and the
 final `cppgm++` binary exactly.
+
+### E5a execution record
+
+The PA14 line-oriented adapter now constructs coded `SerializedInputError`
+failures directly.  Its record-validation helper uses the ABI-fact format and
+an invalid-record code.  Signed and unsigned decimal conversion catch only
+`std::invalid_argument` and `std::out_of_range`, mapping them to distinct
+invalid-number and number-out-of-range codes.  The line wrapper catches only
+`SerializedInputError`, adds the line number, and preserves that code.  It no
+longer translates allocation, encoder, internal, or I/O failures.
+
+Case flushing and mangling were moved outside the parse-error translation
+region, so a failure while consuming the preceding case cannot be mislabeled
+as a syntax error on the next `case` line.  Stream and file failures use
+ABI-domain `InputOutputError`; impossible canonical-serializer states use
+ABI-domain `InternalCompilerError`.  A nonthrowing terminal-vocabulary lookup
+lets the adapter reject unknown terminal words without catching an internal
+standard exception; the existing integrated convenience API retains its
+original behavior pending the ABI-core migration.
+
+The audit ratchets from 934 to 910 generic logic throws and from 136 to 135
+generic-throw files.  All three broad internal standard catches disappear;
+the four reported standard translations are precisely the signed/unsigned
+invalid/range catches above.  PA14 passes 117/117 and through-PA14 passes
+1,081/1,081, including malformed and negative-index fact coverage described
+by the PA14 handout.
+
+Against `7f46e61e`, `.text` changes 6,546,982 -> 6,547,174, `.rodata`
+stays 214,272, `.eh_frame_hdr` 51,444 -> 51,452, `.eh_frame`
+322,904 -> 323,000, and `.gcc_except_table` 146,620 -> 146,624.  Twelve
+frozen outputs remain exact at `8545fec6...`; baseline/candidate user medians
+are 0.480/0.475 seconds.  The small typed-context cost is retained with no
+measured throughput regression.
 
 ## Initial code map
 

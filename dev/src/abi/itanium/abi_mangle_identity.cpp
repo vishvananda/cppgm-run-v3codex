@@ -26,7 +26,8 @@ const char * abi_expression_operation_code(AbiExpressionOperationKind kind)
   return codes[kind];
 }
 
-AbiTerminalKind abi_terminal_kind(const std::string & word)
+bool abi_find_terminal_kind(const std::string & word,
+                            AbiTerminalKind * kind)
 {
   static const struct Entry
   {
@@ -89,7 +90,17 @@ AbiTerminalKind abi_terminal_kind(const std::string & word)
     {"index", ABI_TERMINAL_INDEX}
   };
   for(const Entry & entry : entries)
-    if(word == entry.word) return entry.kind;
+    if(word == entry.word) {
+      if(kind) *kind = entry.kind;
+      return true;
+    }
+  return false;
+}
+
+AbiTerminalKind abi_terminal_kind(const std::string & word)
+{
+  AbiTerminalKind kind = ABI_TERMINAL_NONE;
+  if(abi_find_terminal_kind(word, &kind)) return kind;
   throw std::logic_error("unknown ABI terminal '" + word + "'");
 }
 

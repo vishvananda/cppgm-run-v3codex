@@ -1,4 +1,5 @@
 #include "abi/itanium/abi_mangle.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <cctype>
@@ -15,6 +16,36 @@ namespace {
 using std::size_t;
 using std::string;
 using std::vector;
+
+enum AbiFactErrorCode : std::uint16_t
+{
+  ABI_FACT_INVALID_RECORD = 1,
+  ABI_FACT_INVALID_NUMBER = 2,
+  ABI_FACT_NUMBER_OUT_OF_RANGE = 3
+};
+
+__attribute__((cold, noinline, noreturn))
+void throw_fact_error(const string & message,
+                      AbiFactErrorCode code = ABI_FACT_INVALID_RECORD)
+{
+  throw SerializedInputError(SerializedInputFormat::ABI_FACT,
+                             message, code);
+}
+
+__attribute__((cold, noinline, noreturn))
+void throw_fact_line_error(size_t line_number,
+                           const SerializedInputError & error)
+{
+  throw SerializedInputError(SerializedInputFormat::ABI_FACT,
+    "ABI fact line " + std::to_string(line_number) + ": " + error.what(),
+    error.Code());
+}
+
+__attribute__((cold, noinline, noreturn))
+void throw_abi_internal(const string & message)
+{
+  throw InternalCompilerError(message, CompilerErrorDomain::ABI);
+}
 
 string trim(const string & input)
 {
@@ -51,9 +82,7 @@ void append_reference_names(AbiReferenceList * references,
 
 void require(bool condition, const string & message)
 {
-  if(!condition) {
-    throw std::logic_error(message);
-  }
+  if(!condition) throw_fact_error(message);
 }
 
 size_t parse_index(const string & word)
@@ -76,8 +105,12 @@ long long parse_signed(const string & word)
   long long value = 0;
   try {
     value = std::stoll(word, &used, 10);
-  } catch(const std::exception &) {
-    throw std::logic_error("invalid signed ABI value '" + word + "'");
+  } catch(const std::invalid_argument &) {
+    throw_fact_error("invalid signed ABI value '" + word + "'",
+                     ABI_FACT_INVALID_NUMBER);
+  } catch(const std::out_of_range &) {
+    throw_fact_error("signed ABI value out of range '" + word + "'",
+                     ABI_FACT_NUMBER_OUT_OF_RANGE);
   }
   require(used == word.size(), "invalid signed ABI value '" + word + "'");
   return value;
@@ -90,8 +123,12 @@ unsigned long long parse_unsigned(const string & word)
   unsigned long long value = 0;
   try {
     value = std::stoull(word, &used, 10);
-  } catch(const std::exception &) {
-    throw std::logic_error("invalid unsigned ABI value '" + word + "'");
+  } catch(const std::invalid_argument &) {
+    throw_fact_error("invalid unsigned ABI value '" + word + "'",
+                     ABI_FACT_INVALID_NUMBER);
+  } catch(const std::out_of_range &) {
+    throw_fact_error("unsigned ABI value out of range '" + word + "'",
+                     ABI_FACT_NUMBER_OUT_OF_RANGE);
   }
   require(used == word.size(), "invalid unsigned ABI value '" + word + "'");
   return value;
@@ -124,8 +161,8 @@ size_t member_pointer_separator(const string & word, size_t begin, size_t end)
     }
     return i;
   }
-  throw std::logic_error("invalid compact member-pointer type '"
-                         + word.substr(begin, end - begin) + "'");
+  throw_fact_error("invalid compact member-pointer type '"
+                   + word.substr(begin, end - begin) + "'");
 }
 
 AbiType compact_type_range(const string & word, size_t begin, size_t end)
@@ -407,7 +444,8 @@ AbiFunctionTarget parse_function_target(const vector<string> & words, size_t beg
     target.context_ref = words[begin + 1];
     target.qualified_name = words[begin + 2];
     target.terminal = words[begin + 3];
-    target.terminal_code = abi_terminal_kind(target.terminal);
+    require(abi_find_terminal_kind(target.terminal, &target.terminal_code),
+            "unknown ABI terminal '" + target.terminal + "'");
     target.discriminator = words[begin + 4];
     require(begin + 5 == words.size(), "local function target has extra operands");
     return target;
@@ -418,7 +456,8 @@ AbiFunctionTarget parse_function_target(const vector<string> & words, size_t beg
     target.context_ref = words[begin + 1];
     target.discriminator = words[begin + 2];
     target.terminal = words[begin + 3];
-    target.terminal_code = abi_terminal_kind(target.terminal);
+    require(abi_find_terminal_kind(target.terminal, &target.terminal_code),
+            "unknown ABI terminal '" + target.terminal + "'");
     for(size_t i = begin + 4; i < words.size(); ++i) {
       target.signature_parameter_types.push_back(compact_type(words[i]));
     }
@@ -429,7 +468,8 @@ AbiFunctionTarget parse_function_target(const vector<string> & words, size_t beg
     target.kind = ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA;
     target.source_name = words[begin + 1];
     target.terminal = words[begin + 2];
-    target.terminal_code = abi_terminal_kind(target.terminal);
+    require(abi_find_terminal_kind(target.terminal, &target.terminal_code),
+            "unknown ABI terminal '" + target.terminal + "'");
     target.namespace_qualifiers.assign(words.begin() + begin + 3, words.end());
     return target;
   }
@@ -507,11 +547,11 @@ AbiDefinitionRecord parse_definition(const vector<string> & words)
       definition.entity.kind = ABI_ENTITY_FACT_FUNCTION;
       definition.entity.function = parse_function_target(words, 3);
     } else {
-      throw std::logic_error("unknown entity form '" + form + "'");
+      throw_fact_error("unknown entity form '" + form + "'");
     }
     return definition;
   }
-  throw std::logic_error("definition parser received invalid record");
+  throw_fact_error("definition parser received invalid record");
 }
 
 AbiTemplateArgument parse_argument(const vector<string> & words)
@@ -583,7 +623,7 @@ AbiTemplateArgument parse_argument(const vector<string> & words)
     argument.kind = ABI_TEMPLATE_ARGUMENT_PACK;
     append_reference_names(&argument.argument_refs, words, 3);
   } else {
-    throw std::logic_error("unknown template argument form '" + form + "'");
+    throw_fact_error("unknown template argument form '" + form + "'");
   }
   return argument;
 }
@@ -663,7 +703,7 @@ AbiDependentExpression parse_expression(const vector<string> & words)
     expression.kind = ABI_EXPRESSION_ENTITY;
     expression.entity_ref = words[3];
   } else {
-    throw std::logic_error("unknown dependent expression form '" + form + "'");
+    throw_fact_error("unknown dependent expression form '" + form + "'");
   }
   return expression;
 }
@@ -731,7 +771,7 @@ AbiTargetRecord parse_target(const vector<string> & words)
     target.vcall_offset = parse_signed(words[1]);
     target.function = parse_function_target(words, 3);
   } else {
-    throw std::logic_error("unknown ABI target form '" + form + "'");
+    throw_fact_error("unknown ABI target form '" + form + "'");
   }
   return target;
 }
@@ -798,7 +838,8 @@ AbiFunctionRecord parse_function_record(const vector<string> & words)
     require(words.size() == 2, "terminal takes one semantic terminal");
     record.kind = ABI_FUNCTION_RECORD_TERMINAL;
     record.terminal = words[1];
-    record.terminal_code = abi_terminal_kind(record.terminal);
+    require(abi_find_terminal_kind(record.terminal, &record.terminal_code),
+            "unknown ABI terminal '" + record.terminal + "'");
   } else if(form == "variadic") {
     require(words.size() == 1, "variadic takes no operands");
     record.kind = ABI_FUNCTION_RECORD_VARIADIC;
@@ -818,14 +859,15 @@ AbiFunctionRecord parse_function_record(const vector<string> & words)
       else if(words[i] == "volatile") record.qualifiers.push_back(ABI_FUNCTION_QUALIFIER_VOLATILE);
       else if(words[i] == "lvalue-ref") record.qualifiers.push_back(ABI_FUNCTION_QUALIFIER_LVALUE_REFERENCE);
       else if(words[i] == "rvalue-ref") record.qualifiers.push_back(ABI_FUNCTION_QUALIFIER_RVALUE_REFERENCE);
-      else throw std::logic_error("unknown function qualifier '" + words[i] + "'");
+      else throw_fact_error("unknown function qualifier '" + words[i] + "'");
     }
   } else if(form == "operator-terminal") {
     require(words.size() == 2 || (words.size() == 3 && words[1] == "literal"),
             "operator-terminal has invalid operands");
     record.kind = ABI_FUNCTION_RECORD_OPERATOR_TERMINAL;
     record.terminal = words[1];
-    record.terminal_code = abi_terminal_kind(record.terminal);
+    require(abi_find_terminal_kind(record.terminal, &record.terminal_code),
+            "unknown ABI terminal '" + record.terminal + "'");
     if(words.size() == 3) record.literal_suffix = words[2];
   } else if(form == "conversion-terminal") {
     require(words.size() >= 2, "conversion-terminal needs a type");
@@ -837,7 +879,7 @@ AbiFunctionRecord parse_function_record(const vector<string> & words)
                                    : ABI_FUNCTION_RECORD_RESULT;
     record.type = parse_type(words, 1);
   } else {
-    throw std::logic_error("unknown ABI function record '" + form + "'");
+    throw_fact_error("unknown ABI function record '" + form + "'");
   }
   return record;
 }
@@ -940,9 +982,9 @@ string unmodified_type_text(const AbiType & type)
       return result;
     }
     case ABI_TYPE_RESOLVED:
-      throw std::logic_error("resolved ABI type is not a fact-file form");
+      throw_abi_internal("resolved ABI type is not a fact-file form");
   }
-  throw std::logic_error("unknown ABI type form in canonical serializer");
+  throw_abi_internal("unknown ABI type form in canonical serializer");
 }
 
 string type_text(const AbiType & type)
@@ -970,7 +1012,8 @@ string type_text(const AbiType & type)
     else if(modifier.kind == ABI_TYPE_ARRAY) {
       result += "array:" + modifier.array_bound.value + ":";
     } else {
-      throw std::logic_error("unknown flat ABI type modifier in canonical serializer");
+      throw_abi_internal(
+        "unknown flat ABI type modifier in canonical serializer");
     }
     ++i;
   }
@@ -1015,7 +1058,7 @@ string function_target_text(const AbiFunctionTarget & target)
     }
     return result;
   }
-  throw std::logic_error("unknown function target form in canonical serializer");
+  throw_abi_internal("unknown function target form in canonical serializer");
 }
 
 string bool_text(bool value) { return value ? "yes" : "no"; }
@@ -1099,7 +1142,7 @@ string definition_text(const AbiDefinitionRecord & definition)
     } else if(expression.kind == ABI_EXPRESSION_OBJECT_MEMBER) {
       result += "object-member " + expression.op;
     } else if(expression.kind == ABI_EXPRESSION_ENTITY) return result + "entity-reference " + expression.entity_ref;
-    else throw std::logic_error("unknown expression form in canonical serializer");
+    else throw_abi_internal("unknown expression form in canonical serializer");
     for(const string & child : expression.expression_refs.names()) result += " " + child;
     if(expression.kind == ABI_EXPRESSION_OBJECT_MEMBER) result += " " + expression.text;
     if(expression.kind == ABI_EXPRESSION_TEMPLATE_ID
@@ -1145,7 +1188,7 @@ string definition_text(const AbiDefinitionRecord & definition)
            + (definition.entity.internal_linkage ? " internal-variable " : " variable ")
            + definition.entity.qualified_name;
   }
-  throw std::logic_error("unknown ABI definition form in canonical serializer");
+  throw_abi_internal("unknown ABI definition form in canonical serializer");
 }
 
 string target_text(const AbiTargetRecord & target)
@@ -1184,7 +1227,7 @@ string target_text(const AbiTargetRecord & target)
     } else if(target.has_result_adjust) result += std::to_string(target.result_adjust) + " ";
     return result + "function " + function_target_text(target.function);
   }
-  throw std::logic_error("unknown ABI target form in canonical serializer");
+  throw_abi_internal("unknown ABI target form in canonical serializer");
 }
 
 string qualifier_text(AbiFunctionQualifier qualifier)
@@ -1259,7 +1302,7 @@ string function_record_text(const AbiFunctionRecord & function)
   }
   if(function.kind == ABI_FUNCTION_RECORD_PARAMETER) return "param " + type_text(function.type);
   if(function.kind == ABI_FUNCTION_RECORD_RESULT) return "result " + type_text(function.type);
-  throw std::logic_error("unknown function record in canonical serializer");
+  throw_abi_internal("unknown function record in canonical serializer");
 }
 
 string record_text(const AbiFactRecord & record)
@@ -1269,7 +1312,7 @@ string record_text(const AbiFactRecord & record)
   }
   if(record.kind == ABI_FACT_RECORD_DEFINITION) return definition_text(record.definition);
   if(record.kind == ABI_FACT_RECORD_FUNCTION) return function_record_text(record.function);
-  throw std::logic_error("unknown ABI record form in canonical serializer");
+  throw_abi_internal("unknown ABI record form in canonical serializer");
 }
 
 template<class Consumer>
@@ -1298,15 +1341,21 @@ size_t parse_fact_stream(std::istream & lines, Consumer consume,
     line = trim(line);
     if(line.empty() || line[0] == '#') continue;
     const vector<string> words = split_words(line);
-    try {
-      if(words[0] == "case") {
+    if(words[0] == "case") {
+      try {
         require(words.size() == 2, "case takes one label");
-        flush();
-        has_current = true;
-        current.label = words[1];
-        ids.clear();
-        continue;
+      } catch(const SerializedInputError & error) {
+        throw_fact_line_error(line_number, error);
       }
+      // Encoding the preceding case is outside the parse-error translation:
+      // allocation, output, and encoder failures must retain their own type.
+      flush();
+      has_current = true;
+      current.label = words[1];
+      ids.clear();
+      continue;
+    }
+    try {
       if(!has_current) {
         has_current = true;
         ids.clear();
@@ -1317,12 +1366,13 @@ size_t parse_fact_stream(std::istream & lines, Consumer consume,
                 "duplicate ABI definition id '" + record.definition.id + "'");
       }
       current.records.push_back(std::move(record));
-    } catch(const std::exception & error) {
-      throw std::logic_error("ABI fact line " + std::to_string(line_number)
-                             + ": " + error.what());
+    } catch(const SerializedInputError & error) {
+      throw_fact_line_error(line_number, error);
     }
   }
-  if(lines.bad()) throw std::logic_error("unable to read ABI fact stream");
+  if(lines.bad())
+    throw InputOutputError("unable to read ABI fact stream",
+                           CompilerErrorDomain::ABI);
   flush();
   require(case_count != 0, "ABI fact file contains no cases");
   return case_count;
@@ -1403,7 +1453,9 @@ void mangle_fact_files_to_stream(const vector<string> & input_paths,
 {
   for(const string & path : input_paths) {
     std::ifstream input(path.c_str(), std::ios::binary);
-    if(!input) throw std::logic_error("unable to open ABI fact file '" + path + "'");
+    if(!input)
+      throw InputOutputError("unable to open ABI fact file '" + path + "'",
+                             CompilerErrorDomain::ABI);
     if(stats) ++stats->source_files;
     const std::chrono::steady_clock::time_point start =
       std::chrono::steady_clock::now();
@@ -1430,7 +1482,9 @@ void mangle_fact_files_to_stream(const vector<string> & input_paths,
       stats->encode_nanoseconds += encode_nanoseconds;
     }
   }
-  if(!output) throw std::logic_error("unable to write mangled ABI output");
+  if(!output)
+    throw InputOutputError("unable to write mangled ABI output",
+                           CompilerErrorDomain::ABI);
 }
 
 }  // namespace abi_mangle
