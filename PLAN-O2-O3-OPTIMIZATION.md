@@ -5019,6 +5019,40 @@ currently provide a normalized full-register value to their callers; the
 machine ABI's low-byte observation alone is therefore not a sufficient proof
 for this rewrite.  Removing only that fold restored the exact frozen output.
 
+### Rejected terminal store/load return forwarding
+
+The majority-slow grouped query was then examined at the LowIR memory layer.
+Its refill edge obtains a scalar, stores it into a bounded complete-object
+region, and enters a terminal merge which recomputes the same indexed address,
+reloads the scalar, and returns it.  A general O3 prototype returned the
+already stored SSA value directly on such an incoming edge.  It recursively
+proved the two address calculations equivalent, proved every repeated address
+input load stable across the direct edge, and rejected volatile/debug accesses,
+EH, calls, atomics, overlapping intervening stores, nonterminal loads, and
+joins with observable prefix work.  All of those facts came from ordinary
+serialized LowIR and the retained PA13 `object_bytes` boundary; no additional
+LowIR field, source annotation, or native-only preparation fact was needed.
+
+The intended specialized query changed exactly as expected.  Its refill block
+now returned the value from `TranslationCursor::Next` after updating the
+queue, while the populated edge retained the ordinary indexed load.  Native
+code removed four instructions from each of the 7,155,241 refill calls.  The
+extra direct epilogue grew the helper from 116 to 121 bytes, however, and the
+deterministic ceiling was only about 28.62 million instructions, or 0.81% of
+the 3.55-billion-instruction workload.  The general proof added 11,662 text
+bytes to `memory_gvn.o`; a fresh explicit-32-way 221-object G1 grew by 10,592
+linked text bytes (9,616 in its ELF `.text` section).
+
+The hot translation unit remained deterministic at the accepted
+`09d9fdc0...` object hash, and the existing PA37 and PA38 suites passed
+190/190 and 45/45.  Ten-per-side pinned software `task-clock` observations
+measured baseline/candidate means of 788.247/790.912 ms (`1.003380920x`),
+medians of 789.350/790.560 ms (`1.001532907x`), and trimmed means of
+788.534/790.070 ms (`1.001948236x`).  The prototype was removed before README
+or property-test movement.  This result answers the LowIR-contract question:
+the missing transformation was derivable from the current contract, but its
+complete dynamic opportunity did not justify retaining the machinery.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -5144,6 +5178,7 @@ Fill one row for every retained or rejected dose.
 | D.grouped-loop-leaf-inline | inline only tiny call-free grouped clones at natural-loop sites while retaining their shared non-loop bodies | none; rejected before PA37/PA38 movement | three hot calls removed; `AnnotateParentheses` 525 to 776 bytes; macro +1,815 text; producer +8,664 text | isolated task-clock `0.987787789x`; full G1 batched mean/trimmed/median `0.991382860x`/`0.991153185x`/`0.991903553x`; self Ir `1.000983853x` | exact hot output; explicit-32-way G1; candidate Callgrind; prototype removed | rejected; sub-1% native result contradicts deterministic total and duplicated code; optimize the shared predicate encoding instead |
 | D.grouped-predicate-native | reuse a dying conversion input, compose its adjacent load-normalization proof, and retain encodable 32/64-bit comparison immediates at O2/O3 | none; rejected before PA38 movement | macro -281 MIR instructions; grouped true arm -3 MIR; G1 producer -22,256 linked text; hot object exact | hot task-clock mean/median/trimmed `1.001137292x`/`0.998731825x`/`1.000682649x`; clean full O3 CPU/wall `0.994436x`/`0.990743x`; static ceiling about -0.97% | explicit-32-way 221-object G1 and two full ABBA blocks; exact outputs; position-two host outlier repeated under opposite labels; prototype removed | rejected; source-diverse CPU gain is 0.56% and deterministic ceiling misses 1% |
 | D.narrow-compare-return | write a terminal narrow comparison directly to the ABI byte return register and remove its widen/transfer/narrow tail | none; rejected before PA38 movement | macro -42 further MIR; G1 producer -800 text vs the safe native pair | explicit-32-way G1 failed its first frozen compile with `invalid internal paste sequence` | build completed, execution gate failed; removing only this fold restored exact output | rejected as unsound; callers rely on the current full-register narrow-return invariant |
+| D.terminal-store-load-return | return an edge's stored scalar directly instead of entering a pure terminal merge that recomputes its equivalent address and reloads it | none; rejected before PA37 movement; existing PA13 `object_bytes` is sufficient | hot refill edge -4 native instructions; helper 116 to 121 bytes; `memory_gvn.o` +11,662 text; G1 +10,592 linked text; output exact | hot task-clock mean/median/trimmed `1.003380920x`/`1.001532907x`/`1.001948236x`; deterministic ceiling about -0.81% | PA37 190/190; PA38 45/45; explicit-32-way 221-object G1; prototype removed | rejected; relationship needs no new LowIR fact and cannot clear the 1% gate |
 | C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
 | D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
 | Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
