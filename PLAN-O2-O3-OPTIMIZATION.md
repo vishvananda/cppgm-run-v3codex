@@ -5064,6 +5064,45 @@ host load, but it struck both labels and did not conceal a stable one-percent
 direction.  Reconstructing or promoting the combined source dose was therefore
 unwarranted.
 
+### Rejected terminal call-result residency bundle
+
+One stronger retry combined the terminal store/load proof with a final-MIR
+fact the earlier LowIR-only screen could not exploit.  After replacing the
+refill edge's jump with a direct return, the completed terminal MIR can prove
+that a narrow call result is observed only by same-width stores and the final
+return.  A bounded prototype retained that value in the ABI result carrier,
+relocated one explicitly defined conflicting temporary into an unused
+caller-saved register, and removed the adjacent result move and normalization.
+It rejected debug-variable functions, implicit register relationships,
+intermediate control barriers, wider observations, redefinitions, and tails
+without a safe scratch color.  The LowIR half conservatively treated distinct
+pointer parameters as potentially aliasing and required stable recursively
+equivalent address inputs plus disjoint bounded intervening writes.  Both
+halves used existing serialized LowIR and MIR facts; no PA13 addition or
+native-only preparation metadata was required.
+
+The combined hot refill edge removed six dynamic instructions instead of four,
+and the selected helper shrank from 116 to 114 bytes instead of growing to 121.
+Its slow edge executes about 7,155,234 times, giving a static upper bound near
+42.93 million instructions, or 1.21% of the accepted 3,553,692,388-instruction
+workload.  The implementation cost remained substantial: `memory_gvn.o` grew
+from 145,193 to 161,577 text bytes, `native/mir/optimize.o` from 115,248 to
+121,056, and the explicit-32-way G2 producer from 8,786,048 to 8,806,928 linked
+text bytes.  The candidate's hot object was deterministic at
+`4ace790303069b5dc80b4330f3285697864b454578a194d376d8d1da4d31a120`.
+
+The first implementation ran full function analysis before its shape check;
+moving the cheap terminal-load prefilter ahead of CFG and address construction
+removed that avoidable compiler work.  After an explicit-32-way G1/G2 rebuild,
+ten balanced pinned observations per side measured baseline/candidate means of
+988.369/980.081 ms, medians of 987.100/979.415 ms, and trimmed means of
+987.954/979.735 ms.  The resulting ratios are `0.991614x`, `0.992215x`, and
+`0.991681x`: a stable 0.78--0.84% native improvement, but still below the 1%
+source-diverse retention floor.  PA37 remained 190/190, the earlier combined
+screen kept PA38 45/45, and no stale Valgrind process was present.  The complete
+prototype was removed without README or test movement; its stronger result
+supersedes, but does not overturn, the earlier terminal-memory rejection.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -5190,6 +5229,7 @@ Fill one row for every retained or rejected dose.
 | D.grouped-predicate-native | reuse a dying conversion input, compose its adjacent load-normalization proof, and retain encodable 32/64-bit comparison immediates at O2/O3 | none; rejected before PA38 movement | macro -281 MIR instructions; grouped true arm -3 MIR; G1 producer -22,256 linked text; hot object exact | hot task-clock mean/median/trimmed `1.001137292x`/`0.998731825x`/`1.000682649x`; clean full O3 CPU/wall `0.994436x`/`0.990743x`; static ceiling about -0.97% | explicit-32-way 221-object G1 and two full ABBA blocks; exact outputs; position-two host outlier repeated under opposite labels; prototype removed | rejected; source-diverse CPU gain is 0.56% and deterministic ceiling misses 1% |
 | D.narrow-compare-return | write a terminal narrow comparison directly to the ABI byte return register and remove its widen/transfer/narrow tail | none; rejected before PA38 movement | macro -42 further MIR; G1 producer -800 text vs the safe native pair | explicit-32-way G1 failed its first frozen compile with `invalid internal paste sequence` | build completed, execution gate failed; removing only this fold restored exact output | rejected as unsound; callers rely on the current full-register narrow-return invariant |
 | D.terminal-store-load-return | return an edge's stored scalar directly instead of entering a pure terminal merge that recomputes its equivalent address and reloads it | none; rejected before PA37 movement; existing PA13 `object_bytes` is sufficient | hot refill edge -4 native instructions; helper 116 to 121 bytes; `memory_gvn.o` +11,662 text; G1 +10,592 linked text; output exact | hot task-clock mean/median/trimmed `1.003380920x`/`1.001532907x`/`1.001948236x`; bundled-native screen `1.001780636x`/`0.999218504x`/`1.002306278x`; deterministic ceiling about -0.81% | PA37 190/190; PA38 45/45; explicit-32-way 221-object G1 plus exact hybrid relink; prototypes removed | rejected; relationship needs no new LowIR fact and neither isolated nor bundled dose clears the 1% gate |
+| D.terminal-call-result-residency | combine terminal store/load return forwarding with final-MIR retention of a narrow call result in its ABI carrier through same-width stores | none; rejected before PA37/PA38 movement; existing serialized facts are sufficient | refill edge -6 dynamic instructions; helper 116 to 114 bytes; G2 producer +20,880 linked text | pinned mean/median/trimmed `0.991614x`/`0.992215x`/`0.991681x`; static ceiling about -1.21% | PA37 190/190; PA38 45/45 in the combined screen; explicit-32-way G1/G2; deterministic hot output; no stale Valgrind | rejected; stable 0.78--0.84% saving remains below the 1% source-diverse gate after pass overhead was moved behind a cheap prefilter |
 | C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
 | D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
 | Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
