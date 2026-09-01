@@ -1,6 +1,6 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E4 complete; E5 frontend/adapter migration is in progress
+Status: in progress; E0-E5 complete; E6 LowIR/compiler-object migration is next
 
 Date: 2026-09-01
 
@@ -715,7 +715,8 @@ Append one row for each retained or rejected increment:
 | E4j | semantic state restoration | 49 semantic catch-alls manually restored counters, values, or container depth | 39 simple regions use scoped restoration; 10 transactional/scratch cleanup-and-rethrow regions remain explicit | PA12, PA17, PA21, PA23, PA26 and cumulative semantic behavior | successful full remains 0; catch-all sites -39 | -896 text, -840 exception table, neutral unwind | frozen -1.04% user; 32-way full O1 -0.04% CPU, O3 -0.09% CPU | PA12 184/184; PA17 247/247; PA21 151/151; PA23 414/414; PA26 114/114; through-PA26 3,821/3,821; 222 O1/O3 objects and inception exact | `7f46e61e` | retained |
 | E5a | PA14 ABI fact adapter | broad standard catches translated numeric, allocation, encoder, and I/O failures alike | coded `SerializedInputError` with line context; only invalid/range numeric exceptions translate; typed I/O/internal propagation | PA14 normalized/malformed facts and cumulative through-PA14 behavior | successful full remains 0; generic logic sites -24; internal standard catches -3 | +192 text, +4 exception table, +104 unwind | frozen -1.04% user | PA14 117/117; through-PA14 1,081/1,081; frozen object exact | `538b79f7` | retained |
 | E5b | lexical input and preprocessing-token paste | generic lexical failures plus broad runtime translation for generated-token cardinality | lexical source/internal types; direct one-token status; preprocessing source failure; explicit cursor inlining boundary | PA1 source tokenization and PA4 valid/invalid paste behavior | successful full remains 0; generic logic/runtime sites -5/-20; internal runtime catches -1 | -16,000 text, -64 rodata, -2,104 exception table, -280 unwind | frozen -6.19% user; full O1 -1.91% CPU, O3 -2.34% CPU | PA1 53/53; PA4 75/75; through-PA4 174/174; 222 O1/O3 objects exact | `71d6deba` | retained |
-| E5c | post-tokenization, recognition, and hosted intrinsic registry | API/invariant, embedded-grammar, resource-limit, and invalid-token failures shared generic bases | lexical/recognition internal, recognition resource, and lexical source dispositions; explicit shared string-flush boundary | PA2 literal/token behavior, PA5 preprocessing, PA6 invalid-token and grammar acceptance | successful frozen remains 0; generic logic/runtime sites -26/-3 | -640 text, +96 rodata, -200 exception table, -48 unwind | frozen user median 0.450/0.450 s; paired +0.55% noise | PA2 26/26; PA5 70/70; PA6 48/48; through-PA6 292/292; frozen objects exact | pending | retained |
+| E5c | post-tokenization, recognition, and hosted intrinsic registry | API/invariant, embedded-grammar, resource-limit, and invalid-token failures shared generic bases | lexical/recognition internal, recognition resource, and lexical source dispositions; explicit shared string-flush boundary | PA2 literal/token behavior, PA5 preprocessing, PA6 invalid-token and grammar acceptance | successful frozen remains 0; generic logic/runtime sites -26/-3 | -640 text, +96 rodata, -200 exception table, -48 unwind | frozen user median 0.450/0.450 s; paired +0.55% noise | PA2 26/26; PA5 70/70; PA6 48/48; through-PA6 292/292; frozen objects exact | `8311aeb4` | retained |
+| E5d | PA3-PA5 macro processor | source, invocation, transport, resource, and state-machine failures shared generic bases | preprocessing source/I/O/resource/internal dispositions and driver invocation type; expected probes/invocation alternatives remain status flow | PA3 controlling expressions, PA4 macro replacement, PA5 directives/includes | successful frozen remains 0; generic logic/runtime sites -22/-56 | -4,800 text, +96 rodata, -708 exception table, +136 unwind | frozen paired user -0.56%; full O1 -0.85%, O3 -0.29% CPU | PA3 20/20; PA4 75/75; PA5 70/70; PA6 48/48; through-PA14 1,082/1,082; 222 O1/O3 objects and 32-way inception exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1426,6 +1427,42 @@ identical frozen objects.  PA2 passes 26/26, PA5 70/70, PA6 48/48, and the
 cumulative through-PA6 report passes 292/292.  The exception audit ratchets by
 26 generic logic throws, three generic runtime throws, and three generic-throw
 files.
+
+### E5d execution record
+
+The macro processor now distinguishes committed preprocessing-source errors,
+command-line macro invocation errors, include/source I/O, checked identifier,
+paint, and include-depth resource ceilings, and internal paint/rescan/storage
+invariants.  Existing successful-control-flow alternatives remain explicit:
+include and builtin probes return `bool`, a name that is not a function-like
+macro invocation returns an invocation-state enum, an invalid controlling
+expression is reported only after its evaluator returns `valid == false`, and
+token-paste cardinality retains E5b's direct status.  Filesystem absence during
+an include probe remains `false`; only a committed include or source read
+becomes an I/O exception.
+
+The central `Drain` routine grew by roughly 2.8 KiB after GCC reconsidered
+several small helper inlines, while the linked compiler shrank overall.  This
+was measured rather than inferred: the frozen valid compile records zero
+throws and four exact ABBA blocks tie at a 0.450-second user median (paired
+-0.56%).  Full 32-way A/B/B/A builds reproduce all 222 object and final-binary
+hashes.  O1 aggregate CPU averages 460.670/456.745 seconds (-0.85%); O3
+averages 467.690/466.320 seconds (-0.29%).  The larger rescan symbol therefore
+does not conceal a measured hot-path regression.
+
+Against `8311aeb4`, `.text` changes 6,530,534 -> 6,525,734,
+`.rodata` 214,304 -> 214,400, `.eh_frame_hdr` 51,428 -> 51,492,
+`.eh_frame` 322,696 -> 322,768, and `.gcc_except_table` 144,320 ->
+143,612.  The exception audit ratchets by 22 generic logic throws, 56 generic
+runtime throws, and one generic-throw file.  The PA3-PA6 focused suites pass,
+through-PA14 passes 1,082/1,082, all architecture audits pass, and exact PA39
+inception succeeds with outer, inner, and object parallelism set to 32.
+
+E5 now has zero generic policy throws or catches in lexical preprocessing,
+post-tokenization, macro processing, and recognition, and zero in the PA14 ABI
+fact adapters.  Four generic throws intentionally remain in the ABI mangling
+core identity owner; they are not fact-adapter translations and move with the
+remaining compiler core in E7.
 
 ## Initial code map
 
