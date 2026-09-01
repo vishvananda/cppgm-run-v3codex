@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -148,7 +148,7 @@ bool Analyzer::MemberPointerBaseAdjustment(
 bool Analyzer::ApplyMemberPointerTarget(
 	ExpressionInfo* value, TypeId source, TypeId target)
 {
-	if (!value) throw std::logic_error("missing member pointer target value");
+	if (!value) ThrowInternalCompilerError("missing member pointer target value");
 	const TypeRecord from = program_->types.Get(source);
 	const TypeRecord to = program_->types.Get(target);
 	if (from.kind == TYPE_MEMBER_POINTER &&
@@ -176,7 +176,7 @@ bool Analyzer::ApplyMemberPointerTarget(
 		return false;
 	if (adjustment > static_cast<std::uint64_t>(
 		std::numeric_limits<std::int64_t>::max()))
-		throw std::runtime_error("member pointer adjustment is too large");
+		ThrowSemanticResourceLimit("member pointer adjustment is too large");
 	if (adjustment != 0)
 	{
 		if (value->constant)
@@ -186,7 +186,7 @@ bool Analyzer::ApplyMemberPointerTarget(
 			{
 				if (scalar.integral > std::numeric_limits<std::int64_t>::max() -
 					static_cast<std::int64_t>(adjustment))
-					throw std::runtime_error(
+					ThrowSemanticResourceLimit(
 						"member pointer adjustment is too large");
 				scalar.integral += static_cast<std::int64_t>(adjustment);
 			}
@@ -218,11 +218,11 @@ bool Analyzer::FormMemberPointerAddress(
 	if (program_->types.Get(shape).kind != TYPE_MEMBER_POINTER) return false;
 	if (operand.binding == kNoBinding ||
 		operand.binding >= program_->bindings.size())
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"member pointer address has no selected member");
 	const BindingRecord& member = program_->bindings[operand.binding];
 	if (member.member_owner == kNoEntity)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"member pointer address does not name a member");
 	const TypeId source = program_->types.MemberPointer(
 		program_->entities[member.member_owner].type, member.type);
@@ -235,7 +235,7 @@ bool Analyzer::FormMemberPointerAddress(
 		member_offset > static_cast<std::uint64_t>(
 			std::numeric_limits<std::int64_t>::max()) - adjustment -
 			(member.non_static_data_member ? 1 : 0))
-		throw std::runtime_error("member pointer offset is too large");
+		ThrowSemanticResourceLimit("member pointer offset is too large");
 	*result_type = shape;
 	*constant = true;
 	*selected = member.canonical;
@@ -250,7 +250,7 @@ void Analyzer::RecordMemberPointerAddressFacts(
 {
 	if (expression == kNoNode || expression >= dump_.nodes.size() ||
 		selected == kNoBinding || selected >= program_->bindings.size())
-		throw std::logic_error("invalid member pointer address fact");
+		ThrowInternalCompilerError("invalid member pointer address fact");
 	dump_.nodes[expression].binding = selected;
 	const BindingRecord& member = program_->bindings[selected];
 	if (host_object_emission_ && member.kind == BIND_FUNCTION)
@@ -258,7 +258,7 @@ void Analyzer::RecordMemberPointerAddressFacts(
 	if (!member.virtual_function) return;
 	const std::uint32_t slot = VirtualSlotFor(selected);
 	if (slot == kNoDumpEdge)
-		throw std::logic_error("virtual member pointer has no canonical slot");
+		ThrowInternalCompilerError("virtual member pointer has no canonical slot");
 	dump_.nodes[expression].virtual_slot = slot;
 }
 
@@ -269,7 +269,7 @@ bool Analyzer::TryAnalyzeMemberPointerApplication(
 {
 	const int op = ClassifyOperationSpelling(operation);
 	if (operation != ".*" && operation != "->*") return false;
-	if (!result) throw std::logic_error("missing member pointer result");
+	if (!result) ThrowInternalCompilerError("missing member pointer result");
 	const TypeId pointer_type = program_->types.RemoveTopCv(
 		EffectiveType(right.type));
 	const TypeRecord pointer = program_->types.Get(pointer_type);

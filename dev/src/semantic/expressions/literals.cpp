@@ -9,7 +9,6 @@
 #include <limits>
 #include <locale>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -81,7 +80,7 @@ FundamentalKind StringElementKind(FundamentalType type)
 	case FT_CHAR32_T: return FUND_CHAR32_T;
 	default: break;
 	}
-	throw std::runtime_error("invalid string literal element type");
+	ThrowSemanticError("invalid string literal element type");
 }
 
 FundamentalKind SemanticFundamentalKind(FundamentalType type)
@@ -115,7 +114,7 @@ FundamentalKind SemanticFundamentalKind(FundamentalType type)
 	case FT_VOID: return FUND_VOID;
 	case FT_NULLPTR_T: return FUND_NULLPTR_T;
 	}
-	throw std::logic_error("unknown retained literal type");
+	ThrowInternalCompilerError("unknown retained literal type");
 }
 
 std::size_t CharacterUnitCount(const std::string& spelling,
@@ -191,7 +190,7 @@ std::int64_t Analyzer::ParseInteger(const std::string& spelling) const
 	{
 		const std::size_t close = spelling.rfind('\'');
 		if (close == quote || close + 1 != spelling.size())
-			throw std::runtime_error("invalid character literal");
+			ThrowSemanticError("invalid character literal");
 		unsigned long long value = 0;
 		std::size_t count = 0;
 		for (std::size_t i = quote + 1; i < close; ++i)
@@ -200,7 +199,7 @@ std::int64_t Analyzer::ParseInteger(const std::string& spelling) const
 			if (spelling[i] == '\\')
 			{
 				if (++i >= close)
-					throw std::runtime_error("invalid character escape");
+					ThrowSemanticError("invalid character escape");
 				const char escaped = spelling[i];
 				if (escaped == 'a') character = 7;
 				else if (escaped == 'b') character = 8;
@@ -226,7 +225,7 @@ std::int64_t Analyzer::ParseInteger(const std::string& spelling) const
 						++digits;
 					}
 					if (digits == 0)
-						throw std::runtime_error(
+						ThrowSemanticError(
 							"empty hexadecimal character escape");
 				}
 				else if (escaped >= '0' && escaped <= '7')
@@ -244,7 +243,7 @@ std::int64_t Analyzer::ParseInteger(const std::string& spelling) const
 			++count;
 		}
 		if (count == 0 || value > static_cast<unsigned long long>(INT64_MAX))
-			throw std::runtime_error("character literal outside PA12 range");
+			ThrowSemanticError("character literal outside PA12 range");
 		return static_cast<std::int64_t>(value);
 	}
 	std::size_t last = spelling.size();
@@ -256,7 +255,7 @@ std::int64_t Analyzer::ParseInteger(const std::string& spelling) const
 	char* end = 0;
 	const unsigned long long value = std::strtoull(digits.c_str(), &end, 0);
 	if (errno == ERANGE || end == digits.c_str() || *end != '\0')
-		throw std::runtime_error("integer literal outside PA12 range");
+		ThrowSemanticError("integer literal outside PA12 range");
 	return static_cast<std::int64_t>(value);
 }
 
@@ -403,10 +402,10 @@ ExpressionInfo Analyzer::MakeStringLiteral(
 	std::vector<std::uint32_t> decoded;
 	if (!DecodeStringLiteralCodeUnits(spelling, &decoded_type, &decoded) ||
 		decoded.empty())
-		throw std::runtime_error("invalid string literal spelling");
+		ThrowSemanticError("invalid string literal spelling");
 	if (string_literal_units_.size() >
 		std::numeric_limits<std::uint32_t>::max() - decoded.size())
-		throw std::runtime_error("too many retained string literal code units");
+		ThrowSemanticResourceLimit("too many retained string literal code units");
 	const std::uint32_t first =
 		static_cast<std::uint32_t>(string_literal_units_.size());
 	string_literal_units_.insert(
@@ -447,7 +446,7 @@ ExpressionInfo Analyzer::MakeBuiltinScalarLiteral(
 			if (quote == 1 && spelling[0] == 'L') kind = FUND_WCHAR_T;
 			else if (quote == 1 && spelling[0] == 'u') kind = FUND_CHAR16_T;
 			else if (quote == 1 && spelling[0] == 'U') kind = FUND_CHAR32_T;
-			else throw std::runtime_error("invalid character literal prefix");
+			else ThrowSemanticError("invalid character literal prefix");
 		}
 		const TypeId type = program_->types.Fundamental(kind);
 		value = NormalizeIntegralConstant(type, value);
@@ -472,7 +471,7 @@ ExpressionInfo Analyzer::MakeBuiltinScalarLiteral(
 		errno = 0;
 		const long double decoded = std::strtold(numeric.c_str(), &end);
 		if (!end || end != numeric.c_str() + numeric.size() || errno == ERANGE)
-			throw std::runtime_error("invalid floating literal value");
+			ThrowSemanticError("invalid floating literal value");
 		ExpressionInfo result = MakeLiteral(
 			type, program_->names.Intern(spelling));
 		SetExpressionScalar(&result, ConvertScalarConstant(
@@ -510,12 +509,12 @@ bool Analyzer::TryAnalyzeUserDefinedStringLiteral(
 	const std::string suffix = spelling.substr(literal_end);
 	if (!suffix.empty() && suffix[0] == ' ') return false;
 	if (suffix.empty() || suffix[0] != '_')
-		throw std::runtime_error("invalid user-defined literal suffix");
+		ThrowSemanticError("invalid user-defined literal suffix");
 	const std::string function_name = "operator\"\"" + suffix;
 	const std::vector<BindingId> candidates =
 		FunctionCandidates(scope, function_name);
 	if (candidates.empty())
-		throw std::runtime_error("user-defined literal operator not found");
+		ThrowSemanticError("user-defined literal operator not found");
 	std::size_t character_count = 0;
 	std::vector<ExpressionInfo> arguments;
 	arguments.push_back(MakeStringLiteral(
@@ -534,7 +533,7 @@ bool Analyzer::TryAnalyzeUserDefinedStringLiteral(
 	const FunctionInfo& function = GetFunction(selected);
 	const TypeRecord function_type = program_->types.Get(function.type);
 	if (function_type.parameter_count != 2)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"string literal operator requires two parameters");
 	const TypeId size_type = program_->types.Parameters(function.type)[1];
 	if (arguments[1].type != size_type)
@@ -559,7 +558,7 @@ bool Analyzer::TryAnalyzeUserDefinedNumericLiteral(
 	const std::size_t suffix_begin = spelling.find('_');
 	if (suffix_begin == std::string::npos) return false;
 	if (suffix_begin == 0)
-		throw std::runtime_error("invalid user-defined numeric literal");
+		ThrowSemanticError("invalid user-defined numeric literal");
 	const std::string source = spelling.substr(0, suffix_begin);
 	const std::string function_name =
 		"operator\"\"" + spelling.substr(suffix_begin);
@@ -620,7 +619,7 @@ bool Analyzer::TryAnalyzeUserDefinedNumericLiteral(
 			candidates.push_back(candidate);
 	}
 	if (candidates.empty())
-		throw std::runtime_error("user-defined literal operator not found");
+		ThrowSemanticError("user-defined literal operator not found");
 	const std::vector<NodeId> no_syntax;
 	const std::vector<ExpressionInfo> no_arguments;
 	const BindingId selected = SelectOverload(scope, no_syntax, no_arguments,
@@ -638,11 +637,11 @@ ExpressionInfo Analyzer::AnalyzeThisExpression(ScopeId scope)
 	if (found.ordinary == kNoBinding)
 	{
 		if (constexpr_frames_.empty())
-			throw std::runtime_error("this outside member function");
+			ThrowSemanticError("this outside member function");
 		const FunctionInfo& function =
 			GetFunction(constexpr_frames_.back().function);
 		if (function.member_owner == kNoType)
-			throw std::runtime_error("this outside member function");
+			ThrowSemanticError("this outside member function");
 		TypeId owner = function.member_owner;
 		const TypeRecord& function_type = program_->types.Get(function.type);
 		if (function_type.cv != CV_NONE)
@@ -752,7 +751,7 @@ ExpressionInfo Analyzer::AnalyzeNamedValue(
 	if (found.ordinary == kNoBinding)
 	{
 		if (CandidateSubstitutionActive()) return CandidateSubstitutionFailure();
-		throw std::runtime_error("unknown expression name: " + spelling);
+		ThrowSemanticError("unknown expression name: " + spelling);
 	}
 	if (program_->bindings[found.ordinary].kind == BIND_VARIABLE &&
 		program_->bindings[found.ordinary].member_owner != kNoEntity &&
@@ -780,7 +779,7 @@ ExpressionInfo Analyzer::AnalyzeNamedValue(
 				NAME_PATH_PARSE_LITERAL) :
 			LookupSyntaxName(syntax, scope, LOOKUP_ORDINARY);
 		if (found.ordinary == kNoBinding)
-			throw std::runtime_error(
+			ThrowInternalCompilerError(
 				"static member definition replay lost its declaration");
 	}
 	std::size_t qualified_component_count = 0;
@@ -954,7 +953,7 @@ ExpressionInfo Analyzer::AnalyzeNamedValue(
 
 TypeId Analyzer::DecltypeType(NodeId node, ScopeId scope)
 {
-	if (node == kNoNode) throw std::runtime_error("empty decltype");
+	if (node == kNoNode) ThrowSemanticError("empty decltype");
 	bool parenthesized = false;
 	if (arena_->IsTag(node, ::cppgm::syntax::STAG_PARENTHESIZED_EXPRESSION))
 	{
@@ -972,7 +971,7 @@ TypeId Analyzer::DecltypeType(NodeId node, ScopeId scope)
 		const LookupResult found = LookupSyntaxName(
 			node, scope, LOOKUP_ORDINARY);
 		if (found.ordinary == kNoBinding)
-			throw std::runtime_error("decltype name not found");
+			ThrowSemanticError("decltype name not found");
 		const BindingRecord& binding = program_->bindings[found.ordinary];
 		if (!parenthesized || binding.kind == BIND_ENUMERATOR)
 			return binding.type;

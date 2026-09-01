@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -15,7 +15,7 @@ void Analyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	const NodeId target_node = declarator == kNoNode ? kNoNode :
 		FindChild(declarator, ::cppgm::syntax::STAG_CONVERSION_TYPE_ID);
 	if (target_node == kNoNode)
-		throw std::logic_error("conversion function has no target type");
+		ThrowInternalCompilerError("conversion function has no target type");
 	const TypeId target = BuildTypeId(target_node, scope);
 	bool explicit_specifier = false;
 	bool constexpr_specifier = false;
@@ -29,7 +29,7 @@ void Analyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 			if (value == "explicit") explicit_specifier = true;
 			if (value == "constexpr") constexpr_specifier = true;
 			if (value == "static")
-				throw std::runtime_error("conversion function cannot be static");
+				ThrowSemanticError("conversion function cannot be static");
 			if (value == "inline") inline_specifier = true;
 		}
 	const EntityId entity = EntityOf(owner_type);
@@ -37,7 +37,7 @@ void Analyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 		declarator, target, scope, false, true);
 	if (!program_->types.IsFunction(parsed.type) || !parsed.parameters.empty() ||
 		program_->types.Get(parsed.type).child != target)
-		throw std::runtime_error("invalid conversion function declarator");
+		ThrowSemanticError("invalid conversion function declarator");
 	if (constexpr_specifier)
 		parsed.type = ApplyConstexprMemberFunctionType(
 			parsed.type, entity, false);
@@ -45,7 +45,7 @@ void Analyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	const NodeId special = initializer == kNoNode ? kNoNode :
 		FindChild(initializer, ::cppgm::syntax::STAG_SPECIAL_INITIALIZER);
 	if (special != kNoNode && arena_->Payload(special) == "default")
-		throw std::runtime_error("conversion function cannot be defaulted");
+		ThrowSemanticError("conversion function cannot be defaulted");
 	const bool deleted = special != kNoNode &&
 		arena_->Payload(special) == "delete";
 	const bool definition = arena_->IsTag(node, ::cppgm::syntax::STAG_SPECIAL_MEMBER_DEFINITION);

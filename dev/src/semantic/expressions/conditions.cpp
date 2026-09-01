@@ -1,6 +1,5 @@
 #include "semantic/analysis/analyzer.h"
-
-#include <stdexcept>
+#include "support/exceptions.h"
 
 namespace cppgm
 {
@@ -51,7 +50,7 @@ void Analyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 		{
 			if (!IsIntegral(parsed.type, true) &&
 				EntityOf(parsed.type) == kNoEntity)
-				throw std::runtime_error("invalid switch condition");
+				ThrowSemanticError("invalid switch condition");
 			if (!IsIntegral(parsed.type, true))
 			{
 				ExpressionInfo declared;
@@ -87,7 +86,7 @@ void Analyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 	if (switch_condition)
 	{
 		if (!IsIntegral(value.type, true))
-			throw std::runtime_error("invalid switch condition");
+			ThrowSemanticError("invalid switch condition");
 	}
 	else if (!IsArithmetic(value.type) && !IsPointer(value.type) &&
 		!IsNullptr(value.type) && !IsMemberPointer(value.type))

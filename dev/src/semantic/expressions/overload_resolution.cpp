@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -267,7 +267,7 @@ void Analyzer::AppendHiddenFriendCandidates(EntityId owner,
 	if (explicit_syntax)
 	{
 		if (use_scope == kNoScope || !argument_syntax)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"explicit hidden-friend deduction has no use context");
 		DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
 			arguments, *explicit_syntax, use_scope, &specializations,
@@ -292,7 +292,7 @@ void Analyzer::AppendArgumentDependentCandidates(NameId name,
 	const bool has_explicit_syntax = explicit_syntax != 0;
 	if (has_explicit_syntax &&
 		(use_scope == kNoScope || !argument_syntax))
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"explicit ADL deduction has no use context");
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		if (arguments[i].type != kNoType)
@@ -312,7 +312,7 @@ void Analyzer::AppendArgumentDependentCandidates(NameId name,
 			const std::size_t pattern =
 				class_template_pattern_by_entity_[entity];
 			if (pattern >= class_templates_.size())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"associated class template pattern is invalid");
 			const std::size_t first = record.template_argument_begin;
 			const std::size_t count = record.template_argument_count;
@@ -324,7 +324,7 @@ void Analyzer::AppendArgumentDependentCandidates(NameId name,
 				 count < FixedTemplateParameterCount(parameters)) ||
 				first > program_->template_arguments.size() ||
 				count > program_->template_arguments.size() - first)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"associated class template argument range is invalid");
 			for (std::size_t argument = 0; argument < count; ++argument)
 				if (first + argument >=
@@ -1069,7 +1069,7 @@ CallConversionFact Analyzer::ConvertingFunction(
 			const std::size_t count = BaseProjectionCount(source.type, object_type);
 			if (count == std::numeric_limits<std::size_t>::max() ||
 				count > std::numeric_limits<std::uint32_t>::max())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"conversion function has no bounded object path");
 			projections = static_cast<std::uint32_t>(count);
 		}
@@ -1173,7 +1173,7 @@ ExpressionInfo Analyzer::ApplyExplicitConversion(
 		ConvertingFunction(value, target, true);
 	if (conversion.rank == CONVERSION_INVALID ||
 		conversion.conversion_function == kNoBinding)
-		throw std::runtime_error("invalid explicit conversion");
+		ThrowSemanticError("invalid explicit conversion");
 	ObjectConversionFact object_conversion;
 	object_conversion.rank = conversion.conversion_object_rank;
 	object_conversion.base_projection_count =
@@ -1208,7 +1208,7 @@ CallConversionFact Analyzer::CallConversion(
 		return result;
 	}
 	if (source_ordinal > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("call conversion source ordinal is too large");
+		ThrowSemanticResourceLimit("call conversion source ordinal is too large");
 	const std::uint64_t key =
 		(static_cast<std::uint64_t>(source_ordinal) << 32) | target;
 	if (cache)
@@ -1244,7 +1244,7 @@ ExpressionInfo Analyzer::BuildConvertingArgument(
 {
 	const BindingId constructor_binding = conversion.constructor;
 	if (constructor_binding == kNoBinding)
-		throw std::logic_error("missing selected converting constructor");
+		ThrowInternalCompilerError("missing selected converting constructor");
 	const TypeRecord target_top = program_->types.Get(target);
 	TypeId object_type = target;
 	if (target_top.kind == TYPE_LVALUE_REFERENCE ||
@@ -1253,12 +1253,12 @@ ExpressionInfo Analyzer::BuildConvertingArgument(
 	object_type = program_->types.RemoveTopCv(object_type);
 	const FunctionInfo constructor = GetFunction(constructor_binding);
 	if (constructor.deleted_constructor)
-		throw std::runtime_error("selected converting constructor is deleted");
+		ThrowSemanticError("selected converting constructor is deleted");
 	if (!CanAccessMember(constructor_binding))
-		throw std::runtime_error("selected converting constructor is inaccessible");
+		ThrowSemanticError("selected converting constructor is inaccessible");
 	const TypeRecord function = program_->types.Get(constructor.type);
 	if (function.parameter_count == 0 && !function.variadic)
-		throw std::logic_error("converting constructor has no source parameter");
+		ThrowInternalCompilerError("converting constructor has no source parameter");
 	const TypeId* parameter_data = program_->types.Parameters(constructor.type);
 	std::vector<TypeId> parameters;
 	if (function.parameter_count != 0)
@@ -1298,7 +1298,7 @@ ExpressionInfo Analyzer::BuildConvertingArgument(
 	{
 		if (i >= constructor.parameters.size() ||
 			constructor.parameters[i].default_argument == kNoNode)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"converting constructor lacks a default argument");
 		ExpressionInfo value = AnalyzeExpression(
 			constructor.parameters[i].default_argument,
@@ -1586,7 +1586,7 @@ BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 	const std::size_t arity = operands.size();
 	if (arity != 0 && candidates.size() >
 		std::numeric_limits<std::size_t>::max() / arity)
-		throw std::runtime_error("operator conversion table is too large");
+		ThrowSemanticResourceLimit("operator conversion table is too large");
 	std::vector<ConversionRank> ranks(candidates.size() * arity,
 		CONVERSION_ELLIPSIS);
 	std::vector<std::size_t> base_distances(candidates.size() * arity,
@@ -1767,7 +1767,7 @@ BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 		if (other != champion && viable[other] && !better(champion, other))
 		{
 			if (quiet) return kNoBinding;
-			throw std::runtime_error("ambiguous overloaded operator");
+			ThrowSemanticError("ambiguous overloaded operator");
 		}
 	*selected_member =
 		program_->bindings[candidates[champion]].member_owner != kNoEntity;
@@ -1780,7 +1780,7 @@ BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 			const std::size_t projections = actual_object_distances[champion];
 			if (projections == std::numeric_limits<std::size_t>::max() ||
 				projections > std::numeric_limits<std::uint32_t>::max())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"selected operator object has no bounded base path");
 			object_conversion->base_projection_count = projections == 0 ? 0 : 1;
 		}
@@ -1918,7 +1918,7 @@ bool Analyzer::TryAnalyzeOverloadedOperator(
 		if (no_worse && strictly_better) return false;
 	}
 	if (GetFunction(selected).deleted_special_member)
-		throw std::runtime_error("selected special member is deleted");
+		ThrowSemanticError("selected special member is deleted");
 	const bool selected_nonstatic_member =
 		GetFunction(selected).member_owner != kNoType;
 	std::vector<NodeId> arguments_syntax;
@@ -1994,7 +1994,7 @@ bool Analyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 	std::vector<Candidate> candidates;
 	if (!arguments.empty() && conversions.size() >
 		std::numeric_limits<std::size_t>::max() / arguments.size())
-		throw std::runtime_error("callable surrogate table is too large");
+		ThrowSemanticResourceLimit("callable surrogate table is too large");
 	std::vector<CallConversionFact> argument_facts;
 	argument_facts.reserve(conversions.size() * arguments.size());
 	CallConversionTable conversion_cache;
@@ -2101,7 +2101,7 @@ bool Analyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 		if (better(i, champion)) champion = i;
 	for (std::size_t i = 0; i < candidates.size(); ++i)
 		if (i != champion && !better(champion, i))
-			throw std::runtime_error("ambiguous callable surrogate");
+			ThrowSemanticError("ambiguous callable surrogate");
 
 	const Candidate& selected = candidates[champion];
 	ExpressionInfo converted;
@@ -2119,7 +2119,7 @@ bool Analyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 					std::numeric_limits<std::size_t>::max() ||
 				selected.object_distance >
 					std::numeric_limits<std::uint32_t>::max())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"callable surrogate has no bounded object path");
 			conversion.conversion_base_projection_count =
 				static_cast<std::uint32_t>(selected.object_distance);
@@ -2142,7 +2142,7 @@ bool Analyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 					std::numeric_limits<std::size_t>::max() ||
 				selected.object_distance >
 					std::numeric_limits<std::uint32_t>::max())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"callable surrogate has no bounded object path");
 			object_conversion.base_projection_count =
 				static_cast<std::uint32_t>(selected.object_distance);

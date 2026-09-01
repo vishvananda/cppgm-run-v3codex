@@ -1,8 +1,8 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <climits>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -103,7 +103,7 @@ bool Analyzer::IsPointerToCompleteObject(TypeId type)
 ExpressionInfo Analyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 {
 	const NodeId operand = FirstSemanticChild(node);
-	if (operand == kNoNode) throw std::runtime_error("empty sizeof");
+	if (operand == kNoNode) ThrowSemanticError("empty sizeof");
 	TypeId measured = kNoType;
 	if (arena_->IsTag(operand, ::cppgm::syntax::STAG_TYPE_ID))
 	{
@@ -132,7 +132,7 @@ ExpressionInfo Analyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 				measured = program_->types.Get(
 					GetFunction(candidates[0]).type).child;
 			else if (!candidates.empty())
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"ambiguous function template in sizeof expression");
 		}
 		if (measured == kNoType && name != kNoNode &&
@@ -152,7 +152,7 @@ ExpressionInfo Analyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 						const TypeRecord array = program_->types.Get(
 							program_->types.RemoveTopCv(measured));
 						if (array.kind != TYPE_ARRAY)
-							throw std::runtime_error(
+							ThrowSemanticError(
 								"sizeof subscript recovery requires an array");
 						measured = array.child;
 					}
@@ -237,7 +237,7 @@ ExpressionInfo Analyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
 	if (operand.type == kNoType)
 	{
 		if (op == OP_AMP && target == kNoType) return operand;
-		throw std::runtime_error("unresolved unary operand");
+		ThrowSemanticError("unresolved unary operand");
 	}
 	if (operation == "__real__" || operation == "__imag__") return AnalyzeComplexComponent(operation, operand, target);
 	std::vector<NodeId> overloaded_syntax(1, operand_syntax);
@@ -267,7 +267,7 @@ ExpressionInfo Analyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
 		EnsureStaticMemberStorage(operand.binding, true);
 	if (op == OP_AMP && operand.binding != kNoBinding &&
 		program_->bindings[operand.binding].bit_field)
-		throw std::runtime_error("address-of bit-field unsupported");
+		ThrowSemanticError("address-of bit-field unsupported");
 	TypeId result_type = EffectiveType(operand.type);
 	ValueCategory category = VALUE_PRVALUE;
 	bool constant = operand.constant;
@@ -284,7 +284,7 @@ ExpressionInfo Analyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
 	if (op == OP_AMP)
 	{
 		if (operand.category != VALUE_LVALUE)
-			throw std::runtime_error("address-of requires lvalue");
+			ThrowSemanticError("address-of requires lvalue");
 		if (member_pointer_address)
 		{
 			if (!FormMemberPointerAddress(operand, address_target, &result_type,
@@ -306,7 +306,7 @@ ExpressionInfo Analyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
 		if (pointer.kind != TYPE_POINTER)
 		{
 			if (!FunctionTemplateTypeIsDependent(operand.type))
-				throw std::runtime_error("dereference requires pointer");
+				ThrowSemanticError("dereference requires pointer");
 			result_type = DependentFunctionTemplateResultShape();
 		}
 		else result_type = pointer.child;
@@ -323,7 +323,7 @@ ExpressionInfo Analyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
 		{
 			if (CandidateSubstitutionActive())
 				return CandidateSubstitutionFailure();
-			throw std::runtime_error("invalid increment operand");
+			ThrowSemanticError("invalid increment operand");
 		}
 		category = postfix ? VALUE_PRVALUE : VALUE_LVALUE;
 		constant = false;
@@ -372,7 +372,7 @@ ExpressionInfo Analyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
 		if (!IsArithmetic(result_type) && !IsPointer(Decay(result_type)) &&
 			!IsNullptr(result_type) &&
 			operand_shape.kind != TYPE_MEMBER_POINTER)
-			throw std::runtime_error("invalid logical-not operand");
+			ThrowSemanticError("invalid logical-not operand");
 		result_type = program_->types.Fundamental(FUND_BOOL);
 		if (constant) scalar = ConstexprScalarValue(
 			static_cast<std::int64_t>(!ExpressionTruth(operand)));
@@ -387,7 +387,7 @@ ExpressionInfo Analyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
 		}
 		else if ((op == OP_COMPL && !IsIntegral(result_type)) ||
 			(op != OP_COMPL && !IsArithmetic(result_type)))
-			throw std::runtime_error("invalid unary arithmetic operand");
+			ThrowSemanticError("invalid unary arithmetic operand");
 		else if (IsIntegral(result_type) &&
 			(IntegralRank(result_type) < 3 ||
 			 program_->types.Get(program_->types.RemoveTopCv(result_type)).kind ==
@@ -410,7 +410,7 @@ ExpressionInfo Analyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
 				scalar = NormalizeScalarConstant(result_type, scalar);
 		}
 	}
-	else throw std::runtime_error("unsupported unary operator");
+	else ThrowSemanticError("unsupported unary operator");
 	const std::uint32_t expression = MakeDump(postfix ?
 		DUMP_POSTFIX_EXPRESSION : DUMP_UNARY_EXPRESSION,
 		result_type, category,
@@ -475,9 +475,9 @@ void Analyzer::RecordUnaryDereferenceConstant(
 ExpressionInfo Analyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 {
 	const std::uint32_t first_edge = arena_->FirstEdge(node);
-	if (first_edge == kNoEdge) throw std::runtime_error("empty binary expression");
+	if (first_edge == kNoEdge) ThrowSemanticError("empty binary expression");
 	const std::uint32_t second_edge = arena_->NextEdge(first_edge);
-	if (second_edge == kNoEdge) throw std::runtime_error("unary binary expression");
+	if (second_edge == kNoEdge) ThrowSemanticError("unary binary expression");
 	const NodeId left_syntax = arena_->EdgeChild(first_edge);
 	const NodeId right_syntax = arena_->EdgeChild(second_edge);
 	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
@@ -665,7 +665,7 @@ ExpressionInfo Analyzer::BuildBinaryExpression(
 	if (op == OP_LAND || op == OP_LOR)
 	{
 		if (!IsBuiltinLogicalOperand(left) || !IsBuiltinLogicalOperand(right))
-			throw std::runtime_error("invalid logical operands");
+			ThrowSemanticError("invalid logical operands");
 		result_type = program_->types.Fundamental(FUND_BOOL);
 	}
 	else if (op == OP_EQ || op == OP_NE || op == OP_LT ||
@@ -689,7 +689,7 @@ ExpressionInfo Analyzer::BuildBinaryExpression(
 			{
 				if (CandidateSubstitutionActive())
 					return CandidateSubstitutionFailure();
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"arithmetic on pointer to incomplete or non-object type");
 			}
 			result_type = Decay(left.type);
@@ -701,7 +701,7 @@ ExpressionInfo Analyzer::BuildBinaryExpression(
 			{
 				if (CandidateSubstitutionActive())
 					return CandidateSubstitutionFailure();
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"arithmetic on pointer to incomplete or non-object type");
 			}
 			result_type = Decay(right.type);
@@ -714,14 +714,14 @@ ExpressionInfo Analyzer::BuildBinaryExpression(
 			{
 				if (CandidateSubstitutionActive())
 					return CandidateSubstitutionFailure();
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"subtraction on pointer to incomplete or non-object type");
 			}
 			result_type = program_->types.Fundamental(FUND_LONG_INT);
 		}
 		else if (IsArithmetic(left.type) && IsArithmetic(right.type))
 			result_type = operand_type = CommonArithmeticType(left.type, right.type);
-		else throw std::runtime_error("invalid additive operands");
+		else ThrowSemanticError("invalid additive operands");
 	}
 	else
 	{

@@ -1,9 +1,9 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -55,7 +55,7 @@ bool Analyzer::CandidateSubstitutionFailed() const
 void Analyzer::RecordCandidateSubstitutionFailure()
 {
 	if (!CandidateSubstitutionActive())
-		throw std::logic_error("candidate substitution failure has no owner");
+		ThrowInternalCompilerError("candidate substitution failure has no owner");
 	candidate_substitution_failures_.back() = 1;
 }
 
@@ -63,7 +63,7 @@ TypeId Analyzer::CandidateTypeFormation(
 	TypeId type, const char* message)
 {
 	if (type != kNoType) return type;
-	if (!CandidateSubstitutionActive()) throw std::runtime_error(message);
+	if (!CandidateSubstitutionActive()) ThrowSemanticError(message);
 	RecordCandidateSubstitutionFailure();
 	return kNoType;
 }
@@ -81,14 +81,14 @@ BindingId Analyzer::CandidateOverloadFailure(const char* message)
 		RecordCandidateSubstitutionFailure();
 		return kNoBinding;
 	}
-	throw std::runtime_error(message);
+	ThrowSemanticError(message);
 }
 
 ExpressionInfo Analyzer::CandidateExpressionFailure(
 	const char* message)
 {
 	if (CandidateSubstitutionActive()) return CandidateSubstitutionFailure();
-	throw std::runtime_error(message);
+	ThrowSemanticError(message);
 }
 
 std::uint8_t Analyzer::ArrayElementCv(TypeId type) const
@@ -109,7 +109,7 @@ ExpressionInfo Analyzer::AnalyzeBuiltinInvoke(ScopeId scope,
 			"__builtin_invoke requires a callable argument");
 	if (analyzed_arguments &&
 		analyzed_arguments->size() != argument_syntax.size())
-		throw std::logic_error("preanalyzed invoke argument shape is invalid");
+		ThrowInternalCompilerError("preanalyzed invoke argument shape is invalid");
 	std::vector<ExpressionInfo> values;
 	if (analyzed_arguments) values = *analyzed_arguments;
 	else
@@ -162,7 +162,7 @@ ExpressionInfo Analyzer::AnalyzeBuiltinInvoke(ScopeId scope,
 		ExpressionInfo member;
 		if (!TryAnalyzeMemberPointerApplication(application, application,
 			object, callable_expression, &member))
-			throw std::logic_error("member pointer application was not recognized");
+			ThrowInternalCompilerError("member pointer application was not recognized");
 		if (CandidateSubstitutionFailed()) return ExpressionInfo();
 		operands.erase(operands.begin());
 		operand_syntax.erase(operand_syntax.begin());
@@ -245,12 +245,12 @@ bool Analyzer::TryAnalyzeImmediateBuiltinCall(
 	if (spelling == "__builtin_expect")
 	{
 		if (argument_syntax.size() != 2)
-			throw std::runtime_error("invalid __builtin_expect call");
+			ThrowSemanticError("invalid __builtin_expect call");
 		*result = AnalyzeExpression(argument_syntax[0], scope);
 		const ExpressionInfo prediction =
 			AnalyzeExpression(argument_syntax[1], scope);
 		if (!prediction.constant || !IsIntegral(prediction.type, true))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"__builtin_expect prediction is not constant");
 		*result = ApplyTarget(*result, target);
 		return true;
@@ -260,7 +260,7 @@ bool Analyzer::TryAnalyzeImmediateBuiltinCall(
 	if (spelling == "__builtin_constant_p")
 	{
 		if (argument_syntax.size() != 1)
-			throw std::runtime_error("invalid __builtin_constant_p call");
+			ThrowSemanticError("invalid __builtin_constant_p call");
 		const ExpressionInfo operand =
 			AnalyzeExpression(argument_syntax[0], scope);
 		*result = MakeLiteral(program_->types.Fundamental(FUND_INT),
@@ -272,7 +272,7 @@ bool Analyzer::TryAnalyzeImmediateBuiltinCall(
 	}
 	if (spelling != "__builtin_abort") return false;
 	if (!argument_syntax.empty())
-		throw std::runtime_error("invalid __builtin_abort call");
+		ThrowSemanticError("invalid __builtin_abort call");
 	const BindingId binding = EnsureBuiltinFunction(BUILTIN_FUNCTION_ABORT);
 	const FunctionInfo& function = GetFunction(binding);
 	const TypeId result_type = program_->types.Fundamental(FUND_VOID);
@@ -326,7 +326,7 @@ BindingId Analyzer::EnsureIntegerIntrinsicFunction(
 {
 	using namespace hosted_builtin;
 	if (kind <= INTEGER_INTRINSIC_NONE || kind >= INTEGER_INTRINSIC_COUNT)
-		throw std::logic_error("missing hosted integer intrinsic kind");
+		ThrowInternalCompilerError("missing hosted integer intrinsic kind");
 	if (integer_intrinsic_functions_.size() < INTEGER_INTRINSIC_COUNT)
 		integer_intrinsic_functions_.resize(INTEGER_INTRINSIC_COUNT, kNoBinding);
 	if (integer_intrinsic_functions_[kind] != kNoBinding)
@@ -449,11 +449,11 @@ bool Analyzer::TryAnalyzeIntegerIntrinsicCall(
 	const IntegerIntrinsic* intrinsic = FindIntegerIntrinsic(spelling);
 	if (!intrinsic) return false;
 	if (argument_syntax.size() != intrinsic->arity)
-		throw std::runtime_error("invalid integer intrinsic arity");
+		ThrowSemanticError("invalid integer intrinsic arity");
 	std::vector<ExpressionInfo> arguments;
 	ExpressionInfo value = AnalyzeExpression(argument_syntax[0], scope);
 	if (!IsIntegral(value.type))
-		throw std::runtime_error("integer intrinsic operand is not integral");
+		ThrowSemanticError("integer intrinsic operand is not integral");
 	TypeId argument_type = kNoType;
 	switch (intrinsic->argument_rule)
 	{
@@ -471,7 +471,7 @@ bool Analyzer::TryAnalyzeIntegerIntrinsicCall(
 		if (program_->types.Get(argument_type).kind != TYPE_FUNDAMENTAL ||
 			!IsUnsignedIntegral(argument_type) ||
 			IntegralWidth(argument_type) > 64)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"generic integer intrinsic requires an unsigned operand");
 		break;
 	}
@@ -480,7 +480,7 @@ bool Analyzer::TryAnalyzeIntegerIntrinsicCall(
 	{
 		ExpressionInfo fallback = AnalyzeExpression(argument_syntax[1], scope);
 		if (!IsIntegral(fallback.type))
-			throw std::runtime_error("integer intrinsic fallback is not integral");
+			ThrowSemanticError("integer intrinsic fallback is not integral");
 		arguments.push_back(ApplyCallArgument(fallback,
 			program_->types.Fundamental(FUND_INT)));
 	}
@@ -496,7 +496,7 @@ BindingId Analyzer::EnsureFloatingIntrinsicFunction(
 {
 	using namespace hosted_builtin;
 	if (kind <= FLOATING_INTRINSIC_NONE || kind >= FLOATING_INTRINSIC_COUNT)
-		throw std::logic_error("missing hosted floating intrinsic kind");
+		ThrowInternalCompilerError("missing hosted floating intrinsic kind");
 	if (floating_intrinsic_functions_.size() < FLOATING_INTRINSIC_COUNT)
 		floating_intrinsic_functions_.resize(
 			FLOATING_INTRINSIC_COUNT, kNoBinding);
@@ -576,7 +576,7 @@ bool Analyzer::TryAnalyzeFloatingIntrinsicCall(
 	const FloatingIntrinsic* intrinsic = FindFloatingIntrinsic(spelling);
 	if (!intrinsic) return false;
 	if (argument_syntax.size() != intrinsic->arity)
-		throw std::runtime_error("invalid floating intrinsic arity");
+		ThrowSemanticError("invalid floating intrinsic arity");
 	const BindingId binding = EnsureFloatingIntrinsicFunction(intrinsic->kind);
 	const TypeRecord& function_type =
 		program_->types.Get(GetFunction(binding).type);
@@ -595,7 +595,7 @@ bool Analyzer::TryAnalyzeFloatingIntrinsicCall(
 		if (floating_operand)
 		{
 			if (!IsFloating(argument.type))
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"floating intrinsic operand is not floating");
 			if (intrinsic->operation == FLOATING_OPERATION_EXTERNAL_CEIL)
 			{
@@ -610,7 +610,7 @@ bool Analyzer::TryAnalyzeFloatingIntrinsicCall(
 		if (intrinsic->operation == FLOATING_OPERATION_CLASSIFY)
 		{
 			if (!IsIntegral(argument.type))
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"fpclassify control operand is not integral");
 			arguments.push_back(ApplyCallArgument(argument, parameter_types[i]));
 			continue;
@@ -627,7 +627,7 @@ BindingId Analyzer::EnsureMemoryIntrinsicFunction(
 {
 	using namespace hosted_builtin;
 	if (kind <= MEMORY_INTRINSIC_NONE || kind >= MEMORY_INTRINSIC_COUNT)
-		throw std::logic_error("missing hosted memory intrinsic kind");
+		ThrowInternalCompilerError("missing hosted memory intrinsic kind");
 	if (memory_intrinsic_functions_.size() < MEMORY_INTRINSIC_COUNT)
 		memory_intrinsic_functions_.resize(MEMORY_INTRINSIC_COUNT, kNoBinding);
 	if (memory_intrinsic_functions_[kind] != kNoBinding)
@@ -747,7 +747,7 @@ bool Analyzer::TryAnalyzeMemoryIntrinsicCall(
 	if (!intrinsic) return false;
 	if (argument_syntax.size() < intrinsic->minimum_arity ||
 		argument_syntax.size() > intrinsic->maximum_arity)
-		throw std::runtime_error("invalid memory intrinsic arity");
+		ThrowSemanticError("invalid memory intrinsic arity");
 	const BindingId binding = EnsureMemoryIntrinsicFunction(intrinsic->kind);
 	const FunctionInfo& function = GetFunction(binding);
 	const TypeRecord& function_type = program_->types.Get(function.type);
@@ -781,28 +781,28 @@ bool Analyzer::TryAnalyzeMemoryIntrinsicCall(
 	{
 		if (!arguments[1].constant ||
 			!IsIntegral(arguments[1].type, true))
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"assume_aligned alignment is not constant");
 		const std::uint64_t alignment = static_cast<std::uint64_t>(
 			ExpressionScalar(arguments[1]).integral);
 		if (alignment == 0 || (alignment & (alignment - 1)) != 0)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"assume_aligned alignment is not a power of two");
 		if (arguments.size() == 3 && !arguments[2].constant)
-			throw std::runtime_error("assume_aligned offset is not constant");
+			ThrowSemanticError("assume_aligned offset is not constant");
 	}
 	else if (intrinsic->kind == MEMORY_INTRINSIC_PREFETCH)
 	{
 		for (std::size_t i = 1; i < arguments.size(); ++i)
 			if (!arguments[i].constant ||
 				!IsIntegral(arguments[i].type, true))
-				throw std::runtime_error("prefetch control is not constant");
+				ThrowSemanticError("prefetch control is not constant");
 		if (arguments.size() >= 2 &&
 			(arguments[1].value < 0 || arguments[1].value > 1))
-			throw std::runtime_error("prefetch access mode is invalid");
+			ThrowSemanticError("prefetch access mode is invalid");
 		if (arguments.size() >= 3 &&
 			(arguments[2].value < 0 || arguments[2].value > 3))
-			throw std::runtime_error("prefetch locality is invalid");
+			ThrowSemanticError("prefetch locality is invalid");
 	}
 	TypeId result_type = function_type.child;
 	if (readonly_search_source) result_type = parameter_types[0];
@@ -822,7 +822,7 @@ bool Analyzer::TryAnalyzeVectorIntrinsicCall(
 	const std::size_t arity = intrinsic->operation == VECTOR_OPERATION_INIT ?
 		intrinsic->lane_count : 2;
 	if (argument_syntax.size() != arity)
-		throw std::runtime_error("invalid vector intrinsic arity");
+		ThrowSemanticError("invalid vector intrinsic arity");
 	const FundamentalKind element_kind =
 		intrinsic->element == VECTOR_ELEMENT_I8 ? FUND_SIGNED_CHAR :
 		intrinsic->element == VECTOR_ELEMENT_I16 ? FUND_SHORT_INT : FUND_INT;
@@ -855,7 +855,7 @@ bool Analyzer::TryAnalyzeVectorIntrinsicCall(
 		if (intrinsic->operation == VECTOR_OPERATION_EXTRACT && i == 1 &&
 			(!argument.constant || argument.value < 0 ||
 			 static_cast<std::uint64_t>(argument.value) >= intrinsic->lane_count))
-			throw std::runtime_error("vector extraction lane is not constant");
+			ThrowSemanticError("vector extraction lane is not constant");
 		dump_.Add(call, argument.node);
 	}
 	result->node = call;
@@ -871,7 +871,7 @@ ExpressionInfo Analyzer::AnalyzeAtomicOrderArgument(
 {
 	ExpressionInfo order = AnalyzeExpression(syntax, scope);
 	if (!IsIntegral(order.type, true))
-		throw std::runtime_error("atomic memory order is not integral");
+		ThrowSemanticError("atomic memory order is not integral");
 	order = ApplyCallArgument(order, program_->types.Fundamental(FUND_INT));
 	if (!order.constant)
 	{
@@ -880,7 +880,7 @@ ExpressionInfo Analyzer::AnalyzeAtomicOrderArgument(
 	}
 	const std::int64_t value = ExpressionScalar(order).integral;
 	if (value < 0 || value > 5)
-		throw std::runtime_error("atomic memory order is out of range");
+		ThrowSemanticError("atomic memory order is out of range");
 	return order;
 }
 
@@ -890,15 +890,15 @@ TypeId Analyzer::AtomicPointerValueType(
 	const TypeId decayed = program_->types.RemoveTopCv(Decay(pointer.type));
 	const TypeRecord& shape = program_->types.Get(decayed);
 	if (shape.kind != TYPE_POINTER)
-		throw std::runtime_error("atomic object argument is not a pointer");
+		ThrowSemanticError("atomic object argument is not a pointer");
 	if (require_atomic && !program_->types.IsAtomic(shape.child))
-		throw std::runtime_error("C11 atomic object has non-atomic type");
+		ThrowSemanticError("C11 atomic object has non-atomic type");
 	const TypeId value = program_->types.RemoveTopCv(shape.child);
 	const TypeRecord& value_shape = program_->types.Get(value);
 	if (value_shape.kind == TYPE_FUNCTION ||
 		(value_shape.kind == TYPE_FUNDAMENTAL &&
 		 value_shape.fundamental == FUND_VOID))
-		throw std::runtime_error("atomic object has invalid value type");
+		ThrowSemanticError("atomic object has invalid value type");
 	return value;
 }
 
@@ -912,7 +912,7 @@ ExpressionInfo Analyzer::BuildAtomicIntrinsicCall(
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 	{
 		if (arguments[i].type == kNoType)
-			throw std::logic_error("atomic intrinsic argument has no type");
+			ThrowInternalCompilerError("atomic intrinsic argument has no type");
 		parameter_types.push_back(arguments[i].type);
 	}
 	const TypeId function_type = program_->types.Function(
@@ -945,7 +945,7 @@ bool Analyzer::TryAnalyzeAtomicIntrinsicCall(
 	const AtomicIntrinsic* intrinsic = FindAtomicIntrinsic(spelling);
 	if (!intrinsic) return false;
 	if (argument_syntax.size() != intrinsic->arity)
-		throw std::runtime_error("invalid atomic intrinsic arity");
+		ThrowSemanticError("invalid atomic intrinsic arity");
 	const TypeId void_type = program_->types.Fundamental(FUND_VOID);
 	const TypeId bool_type = program_->types.Fundamental(FUND_BOOL);
 	const TypeId int_type = program_->types.Fundamental(FUND_INT);
@@ -953,7 +953,7 @@ bool Analyzer::TryAnalyzeAtomicIntrinsicCall(
 	{
 		ExpressionInfo size = AnalyzeExpression(argument_syntax[0], scope);
 		if (!size.constant || !IsIntegral(size.type, true))
-			throw std::runtime_error("atomic lock-free size is not constant");
+			ThrowSemanticError("atomic lock-free size is not constant");
 		const std::uint64_t bytes = static_cast<std::uint64_t>(
 			ExpressionScalar(size).integral);
 		for (std::size_t i = 1; i < argument_syntax.size(); ++i)
@@ -995,7 +995,7 @@ bool Analyzer::TryAnalyzeAtomicIntrinsicCall(
 		ExpressionInfo pointer = AnalyzeExpression(argument_syntax[index], scope);
 		const TypeId pointee = AtomicPointerValueType(pointer, false);
 		if (pointee != value_type)
-			throw std::runtime_error("atomic pointer operand type mismatch");
+			ThrowSemanticError("atomic pointer operand type mismatch");
 		return ApplyCallArgument(pointer,
 			readonly ? const_value_pointer : value_pointer);
 	};
@@ -1052,7 +1052,7 @@ bool Analyzer::TryAnalyzeAtomicIntrinsicCall(
 		break;
 	case ATOMIC_SHAPE_FETCH_UPDATE:
 		if (!IsIntegral(value_type))
-			throw std::runtime_error("atomic fetch operation is not integral");
+			ThrowSemanticError("atomic fetch operation is not integral");
 		arguments.push_back(analyze_value(1));
 		if (argument_syntax.size() == 3) append_order(2);
 		result_type = value_type;
@@ -1073,7 +1073,7 @@ bool Analyzer::TryAnalyzeAtomicIntrinsicCall(
 			const std::int64_t order = ExpressionScalar(arguments[i]).integral;
 			if (intrinsic->shape == ATOMIC_SHAPE_LOAD &&
 				(order == 3 || order == 4))
-				throw std::runtime_error("invalid atomic load memory order");
+				ThrowSemanticError("invalid atomic load memory order");
 		}
 	*result = BuildAtomicIntrinsicCall(
 		intrinsic->kind, arguments, value_type, result_type, target);
@@ -1093,20 +1093,20 @@ bool Analyzer::TryAnalyzeVariadicBuiltinCall(
 	const std::size_t expected = kind == BUILTIN_FUNCTION_VA_START ||
 		kind == BUILTIN_FUNCTION_VA_ARG ? 2 : 1;
 	if (argument_syntax.size() != expected)
-		throw std::runtime_error("invalid variadic builtin arity");
+		ThrowSemanticError("invalid variadic builtin arity");
 	if (kind == BUILTIN_FUNCTION_VA_START)
 	{
 		if (current_function_context_ == kNoBinding ||
 			!program_->types.Get(
 				GetFunction(current_function_context_).type).variadic)
-			throw std::runtime_error("va_start outside a variadic function");
+			ThrowSemanticError("va_start outside a variadic function");
 		const FunctionInfo& function = GetFunction(current_function_context_);
 		if (function.parameters.empty() ||
 			!arena_->IsTag(argument_syntax[1], ::cppgm::syntax::STAG_ID_EXPRESSION) ||
 			program_->names.UseInterned(
 				arena_->PayloadId(argument_syntax[1])) !=
 				function.parameters.back().name)
-			throw std::runtime_error("va_start marker is not the last parameter");
+			ThrowSemanticError("va_start marker is not the last parameter");
 	}
 	ExpressionInfo list = AnalyzeExpression(argument_syntax[0], scope);
 	const TypeId va_list_pointer = program_->types.Pointer(
@@ -1115,7 +1115,7 @@ bool Analyzer::TryAnalyzeVariadicBuiltinCall(
 	if (kind == BUILTIN_FUNCTION_VA_ARG)
 	{
 		if (!arena_->IsTag(argument_syntax[1], ::cppgm::syntax::STAG_TYPE_ID))
-			throw std::runtime_error("va_arg has no result type");
+			ThrowSemanticError("va_arg has no result type");
 		const TypeId type = BuildTypeId(argument_syntax[1], scope);
 		if (type == kNoType)
 		{
@@ -1133,7 +1133,7 @@ bool Analyzer::TryAnalyzeVariadicBuiltinCall(
 			 shape.fundamental == FUND_CHAR16_T ||
 			 shape.fundamental == FUND_CHAR32_T);
 		if (shape.kind != TYPE_POINTER && !fundamental_scalar)
-			throw std::runtime_error("unsupported va_arg scalar type");
+			ThrowSemanticError("unsupported va_arg scalar type");
 		std::vector<ExpressionInfo> arguments(1, list);
 		*result = BuildBuiltinIntrinsicCall(kind, arguments, type, target);
 		return true;
@@ -1180,7 +1180,7 @@ TypeId Analyzer::ResolveArrowOperand(
 		if (EntityOf(arrow_type) == kNoEntity ||
 			std::find(arrow_types.begin(), arrow_types.end(), arrow_type) !=
 				arrow_types.end())
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"arrow operand has no terminating operator-> chain");
 		arrow_types.push_back(arrow_type);
 		std::vector<NodeId> syntax(1, object_syntax);
@@ -1188,7 +1188,7 @@ TypeId Analyzer::ResolveArrowOperand(
 		ExpressionInfo converted;
 		if (!TryAnalyzeOverloadedOperator("->", scope, syntax, operands,
 			true, kNoType, &converted))
-			throw std::runtime_error("arrow operand is not a pointer");
+			ThrowSemanticError("arrow operand is not a pointer");
 		*object = converted;
 		owner_type = EffectiveType(object->type);
 	}
@@ -1324,7 +1324,7 @@ int Analyzer::CompareReferenceBindings(
 BindingId Analyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 {
 	if (kind == BUILTIN_FUNCTION_NONE)
-		throw std::logic_error("missing builtin function kind");
+		ThrowInternalCompilerError("missing builtin function kind");
 	if (builtin_functions_.size() <= static_cast<std::size_t>(kind))
 		builtin_functions_.resize(static_cast<std::size_t>(kind) + 1, kNoBinding);
 	if (builtin_functions_[kind] != kNoBinding) return builtin_functions_[kind];
@@ -1414,7 +1414,7 @@ BindingId Analyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 		ordinary_visible = true; break;
 	case BUILTIN_FUNCTION_NONE: break;
 	}
-	if (!spelling) throw std::logic_error("unknown builtin function kind");
+	if (!spelling) ThrowInternalCompilerError("unknown builtin function kind");
 	std::vector<ParameterInfo> parameters;
 	for (std::size_t i = 0; i < parameter_types.size(); ++i)
 		parameters.push_back(ParameterInfo(display ? program_->names.Intern(
@@ -1477,7 +1477,7 @@ bool Analyzer::AnalyzeBuiltinCall(const std::string& spelling,
 			kind == BUILTIN_FUNCTION_OPERATOR_DELETE ||
 			kind == BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY)
 			return false;
-		throw std::runtime_error("invalid builtin function call arity");
+		ThrowSemanticError("invalid builtin function call arity");
 	}
 	std::vector<ExpressionInfo> arguments;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
@@ -1583,7 +1583,7 @@ bool Analyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	const std::uint32_t name_edge = object_edge == kNoEdge ? kNoEdge :
 		arena_->NextEdge(object_edge);
 	if (name_edge == kNoEdge)
-		throw std::runtime_error("invalid member call expression");
+		ThrowSemanticError("invalid member call expression");
 	++resolved_call_demand_suppressed_depth_;
 	ExpressionInfo object;
 	try
@@ -1621,7 +1621,7 @@ bool Analyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 			*result = CandidateSubstitutionFailure();
 			return true;
 		}
-		throw std::runtime_error("member call on non-class object");
+		ThrowSemanticError("member call on non-class object");
 	}
 	const NodeId identifier = arena_->EdgeChild(name_edge);
 	const std::string member_spelling = arena_->Payload(identifier);
@@ -1790,12 +1790,12 @@ bool Analyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	const std::uint32_t name_edge = object_edge == kNoEdge ? kNoEdge :
 		arena_->NextEdge(object_edge);
 	if (name_edge == kNoEdge)
-		throw std::runtime_error("invalid explicit destructor expression");
+		ThrowSemanticError("invalid explicit destructor expression");
 	const NodeId identifier = arena_->EdgeChild(name_edge);
 	const std::string spelling = arena_->Payload(identifier);
 	if (spelling.empty() || spelling[0] != '~') return false;
 	if (!argument_syntax.empty())
-		throw std::runtime_error("explicit destructor call has arguments");
+		ThrowSemanticError("explicit destructor call has arguments");
 	const NodeId structure = FindChild(identifier,
 		::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
 	NamePath destructor_path;
@@ -1831,7 +1831,7 @@ bool Analyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 			scope, destructor_path, LOOKUP_TYPE);
 		if (named.type == kNoType ||
 			program_->types.RemoveTopCv(EffectiveType(named.type)) != destroyed_type)
-			throw std::runtime_error("pseudo-destructor type mismatch");
+			ThrowSemanticError("pseudo-destructor type mismatch");
 		const TypeId void_type =
 			program_->types.Fundamental(FUND_VOID);
 		const std::uint32_t discarded = MakeDump(DUMP_CAST_EXPRESSION,
@@ -1878,7 +1878,7 @@ bool Analyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	if (destructor == kNoBinding || destructor_type.type == kNoType ||
 		program_->types.RemoveTopCv(EffectiveType(destructor_type.type)) !=
 			destroyed_type)
-		throw std::runtime_error("class has no matching destructor");
+		ThrowSemanticError("class has no matching destructor");
 	if (host_object_emission_ &&
 		program_->entities[entity].trivial_destructor)
 	{
@@ -1890,7 +1890,7 @@ bool Analyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 				*result = CandidateSubstitutionFailure();
 				return true;
 			}
-			throw std::runtime_error("selected function is deleted");
+			ThrowSemanticError("selected function is deleted");
 		}
 		if (!CanAccessMember(destructor, entity, entity))
 		{
@@ -1899,7 +1899,7 @@ bool Analyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 				*result = CandidateSubstitutionFailure();
 				return true;
 			}
-			throw std::runtime_error("inaccessible member function");
+			ThrowSemanticError("inaccessible member function");
 		}
 		const TypeId void_type =
 			program_->types.Fundamental(FUND_VOID);
@@ -1923,7 +1923,7 @@ bool Analyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	else
 	{
 		if (object.category != VALUE_LVALUE)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"explicit destructor object is not an addressable lvalue");
 		object_pointer.type = program_->types.Pointer(destroyed_type);
 		object_pointer.category = VALUE_PRVALUE;
@@ -2005,7 +2005,7 @@ std::vector<BindingId> Analyzer::FunctionCandidates(ScopeId scope,
 					syntax, scope, &type_base, &explicit_arguments)) continue;
 				if (pattern.specialization_argument_offsets.size() !=
 					pattern.specialization_bindings.size())
-					throw std::logic_error(
+					ThrowInternalCompilerError(
 						"function template specialization argument range is invalid");
 				for (std::size_t specialization = 0;
 					specialization < pattern.specialization_bindings.size();
@@ -2104,7 +2104,7 @@ ExpressionInfo Analyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	const std::uint32_t first = arena_->FirstEdge(node);
 	const std::uint32_t second = first == kNoEdge ? kNoEdge :
 		arena_->NextEdge(first);
-	if (second == kNoEdge) throw std::runtime_error("invalid member expression");
+	if (second == kNoEdge) ThrowSemanticError("invalid member expression");
 	ExpressionInfo object = AnalyzeExpression(arena_->EdgeChild(first), scope);
 	const int source_op = PayloadTokenKind(node);
 	if (source_op == OP_DOT && object.category == VALUE_PRVALUE &&
@@ -2121,7 +2121,7 @@ ExpressionInfo Analyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	{
 		if (CandidateSubstitutionActive())
 			return CandidateSubstitutionFailure();
-		throw std::runtime_error("member access on non-class object");
+		ThrowSemanticError("member access on non-class object");
 	}
 	const NodeId identifier = arena_->EdgeChild(second);
 	const std::string member_spelling = arena_->Payload(identifier);
@@ -2137,13 +2137,13 @@ ExpressionInfo Analyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	{
 		if (CandidateSubstitutionActive())
 			return CandidateSubstitutionFailure();
-		throw std::runtime_error("unknown class member");
+		ThrowSemanticError("unknown class member");
 	}
 	if (!CanAccessMember(found.ordinary, found.naming_class, entity))
 	{
 		if (CandidateSubstitutionActive())
 			return CandidateSubstitutionFailure();
-		throw std::runtime_error("inaccessible class member");
+		ThrowSemanticError("inaccessible class member");
 	}
 	const EntityId member_owner =
 		program_->bindings[found.ordinary].member_owner;
@@ -2152,7 +2152,7 @@ ExpressionInfo Analyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	if (member_function)
 	{
 		if (!program_->bindings[found.ordinary].static_member_function)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"non-static member function requires a call expression");
 		DemandFunction(found.ordinary);
 	}
@@ -2183,7 +2183,7 @@ ExpressionInfo Analyzer::AnalyzeMember(NodeId node, ScopeId scope)
 			program_->entities[member_owner].type, &projection_offset);
 		if (projections == std::numeric_limits<std::size_t>::max() ||
 			projections > std::numeric_limits<std::uint32_t>::max())
-			throw std::logic_error("member has no bounded base path");
+			ThrowInternalCompilerError("member has no bounded base path");
 		dump_.nodes[expression].base_projection_count =
 			static_cast<std::uint32_t>(projections);
 		dump_.nodes[expression].base_projection_offset = projection_offset;
