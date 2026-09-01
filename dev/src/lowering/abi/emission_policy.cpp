@@ -35,7 +35,10 @@ bool IsTrivialLifecycleBinding(const semantic::Program& program,
 		 program.entities[record.member_owner].trivial_destructor);
 }
 
-bool IsCompleteBoundaryObject(const semantic::Program& program, semantic::TypeId type)
+}
+
+bool IsCompleteBoundaryObject(const semantic::Program& program,
+	semantic::TypeId type)
 {
 	using namespace semantic;
 	const TypeRecord* record = &program.types.Get(type);
@@ -55,8 +58,6 @@ bool IsCompleteBoundaryObject(const semantic::Program& program, semantic::TypeId
 	if (record->kind == TYPE_VECTOR || record->kind == TYPE_BITINT)
 		return record->dependent_bound_parameter == kNoTemplateParameter;
 	return record->kind != TYPE_INVALID && record->kind != TYPE_FUNCTION;
-}
-
 }
 
 void ApplyLifecycleSymbolMetadata(const semantic::Program& program,
@@ -150,4 +151,3 @@ bool IsVariableDeclarationOnly(const semantic::Program& program,
 }  // namespace abi
 }  // namespace lowering
 }  // namespace cppgm
-

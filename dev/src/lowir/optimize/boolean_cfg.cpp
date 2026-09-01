@@ -791,6 +791,228 @@ bool fold_edge_known_branches(Function * function, Stats * stats,
     function, stats, allow_integer_equality, &scratch.branch_values);
 }
 
+bool propagate_edge_integer_equalities(Function * function, Stats * stats)
+{
+  const Graph graph = build_graph(*function, stats);
+  const lowir_analysis::DominatorTree dom =
+    lowir_analysis::dominators(graph, stats);
+  bool changed = false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block) {
+    if(graph.predecessors[block].size() != 1 ||
+       graph.eh_targets[static_cast<std::uint32_t>(
+         function->blocks[block].id)])
+      continue;
+    const std::size_t predecessor = graph.predecessors[block][0];
+    const Block & incoming_block = function->blocks[predecessor];
+    if(incoming_block.instructions.empty()) continue;
+    const Instruction & terminal = incoming_block.instructions.back();
+    if(terminal.kind != Instruction::IK_BRANCH ||
+       terminal.second.kind != Operand::OP_LABEL ||
+       terminal.third.kind != Operand::OP_LABEL)
+      continue;
+    const bool true_edge = terminal.second.block == function->blocks[block].id;
+    const bool false_edge = terminal.third.block == function->blocks[block].id;
+    if(true_edge == false_edge) continue;
+    Operand value;
+    Operand constant;
+    if(!edge_establishes_integer_equality(
+         incoming_block, true_edge, &value, &constant))
+      continue;
+
+    std::size_t replacements = 0;
+    const auto replace = [&value, &constant, &replacements](Operand * operand) {
+      if(operand->kind == Operand::OP_TEMP &&
+         operand->value == value.value) {
+        *operand = constant;
+        ++replacements;
+      }
+    };
+    for(std::size_t dominated = 0;
+        dominated < function->blocks.size(); ++dominated) {
+      if(!dom.dominates(block, dominated)) continue;
+      std::vector<Instruction> & instructions =
+        function->blocks[dominated].instructions;
+      for(std::size_t index = 0; index < instructions.size(); ++index) {
+        Instruction & instruction = instructions[index];
+        // A call operand can denote the storage of a by-address argument,
+        // even when the value in that storage is known on this edge.  The
+        // function-local pass has no direct-callee signature table, so keep
+        // every call operand addressable instead of replacing its lvalue by
+        // the equal literal.
+        if(instruction.kind == Instruction::IK_PHI ||
+           instruction.kind == Instruction::IK_CALL) continue;
+        replace(&instruction.first);
+        replace(&instruction.second);
+        replace(&instruction.third);
+        for(std::size_t argument = 0;
+            argument < instruction.args.size(); ++argument)
+          replace(&instruction.args[argument]);
+      }
+    }
+    if(replacements) {
+      changed = true;
+      if(stats) {
+        ++stats->predicate_range_folds;
+        ++stats->edge_integer_equalities;
+        stats->rewrites += replacements;
+      }
+    }
+  }
+  return changed;
+}
+
+namespace {
+
+std::uint64_t integer_width_mask(const lowir_model::LowType & type)
+{
+  const std::size_t width = lowir_model::lowir_type_bit_width(type);
+  return width >= 64 ? ~std::uint64_t(0) :
+    (std::uint64_t(1) << width) - 1;
+}
+
+long long signed_integer_value(long long value,
+                               const lowir_model::LowType & type)
+{
+  const std::size_t width = lowir_model::lowir_type_bit_width(type);
+  if(width >= 64) return value;
+  const std::uint64_t mask = integer_width_mask(type);
+  std::uint64_t normalized = static_cast<std::uint64_t>(value) & mask;
+  if(normalized & (std::uint64_t(1) << (width - 1))) normalized |= ~mask;
+  return static_cast<long long>(normalized);
+}
+
+bool evaluate_integer_compare(const Instruction & compare,
+                              const Operand & incoming, bool * result)
+{
+  if(incoming.kind != Operand::OP_INTEGER || !incoming.has_int_value ||
+     lowir_model::lowir_type_bit_width(compare.type) == 0 ||
+     lowir_model::lowir_type_bit_width(compare.type) > 64)
+    return false;
+  Operand left = compare.first;
+  Operand right = compare.second;
+  if(left.kind == Operand::OP_TEMP) left = incoming;
+  else if(right.kind == Operand::OP_TEMP) right = incoming;
+  else return false;
+  if(left.kind != Operand::OP_INTEGER || !left.has_int_value ||
+     right.kind != Operand::OP_INTEGER || !right.has_int_value)
+    return false;
+  const std::uint64_t mask = integer_width_mask(compare.type);
+  const std::uint64_t unsigned_left =
+    static_cast<std::uint64_t>(left.int_value) & mask;
+  const std::uint64_t unsigned_right =
+    static_cast<std::uint64_t>(right.int_value) & mask;
+  const long long signed_left =
+    signed_integer_value(left.int_value, compare.type);
+  const long long signed_right =
+    signed_integer_value(right.int_value, compare.type);
+  switch(compare.op.kind) {
+  case LowOperation::LOP_EQ: *result = unsigned_left == unsigned_right; break;
+  case LowOperation::LOP_NE: *result = unsigned_left != unsigned_right; break;
+  case LowOperation::LOP_LT: *result = signed_left < signed_right; break;
+  case LowOperation::LOP_LE: *result = signed_left <= signed_right; break;
+  case LowOperation::LOP_GT: *result = signed_left > signed_right; break;
+  case LowOperation::LOP_GE: *result = signed_left >= signed_right; break;
+  case LowOperation::LOP_ULT: *result = unsigned_left < unsigned_right; break;
+  case LowOperation::LOP_ULE: *result = unsigned_left <= unsigned_right; break;
+  case LowOperation::LOP_UGT: *result = unsigned_left > unsigned_right; break;
+  case LowOperation::LOP_UGE: *result = unsigned_left >= unsigned_right; break;
+  default: return false;
+  }
+  return true;
+}
+
+bool target_starts_with_phi(const Function & function, const Graph & graph,
+                            const Operand & target)
+{
+  if(target.kind != Operand::OP_LABEL) return true;
+  const std::size_t block = graph.find(target.block);
+  return block >= function.blocks.size() ||
+    graph.eh_targets[static_cast<std::uint32_t>(
+      function.blocks[block].id)] ||
+    (!function.blocks[block].instructions.empty() &&
+     function.blocks[block].instructions.front().kind ==
+       Instruction::IK_PHI);
+}
+
+}  // namespace
+
+bool thread_constant_loop_phi_edge(Function * function, Stats * stats)
+{
+  const Graph graph = build_graph(*function, stats);
+  const lowir_analysis::DominatorTree dom =
+    lowir_analysis::dominators(graph, stats);
+  for(std::size_t header = 0; header < function->blocks.size(); ++header) {
+    Block & header_block = function->blocks[header];
+    if(header_block.instructions.size() != 3 ||
+       header_block.instructions[0].kind != Instruction::IK_PHI ||
+       header_block.instructions[1].kind != Instruction::IK_CMP ||
+       header_block.instructions[2].kind != Instruction::IK_BRANCH ||
+       graph.eh_targets[static_cast<std::uint32_t>(header_block.id)])
+      continue;
+    Instruction & phi = header_block.instructions[0];
+    const Instruction & compare = header_block.instructions[1];
+    const Instruction & branch = header_block.instructions[2];
+    if(!phi.dest.valid() || !compare.dest.valid() ||
+       phi.args.size() < 4 || phi.args.size() % 2 != 0 ||
+       branch.first.kind != Operand::OP_TEMP ||
+       branch.first.value != compare.dest ||
+       branch.second.kind != Operand::OP_LABEL ||
+       branch.third.kind != Operand::OP_LABEL ||
+       !((compare.first.kind == Operand::OP_TEMP &&
+          compare.first.value == phi.dest &&
+          compare.second.kind == Operand::OP_INTEGER &&
+          compare.second.has_int_value) ||
+         (compare.second.kind == Operand::OP_TEMP &&
+          compare.second.value == phi.dest &&
+          compare.first.kind == Operand::OP_INTEGER &&
+          compare.first.has_int_value)))
+      continue;
+    for(std::size_t predecessor_index = 0;
+        predecessor_index < graph.predecessors[header].size();
+        ++predecessor_index) {
+      const std::size_t predecessor =
+        graph.predecessors[header][predecessor_index];
+      if(predecessor == header || !dom.dominates(header, predecessor) ||
+         graph.eh_targets[static_cast<std::uint32_t>(
+           function->blocks[predecessor].id)])
+        continue;
+      Operand incoming;
+      if(!direct_phi_incoming(
+           phi, function->blocks[predecessor].id, &incoming))
+        continue;
+      bool condition = false;
+      if(!evaluate_integer_compare(compare, incoming, &condition)) continue;
+      const Operand selected = condition ? branch.second : branch.third;
+      if(selected.block == header_block.id ||
+         target_starts_with_phi(*function, graph, selected))
+        continue;
+      Instruction & terminal =
+        function->blocks[predecessor].instructions.back();
+      if(terminal.kind != Instruction::IK_JUMP ||
+         terminal.first.kind != Operand::OP_LABEL ||
+         terminal.first.block != header_block.id)
+        continue;
+      terminal.first = selected;
+      for(std::size_t incoming_index = 0;
+          incoming_index + 1 < phi.args.size(); incoming_index += 2)
+        if(phi.args[incoming_index].kind == Operand::OP_LABEL &&
+           phi.args[incoming_index].block ==
+             function->blocks[predecessor].id) {
+          phi.args.erase(phi.args.begin() + incoming_index,
+                         phi.args.begin() + incoming_index + 2);
+          break;
+        }
+      if(stats) {
+        ++stats->predicate_range_folds;
+        ++stats->constant_loop_phi_edges;
+        ++stats->rewrites;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 bool fold_boolean_phi_branch(Function * function, Stats * stats)
 {
   if(!has_candidate_merge(*function)) return false;

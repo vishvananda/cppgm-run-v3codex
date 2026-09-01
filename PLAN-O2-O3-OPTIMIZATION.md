@@ -4452,6 +4452,103 @@ interprocedural body summary or a source-level semantic boundary used by real
 code, before changing PA13. Parser/serializer support and a synthetic
 handwritten optimization are not sufficient justification by themselves.
 
+### Retained complete parameter-object memory boundary
+
+The successful successor supplies the population and semantic justification
+missing from `D.argmem-boundary` without restoring that rejected surface.
+PA13 now admits the single positive pointer fact `object_bytes=N`: the pointer
+denotes the beginning of an N-byte complete semantic object region, and a
+pointer reached from it and retained or returned through that boundary remains
+inside the region.  It is not a claim that the callee is `nocapture`, readonly,
+write-only, or argument-memory-only.  Thus ordinary effect and capture facts
+continue to come from actual LowIR bodies, while the extent only bounds an
+otherwise conservative escape.  Omission remains the representation for an
+ordinary pointer or an incomplete object.
+
+This is an O0 source-language/object-model fact rather than hidden optimizer
+input.  PA17 lowering emits it for complete implicit object parameters,
+class-reference and by-address arguments, and indirect result storage.  The
+same fact is carried on indirect call signatures, including pointer-to-member
+calls, and survives textual LowIR and compiler-object replay.  Completeness is
+checked before querying layout, so incomplete classes retain the prior O0
+path.  Compiler-object version 6 records the field.  The existing shared ABI
+predicate owns the complete-boundary decision; no parallel native-only
+preparation fact or compiler-source identity was added.
+
+At O3, a whole-program analysis derives exact per-parameter write effects and
+bounded capture interval sets from function bodies.  It may infer an exclusive
+parameter only when every call of an internal, non-address-taken function
+supplies a private object or an already exclusive parameter.  Capture sets
+preserve holes rather than collapsing to one bounding interval.  Direct body
+effects take precedence at a known call; the declared extent is only the
+fallback for an unresolved effect.  The memory-GVN consumer therefore reuses
+a load only across disjoint retained/write intervals.  It also understands a
+finite nonnegative dynamic offset, including a safe integer mask, when the
+scaled access cannot wrap or leave the complete object.
+
+The useful memory rewrite exposes three general O3 cleanups.  A dominated
+integer use may consume a single-predecessor equality fact, except at calls
+where the operand may denote by-address storage.  Literal loop-carried stores
+may feed the existing scalar forwarding relation, after which an exactly known
+loop-phi edge may be threaded when successor phis require no repair.  Finally,
+up to 64 positive constant-offset parameter addresses may be rematerialized in
+their call-free use segments instead of remaining live across a call.  EH,
+volatile and atomic operations, overlap, unknown offsets, external/indirect
+effects without an extent, address observability, object copies, zeroing,
+varargs changes, and exhausted budgets remain barriers.
+
+The first complete native screen found a measurement-path regression rather
+than a generated-code regression.  The exclusivity fixed point rescanned every
+instruction for each possible callee, making `program_lowerer.cpp` take 20.57
+seconds versus 7.37 seconds at the retained checkpoint and stretching the
+32-way critical path to about 38 seconds.  The final implementation indexes
+all calls once and keeps a reverse callee index.  It reuses that index for
+capture and effect propagation, making every round proportional to the call
+graph rather than the product of functions and instructions.  On the largest
+translation unit, the result is byte-identical to the slow prototype and takes
+8.16 seconds with stats; 9,336 call sites converge in 4 nocapture, 5 capture,
+4 exclusivity, and 9 effect rounds.  The complete program-memory analysis is
+charged to `memory_gvn_ns` (305.3 ms there), and the population and round counts
+are reported so this failure mode cannot hide outside ordinary telemetry.
+
+Coverage follows the serialized contract and does not match a complete program
+or compiler symbol spelling.  PA13 has valid transport plus zero and
+nonpointer rejection controls.  PA17 structurally discovers complete ordinary,
+implicit-object, by-address/reference, indirect-result, indirect-call, and
+incomplete boundaries and checks O0 behavior.  PA37 discovers the relevant
+load/call/interval relationships and checks O0--O2 isolation, exact-body and
+bounded fallback effects, disjoint and overlapping captures, gaps, masked and
+unbounded indexes, direct/atomic/zeroing barriers, equality storage identity,
+loop closure, stats, replay, and behavior.  PA38 discovers the post-call field
+address relationship, then checks O3 rematerialization, pressure/stack
+nonregression, replay, and behavior.  These are student-implementable
+structural and behavioral properties, not fixture-content recognition.
+
+The final common-input deterministic oracle compares the prior retained
+producer with the version-6 indexed producer and refreshes both host controls.
+Self falls from 3,710,732,416 to 3,621,818,198 instructions
+(`0.976038634x`, -2.396137%).  GCC rises from 2,425,759,535 to 2,427,489,853
+(`1.000713310x`), yielding `0.975342912x` normalized (-2.465709%) and moving
+the self/GCC gap from `1.529719810x` to `1.492001375x`.  Clang rises from
+3,021,419,141 to 3,022,985,108 (`1.000518289x`), yielding `0.975533026x`
+normalized (-2.446697%) and moving self/Clang from `1.228142222x` to
+`1.198093298x`.  The three current producers emit the exact object hash
+`09d9fdc0...`; the three checkpoint producers emit `fa3fd189...`.
+
+Three alternating explicit-32-way pairs on the exact final executable also
+improve both workloads.  O1 aggregate wall and CPU are `0.993193145x` and
+`0.988085190x`; O3 aggregate wall and CPU are `0.993226899x` and
+`0.988883011x`.  Every side repeats its own linked compiler exactly in all
+three lanes.  The all-32 G1/G2 fixed point contains 221 objects per generation
+and linked compiler hash
+`30132bf283fb14479319c3103f17e839414bef9c3a0fcb64fac3687283f0a810`.
+The linked implementation grows from 8,695,716 to 8,751,672 text bytes and
+from 339,400 to 340,152 data bytes; that full cost is included above.
+PA37 passes 190/190, PA38 passes 45/45, and the through-PA38 report passes
+5,473/5,473.  PA37/PA38 debug and object-roundtrip lanes pass; all LowIR,
+layout, rename, source-set, and ownership audits pass; and the PA39 file audit
+has zero fatal findings with its 31 established advisories.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4562,6 +4659,7 @@ Fill one row for every retained or rejected dose.
 | D.phi-fallback-slot-pool | allocate O3 acyclic fallback phi homes from the existing reusable temporary pool | provisional PA38 README and relationship/behavior reducer removed after rejection | safe `AppendUTF8` frame 208 to 80/body 1,814 to 1,655; fixed-point producer -17,024 text; unsafe precursor overwrote a still-live copied pointer | frozen task-clock aggregate `0.996735x`, paired median `0.997630x`; clean full O1 wall `0.986950x`, CPU `1.000409x` | unsafe G1 crash diagnosed; corrected property passed and 221-object G1/G2 exact at `49b77e47...`; prototype removed | rejected; safe source-diverse CPU is flat and below the 1% gate |
 | D.grouped-early-exit-unroll | fully unroll one bounded acyclic private-table loop and group iterations by a folded discriminator | none; rejected before contract movement | `Lexer::Run` 9,110 to 10,290 bytes; tokenizer Ir `0.969695x`; optional scalar `memcmp` lowering regressed to 462.16M Ir | self `1.000256x`, GCC `1.000144x`, normalized `1.000112x`; gap 1.529639x to 1.529810x | exact tokenizer and complete hot objects; fresh explicit-32-way G1; prototype removed | rejected; isolated 3.03% saving is canceled by complete-producer interference |
 | D.argmem-boundary | restore parameter capture/access and an argument-memory-only call effect, then consume them in memory GVN | none; rejected before PA13/PA37 contract movement | focused source-slot reuse works; tokenizer exact; all 221 G1/G2 `.text` sections and linked compiler exact | no timing warranted because generated compiler code is unchanged | explicit-32-way G1/G2; compiler `01eaef45...` exact; prototype removed | rejected; no real compiler population, so the removed LowIR surface remains unjustified |
+| D.complete-object-memory | serialize a positive complete parameter-object extent, derive body effects/capture intervals, and consume disjoint regions at O3 | PA13/PA17/PA37/PA38 README plus pointer-only syntax/transport, source-production, level, structural positive/negative, replay, native-pressure, and behavior properties; no complete-program matching | compiler object v6; 1,387 populated extents on the largest TU; indexed 9,336-site analysis; linked producer +55,956 text/+752 data; final G1/G2 exact | self Ir `0.976039x`; GCC `1.000713x`; normalized `0.975343x`; gap `1.529720x` to `1.492001x`; Clang-normalized `0.975533x`; final O1/O3 native CPU `0.988085x`/`0.988883x` | 221-object all-32 fixed point at `30132bf2...`; focused suites, full report, debug/round-trip, and all zero-fatal audits clean | retained; populated O0 semantic fact justifies the narrow LowIR addition, while indexed fixed points remove the initial critical-path regression |
 | C | make O2 at least 5% faster than O1 | selected measured feature | pending | target `<0.95x` | pending | pending |
 | D | make O3 at least 20% faster than O1 | selected measured feature | pending | target `<=0.80x` raw/normalized | pending | pending |
 | Final | complete matrix and closure | no uncovered retained behavior | exact and deterministic | all goals reported | all gates clean | pending |

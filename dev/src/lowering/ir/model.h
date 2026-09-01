@@ -256,6 +256,7 @@ struct Program
 	std::vector<ObjectAlias> object_aliases;
 	std::vector<Operand> call_arguments;
 	std::vector<std::uint8_t> call_argument_references;
+	std::vector<std::uint32_t> call_argument_object_bytes;
 	std::vector<SymbolId> exception_filter_types;
 	std::vector<std::int64_t> switch_case_values;
 	std::vector<BlockId> switch_case_targets;

@@ -391,6 +391,9 @@ private:
 				source.extra_first ||
 			source.extra_first > program_.call_argument_references.size() ||
 			source.extra_count > program_.call_argument_references.size() -
+				source.extra_first ||
+			source.extra_first > program_.call_argument_object_bytes.size() ||
+			source.extra_count > program_.call_argument_object_bytes.size() -
 				source.extra_first)
 			throw std::logic_error(
 				"force-inline call argument range is invalid");
@@ -403,6 +406,8 @@ private:
 				parameters, temporaries, slot_base));
 			program_.call_argument_references.push_back(
 				program_.call_argument_references[source.extra_first + i]);
+			program_.call_argument_object_bytes.push_back(
+				program_.call_argument_object_bytes[source.extra_first + i]);
 		}
 	}
 

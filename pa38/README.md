@@ -368,6 +368,20 @@ also accept a surviving marked definition without inventing a hidden side
 channel or changing behavior. The focused control exercises direct backend
 lowering at `-O0` through `-O3` and the combined `cppgm++ -O3` replay path.
 
+PA38 must likewise preserve the benefit of PA37's O3 parameter-address
+rematerialization. When several positive constant-offset field addresses from
+one bounded pointer parameter are used only after a call, PA37 may move those
+address definitions below the call. Given that optimized LowIR, native
+selection should preserve the common base across the call once and use direct
+base-plus-displacement memory operands afterward. It must not recreate every
+derived address before the call and consume separate call-preserved homes for
+them. The staged O2 form remains the comparison baseline; an equivalent
+register assignment is allowed, but the rematerialized O3 form must reduce
+call-preserved address pressure without increasing frame size. The focused
+control runs `lowiropt` before `lowir2native` because direct `lowir2native`
+does not itself perform PA37 optimization, and it also checks the combined
+`cppgm++ -O3` path and generated behavior.
+
 After each eliminated color, recompute complete MIR liveness. An eliminated
 color cannot become a later destination, and a surviving callee-saved color
 used as a destination cannot itself be eliminated. This monotonic policy
@@ -494,6 +508,11 @@ N3485 source-language clauses.
   escaping-stage guards, object encoding, driver replay, and behavior. It
   compares operand roles, frame-use relationships, and native vector-transfer
   counts without fixing physical registers or matching a complete MIR dump.
+  A staged parameter-address control selects its reducer by the relationship
+  between a bounded pointer, a call, and four post-call field loads. It checks
+  O2/O3 LowIR placement, a reduction in call-preserved native pressure, direct
+  post-call displacement loads, nonincreasing frame size, driver integration,
+  and behavior without matching function names or a complete MIR dump.
   An O3 composite-move control
   also permits a bounded object copy directly between incoming parameter
   addresses to preserve those carriers. If the same function later discards

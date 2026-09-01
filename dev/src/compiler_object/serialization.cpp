@@ -22,7 +22,7 @@ namespace
 {
 
 const char kMagic[] = "CPPGMOBJ";
-const std::uint32_t kVersion = 5;
+const std::uint32_t kVersion = 6;
 const std::uint64_t kMaxObjectElements = UINT64_C(1) << 28;
 
 class BinaryWriter
@@ -406,6 +406,7 @@ void WriteParameter(BinaryWriter& out, const lowir_model::Parameter& value,
 	WriteType(out, value.type);
 	WriteEnum(out, value.metadata.passing);
 	WriteEnum(out, value.metadata.alias);
+	out.U64(value.metadata.object_bytes);
 }
 
 lowir_model::Parameter ReadParameter(BinaryReader& in,
@@ -416,6 +417,7 @@ lowir_model::Parameter ReadParameter(BinaryReader& in,
 	value.type = ReadType(in);
 	value.metadata.passing = ReadEnum<lowir_model::ParamPassingMode>(in);
 	value.metadata.alias = ReadEnum<lowir_model::ParamAliasMode>(in);
+	value.metadata.object_bytes = in.U64();
 	return value;
 }
 

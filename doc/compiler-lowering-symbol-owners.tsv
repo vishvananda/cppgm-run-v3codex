@@ -51,6 +51,7 @@ class	dev/src/lowering/support/identity_maps.h	FlatIdMap	1	dev/src/lowering/supp
 class	dev/src/lowering/support/identity_maps.h	FlatIdPairMap	1	dev/src/lowering/support/identity_maps.h	keep
 class	dev/src/lowering/support/sequences.h	SmallSequence	1	dev/src/lowering/support/sequences.h	keep
 function	dev/src/lowering/abi/emission_policy.cpp	ApplyLifecycleSymbolMetadata	1	dev/src/lowering/abi/emission_policy.cpp	keep
+function	dev/src/lowering/abi/emission_policy.cpp	IsCompleteBoundaryObject	1	dev/src/lowering/abi/emission_policy.cpp	keep
 function	dev/src/lowering/abi/emission_policy.cpp	IsFunctionDeclarationBoundaryComplete	1	dev/src/lowering/abi/emission_policy.cpp	keep
 function	dev/src/lowering/abi/emission_policy.cpp	IsFunctionEmissionDemanded	1	dev/src/lowering/abi/emission_policy.cpp	keep
 function	dev/src/lowering/abi/emission_policy.cpp	IsVariableDeclarationOnly	1	dev/src/lowering/abi/emission_policy.cpp	keep

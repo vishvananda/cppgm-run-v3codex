@@ -77,6 +77,8 @@ void write_parameter_metadata(std::ostream & out, const ParameterMetadata & valu
   case PPM_BY_ADDRESS: metadata.item("pass", "by_address"); break;
   }
   if(value.alias == PALM_NOALIAS) metadata.item("alias", "noalias");
+  if(value.object_bytes)
+    metadata.item("object_bytes", std::to_string(value.object_bytes));
   metadata.finish();
 }
 

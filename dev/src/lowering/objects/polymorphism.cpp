@@ -2058,6 +2058,7 @@ private:
 		{
 			output_.call_arguments.push_back(arguments[i]);
 			output_.call_argument_references.push_back(0);
+			output_.call_argument_object_bytes.push_back(0);
 		}
 	}
 

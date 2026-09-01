@@ -82,6 +82,7 @@ protected:
 			derived.program_.types.Parameters(function_type_id);
 		CallArguments arguments;
 		CallArgumentFlags argument_references;
+		CallArgumentSizes argument_object_bytes;
 		const bool indirect_result = derived.UsesIndirectClassResult(
 			function_type.child, callee.binding);
 		const LowType call_type = indirect_result ?
@@ -113,6 +114,9 @@ protected:
 			arguments.Push(result_storage);
 			argument_references.Push(
 				Instruction::CALL_PASS_INDIRECT_RESULT);
+			const LowType storage =
+				derived.LowerStorageType(function_type.child);
+			argument_object_bytes.Push(direct ? 0 : storage.width / 8);
 		}
 		Operand block_object;
 		if (block_pointer_call)
@@ -120,6 +124,7 @@ protected:
 			block_object = derived.LowerValue(children[0], LowPtr());
 			arguments.Push(block_object);
 			argument_references.Push(Instruction::CALL_PASS_VALUE);
+			argument_object_bytes.Push(0);
 		}
 		const bool member_pointer_call =
 			derived.IsMemberPointerApplication(callee);
@@ -130,10 +135,25 @@ protected:
 		{
 			const NodeChildren application_children =
 				derived.Children(children[0]);
+			std::size_t member_object_bytes = 0;
+			const TypeRecord& member_pointer_type = derived.program_.types.Get(
+				derived.program_.types.RemoveTopCv(callee.operand_type));
+			if (member_pointer_type.kind == TYPE_MEMBER_POINTER)
+			{
+				const TypeId owner =
+					static_cast<TypeId>(member_pointer_type.bound);
+				if (abi::IsCompleteBoundaryObject(derived.program_, owner))
+				{
+					const LowType storage = derived.LowerStorageType(owner);
+					if (storage.kind != LOW_INVALID && storage.kind != LOW_VOID)
+						member_object_bytes = storage.width / 8;
+				}
+			}
 			member_pointer_argument = arguments.size();
 			arguments.Push(derived.MemberPointerObject(
 				callee, application_children));
 			argument_references.Push(Instruction::CALL_PASS_VALUE);
+			argument_object_bytes.Push(member_object_bytes);
 		}
 		const std::size_t lowered_argument_begin = arguments.size();
 		for (std::size_t i = 1; i < children.size(); ++i)
@@ -143,6 +163,15 @@ protected:
 			argument_references.Push(i - 1 < function_type.parameter_count ?
 				derived.BoundaryCallPassing(parameters[i - 1]) :
 				Instruction::CALL_PASS_VALUE);
+			if (!direct && i - 1 < function_type.parameter_count)
+			{
+				const bool by_address =
+					derived.UsesIndirectClassParameter(parameters[i - 1]);
+				argument_object_bytes.Push(derived.BoundaryObjectBytes(
+					parameters[i - 1], callee.binding, i - 1,
+					reference, by_address));
+			}
+			else argument_object_bytes.Push(0);
 			if (derived.arena_.nodes[children[i]].variadic_class_argument)
 				arguments.Push(derived.LowerStorage(children[i]));
 			else if (!reference &&
@@ -189,6 +218,8 @@ protected:
 		derived.AppendCallVirtualBaseArguments(callee, function_type_id,
 			children, lowered_boundary_arguments, &arguments,
 			&argument_references);
+		while (argument_object_bytes.size() < arguments.size())
+			argument_object_bytes.Push(0);
 		call.virtual_base_argument_count = static_cast<std::uint32_t>(
 			arguments.size() - boundary_argument_begin);
 		if (member_pointer_call)
@@ -220,7 +251,8 @@ protected:
 			call.first = member_pointer_call ? member_pointer_callee :
 				block_pointer_call ? derived.LoadBlockInvoke(block_object) :
 				derived.LowerValue(children[0], LowPtr());
-		derived.AttachCallArguments(&call, arguments, argument_references);
+		derived.AttachCallArguments(&call, arguments, argument_references,
+			&argument_object_bytes);
 		if (call.type.kind == LOW_VOID)
 		{
 			derived.Emit(call);

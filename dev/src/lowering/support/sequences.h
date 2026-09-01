@@ -55,6 +55,7 @@ private:
 typedef SmallSequence<std::uint32_t, 8> NodeChildren;
 typedef SmallSequence<lowering::ir::Operand, 8> CallArguments;
 typedef SmallSequence<std::uint8_t, 8> CallArgumentFlags;
+typedef SmallSequence<std::uint32_t, 8> CallArgumentSizes;
 typedef SmallSequence<std::uint32_t, 8> SwitchCases;
 
 }  // namespace support

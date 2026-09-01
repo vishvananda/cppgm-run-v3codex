@@ -16,6 +16,8 @@ struct Program;
 namespace abi
 {
 
+bool IsCompleteBoundaryObject(const semantic::Program& program,
+	semantic::TypeId type);
 bool IsFunctionEmissionDemanded(const semantic::Program& program,
 	const semantic::DumpNode& node, bool host_object_emission = false);
 bool IsFunctionDeclarationBoundaryComplete(const semantic::Program& program,

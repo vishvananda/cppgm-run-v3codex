@@ -88,6 +88,7 @@ parameter-metadata:
 
 parameter-metadata-item:
 	TT_IDENTIFIER OP_ASS TT_IDENTIFIER
+	TT_IDENTIFIER OP_ASS TT_LITERAL
 
 index-metadata:
 	OP_LSQUARE index-metadata-item (OP_COMMA index-metadata-item)* OP_RSQUARE

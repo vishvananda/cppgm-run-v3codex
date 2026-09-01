@@ -72,7 +72,7 @@ if(scalar(@ARGV) != 2)
 
 my ($app, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:constructor-alias-boundaries|enclosing-temporary-lifetime|out-of-class-move-assignment-boundary|conditional-copy-elision-permission|stable-prefix-query-boundary|rejected-stable-prefix-query-[^.]+)\.cpp$/);
+	qr/(?:constructor-alias-boundaries|enclosing-temporary-lifetime|out-of-class-move-assignment-boundary|conditional-copy-elision-permission|stable-prefix-query-boundary|parameter-object-extent-boundary|rejected-stable-prefix-query-[^.]+)\.cpp$/);
 die "No PA17 survivor-property tests found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -171,6 +171,41 @@ for my $test (@tests)
 			if $header !~ /\bquery=stable_prefix\b/;
 		die "$test: query boundary lacks its final integer index or scalar result\n"
 			if $header !~ /%\w+\s*:\s*(?:i|u)(?:8|16|32|64)\)\s*->\s*(?:i|u)(?:8|16|32|64)\b/;
+		compile_and_run($app, $test, $directory, $path);
+		next;
+	}
+	if($test =~ /parameter-object-extent-boundary/) {
+		my @headers = $lowir =~ /^(?:declare )?function \@[^\n]+$/mg;
+		my @indirect = $lowir =~
+			/\bptr\s+\[[^\]]*pass=indirect_result[^\]]*object_bytes=([1-9][0-9]*)[^\]]*\]/g;
+		my @by_address = $lowir =~
+			/\bptr\s+\[[^\]]*pass=by_address[^\]]*object_bytes=([1-9][0-9]*)[^\]]*\]/g;
+		my @object_parameters = $lowir =~
+			/\bptr\s+\[object_bytes=([1-9][0-9]*)\]/g;
+		my @indirect_call_extents = $lowir =~
+			/^\s+%[A-Za-z0-9_]+\s+=\s+call\s+i64\s+%[A-Za-z0-9_]+\([^\n]*
+			 \bptr\s+\[object_bytes=([1-9][0-9]*)\]/mgx;
+		die "$test: O0 LowIR lacks an indirect-result object extent\n"
+			if !@indirect;
+		die "$test: O0 LowIR lacks a by-address object extent\n"
+			if !@by_address;
+		die "$test: O0 LowIR lacks a member-object parameter extent\n"
+			if !@object_parameters;
+		die "$test: an indirect member call lost its object extent signature\n"
+			if !@indirect_call_extents;
+		my %indirect_sizes = map { $_ => 1 } @indirect;
+		my $shared_extent = scalar(grep { $indirect_sizes{$_} }
+			(@by_address, @object_parameters));
+		die "$test: related class boundaries disagree on their semantic extent\n"
+			if !$shared_extent;
+		my $ordinary_pointer = scalar(grep {
+			/\blinkage=c\b/ && /\([^)]*:\s*ptr\)/ &&
+				!/[\[][^\]]*object_bytes=/
+		} @headers);
+		die "$test: an ordinary source pointer incorrectly requires object metadata\n"
+			if !$ordinary_pointer;
+		die "$test: source lowering attached object_bytes to a non-pointer\n"
+			if $lowir =~ /\b(?:i1|i8|u8|i16|u16|i32|u32|i64|f32|f64|f80)\s+\[[^\]]*object_bytes=/;
 		compile_and_run($app, $test, $directory, $path);
 		next;
 	}

@@ -328,6 +328,8 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 			"call argument range");
 		ValidateExtraRange(instruction,
 			program.call_argument_references.size(), "call reference range");
+		ValidateExtraRange(instruction,
+			program.call_argument_object_bytes.size(), "call object range");
 		if (instruction.dest != kNoLowId) output << "%t" << instruction.dest << " = ";
 		output << "call ";
 		WriteType(output, instruction.type);
@@ -357,12 +359,24 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 					program.call_arguments[instruction.extra_first + i].type);
 				const std::uint8_t passing =
 					program.call_argument_references[instruction.extra_first + i];
-				if (passing == Instruction::CALL_PASS_REFERENCE)
-					output << " [pass=by_address]";
-				else if (passing == Instruction::CALL_PASS_BY_ADDRESS)
-					output << " [pass=by_address]";
-				else if (passing == Instruction::CALL_PASS_INDIRECT_RESULT)
-					output << " [pass=indirect_result]";
+				const std::size_t object_bytes =
+					program.call_argument_object_bytes[
+						instruction.extra_first + i];
+				if (passing != Instruction::CALL_PASS_VALUE || object_bytes)
+				{
+					output << " [";
+					if (passing == Instruction::CALL_PASS_REFERENCE ||
+						passing == Instruction::CALL_PASS_BY_ADDRESS)
+						output << "pass=by_address";
+					else if (passing == Instruction::CALL_PASS_INDIRECT_RESULT)
+						output << "pass=indirect_result";
+					if (object_bytes)
+					{
+						if (passing != Instruction::CALL_PASS_VALUE) output << ", ";
+						output << "object_bytes=" << object_bytes;
+					}
+					output << ']';
+				}
 			}
 			output << ") -> ";
 			WriteType(output, instruction.type);

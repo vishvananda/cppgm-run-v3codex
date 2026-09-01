@@ -321,6 +321,10 @@ struct ParameterMetadata
 {
   ParamPassingMode passing = PPM_DIRECT;
   ParamAliasMode alias = PALM_DEFAULT;
+  // Nonzero when the pointer denotes one complete semantic object region.
+  // Calls may retain the pointer, but accesses based on it remain within
+  // [pointer, pointer + object_bytes).
+  std::size_t object_bytes = 0;
 };
 
 struct Parameter

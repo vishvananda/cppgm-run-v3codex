@@ -173,7 +173,8 @@ bool same_parameter(const lowir_model::Parameter & left,
 {
   return left.name == right.name && same_type(left.type, right.type) &&
     left.metadata.passing == right.metadata.passing &&
-    left.metadata.alias == right.metadata.alias;
+    left.metadata.alias == right.metadata.alias &&
+    left.metadata.object_bytes == right.metadata.object_bytes;
 }
 
 std::size_t parameter_hash(const lowir_model::Parameter & parameter)
@@ -182,6 +183,7 @@ std::size_t parameter_hash(const lowir_model::Parameter & parameter)
   combine_hash(&result, type_hash(parameter.type));
   combine_hash(&result, static_cast<std::size_t>(parameter.metadata.passing));
   combine_hash(&result, static_cast<std::size_t>(parameter.metadata.alias));
+  combine_hash(&result, parameter.metadata.object_bytes);
   return result;
 }
 

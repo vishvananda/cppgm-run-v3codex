@@ -2,6 +2,7 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
+#include "lowering/abi/emission_policy.h"
 #include "lowering/abi/symbol_metadata.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/types.h"
@@ -127,6 +128,39 @@ protected:
 			lowering::ir::Instruction::CALL_PASS_VALUE;
 	}
 
+	std::size_t BoundaryObjectBytes(semantic::TypeId type,
+		semantic::BindingId binding, std::size_t parameter_index,
+		bool reference, bool by_address) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		semantic::TypeId object = semantic::kNoType;
+		if (reference)
+			object = derived.ExpressionObjectType(type);
+		else if (by_address)
+			object = type;
+		else if (parameter_index == 0 && binding != semantic::kNoBinding)
+		{
+			const semantic::BindingRecord& function =
+				derived.program_.bindings[binding];
+			if (function.member_owner != semantic::kNoEntity &&
+				!function.static_member_function)
+			{
+				const semantic::TypeId unqualified =
+					derived.program_.types.RemoveTopCv(type);
+				const semantic::TypeRecord& pointer =
+					derived.program_.types.Get(unqualified);
+				if (pointer.kind == semantic::TYPE_POINTER)
+					object = pointer.child;
+			}
+		}
+		if (object == semantic::kNoType ||
+			!abi::IsCompleteBoundaryObject(derived.program_, object)) return 0;
+		const lowering::ir::LowType storage = derived.LowerStorageType(object);
+		return storage.kind == lowering::ir::LOW_INVALID ||
+			storage.kind == lowering::ir::LOW_VOID ? 0 :
+			static_cast<std::size_t>(storage.width / 8);
+	}
+
 	void FillBoundary(std::uint32_t node,
 		std::vector<lowering::ir::Parameter>* parameters,
 		lowering::ir::LowType* result, bool* variadic,
@@ -149,6 +183,12 @@ protected:
 				derived.output_, "ret");
 			parameter.type = lowering::ir::LowPtr();
 			parameter.indirect_result = true;
+			const lowering::ir::LowType storage =
+				derived.LowerStorageType(function_type.child);
+			if (storage.kind != lowering::ir::LOW_INVALID &&
+				storage.kind != lowering::ir::LOW_VOID)
+				parameter.object_bytes =
+					static_cast<std::size_t>(storage.width / 8);
 			parameters->push_back(parameter);
 		}
 		const semantic::BuiltinFunctionKind builtin =
@@ -205,6 +245,10 @@ protected:
 			parameter.reference = parameter_index < function_type.parameter_count &&
 				derived.IsReferenceType(source_parameters[parameter_index]);
 			parameter.by_address = by_address;
+			if (parameter_index < function_type.parameter_count)
+				parameter.object_bytes = BoundaryObjectBytes(
+					source_parameters[parameter_index], record.binding,
+					parameter_index, parameter.reference, by_address);
 			lowering::abi::ApplyBuiltinParameterAliasMetadata(
 				&parameter, builtin, memory_builtin, parameter_index);
 			if (copy_or_move_constructor && parameter_index < 2)
@@ -231,6 +275,9 @@ protected:
 			parameter.reference =
 				derived.IsReferenceType(source_parameters[parameter_index]);
 			parameter.by_address = by_address;
+			parameter.object_bytes = BoundaryObjectBytes(
+				source_parameters[parameter_index], record.binding,
+				parameter_index, parameter.reference, by_address);
 			lowering::abi::ApplyBuiltinParameterAliasMetadata(
 				&parameter, builtin, memory_builtin, parameter_index);
 			if (copy_or_move_constructor && parameter_index < 2)

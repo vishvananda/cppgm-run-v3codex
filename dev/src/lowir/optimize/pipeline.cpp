@@ -2536,17 +2536,36 @@ void finish_optimizer_pipeline(
   // model used by the late inliners and can turn a local load reduction into
   // substantial caller growth.
   if(level >= 1) {
-    MemoryGVNSession late_memory_gvn(program);
+    MemoryGVNSession late_memory_gvn(program, level >= 3, stats);
     for(std::size_t i = 0; i < program.functions.size(); ++i) {
       Function & function = program.functions[i];
       lowir_analysis::FunctionAnalysis analysis(function, stats);
       if(late_memory_gvn.eliminate_redundant_loads(
            &function, &analysis, stats,
            level == 1 && !function.metadata.inline_hint)) {
+        const bool propagated_edge_equality = level >= 3 &&
+          propagate_edge_integer_equalities(&function, stats);
         timed_function_pass(simplify_values, &function, stats,
           &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
           &simplify_arena);
         timed_dce(&function, boundaries, stats, &dce_scratch);
+        if(propagated_edge_equality) {
+          timed_cfg(&function, stats, &cfg_scratch);
+          lowir_analysis::FunctionAnalysis loop_analysis(function, stats);
+          if(forward_loop_carried_store_loads(
+               &function, &loop_analysis, stats, false)) {
+            for(std::size_t round = 0; round < 4; ++round) {
+              if(!thread_constant_loop_phi_edge(&function, stats)) break;
+              lowir_analysis::FunctionAnalysis threaded_analysis(
+                function, stats);
+              timed_function_pass(simplify_values, &function, stats,
+                &Stats::simplify_runs, &Stats::simplify_nanoseconds,
+                &threaded_analysis, &simplify_arena);
+              timed_dce(&function, boundaries, stats, &dce_scratch);
+              timed_cfg(&function, stats, &cfg_scratch);
+            }
+          }
+        }
       }
     }
   }
@@ -2621,8 +2640,21 @@ void finish_optimizer_pipeline(
     }
     if(inlined_symbols[program.functions[i].symbol]) {
       lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
-      forward_loop_carried_store_loads(
-        &program.functions[i], &analysis, stats);
+      if(forward_loop_carried_store_loads(
+           &program.functions[i], &analysis, stats) && level >= 3) {
+        for(std::size_t round = 0; round < 4; ++round) {
+          if(!thread_constant_loop_phi_edge(
+               &program.functions[i], stats)) break;
+          lowir_analysis::FunctionAnalysis threaded_analysis(
+            program.functions[i], stats);
+          timed_function_pass(simplify_values, &program.functions[i], stats,
+            &Stats::simplify_runs, &Stats::simplify_nanoseconds,
+            &threaded_analysis, &simplify_arena);
+          timed_dce(
+            &program.functions[i], boundaries, stats, &dce_scratch);
+          timed_cfg(&program.functions[i], stats, &cfg_scratch);
+        }
+      }
     }
     const bool edge_branches_changed = fold_edge_known_branches(
       &program.functions[i], stats, &cfg_scratch, level >= 3);
@@ -2630,6 +2662,11 @@ void finish_optimizer_pipeline(
       timed_dce(
         &program.functions[i], boundaries, stats, &dce_scratch);
       timed_cfg(&program.functions[i], stats, &cfg_scratch);
+    }
+    if(level >= 3 && rematerialize_parameter_addresses(
+         &program.functions[i], stats)) {
+      timed_dce(
+        &program.functions[i], boundaries, stats, &dce_scratch);
     }
   }
   if(level >= 3) {

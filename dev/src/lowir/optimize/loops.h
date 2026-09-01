@@ -13,6 +13,7 @@ bool hoist_loop_invariants(lowir_model::Program * program,
 
 bool forward_loop_carried_store_loads(
   lowir_model::Function * function,
-  lowir_analysis::FunctionAnalysis * analysis, Stats * stats);
+  lowir_analysis::FunctionAnalysis * analysis, Stats * stats,
+  bool require_inline_hint = true);
 
 }  // namespace lowir_opt

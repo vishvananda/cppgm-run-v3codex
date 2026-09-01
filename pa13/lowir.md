@@ -589,9 +589,9 @@ function @user_entry() -> i64 [role=entry] !dbg(main.cpp, 1, 1) {
 Parameters may also carry explicit passing metadata after the parameter type:
 
 ```text
-function @helper(%ret : ptr [pass=indirect_result],
-                 %obj : ptr [pass=by_address],
-                 %ref : ptr [pass=by_address],
+function @helper(%ret : ptr [pass=indirect_result, object_bytes=24],
+                 %obj : ptr [pass=by_address, object_bytes=24],
+                 %ref : ptr [pass=by_address, object_bytes=8],
                  %arr : ptr,
                  %buf : ptr [alias=noalias],
                  %x : i64) -> void {
@@ -599,7 +599,8 @@ function @helper(%ret : ptr [pass=indirect_result],
 }
 ```
 
-The currently defined parameter metadata keys are `pass` and `alias`.
+The currently defined parameter metadata keys are `pass`, `alias`, and
+`object_bytes`.
 
 The currently defined pass values are:
 
@@ -619,9 +620,16 @@ The intended meaning is semantic, not host-ABI-specific:
   boundary whose argument denotes addressable storage
 - `noalias`: this incoming pointer is disjoint from every other pointer
   parameter on the same boundary that also carries `alias=noalias`
+- `object_bytes=N`: the pointer denotes the beginning of a positive, complete
+  semantic object region containing `N` bytes. Memory accessed through that
+  parameter, or through a pointer derived from it and retained or returned by
+  the callee, remains inside that region. This is an object-model boundary,
+  not a claim that the callee reads or writes every byte and not a host ABI
+  size. Omission provides no bounded-region promise.
 
 For the current LowIR subset, every explicitly spelled pass mode and alias
-metadata require parameter type `ptr`.
+metadata require parameter type `ptr`. `object_bytes` likewise requires `ptr`
+and a positive integer value.
 `indirect_result` must appear on the first parameter and requires function return type `void`.
 
 Stack slot syntax:
@@ -731,11 +739,11 @@ function @make_small_pair(%a : i64, %b : i64) -> obj<8x4> {
   ...
 }
 
-function @make_pair(%ret : ptr [pass=indirect_result], %a : i64, %b : i64) -> void {
+function @make_pair(%ret : ptr [pass=indirect_result, object_bytes=16], %a : i64, %b : i64) -> void {
   ...
 }
 
-function @consume_pair(%p : ptr [pass=by_address]) -> void {
+function @consume_pair(%p : ptr [pass=by_address, object_bytes=16]) -> void {
   ...
 }
 
@@ -743,7 +751,7 @@ function @sum_pair(%p : obj<8x4>) -> i64 {
   ...
 }
 
-function @consume_ref(%p : ptr [pass=by_address]) -> void {
+function @consume_ref(%p : ptr [pass=by_address, object_bytes=16]) -> void {
   ...
 }
 ```

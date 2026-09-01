@@ -162,7 +162,7 @@ Required metadata families:
 - function `object_root`, `force_inline`, `inline_hint`, and `no_inline`
 - function `arity`, `effects`, `unwind`, `return`, and `query`
 - direct void-call `elision=copy` permission
-- parameter `pass` and `alias`
+- parameter `pass`, `alias`, and positive pointer-only `object_bytes`
 - index `projection`
 - function and instruction `!dbg(file, line, column)` locations with positive
   source line and column numbers

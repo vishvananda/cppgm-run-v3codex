@@ -349,9 +349,10 @@ struct Parameter
 	enum Alias : std::uint8_t { ALIAS_DEFAULT, ALIAS_NOALIAS } alias;
 	lowir_model::StringId name;
 	LowType type;
+	std::size_t object_bytes;
 	bool reference, indirect_result, by_address;
 
-	Parameter() : alias(ALIAS_DEFAULT), reference(false), indirect_result(false),
+	Parameter() : alias(ALIAS_DEFAULT), object_bytes(0), reference(false), indirect_result(false),
 		by_address(false) {}
 };
 

@@ -55,6 +55,7 @@ private:
 		output_.call_arguments.push_back(object);
 		output_.call_argument_references.push_back(
 			Instruction::CALL_PASS_VALUE);
+		output_.call_argument_object_bytes.push_back(0);
 		for (std::size_t i = 0; i < type.parameter_count; ++i)
 		{
 			output_.call_arguments.push_back(Operand(
@@ -62,7 +63,8 @@ private:
 				source_types_.Lower(source_parameters[i])));
 			output_.call_argument_references.push_back(
 				source_types_.IsReference(source_parameters[i]) ?
-				Instruction::CALL_PASS_REFERENCE : Instruction::CALL_PASS_VALUE);
+					Instruction::CALL_PASS_REFERENCE : Instruction::CALL_PASS_VALUE);
+			output_.call_argument_object_bytes.push_back(0);
 		}
 	}
 

@@ -75,6 +75,11 @@ side-effect-free path to an early return and at least one bailout edge.  These
 statistics are observational only: they do not enable partial inlining or
 otherwise change the optimized LowIR.  Tests may require documented fields and
 exercise a positive shape, but must not require exact counter or timing values.
+The record also reports the number of parameter object extents, inferred
+exclusive parameters, capture intervals, and parameter memory classes used by
+the O3 bounded-memory analysis. Edge equalities, constant loop-phi edges, and
+late parameter-address rematerializations have separate counters. A
+rematerialization-budget-skip counter makes that transform's limit observable.
 
 `--help` and `-h` print usage information and exit successfully.
 
@@ -423,7 +428,8 @@ running optimizing transforms.
 - in an explicitly `inline_hint=yes` definition, forwarding a nonvolatile
   scalar load at a natural-loop header through a typed `phi` when the loop has
   one ordinary preheader and every backedge ends by storing a locally computed
-  value to that exact location; the initial load moves to the preheader and
+  value or an integer literal to that exact location; the initial load moves
+  to the preheader and
   each stored value becomes its backedge input, so the header does not reload
   a value that was just stored. An ordinary definition, a missing or
   conditional store, a volatile access, an exceptional loop, a different
@@ -694,6 +700,47 @@ forward worklist is limited to eight times
 budget leaves the caller unchanged.  `-O1` and `-O2` do not reuse
 repeat-stable query results.
 
+PA13 pointer parameters may carry a positive `object_bytes=N` boundary fact.
+It promises that the pointer denotes the beginning of an N-byte complete
+semantic object region and that memory reached through that parameter or a
+derived pointer retained or returned by the function remains within that
+region. Omission makes no size promise. This is a source-language boundary
+fact, not an O3 optimizer annotation: the O0 source lowering described by
+PA17 must produce it for complete member-object, reference/by-address, and
+indirect-result boundaries, and compiler-object and textual LowIR replay must
+preserve it.
+
+At `-O3`, a bounded whole-program memory analysis may use this fact for
+internal functions. It summarizes the byte intervals read, written, or
+retained through each pointer parameter, and may infer exclusive ownership
+when every whole-program call supplies a distinct private object or an
+equivalent exclusive parameter. A load may cross a call or store only when
+the accessed byte interval is proven disjoint from every possible write or
+retained interval. Capture information is a set of intervals: a gap between
+two captured ranges remains a gap rather than becoming part of a single
+bounding range. A dynamically indexed access may be bounded by a proven
+finite integer range, including an appropriate bit mask, provided the scaled
+offset cannot wrap the LowIR integer type or exceed the complete object.
+
+Overlap, an unbounded dynamic offset, an ordinary pointer with no extent,
+external or indirect effects, address observability, volatile or atomic
+operations, object copy/zeroing, varargs state changes, and exception regions
+must remain conservative barriers unless an independent rule proves them
+safe. Direct writes still invalidate the bytes they change. The analysis is
+not run at `-O0`, `-O1`, or `-O2`.
+
+The final O3 cleanup may use a single-predecessor equality edge exposed by a
+bounded-memory rewrite to replace dominated uses with the established integer
+constant. If that exposes a loop-header load whose latch stores the next
+scalar value, loop-carried forwarding may create a phi even when the stored
+value is a literal. An exactly known phi input may then thread that
+predecessor directly to the selected successor when successor phis do not
+need repair. Finally, a bounded number of positive constant-offset field
+addresses rooted in object-extent parameters may be recomputed near their
+post-call uses instead of remaining live across the call. These cleanups are
+O3-only and must retain conservative behavior for exceptional, volatile,
+ambiguous, or over-budget cases.
+
 During its final control-flow cleanup, `-O3` may also consume an equality
 established by the sole ordinary predecessor edge.  A true `x == c` edge or
 false `x != c` edge establishes `x == c`.  For an unsigned value, true
@@ -703,6 +750,10 @@ an unconditional edge.  Keep the branch when the block has another
 predecessor, is an exceptional-handler target, compares a different typed
 value, or removing the untaken edge would require phi repair.  `-O1` and
 `-O2` retain these downstream comparisons.
+
+An equality proves the stored value, not the identity of storage required by
+a by-address call. Keep call operands addressable even when the incoming edge
+establishes that their current scalar value equals a literal.
 
 At the end of `-O2` and `-O3`, a two-input scalar phi used only to produce a
 return may be moved back onto its two incoming edges.  Each predecessor must
@@ -774,7 +825,9 @@ source-language clauses.
   GNU-section reducer additionally checks the global-section and relocation
   relationships in both objects rather than relying only on byte equality. A
   `default-no-optimization` case also checks that omitting `-O` matches
-  explicit `-O0`.
+  explicit `-O0`. A parameter-object-extent case additionally makes O3 object
+  shape depend on a source-produced member-object boundary, so byte equality
+  checks compiler-object and textual LowIR transport of that fact.
 
 Run the debug metadata preservation lanes with:
 

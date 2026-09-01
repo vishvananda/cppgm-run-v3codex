@@ -988,7 +988,8 @@ protected:
 	}
 
 	void AttachCallArguments(Instruction* call,
-		const CallArguments& arguments, const CallArgumentFlags& references)
+		const CallArguments& arguments, const CallArgumentFlags& references,
+		const CallArgumentSizes* object_bytes = 0)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (arguments.size() != references.size())
@@ -998,7 +999,10 @@ protected:
 			derived.output_.call_arguments.size() >
 				kNoLowId - arguments.size() ||
 			derived.output_.call_arguments.size() !=
-				derived.output_.call_argument_references.size())
+				derived.output_.call_argument_references.size() ||
+			derived.output_.call_arguments.size() !=
+				derived.output_.call_argument_object_bytes.size() ||
+			(object_bytes && object_bytes->size() != arguments.size()))
 			throw std::runtime_error("too many PA15 call arguments");
 		call->extra_first = static_cast<std::uint32_t>(
 			derived.output_.call_arguments.size());
@@ -1007,6 +1011,8 @@ protected:
 		{
 			derived.output_.call_arguments.push_back(arguments[i]);
 			derived.output_.call_argument_references.push_back(references[i]);
+			derived.output_.call_argument_object_bytes.push_back(
+				object_bytes ? (*object_bytes)[i] : 0);
 		}
 	}
 

@@ -287,6 +287,7 @@ void AdaptParameterFacts(const Parameter& source,
 		target->metadata.passing = lowir_model::PPM_BY_ADDRESS;
 	if (source.alias == Parameter::ALIAS_NOALIAS)
 		target->metadata.alias = lowir_model::PALM_NOALIAS;
+	target->metadata.object_bytes = source.object_bytes;
 }
 
 std::vector<lowir_model::Parameter> AdaptParameters(
@@ -649,6 +650,10 @@ void AdaptInstruction(const Instruction& source,
 							source.virtual_base_argument_count - source.extra_count) :
 						"arg" + std::to_string(i));
 				parameter.type = target.args[i].literal_type;
+				if (source.extra_first + i <
+					program.call_argument_object_bytes.size())
+					parameter.metadata.object_bytes =
+						program.call_argument_object_bytes[source.extra_first + i];
 				if (source.extra_first + i <
 					program.call_argument_references.size())
 				{

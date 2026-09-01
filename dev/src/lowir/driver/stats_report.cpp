@@ -445,6 +445,29 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " memory_gvn_eh_barriers=" << stats.memory_gvn_eh_barriers
 		 << " memory_gvn_eh_skips=" << stats.memory_gvn_eh_skips
 		 << " memory_gvn_budget_skips=" << stats.memory_gvn_budget_skips
+		 << " memory_gvn_object_extent_parameters="
+		 << stats.memory_gvn_object_extent_parameters
+		 << " memory_gvn_exclusive_parameters="
+		 << stats.memory_gvn_exclusive_parameters
+		 << " memory_gvn_capture_ranges=" << stats.memory_gvn_capture_ranges
+		 << " memory_gvn_parameter_classes="
+		 << stats.memory_gvn_parameter_classes
+		 << " memory_gvn_program_call_sites="
+		 << stats.memory_gvn_program_call_sites
+		 << " memory_gvn_nocapture_rounds="
+		 << stats.memory_gvn_nocapture_rounds
+		 << " memory_gvn_capture_rounds="
+		 << stats.memory_gvn_capture_rounds
+		 << " memory_gvn_exclusive_rounds="
+		 << stats.memory_gvn_exclusive_rounds
+		 << " memory_gvn_effect_rounds="
+		 << stats.memory_gvn_effect_rounds
+		 << " edge_integer_equalities=" << stats.edge_integer_equalities
+		 << " constant_loop_phi_edges=" << stats.constant_loop_phi_edges
+		 << " parameter_address_rematerializations="
+		 << stats.parameter_address_rematerializations
+		 << " parameter_address_rematerialization_budget_skips="
+		 << stats.parameter_address_rematerialization_budget_skips
 		 << " pre_runs=" << stats.pre_runs
 		 << " pre_candidates=" << stats.pre_candidates
 		 << " pre_full_redundancies=" << stats.pre_full_redundancies

@@ -36,6 +36,17 @@ bool fold_edge_known_branches(
 bool fold_edge_known_branches(
   lowir_model::Function * function, Stats * stats,
   CleanupCfgScratch * scratch, bool allow_integer_equality);
+// Substitute an integer value inside the region reached only through an edge
+// which proves that value equal to a literal.  SSA immutability makes the
+// equality valid throughout the dominated region; phi operands remain edge
+// uses and are deliberately left alone.
+bool propagate_edge_integer_equalities(
+  lowir_model::Function * function, Stats * stats);
+// Redirect a loop latch around a pure phi/compare header when that latch's
+// literal phi input decides the header branch.  Target phis are excluded so
+// the new edge needs no value translation.
+bool thread_constant_loop_phi_edge(
+  lowir_model::Function * function, Stats * stats);
 // Fold the unsigned x-1 underflow test on an edge where a preceding branch
 // establishes that the same SSA value, or a stable reload of it, is nonzero.
 bool fold_nonzero_underflow_branches(

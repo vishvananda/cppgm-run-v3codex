@@ -535,6 +535,7 @@ private:
       else if(value == "by_address") out.passing = PPM_BY_ADDRESS;
       else throw ParseError("invalid parameter pass metadata");
     } else if(key == "alias" && value == "noalias") out.alias = PALM_NOALIAS;
+    else if(key == "object_bytes") out.object_bytes = parse_positive_size(value);
     else throw ParseError("invalid parameter metadata");
   }
 
@@ -1195,6 +1196,8 @@ private:
         throw ParseError("non-direct passing requires ptr");
       if(param.metadata.alias != PALM_DEFAULT && !pointer)
         throw ParseError("alias metadata requires ptr");
+      if(param.metadata.object_bytes && !pointer)
+        throw ParseError("object_bytes metadata requires ptr");
       if(param.metadata.passing == PPM_INDIRECT_RESULT &&
          (i != 0 || result.kind != LTK_VOID))
         throw ParseError("invalid indirect result parameter");

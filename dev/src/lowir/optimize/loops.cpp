@@ -268,7 +268,9 @@ bool has_loop_store_latch_shape(const Function & function)
       continue;
     const Instruction & store = instructions[instructions.size() - 2];
     if(store.kind == Instruction::IK_STORE && !store.volatile_access &&
-       store.first.kind == Operand::OP_TEMP)
+       (store.first.kind == Operand::OP_TEMP ||
+        (store.first.kind == Operand::OP_INTEGER &&
+         store.first.has_int_value)))
       return true;
   }
   return false;
@@ -276,9 +278,9 @@ bool has_loop_store_latch_shape(const Function & function)
 
 std::size_t forward_loop_carried_store_loads_impl(
     Function * function, lowir_analysis::FunctionAnalysis * analysis,
-    Stats * stats)
+    Stats * stats, bool require_inline_hint)
 {
-  if(!function->metadata.inline_hint ||
+  if((require_inline_hint && !function->metadata.inline_hint) ||
      !has_loop_store_latch_shape(*function)) return 0;
   const lowir_analysis::LoopForest & forest = analysis->loop_forest();
   if(forest.loops.empty()) return 0;
@@ -365,12 +367,15 @@ std::size_t forward_loop_carried_store_loads_impl(
         }
         const Instruction & store = latch[latch.size() - 2];
         if(store.kind != Instruction::IK_STORE || store.volatile_access ||
-           store.first.kind != Operand::OP_TEMP ||
+           (store.first.kind != Operand::OP_TEMP &&
+            !(store.first.kind == Operand::OP_INTEGER &&
+              store.first.has_int_value)) ||
            !optimizer_support::same_storage_location(
              store.second, load.first) ||
            !lowir_model::same_lowir_type(store.type, load.type) ||
-           !local_value_defined_before(
-             latch, store.first.value, latch.size() - 2)) {
+           (store.first.kind == Operand::OP_TEMP &&
+            !local_value_defined_before(
+              latch, store.first.value, latch.size() - 2))) {
           eligible = false;
           break;
         }
@@ -427,9 +432,10 @@ std::size_t forward_loop_carried_store_loads_impl(
 
 bool forward_loop_carried_store_loads(
     Function * function, lowir_analysis::FunctionAnalysis * analysis,
-    Stats * stats)
+    Stats * stats, bool require_inline_hint)
 {
-  return forward_loop_carried_store_loads_impl(function, analysis, stats) != 0;
+  return forward_loop_carried_store_loads_impl(
+    function, analysis, stats, require_inline_hint) != 0;
 }
 
 bool hoist_loop_invariants(lowir_model::Program * program,

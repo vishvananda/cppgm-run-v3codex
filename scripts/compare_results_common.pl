@@ -515,6 +515,7 @@ sub parse_lowir_param_list
 		my $capture = $metadata_or_error->{capture};
 		my $access = $metadata_or_error->{access};
 		my $alias = $metadata_or_error->{alias};
+		my $object_bytes = $metadata_or_error->{object_bytes};
 		return (0, "unknown parameter pass mode '$pass'")
 			if $pass !~ /^(?:direct|indirect_result|by_address|reference|decay)$/;
 		return (0, "parameter %$name with pass mode '$pass' must have type ptr")
@@ -525,6 +526,8 @@ sub parse_lowir_param_list
 			if $access ne '' && $type ne 'ptr';
 		return (0, "parameter %$name with alias mode '$alias' must have type ptr")
 			if $alias ne '' && $type ne 'ptr';
+		return (0, "parameter %$name with object extent '$object_bytes' must have type ptr")
+			if $object_bytes ne '' && $type ne 'ptr';
 		push @params, {
 			name => $name,
 			type => $type,
@@ -532,6 +535,7 @@ sub parse_lowir_param_list
 			capture => $capture,
 			access => $access,
 			alias => $alias,
+			object_bytes => $object_bytes,
 		};
 	}
 	return (1, \@params);
@@ -545,6 +549,7 @@ sub parse_lowir_parameter_metadata_suffix
 		capture => '',
 		access => '',
 		alias => '',
+		object_bytes => '',
 	);
 	return (1, \%metadata) if lowir_trim($suffix) eq '';
 	return (0, "invalid parameter metadata syntax")
@@ -580,6 +585,12 @@ sub parse_lowir_parameter_metadata_suffix
 			return (0, "unknown parameter alias mode '$value'")
 				if $value !~ /^(?:noalias)$/;
 			$metadata{alias} = $value;
+		}
+		elsif ($key eq 'object_bytes')
+		{
+			return (0, "invalid parameter object extent '$value'")
+				if $value !~ /^[1-9][0-9]*$/;
+			$metadata{object_bytes} = $value;
 		}
 		else
 		{
@@ -2152,7 +2163,7 @@ sub lowir_metadata_item_ignored_for_compare
 	# on later object/export policy or optional optimizer/provenance annotations.
 	return 1 if $key eq 'role' && $value =~ /^(?:allocate_memory|free_memory|terminate|pure_virtual|dynamic_cast|bad_cast|bad_typeid|rtti_class|rtti_si|rtti_vmi|rtti_data)$/;
 	return 1 if $key =~ /^(?:linkage|binding|object|tls_for|keep_alias|prefer_local|trivial_lifecycle|force_inline|inline_hint|no_inline)$/;
-	return 1 if $key =~ /^(?:effects|unwind|return|capture|access|alias|projection)$/;
+	return 1 if $key =~ /^(?:effects|unwind|return|capture|access|alias|object_bytes|projection)$/;
 	return 1 if $key eq 'pass' && $value eq 'decay';
 	return 1 if $key eq 'storage' && $value =~ /^(?:readonly|writable)$/;
 	return 0;

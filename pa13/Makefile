@@ -83,6 +83,9 @@ test: $(TEST_DEPS)
 		perl ../scripts/check_pa13_call_boundary_metadata.pl \
 			$(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) \
 			"$(COURSE_CONTROL_TEST_ROOT)"; \
+		perl ../scripts/check_pa13_object_extent.pl \
+			$(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) \
+			"$(COURSE_CONTROL_TEST_ROOT)"; \
 		perl ../scripts/check_pa13_stable_prefix_query.pl \
 			$(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) \
 			"$(COURSE_CONTROL_TEST_ROOT)"; \
@@ -125,6 +128,7 @@ CHECK_RUN = case "$(TEST)" in \
 	$(COURSE_CONTROL_TEST_ROOT)/*index-projections*) perl ../scripts/check_pa13_index_projection_contract.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(TEST)" ;; \
 	$(COURSE_CONTROL_TEST_ROOT)/*-projection*) perl ../scripts/check_pa13_index_projection_contract.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(TEST)" ;; \
 	$(COURSE_CONTROL_TEST_ROOT)/*retained-call-boundary-metadata*) perl ../scripts/check_pa13_call_boundary_metadata.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(TEST)" ;; \
+	$(COURSE_CONTROL_TEST_ROOT)/*parameter-object-extent*|$(COURSE_CONTROL_TEST_ROOT)/*object-extent-*) perl ../scripts/check_pa13_object_extent.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(COURSE_CONTROL_TEST_ROOT)" ;; \
 	$(COURSE_CONTROL_TEST_ROOT)/*stable-prefix-query*) perl ../scripts/check_pa13_stable_prefix_query.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(COURSE_CONTROL_TEST_ROOT)" ;; \
 	$(COURSE_CONTROL_TEST_ROOT)/*copy-elision-*) perl ../scripts/check_pa13_copy_elision_metadata.pl $(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) "$(COURSE_CONTROL_TEST_ROOT)" ;; \
 	$(COURSE_CONTROL_TEST_ROOT)/*global-section*|$(COURSE_CONTROL_TEST_ROOT)/*retained-global-section*) perl ../scripts/check_pa13_global_section.pl $(LOWIROPT_APP) "$(TEST)" ;; \

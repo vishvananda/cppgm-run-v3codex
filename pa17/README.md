@@ -107,6 +107,14 @@ For supported class value types, PA17 extends the PA16 lowering convention by in
 - indirect LowIR return destinations for return-by-value class objects
 - explicit LowIR-level materialization of supported copy/move/value transfers
 
+Every pointer boundary that denotes a complete object also carries the PA13
+`object_bytes=N` extent in emitted O0 LowIR. This includes the implicit object
+parameter of supported member functions, class references and indirect class
+arguments, and indirect result storage. An ordinary source pointer does not
+gain an extent merely from its pointee type. The extent is semantic LowIR
+metadata and must survive text and compiler-object replay; it is not a native
+calling-convention annotation.
+
 Synthesized copy/move constructors, assignment helpers, and related
 temporary-materialization support are part of the PA17 semantic model, but `cppgm++` only
 needs to emit the helper definitions that the lowered program actually requires. Unused
