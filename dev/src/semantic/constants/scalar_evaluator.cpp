@@ -10,7 +10,6 @@
 #include <limits>
 #include <locale>
 #include <sstream>
-#include <stdexcept>
 #include <utility>
 
 namespace cppgm
@@ -192,7 +191,7 @@ void Analyzer::SetExpressionObject(ExpressionInfo* expression,
 	std::uint32_t object) const
 {
 	if (object == kNoConstexprObject || object >= constexpr_objects_.size())
-		throw std::logic_error("invalid constexpr object identity");
+		ThrowInternalCompilerError("invalid constexpr object identity");
 	expression->constant = true;
 	expression->floating_constant = false;
 	expression->constexpr_object = object;
@@ -206,7 +205,7 @@ void Analyzer::SetExpressionSubobject(ExpressionInfo* expression,
 	if (object == kNoConstexprObject || object >= constexpr_objects_.size() ||
 		complete_object == kNoConstexprObject ||
 		complete_object >= constexpr_objects_.size())
-		throw std::logic_error("invalid constexpr subobject identity");
+		ThrowInternalCompilerError("invalid constexpr subobject identity");
 	expression->constant = true;
 	expression->floating_constant = false;
 	expression->constexpr_object = object;
@@ -249,7 +248,7 @@ void Analyzer::PublishDumpObject(std::uint32_t node,
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size() ||
 		object == kNoConstexprObject || object >= constexpr_objects_.size())
-		throw std::logic_error("invalid constexpr dump object publication");
+		ThrowInternalCompilerError("invalid constexpr dump object publication");
 	if (constexpr_object_by_dump_.size() <= node)
 		constexpr_object_by_dump_.resize(
 			static_cast<std::size_t>(node) + 1, kNoConstexprObject);
@@ -259,10 +258,10 @@ void Analyzer::PublishDumpObject(std::uint32_t node,
 ConstexprScalarValue Analyzer::BindingScalar(BindingId binding) const
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size())
-		throw std::logic_error("invalid constant binding identity");
+		ThrowInternalCompilerError("invalid constant binding identity");
 	const BindingRecord& record = program_->bindings[binding];
 	if (!record.constant)
-		throw std::logic_error("binding has no constant value");
+		ThrowInternalCompilerError("binding has no constant value");
 	BindingId owner = binding;
 	if (IsMemberPointer(record.type))
 	{
@@ -288,7 +287,7 @@ ConstexprScalarValue Analyzer::BindingScalar(BindingId binding) const
 		if (fact != 0)
 		{
 			if (fact > floating_constant_values_.size())
-				throw std::logic_error("floating constant fact is out of range");
+				ThrowInternalCompilerError("floating constant fact is out of range");
 			return ConstexprScalarValue(floating_constant_values_[fact - 1]);
 		}
 	}
@@ -312,10 +311,10 @@ ConstexprScalarValue Analyzer::BindingScalar(BindingId binding) const
 std::uint32_t Analyzer::BindingObject(BindingId binding) const
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size())
-		throw std::logic_error("invalid constant binding identity");
+		ThrowInternalCompilerError("invalid constant binding identity");
 	const BindingRecord& record = program_->bindings[binding];
 	if (!record.constant)
-		throw std::logic_error("binding has no constant value");
+		ThrowInternalCompilerError("binding has no constant value");
 	BindingId owner = binding;
 	if ((owner >= constexpr_object_by_binding_.size() ||
 		constexpr_object_by_binding_[owner] == kNoConstexprObject) &&
@@ -326,7 +325,7 @@ std::uint32_t Analyzer::BindingObject(BindingId binding) const
 		return kNoConstexprObject;
 	const std::uint32_t object = constexpr_object_by_binding_[owner];
 	if (object >= constexpr_objects_.size())
-		throw std::logic_error("constexpr object fact is out of range");
+		ThrowInternalCompilerError("constexpr object fact is out of range");
 	return object;
 }
 
@@ -334,7 +333,7 @@ void Analyzer::PublishBindingScalar(BindingId binding,
 	const ConstexprScalarValue& value)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size())
-		throw std::logic_error("invalid constant binding publication");
+		ThrowInternalCompilerError("invalid constant binding publication");
 	BindingRecord& record = program_->bindings[binding];
 	record.constant = true;
 	if (value.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
@@ -367,14 +366,14 @@ void Analyzer::PublishBindingScalar(BindingId binding,
 	{
 		if (floating_constant_values_.size() >=
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many floating constant facts");
+			ThrowSemanticResourceLimit("too many floating constant facts");
 		floating_constant_values_.push_back(value.floating);
 		fact = static_cast<std::uint32_t>(floating_constant_values_.size());
 	}
 	else
 	{
 		if (fact > floating_constant_values_.size())
-			throw std::logic_error("floating constant fact is out of range");
+			ThrowInternalCompilerError("floating constant fact is out of range");
 		floating_constant_values_[fact - 1] = value.floating;
 	}
 }
@@ -383,9 +382,9 @@ void Analyzer::PublishBindingObject(BindingId binding,
 	std::uint32_t object)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size())
-		throw std::logic_error("invalid constant binding publication");
+		ThrowInternalCompilerError("invalid constant binding publication");
 	if (object == kNoConstexprObject || object >= constexpr_objects_.size())
-		throw std::logic_error("invalid constexpr object publication");
+		ThrowInternalCompilerError("invalid constexpr object publication");
 	program_->bindings[binding].constant = true;
 	if (constexpr_object_by_binding_.size() <= binding)
 		constexpr_object_by_binding_.resize(
@@ -397,7 +396,7 @@ void Analyzer::PublishBindingConstant(BindingId binding,
 	const ExpressionInfo& value)
 {
 	if (!value.constant)
-		throw std::logic_error("publishing a nonconstant expression");
+		ThrowInternalCompilerError("publishing a nonconstant expression");
 	const std::uint32_t object = ExpressionObject(value);
 	const std::uint32_t address = ExpressionAddress(value);
 	if (address != kNoConstexprAddress)
@@ -510,7 +509,7 @@ std::uint32_t Analyzer::InternConstexprObject(TypeId type,
 			hash = MixConstexprHash(hash,
 				std::hash<std::uint32_t>()(element.object));
 			if (element.object >= constexpr_objects_.size())
-				throw std::logic_error("invalid nested constexpr object identity");
+				ThrowInternalCompilerError("invalid nested constexpr object identity");
 			newest_local_storage_identity = std::max(
 				newest_local_storage_identity,
 				constexpr_objects_[element.object].newest_local_storage_identity);
@@ -522,7 +521,7 @@ std::uint32_t Analyzer::InternConstexprObject(TypeId type,
 			const ConstexprAddressValue* address =
 				ConstexprAddressAt(element.address);
 			if (!address)
-				throw std::logic_error("invalid constexpr object address identity");
+				ThrowInternalCompilerError("invalid constexpr object address identity");
 			if (address->kind == CONSTEXPR_ADDRESS_LOCAL)
 				newest_local_storage_identity = std::max(
 					newest_local_storage_identity, address->identity);
@@ -568,7 +567,7 @@ std::uint32_t Analyzer::InternConstexprObject(TypeId type,
 	if (elements.size() > kNoConstexprObject ||
 		constexpr_objects_.size() >= kNoConstexprObject ||
 		constexpr_object_elements_.size() > kNoConstexprObject - elements.size())
-		throw std::runtime_error("too many constexpr object facts");
+		ThrowSemanticResourceLimit("too many constexpr object facts");
 	const std::uint32_t first = static_cast<std::uint32_t>(
 		constexpr_object_elements_.size());
 	const std::uint32_t count = static_cast<std::uint32_t>(elements.size());
@@ -699,7 +698,7 @@ ExpressionInfo Analyzer::MaterializeConstexprObject(
 	std::uint32_t object, TypeId type)
 {
 	if (object == kNoConstexprObject || object >= constexpr_objects_.size())
-		throw std::logic_error("invalid constexpr object materialization");
+		ThrowInternalCompilerError("invalid constexpr object materialization");
 	const ConstexprObjectValue& value = constexpr_objects_[object];
 	TypeId unqualified = program_->types.RemoveTopCv(EffectiveType(type));
 	if (value.type != unqualified)
@@ -709,7 +708,7 @@ ExpressionInfo Analyzer::MaterializeConstexprObject(
 		if (!requested.IsIncompleteArray() ||
 			completed.kind != TYPE_ARRAY ||
 			requested.child != completed.child)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"constexpr object materialization type mismatch");
 		type = value.type;
 		unqualified = value.type;
@@ -726,7 +725,7 @@ ExpressionInfo Analyzer::MaterializeConstexprObject(
 		if (entity == kNoEntity || entity >= entity_data_members_.size() ||
 			(!union_object &&
 			 entity_data_members_[entity].size() > value.element_count))
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"constexpr class object has an invalid direct-member range");
 		materialized_count = union_object ? value.element_count :
 			entity_data_members_[entity].size();
@@ -745,7 +744,7 @@ ExpressionInfo Analyzer::MaterializeConstexprObject(
 		{
 			if (element.member == kNoBinding ||
 				element.member >= program_->bindings.size())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"constexpr class object has no member identity");
 			const BindingRecord& member = program_->bindings[element.member];
 			const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
@@ -874,7 +873,7 @@ bool Analyzer::ConsumeConstexprStep()
 void Analyzer::PushConstexprBlock()
 {
 	if (constexpr_frames_.empty())
-		throw std::logic_error("constexpr block has no invocation frame");
+		ThrowInternalCompilerError("constexpr block has no invocation frame");
 	constexpr_block_offsets_.push_back(ConstexprBlockOffset(
 		constexpr_locals_.size(), constexpr_scope_facts_.size()));
 }
@@ -883,7 +882,7 @@ void Analyzer::PopConstexprBlock()
 {
 	if (constexpr_frames_.empty() ||
 		constexpr_block_offsets_.size() <= constexpr_frames_.back().first_block)
-		throw std::logic_error("constexpr block stack is unbalanced");
+		ThrowInternalCompilerError("constexpr block stack is unbalanced");
 	ReleaseConstexprLocals(
 		constexpr_block_offsets_.back().first_local);
 	ReleaseConstexprScopeFacts(
@@ -894,7 +893,7 @@ void Analyzer::PopConstexprBlock()
 void Analyzer::ReleaseConstexprLocals(std::size_t first)
 {
 	if (first > constexpr_locals_.size())
-		throw std::logic_error("constexpr local release is out of range");
+		ThrowInternalCompilerError("constexpr local release is out of range");
 	while (constexpr_locals_.size() > first)
 	{
 		const std::size_t index = constexpr_locals_.size() - 1;
@@ -903,7 +902,7 @@ void Analyzer::ReleaseConstexprLocals(std::size_t first)
 		{
 			if (value.name >= constexpr_local_by_name_.size() ||
 				constexpr_local_by_name_[value.name] != index)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"constexpr local name index is unbalanced");
 			constexpr_local_by_name_[value.name] = value.previous_same_name;
 		}
@@ -911,7 +910,7 @@ void Analyzer::ReleaseConstexprLocals(std::size_t first)
 		{
 			if (value.pack_name >= constexpr_local_by_pack_.size() ||
 				constexpr_local_by_pack_[value.pack_name] != index)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"constexpr local pack index is unbalanced");
 			constexpr_local_by_pack_[value.pack_name] =
 				value.previous_same_pack;
@@ -923,7 +922,7 @@ void Analyzer::ReleaseConstexprLocals(std::size_t first)
 void Analyzer::ReleaseConstexprScopeFacts(std::size_t first)
 {
 	if (first > constexpr_scope_facts_.size())
-		throw std::logic_error("constexpr scope fact release is out of range");
+		ThrowInternalCompilerError("constexpr scope fact release is out of range");
 	while (constexpr_scope_facts_.size() > first)
 	{
 		const std::size_t index = constexpr_scope_facts_.size() - 1;
@@ -932,7 +931,7 @@ void Analyzer::ReleaseConstexprScopeFacts(std::size_t first)
 		{
 			if (fact.name >= constexpr_type_alias_by_name_.size() ||
 				constexpr_type_alias_by_name_[fact.name] != index)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"constexpr type alias index is unbalanced");
 			constexpr_type_alias_by_name_[fact.name] =
 				fact.previous_same_name;
@@ -1045,7 +1044,7 @@ bool Analyzer::AddConstexprTypeAlias(NameId name, TypeId type)
 void Analyzer::AddConstexprUsingNamespace(ScopeId name_space)
 {
 	if (name_space == kNoScope || constexpr_frames_.empty())
-		throw std::logic_error("invalid constexpr using namespace fact");
+		ThrowInternalCompilerError("invalid constexpr using namespace fact");
 	constexpr_scope_facts_.push_back(
 		ConstexprScopeFact(0, kNoType, name_space));
 }
@@ -1161,7 +1160,7 @@ void Analyzer::ReleaseConstexprScratch(
 	std::size_t nodes, std::size_t edges)
 {
 	if (nodes > dump_.nodes.size() || edges > dump_.edges.size())
-		throw std::logic_error("constexpr scratch mark is invalid");
+		ThrowInternalCompilerError("constexpr scratch mark is invalid");
 	if (dump_.nodes.size() > constexpr_scratch_peak_nodes_)
 		constexpr_scratch_peak_nodes_ = dump_.nodes.size();
 	if (constexpr_object_by_dump_.size() > nodes)
@@ -1376,7 +1375,7 @@ ExpressionInfo Analyzer::AnalyzeDefaultConstexprObjectInitializer(
 		throw;
 	}
 	if (!initializer.constant)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"constexpr object default initializer is not constant");
 	if (!local)
 		initializer = MaterializeConstexprObject(
@@ -1403,7 +1402,7 @@ void Analyzer::RecordStaticConstantInitializer(
 		pending.pop_back();
 		++static_constant_initializer_visits_;
 		if (node >= dump_.nodes.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"static constant initializer is out of range");
 		const DumpNode& record = dump_.nodes[node];
 		// Scalar constants published on the binding are consumed directly by
@@ -1503,7 +1502,7 @@ void Analyzer::PublishConstantVariableInitializer(BindingId binding,
 		if (address && address->kind == CONSTEXPR_ADDRESS_FUNCTION)
 		{
 			if (address->identity >= program_->bindings.size())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"constant function address has invalid binding identity");
 			DemandFunction(static_cast<BindingId>(address->identity));
 		}
@@ -1511,17 +1510,17 @@ void Analyzer::PublishConstantVariableInitializer(BindingId binding,
 	if (spec.is_constexpr &&
 		(IsPointer(EffectiveType(type)) || program_->types.IsReference(type)) &&
 		initializer_address == kNoConstexprAddress)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"constexpr pointer/reference initializer is not constant");
 	if (spec.is_constexpr && !program_->types.IsReference(type) &&
 		(IsIntegral(type, true) || IsFloating(type) || IsMemberPointer(type)) &&
 		!initializer.constant)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"constexpr scalar initializer is not constant");
 	if (spec.is_constexpr && !program_->types.IsReference(type) &&
 		aggregate_object_type &&
 		initializer_object == kNoConstexprObject)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"constexpr object initializer is not constant");
 	if (!initializer.constant ||
 		(!spec.is_constexpr &&
@@ -1588,7 +1587,7 @@ bool Analyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 				ResolveScopeSpelling(scope, arena_->Payload(target),
 					NAME_PATH_PARSE_LITERAL);
 			if (target_scope == kNoScope)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"constexpr using namespace target not found");
 			AddConstexprUsingNamespace(target_scope);
 			valid = true;

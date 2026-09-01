@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -16,7 +16,7 @@ Analyzer::FindStaticConstantInitializer(BindingId binding) const
 		static_constant_initializer_indices_[binding];
 	if (stored == 0) return 0;
 	if (stored > static_constant_initializers_.size())
-		throw std::logic_error("invalid static constant initializer index");
+		ThrowInternalCompilerError("invalid static constant initializer index");
 	return &static_constant_initializers_[stored - 1];
 }
 
@@ -28,7 +28,7 @@ Analyzer::FindMutableStaticConstantInitializer(BindingId binding)
 		static_constant_initializer_indices_[binding];
 	if (stored == 0) return 0;
 	if (stored > static_constant_initializers_.size())
-		throw std::logic_error("invalid static constant initializer index");
+		ThrowInternalCompilerError("invalid static constant initializer index");
 	return &static_constant_initializers_[stored - 1];
 }
 
@@ -36,7 +36,7 @@ Analyzer::StaticConstantInitializerFact&
 Analyzer::EnsureStaticConstantInitializer(BindingId binding)
 {
 	if (binding == kNoBinding)
-		throw std::logic_error("invalid static constant initializer owner");
+		ThrowInternalCompilerError("invalid static constant initializer owner");
 	if (static_constant_initializer_indices_.size() <= binding)
 		static_constant_initializer_indices_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
@@ -45,7 +45,7 @@ Analyzer::EnsureStaticConstantInitializer(BindingId binding)
 	{
 		if (static_constant_initializers_.size() >=
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many static constant initializers");
+			ThrowSemanticResourceLimit("too many static constant initializers");
 		static_constant_initializers_.push_back(
 			StaticConstantInitializerFact());
 		stored = static_cast<std::uint32_t>(

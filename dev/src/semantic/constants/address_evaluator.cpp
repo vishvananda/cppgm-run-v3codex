@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -16,7 +16,7 @@ std::uint32_t Analyzer::InternConstexprAddress(
 		constexpr_address_index_.find(address);
 	if (found != constexpr_address_index_.end()) return found->second;
 	if (constexpr_addresses_.size() >= kNoConstexprAddress)
-		throw std::runtime_error("too many constexpr address facts");
+		ThrowSemanticResourceLimit("too many constexpr address facts");
 	const std::uint32_t result =
 		static_cast<std::uint32_t>(constexpr_addresses_.size());
 	constexpr_addresses_.push_back(address);
@@ -41,7 +41,7 @@ void Analyzer::SetExpressionAddress(ExpressionInfo* expression,
 	std::uint32_t address) const
 {
 	if (!ConstexprAddressAt(address))
-		throw std::logic_error("invalid constexpr address identity");
+		ThrowInternalCompilerError("invalid constexpr address identity");
 	const ConstexprAddressValue* value = ConstexprAddressAt(address);
 	expression->constant = value->kind == CONSTEXPR_ADDRESS_NULL ||
 		constant_expression_required_depth_ != 0 ||
@@ -56,7 +56,7 @@ void Analyzer::SetExpressionLvalueAddress(ExpressionInfo* expression,
 	std::uint32_t address) const
 {
 	if (!ConstexprAddressAt(address))
-		throw std::logic_error("invalid constexpr lvalue address identity");
+		ThrowInternalCompilerError("invalid constexpr lvalue address identity");
 	expression->constexpr_lvalue_address = address;
 }
 
@@ -87,7 +87,7 @@ void Analyzer::PublishBindingAddress(BindingId binding,
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size() ||
 		!ConstexprAddressAt(address))
-		throw std::logic_error("invalid constexpr address publication");
+		ThrowInternalCompilerError("invalid constexpr address publication");
 	program_->bindings[binding].constant = true;
 	if (constexpr_address_by_binding_.size() <= binding)
 		constexpr_address_by_binding_.resize(
@@ -388,9 +388,9 @@ ExpressionInfo Analyzer::MaterializeConstexprAddress(
 	std::uint32_t address_id, TypeId type)
 {
 	const ConstexprAddressValue* address = ConstexprAddressAt(address_id);
-	if (!address) throw std::logic_error("invalid constexpr address materialization");
+	if (!address) ThrowInternalCompilerError("invalid constexpr address materialization");
 	if (address->offset != 0)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"offset constexpr address materialization is unsupported");
 	if (address->kind == CONSTEXPR_ADDRESS_NULL)
 	{
@@ -404,7 +404,7 @@ ExpressionInfo Analyzer::MaterializeConstexprAddress(
 	if (address->kind == CONSTEXPR_ADDRESS_STRING)
 	{
 		if (address->identity > std::numeric_limits<NameId>::max())
-			throw std::logic_error("invalid constexpr string spelling identity");
+			ThrowInternalCompilerError("invalid constexpr string spelling identity");
 		ExpressionInfo result = MakeStringLiteral(program_->names.Get(
 			static_cast<NameId>(address->identity)));
 		return ApplyTarget(result, type);
@@ -412,7 +412,7 @@ ExpressionInfo Analyzer::MaterializeConstexprAddress(
 	if ((address->kind != CONSTEXPR_ADDRESS_BINDING &&
 		 address->kind != CONSTEXPR_ADDRESS_FUNCTION) ||
 		address->identity >= program_->bindings.size())
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"transient constexpr address cannot escape evaluation");
 	const BindingId binding = static_cast<BindingId>(address->identity);
 	const BindingRecord& record = program_->bindings[binding];

@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -36,7 +36,7 @@ bool Analyzer::IsStaticConstantDefinition(
 	const bool already_initialized =
 		recorded && recorded->initializer != kNoDumpEdge;
 	if (definition && already_initialized && initializer != kNoNode)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"static constant definition must not have an initializer");
 	return definition;
 }
@@ -51,10 +51,10 @@ ExpressionInfo Analyzer::AnalyzeStringArrayInitializer(
 			program_->types.RemoveTopCv(declared.child) ||
 		source.string_unit_begin == kNoDumpEdge ||
 		source.string_unit_count == 0)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"string literal initializes an incompatible array");
 	if (declared.bound != 0 && source.string_unit_count > declared.bound)
-		throw std::runtime_error("string literal is too long for array");
+		ThrowSemanticError("string literal is too long for array");
 	const std::size_t count = declared.bound == 0 ?
 		source.string_unit_count : declared.bound;
 	const TypeId initialized_type = declared.bound == 0 ?
@@ -67,7 +67,7 @@ ExpressionInfo Analyzer::AnalyzeStringArrayInitializer(
 	{
 		const std::size_t unit = source.string_unit_begin + i;
 		if (i < source.string_unit_count && unit >= string_literal_units_.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"string literal initializer range is invalid");
 		const std::int64_t code_unit = i < source.string_unit_count ?
 			NormalizeIntegralConstant(
@@ -97,7 +97,7 @@ ExpressionInfo Analyzer::AnalyzeArrayAggregateInit(TypeId type,
 	const TypeRecord array = program_->types.Get(
 		program_->types.RemoveTopCv(type));
 	if (array.kind != TYPE_ARRAY)
-		throw std::logic_error("array initialization has non-array type");
+		ThrowInternalCompilerError("array initialization has non-array type");
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
 		type, VALUE_LVALUE);
 	std::vector<ConstexprObjectElement> constant_elements;
@@ -113,7 +113,7 @@ ExpressionInfo Analyzer::AnalyzeArrayAggregateInit(TypeId type,
 		const ExpressionInfo value = AnalyzeAggregateElement(
 			array.child, scope, element_edge);
 		if (value.node == kNoDumpEdge || *element_edge == before)
-			throw std::logic_error("array initializer made no progress");
+			ThrowInternalCompilerError("array initializer made no progress");
 		dump_.Add(list, value.node);
 		ConstexprObjectElement element(
 			kNoBinding, ConstexprScalarValue(static_cast<std::int64_t>(0)));
@@ -162,9 +162,9 @@ ExpressionInfo Analyzer::AnalyzeAggregateInit(TypeId type,
 {
 	const EntityId entity = EntityOf(type);
 	if (entity == kNoEntity || !program_->entities[entity].is_aggregate)
-		throw std::runtime_error("class is not an aggregate");
+		ThrowSemanticError("class is not an aggregate");
 	if (entity >= entity_data_members_.size())
-		throw std::logic_error("aggregate is missing its member index");
+		ThrowInternalCompilerError("aggregate is missing its member index");
 	if (element_edge && *element_edge != kNoEdge && arena_->IsTag(
 		arena_->EdgeChild(*element_edge), "designated-initializer"))
 		return AnalyzeDesignatedAggregateInit(type, scope, element_edge);
@@ -266,7 +266,7 @@ bool Analyzer::MaterializeConstantDefinitionInitializer(
 	{
 		const std::uint32_t node = recorded->initializer;
 		if (node >= dump_.nodes.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"static constant initializer fact is out of range");
 		DemandStaticConstantInitializerDependencies(binding);
 		initializer->node = node;

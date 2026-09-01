@@ -3,7 +3,6 @@
 #include "support/exceptions.h"
 
 #include <cstdint>
-#include <stdexcept>
 
 namespace cppgm
 {

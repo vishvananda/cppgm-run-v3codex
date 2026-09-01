@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 #include <unordered_set>
 
 namespace cppgm
@@ -55,27 +54,27 @@ std::size_t Analyzer::RequestedAlignment(NodeId node, ScopeId scope)
 			{
 				const NodeId child = arena_->EdgeChild(argument_edge);
 				if (arena_->IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE_NONLITERAL_ARGUMENT))
-					throw std::runtime_error("invalid aligned attribute argument");
+					ThrowSemanticError("invalid aligned attribute argument");
 				if (!arena_->IsTag(child, ::cppgm::syntax::STAG_GNU_ATTRIBUTE_ARGUMENT)) continue;
 				if (argument != kNoNode)
-					throw std::runtime_error("aligned attribute has multiple arguments");
+					ThrowSemanticError("aligned attribute has multiple arguments");
 				argument = child;
 			}
 			const std::int64_t parsed = argument == kNoNode ? 16 :
 				ParseInteger(arena_->SemanticPayload(argument));
 			if (parsed < 0)
-				throw std::runtime_error("invalid requested alignment");
+				ThrowSemanticError("invalid requested alignment");
 			const std::uint64_t value = static_cast<std::uint64_t>(parsed);
 			if (value != 0 && ((value & (value - 1)) != 0 ||
 				value > std::numeric_limits<std::size_t>::max()))
-				throw std::runtime_error("invalid requested alignment");
+				ThrowSemanticError("invalid requested alignment");
 			result = std::max(result, static_cast<std::size_t>(value));
 			continue;
 		}
 		if (!arena_->IsTag(alignment, ::cppgm::syntax::STAG_ALIGNMENT_SPECIFIER)) continue;
 		const NodeId operand = FirstSemanticChild(alignment);
 		if (operand == kNoNode)
-			throw std::runtime_error("empty alignment specifier");
+			ThrowSemanticError("empty alignment specifier");
 		std::uint64_t value = 0;
 		if (arena_->IsTag(operand, ::cppgm::syntax::STAG_TYPE_ID))
 		{
@@ -96,7 +95,7 @@ std::size_t Analyzer::RequestedAlignment(NodeId node, ScopeId scope)
 				const ExpressionInfo expression = AnalyzeNamedValue(
 					PayloadSource(name), scope, kNoType, name);
 				if (!expression.constant || expression.value < 0)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"nonconstant alignment specifier");
 				value = static_cast<std::uint64_t>(expression.value);
 			}
@@ -111,13 +110,13 @@ std::size_t Analyzer::RequestedAlignment(NodeId node, ScopeId scope)
 		{
 			const ExpressionInfo expression = AnalyzeExpression(operand, scope);
 			if (!expression.constant || expression.value < 0)
-				throw std::runtime_error("nonconstant alignment specifier");
+				ThrowSemanticError("nonconstant alignment specifier");
 			value = static_cast<std::uint64_t>(expression.value);
 		}
 		if (value == 0) continue;
 		if ((value & (value - 1)) != 0 ||
 			value > std::numeric_limits<std::size_t>::max())
-			throw std::runtime_error("invalid requested alignment");
+			ThrowSemanticError("invalid requested alignment");
 		result = std::max(result, static_cast<std::size_t>(value));
 	}
 	return result;
@@ -191,18 +190,18 @@ std::size_t Analyzer::IntegralWidth(TypeId type) const
 	{
 		const EntityRecord& entity = program_->entities[record.entity];
 		if (entity.underlying == kNoType)
-			throw std::logic_error("integral named type has no underlying type");
+			ThrowInternalCompilerError("integral named type has no underlying type");
 		return IntegralWidth(entity.underlying);
 	}
 	if (record.kind == TYPE_BITINT)
 	{
 		if (record.dependent_bound_parameter != kNoTemplateParameter ||
 			record.bound == 0)
-			throw std::logic_error("dependent _BitInt has no fixed width");
+			ThrowInternalCompilerError("dependent _BitInt has no fixed width");
 		return static_cast<std::size_t>(record.bound);
 	}
 	if (record.kind != TYPE_FUNDAMENTAL || !IsIntegral(type))
-		throw std::logic_error("integral width requested for non-integral type");
+		ThrowInternalCompilerError("integral width requested for non-integral type");
 	if (record.fundamental == FUND_BOOL) return 1;
 	return program_->SizeOf(type) * 8;
 }
@@ -214,7 +213,7 @@ std::int64_t Analyzer::NormalizeIntegralConstant(TypeId type,
 	if (width == 1) return value != 0;
 	if (width > 64) return value;
 	if (width == 0)
-		throw std::logic_error("unsupported integral constant width");
+		ThrowInternalCompilerError("unsupported integral constant width");
 	std::uint64_t bits = static_cast<std::uint64_t>(value);
 	if (width < 64)
 	{
@@ -360,7 +359,7 @@ ExpressionInfo Analyzer::AnalyzeNoexcept(NodeId node, ScopeId scope)
 {
 	const NodeId operand = FirstSemanticChild(node);
 	if (operand == kNoNode)
-		throw std::runtime_error("noexcept expression has no operand");
+		ThrowSemanticError("noexcept expression has no operand");
 	++unevaluated_depth_;
 	++constant_evaluation_suppressed_depth_;
 	ExpressionInfo analyzed;
@@ -600,7 +599,7 @@ ExpressionInfo Analyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		ExpressionInfo result = AnalyzeAggregateInit(
 			cast_type, scope, &element_edge);
 		if (element_edge != kNoEdge)
-			throw std::runtime_error("excess aggregate initializer elements");
+			ThrowSemanticError("excess aggregate initializer elements");
 		result.node = BuildAggregateConstructionAction(
 			cast_type, result.node, true);
 		result.category = VALUE_PRVALUE;
@@ -672,7 +671,7 @@ void Analyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 {
 	const NodeId condition_syntax = FirstSemanticChild(node);
 	if (condition_syntax == kNoNode)
-		throw std::runtime_error("static_assert has no condition" +
+		ThrowSemanticError("static_assert has no condition" +
 			StaticAssertLocation(*arena_, node));
 	// A static assertion demanded while forming an unevaluated or discarded
 	// expression is still an independent constant-evaluation root.  Preserve
@@ -697,7 +696,7 @@ void Analyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 	--constant_expression_required_depth_;
 	constant_evaluation_suppressed_depth_ = outer_suppression;
 	if (!IsIntegral(condition.type, true) || !condition.constant)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"static_assert requires an integral constant expression" +
 			StaticAssertLocation(*arena_, node));
 	if (condition.value == 0)
