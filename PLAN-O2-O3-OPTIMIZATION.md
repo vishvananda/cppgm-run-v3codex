@@ -4111,6 +4111,73 @@ reproduces pre-existing PA13 reference drift (the accepted prior compiler
 emits the same current output); it is not caused by this O3-only increment.
 The retained implementation, contract, and test commit is `85bac3e1`.
 
+### Retained stable-prefix query boundary
+
+The next query-family dose resolves the contract problem exposed by the two
+earlier rejected fast-query prototypes.  A private helper, generated clone
+name, or compiler-source pattern is not evidence that a later query may reuse
+an earlier result.  PA13 now provides the narrow serialized permission
+`[query=stable_prefix]` for a direct, fixed-arity function whose final
+parameter is an integer index and whose result is a supported scalar.  After a
+normally returned query at index `m`, a query at `n <= m` with the same
+preceding arguments may reuse the previously established prefix; calls,
+stores, unknown or negative indexes, different preceding arguments, and
+indirect signatures remain conservative barriers.  O0 through O2 preserve
+the fact but do not consume it.
+
+PA17 exposes the source spelling `cppgm_stable_prefix` and rejects invalid
+result, index, variadic, and indirect forms.  The tokenizer marks its ordinary
+indexed `Peek` query through the feature-test spelling, so the optimization is
+not tied to a program-content match.  Semantic analysis, lowering, typed
+LowIR text, and compiler-object serialization all carry the fact; the compiler
+object version is consequently 5.  O3 repeat-stable analysis consumes it, and
+constant-group clones retain a transient transformation-derived family/index
+relationship until the final index is removed.  Dead-parameter cleanup clears
+metadata that its transformed signature can no longer satisfy.
+
+The assignment coverage follows the boundary.  PA13 has structural and
+behavioral positive coverage plus float-result, indirect, missing-index,
+variadic, and void-result negatives.  PA17 checks valid source production and
+four invalid source shapes.  PA37 discovers clone composition from call
+relationships and checks O0--O2 isolation, ascending/equal reuse, descending,
+different-receiver, unknown/negative-index and effect barriers, bounded stats,
+serialized replay, and behavior.  Its object lane proves direct and text-
+replayed compiler objects agree at O0 through O3.  PA38 accepts surviving
+metadata and exercises driver replay.  No property matches a complete emitted
+program or a generated symbol name.
+
+The final deterministic requested-O3 oracle emits the exact object hash
+`fa3fd18990e4cb205e55d49f904a2f2324db3796a644cf441e6be29e54832b77`.
+Self instructions fall from 3,882,420,398 to 3,787,890,268
+(`0.975651753x`, -2.434825%).  Same-revision GCC moves from 2,425,799,473 to
+2,426,082,982 (`1.000116872x`, +0.011687%), giving normalized
+`0.975537740x` (-2.446226%) and reducing the absolute self/GCC gap from
+`1.600470460x` to `1.561319335x`.  Clang moves from 3,021,591,668 to
+3,021,438,710 (`0.999949378x`), so self/Clang falls from `1.284892475x` to
+`1.253671059x` and the normalized gain is 2.4299%.  The linked fixed-point
+compiler text is 8,675,772 bytes, 13,556 bytes above the preceding retained
+producer; that implementation cost is included in every result.
+
+One order-reversed complete 32-way block corroborates the deterministic
+result.  Self mean wall/aggregate CPU moves from 28.815/804.670 to
+27.925/792.065 seconds, raw `0.969113x`/`0.984335x`.  GCC moves from
+18.280/511.405 to 18.860/513.825, `1.031729x`/`1.004732x`; the GCC wall
+window is too layout/scheduling-sensitive to make a large normalized wall
+claim, while normalized CPU is `0.979699x`.  Clang moves from
+20.685/568.940 to 20.350/568.425, `0.983805x`/`0.999095x`, giving normalized
+self wall/CPU of `0.985067x`/`0.985227x`.  Each producer side repeats its own
+221-object manifest and final compiler exactly.
+
+The through-PA38 report is clean at 5,472/5,472; PA37/PA38 debug and object-
+round-trip lanes, the LowIR contract/ownership/layout audits, and the file
+audit all pass.  Explicit 32-way G1/G2/G3 builds converge across all 221
+objects at manifest
+`5a6203a8c3c4b4acd5ea98a9421908296e0c46a94a35ffd12f529fd1c0062257`
+and final compiler
+`bdd8dcafbfa0f6ab9f50122e750fda3afda2b115f12ccb1fc49c8d5a634a9160`.
+G1, G2, and G3 take 18.26, 29.85, and 28.73 seconds wall with the required 32
+workers.  The retained implementation, contract, and tests are in `d54e7e03`.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4136,6 +4203,7 @@ Fill one row for every retained or rejected dose.
 | D.address-group | specialize repeated direct readonly byte-string addresses and fold clone-local byte control | none; rejected before contract movement | 12 calls redirected; clone 73/393 vs generic 150/893 LowIR instructions/native bytes; O3 producer +18,544 text bytes; hot Ir -0.143% | hot CPU +0.15%; full 32-way CPU +0.033%, wall +1.56% | exact hot and six-lane full output; candidate removed | rejected; local saving did not pay for machinery/footprint |
 | D.readonly-string-groups-3 | reuse the retained grouped specializer for the three most frequent readonly-string values | none; stopped before contract movement | three independent clones; deterministic output exact | normalized hot Ir -0.917%; full aggregate user -0.36%, total CPU -0.25% | exact hot and repeated full-build outputs; dose superseded | rejected at this breadth; complete-workload gain missed the 0.5% close-result threshold |
 | D.readonly-string-groups | specialize every profitable bounded internal readonly-string group and fold exact serialized bytes | PA37 README plus O0-O2 isolation, multi-group structure, signed-byte/phi/replay/behavior positives, and replaceable/writable/unterminated/dynamic/volatile/indexed negatives | 56 calls, eight clones/88 instructions; macro LowIR +1,227 bytes, macro text -688; fixed-point producer +16,248 text vs prior accepted | self Ir `0.985097x`; GCC `1.000014x`; normalized `0.985083x`; gap `1.624706x` to `1.600470x`; full aggregate wall/user/CPU `0.976414x`/`0.988666x`/`0.989585x` | PA37 188/188; PA38 45/45; 5,471/5,471; PA37/38 debug/round-trip clean; zero-fatal audit; 221-object G2/G3 exact | retained in `85bac3e1`; broader reuse clears deterministic and complete-workload gates |
+| D.stable-prefix-query | serialize a general stable-prefix query promise and reuse established lower prefixes at O3 | PA13/PA17/PA37/PA38 READMEs plus shape, source-production, level, relationship, barrier, replay, object-roundtrip, stats, and behavior properties | object version 5; tokenizer query fact; 6.60M dynamic full calls removed; fixed-point producer +13,556 text bytes | self Ir `0.975652x`; GCC `1.000117x`; normalized `0.975538x`; gap `1.600470x` to `1.561319x`; full raw wall/CPU `0.969113x`/`0.984335x`, GCC-normalized CPU `0.979699x`, Clang-normalized CPU `0.985227x` | PA37 188/188; PA38 45/45; 5,472/5,472; debug/round-trip and all audits clean; exact 221-object G1/G2/G3 | retained in `d54e7e03`; contract-backed general reuse clears deterministic and complete-workload gates |
 | D.call-plan | keep reactive call results out of future cyclic spans and grant a cyclic call result after its completed arguments retire | PA38 README plus O2/O1 register-agnostic structural/behavioral control | `Run` -181 MIR, scalar loads/stores -89/-77, frame homes -3; tokenizer -234 `.text`; O3 producer +292 text bytes; O1 object exact; unrelated EH/branch fixtures exact | O1 workload +0.11% wall/-0.40% CPU; GCC CPU -0.21%; normalized CPU -0.18%; O3 workload -1.42% wall/-0.30% CPU, five of six pairs favorable | PA37 188/188; PA38 45/45; 5,471/5,471; debug/round-trip clean; zero-fatal audit; frozen O2/O3 exact; all-32 O2/O3 inception exact | retained in this checkpoint |
 | D.epilogue | share repeated optimized return sequences, with broad and bounded variants | none; rejected before contract movement | broad: `Run` -161 native instructions and -23 physical epilogues; O3 producer -94,192 text bytes; bounded variants -17,928/-16,120 bytes | broad O1 user +1.5%; return-bounded +0.26%; bounded/excluded O3 CPU +0.32% and wall +1.5% | exact-output all-32 screens; all variants removed | rejected; taken return branches cost more than duplicate bytes |
 | D.copy-pair | fuse staged adjacent 64-bit predecessor loads/successor stores into one vector copy | none; rejected before contract movement | clone -3 MIR/-8 bytes; generic -8 bytes; tokenizer -22 text bytes; producer +8,744 text bytes | twelve-lane hot TU +4.1% wall/user, every candidate lane slower | exact hot outputs; candidate removed | rejected; exposed entry-address sensitivity |
