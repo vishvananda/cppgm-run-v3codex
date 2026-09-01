@@ -13,9 +13,9 @@ my $root = abs_path("$FindBin::Bin/..");
 # E0 freezes the pre-migration ceiling.  Later phases lower these ceilings as
 # each family is converted, and E8 sets the generic-policy ceilings to zero.
 my %ceiling = (
-	logic_throw => 970,
-	runtime_throw => 616,
-	generic_throw_files => 142,
+	logic_throw => 934,
+	runtime_throw => 575,
+	generic_throw_files => 136,
 	generic_return_helper => 1,
 	catch_all => 53,
 	internal_runtime_catch => 1,

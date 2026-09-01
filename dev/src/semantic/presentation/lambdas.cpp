@@ -2,9 +2,9 @@
 
 #include "semantic/model/graph.h"
 #include "semantic/semantic.h"
+#include "support/exceptions.h"
 
 #include <cctype>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -49,7 +49,7 @@ std::string LambdaContextIdentity(const semantic::Program& program,
 	semantic::BindingId context, semantic::Stats* stats)
 {
 	if (context == kNoBinding || context >= program.bindings.size())
-		throw std::logic_error("lambda context binding is invalid");
+		ThrowInternalCompilerError("lambda context binding is invalid");
 	const BindingRecord& binding = program.bindings[context];
 	// The enclosing closure scope already owns a nested lambda's identity.
 	// Repeating the parent's fully rendered synthetic name in the child leaf
@@ -66,7 +66,7 @@ std::string LambdaContextIdentity(const semantic::Program& program,
 	if (count != 0 &&
 		(first > program.canonical_template_arguments.size() ||
 		 count > program.canonical_template_arguments.size() - first))
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"lambda context template arguments are invalid");
 	for (std::size_t i = 0; i < count; ++i)
 	{
@@ -110,10 +110,10 @@ const semantic::EntityRecord& LambdaEntity(const semantic::Program& program,
 {
 	if (entity >= program.entities.size() ||
 		!program.entities[entity].lambda_closure)
-		throw std::logic_error("lambda presentation entity is invalid");
+		ThrowInternalCompilerError("lambda presentation entity is invalid");
 	const semantic::EntityRecord& record = program.entities[entity];
 	if (record.emission_name_form != semantic::ENTITY_EMISSION_LAMBDA)
-		throw std::logic_error("lambda presentation form is invalid");
+		ThrowInternalCompilerError("lambda presentation form is invalid");
 	return record;
 }
 

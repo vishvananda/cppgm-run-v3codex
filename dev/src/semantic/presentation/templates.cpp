@@ -2,10 +2,10 @@
 
 #include "semantic/semantic.h"
 #include "semantic/model/graph.h"
+#include "support/exceptions.h"
 
 #include <cctype>
 #include <sstream>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -77,7 +77,7 @@ std::string RenderTemplateArgument(const semantic::Program& program,
 	if (argument.value_binding != kNoBinding)
 	{
 		if (argument.value_binding >= program.bindings.size())
-			throw std::logic_error("template argument binding is invalid");
+			ThrowInternalCompilerError("template argument binding is invalid");
 		const BindingRecord& binding = program.bindings[argument.value_binding];
 		std::string result = semantic::RenderBindingPresentation(
 			program, binding, stats);

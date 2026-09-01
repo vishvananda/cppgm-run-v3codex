@@ -1,9 +1,9 @@
 #include "semantic/presentation/source_identity.h"
 
 #include "semantic/presentation/lambdas.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -53,7 +53,7 @@ std::string RenderTemplateArgument(const Program& program,
 	if (argument.value_binding != kNoBinding)
 	{
 		if (argument.value_binding >= program.bindings.size())
-			throw std::logic_error("source identity argument binding is invalid");
+			ThrowInternalCompilerError("source identity argument binding is invalid");
 		const BindingRecord& binding =
 			program.bindings[argument.value_binding];
 		std::string result = ScopePrefix(program, binding.owner);
@@ -76,9 +76,9 @@ std::string RenderEntityAt(const Program& program, EntityId entity,
 	std::size_t depth)
 {
 	if (entity == kNoEntity || entity >= program.entities.size())
-		throw std::logic_error("source identity entity is invalid");
+		ThrowInternalCompilerError("source identity entity is invalid");
 	if (depth > program.entities.size() + program.types.Size())
-		throw std::logic_error("source identity entity graph is cyclic");
+		ThrowInternalCompilerError("source identity entity graph is cyclic");
 	const EntityRecord& record = program.entities[entity];
 	if (record.lambda_closure)
 		return semantic::presentation::RenderLambdaSourceIdentityName(
@@ -96,7 +96,7 @@ std::string RenderEntityAt(const Program& program, EntityId entity,
 		const std::size_t count = record.template_argument_count;
 		if (first > program.canonical_template_arguments.size() ||
 			count > program.canonical_template_arguments.size() - first)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"source identity template arguments are invalid");
 		result += '<';
 		for (std::size_t i = 0; i < count; ++i)
@@ -114,9 +114,9 @@ std::string RenderTypeAt(const Program& program, TypeId type,
 	std::size_t depth)
 {
 	if (type == kNoType || type >= program.types.Size())
-		throw std::logic_error("source identity type is invalid");
+		ThrowInternalCompilerError("source identity type is invalid");
 	if (depth > program.entities.size() + program.types.Size())
-		throw std::logic_error("source identity type graph is cyclic");
+		ThrowInternalCompilerError("source identity type graph is cyclic");
 	const TypeRecord& record = program.types.Get(type);
 	switch (record.kind)
 	{
@@ -184,7 +184,7 @@ std::string RenderFunction(const Program& program, BindingId binding,
 {
 	if (binding == kNoBinding || binding >= program.bindings.size() ||
 		type == kNoType || !program.types.IsFunction(type))
-		throw std::logic_error("source function identity is invalid");
+		ThrowInternalCompilerError("source function identity is invalid");
 	const BindingRecord& function = program.bindings[binding];
 	const TypeRecord& callable = program.types.Get(type);
 	std::string result;

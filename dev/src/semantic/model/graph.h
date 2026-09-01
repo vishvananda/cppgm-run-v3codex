@@ -2,12 +2,12 @@
 
 #include "syntax/model/arena.h"
 #include "semantic/model/program.h"
+#include "support/exceptions.h"
 
 #include <cstdint>
 #include <deque>
 #include <functional>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -325,7 +325,7 @@ public:
 	std::uint32_t Make(DumpKind kind)
 	{
 		if (nodes.size() >= kNoDumpEdge)
-			throw std::runtime_error("too many PA12 semantic nodes");
+			ThrowSemanticResourceLimit("too many PA12 semantic nodes");
 		nodes.push_back(DumpNode(kind));
 		return static_cast<std::uint32_t>(nodes.size() - 1);
 	}
@@ -333,7 +333,7 @@ public:
 	void Add(std::uint32_t parent, std::uint32_t child)
 	{
 		if (edges.size() >= kNoDumpEdge)
-			throw std::runtime_error("too many PA12 semantic edges");
+			ThrowSemanticResourceLimit("too many PA12 semantic edges");
 		const std::uint32_t edge = static_cast<std::uint32_t>(edges.size());
 		edges.push_back(DumpEdge(child));
 		DumpNode& owner = nodes[parent];

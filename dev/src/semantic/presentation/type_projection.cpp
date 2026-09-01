@@ -1,7 +1,7 @@
 // Source-facing PA11 projections over the canonical semantic graph.
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -21,7 +21,7 @@ void Analyzer::ApplySourceTypeOverrides()
 {
 	if (source_type_override_bindings_.size() !=
 		source_type_override_types_.size())
-		throw std::logic_error("source-view type overrides diverged");
+		ThrowInternalCompilerError("source-view type overrides diverged");
 	for (std::size_t i = 0; i < source_type_override_bindings_.size(); ++i)
 		program_->bindings[source_type_override_bindings_[i]].type =
 			source_type_override_types_[i];
@@ -38,7 +38,7 @@ void Analyzer::ProjectSourceClassTemplate(
 		const TemplateParameter& parameter = parameters[i];
 		if (parameter.kind != TEMPLATE_ARGUMENT_TYPE &&
 			parameter.kind != TEMPLATE_ARGUMENT_TEMPLATE)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"non-type template parameter is outside PA11");
 		if (parameter.name == 0) continue;
 		const NamedFlavor flavor = parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE ?

@@ -1,9 +1,9 @@
 #include "semantic/model/program.h"
 #include "semantic/presentation/lambdas.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <ostream>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -70,7 +70,7 @@ const char* FundamentalName(FundamentalKind kind)
 	case FUND_STDFLOAT128: return "_Float128";
 	case FUND_FLOAT128: return "__float128";
 	}
-	throw std::logic_error("invalid fundamental type");
+	ThrowInternalCompilerError("invalid fundamental type");
 }
 
 std::size_t FundamentalObjectSize(FundamentalKind kind)
@@ -92,7 +92,7 @@ std::size_t FundamentalObjectSize(FundamentalKind kind)
 	case FUND_NULLPTR_T: return 8;
 	case FUND_VOID: break;
 	}
-	throw std::runtime_error("incomplete fundamental type");
+	ThrowSemanticError("incomplete fundamental type");
 }
 
 const char* FlavorName(NamedFlavor flavor)
@@ -108,7 +108,7 @@ const char* FlavorName(NamedFlavor flavor)
 	case NAMED_TEMPLATE_PARAMETER: return "template-parameter";
 	case NAMED_NONE: break;
 	}
-	throw std::logic_error("invalid named type flavor");
+	ThrowInternalCompilerError("invalid named type flavor");
 }
 
 const char* FunctionReturnText(std::uint8_t cv,
@@ -209,7 +209,7 @@ void NamePath::Push(NameId name)
 
 void NamePath::Pop()
 {
-	if (size_ == 0) throw std::logic_error("empty qualified name");
+	if (size_ == 0) ThrowInternalCompilerError("empty qualified name");
 	if (!overflow_parts_.empty()) overflow_parts_.pop_back();
 	--size_;
 }
@@ -307,7 +307,7 @@ TypeId TypeTable::Qualify(TypeId type, std::uint8_t cv)
 {
 	const TypeId result = TryQualify(type, cv);
 	if (result == kNoType)
-		throw std::runtime_error("cv-qualified function type");
+		ThrowSemanticError("cv-qualified function type");
 	return result;
 }
 
@@ -328,7 +328,7 @@ TypeId TypeTable::Pointer(TypeId type)
 {
 	const TypeId result = TryPointer(type);
 	if (result == kNoType)
-		throw std::runtime_error("pointer to reference type");
+		ThrowSemanticError("pointer to reference type");
 	return result;
 }
 
@@ -342,7 +342,7 @@ TypeId TypeTable::BlockPointer(TypeId function)
 {
 	const TypeId result = TryBlockPointer(function);
 	if (result == kNoType)
-		throw std::runtime_error("block pointer target is not a function type");
+		ThrowSemanticError("block pointer target is not a function type");
 	return result;
 }
 
@@ -363,14 +363,14 @@ TypeId TypeTable::MemberPointer(TypeId owner, TypeId member)
 {
 	const TypeId result = TryMemberPointer(owner, member);
 	if (result == kNoType)
-		throw std::runtime_error("member pointer owner is not a class");
+		ThrowSemanticError("member pointer owner is not a class");
 	return result;
 }
 
 TypeId TypeTable::TryReference(TypeKind kind, TypeId type)
 {
 	if (kind != TYPE_LVALUE_REFERENCE && kind != TYPE_RVALUE_REFERENCE)
-		throw std::logic_error("invalid reference kind");
+		ThrowInternalCompilerError("invalid reference kind");
 	const TypeRecord& record = Get(type);
 	if (record.kind == TYPE_LVALUE_REFERENCE)
 		return Unary(TYPE_LVALUE_REFERENCE, record.child);
@@ -386,7 +386,7 @@ TypeId TypeTable::Reference(TypeKind kind, TypeId type)
 {
 	const TypeId result = TryReference(kind, type);
 	if (result == kNoType)
-		throw std::runtime_error("reference to void type");
+		ThrowSemanticError("reference to void type");
 	return result;
 }
 
@@ -409,7 +409,7 @@ TypeId TypeTable::Array(TypeId type, std::uint64_t bound)
 {
 	const TypeId result = TryArray(type, bound);
 	if (result == kNoType)
-		throw std::runtime_error("invalid array element type");
+		ThrowSemanticError("invalid array element type");
 	return result;
 }
 
@@ -434,7 +434,7 @@ TypeId TypeTable::Vector(TypeId element, std::uint64_t bytes)
 {
 	const TypeId result = TryVector(element, bytes);
 	if (result == kNoType)
-		throw std::runtime_error("invalid GNU vector element type or byte width");
+		ThrowSemanticError("invalid GNU vector element type or byte width");
 	return result;
 }
 
@@ -442,7 +442,7 @@ TypeId TypeTable::TryDependentArray(TypeId type, TypeId bound_type,
 	std::uint32_t parameter)
 {
 	if (parameter == kNoTemplateParameter)
-		throw std::logic_error("dependent array has no parameter");
+		ThrowInternalCompilerError("dependent array has no parameter");
 	const TypeRecord& record = Get(type);
 	if (record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_FUNCTION ||
@@ -462,7 +462,7 @@ TypeId TypeTable::DependentArray(TypeId type, TypeId bound_type,
 {
 	const TypeId result = TryDependentArray(type, bound_type, parameter);
 	if (result == kNoType)
-		throw std::runtime_error("invalid dependent array element type");
+		ThrowSemanticError("invalid dependent array element type");
 	return result;
 }
 
@@ -474,7 +474,7 @@ TypeId TypeTable::TryFunction(TypeId result,
 	if (returned.kind == TYPE_ARRAY || returned.kind == TYPE_FUNCTION)
 		return kNoType;
 	if (parameters.size() > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many function parameters");
+		ThrowSemanticResourceLimit("too many function parameters");
 	TypeRecord candidate;
 	candidate.kind = TYPE_FUNCTION;
 	candidate.child = result;
@@ -494,7 +494,7 @@ TypeId TypeTable::Function(TypeId result,
 	const TypeId type = TryFunction(
 		result, parameters, variadic, cv, ref_qualifier);
 	if (type == kNoType)
-		throw std::runtime_error("invalid function return type");
+		ThrowSemanticError("invalid function return type");
 	return type;
 }
 
@@ -523,7 +523,7 @@ bool TypeTable::IsNamed(TypeId type) const
 const TypeRecord& TypeTable::Get(TypeId type) const
 {
 	if (type == kNoType || type >= types_.size())
-		throw std::logic_error("invalid PA11 type identity");
+		ThrowInternalCompilerError("invalid PA11 type identity");
 	return types_[type];
 }
 
@@ -531,7 +531,7 @@ const TypeId* TypeTable::Parameters(TypeId function) const
 {
 	const TypeRecord& record = Get(function);
 	if (record.kind != TYPE_FUNCTION)
-		throw std::logic_error("parameters requested for non-function type");
+		ThrowInternalCompilerError("parameters requested for non-function type");
 	return record.parameter_count == 0 ? 0 :
 		&parameters_[record.parameter_offset];
 }
@@ -609,7 +609,7 @@ TypeId TypeTable::Intern(TypeRecord candidate, const TypeId* parameters,
 	std::size_t count)
 {
 	if (parameters_.size() > std::numeric_limits<std::uint32_t>::max() - count)
-		throw std::runtime_error("canonical type parameter storage is too large");
+		ThrowSemanticResourceLimit("canonical type parameter storage is too large");
 	if ((types_.size() + 1) * 10 > slots_.size() * 7)
 		Rehash(slots_.size() * 2);
 	const std::size_t mask = slots_.size() - 1;
@@ -623,7 +623,7 @@ TypeId TypeTable::Intern(TypeRecord candidate, const TypeId* parameters,
 	}
 	++index_probes_;
 	if (types_.size() > std::numeric_limits<TypeId>::max())
-		throw std::runtime_error("too many canonical types");
+		ThrowSemanticResourceLimit("too many canonical types");
 	candidate.parameter_offset =
 		static_cast<std::uint32_t>(parameters_.size());
 	if (count != 0)
@@ -941,9 +941,9 @@ TemplateArgumentListId Program::InternTemplateArgumentList(
 		arguments.size() > std::numeric_limits<std::uint32_t>::max() ||
 		template_arguments.size() >
 			std::numeric_limits<std::uint32_t>::max() - arguments.size())
-		throw std::runtime_error("too many canonical template argument lists");
+		ThrowSemanticResourceLimit("too many canonical template argument lists");
 	if (template_arguments.size() != canonical_template_arguments.size())
-		throw std::logic_error("canonical template argument storage diverged");
+		ThrowInternalCompilerError("canonical template argument storage diverged");
 	const std::uint32_t range_first =
 		static_cast<std::uint32_t>(template_arguments.size());
 	const std::uint32_t range_count =
@@ -988,7 +988,7 @@ ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
 	EntityId entity, ScopeId output_parent)
 {
 	if (scopes_.size() >= kNoScope)
-		throw std::runtime_error("too many PA11 scopes");
+		ThrowSemanticResourceLimit("too many PA11 scopes");
 	const ScopeId scope = static_cast<ScopeId>(scopes_.size());
 	scopes_.push_back(ScopeRecord());
 	ScopeRecord& record = scopes_.back();
@@ -1024,7 +1024,7 @@ ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline,
 {
 	NameEntry* entry = EnsureEntry(parent, name);
 	if (entry->ordinary != kNoBinding || entry->type != kNoType)
-		throw std::runtime_error("namespace conflicts with existing binding");
+		ThrowSemanticError("namespace conflicts with existing binding");
 	if (entry->name_space == kNoScope)
 	{
 		entry->name_space = NewScope(parent, SCOPE_NAMESPACE, name);
@@ -1045,14 +1045,14 @@ ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline,
 void Program::SetScopeEmissionName(ScopeId scope, NameId name)
 {
 	if (scope >= scopes_.size())
-		throw std::logic_error("invalid emission scope identity");
+		ThrowInternalCompilerError("invalid emission scope identity");
 	scopes_[scope].emission_name = name;
 }
 
 void Program::SetSourceViewQualifiedScope(ScopeId scope)
 {
 	if (scope >= scopes_.size())
-		throw std::logic_error("invalid source-view scope");
+		ThrowInternalCompilerError("invalid source-view scope");
 	scopes_[scope].source_view_qualified = true;
 }
 
@@ -1060,7 +1060,7 @@ void Program::SuppressSourceViewSince(
 	std::size_t binding_begin, std::size_t scope_begin)
 {
 	if (binding_begin > bindings.size() || scope_begin > scopes_.size())
-		throw std::logic_error("invalid source-view suppression boundary");
+		ThrowInternalCompilerError("invalid source-view suppression boundary");
 	for (std::size_t i = binding_begin; i < bindings.size(); ++i)
 		bindings[i].source_view_suppressed = true;
 	for (std::size_t i = scope_begin; i < scopes_.size(); ++i)
@@ -1072,7 +1072,7 @@ void Program::AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target)
 	NameEntry* entry = EnsureEntry(owner, name);
 	if (entry->ordinary != kNoBinding || entry->type != kNoType ||
 		(entry->name_space != kNoScope && entry->name_space != target))
-		throw std::runtime_error("invalid namespace alias binding");
+		ThrowSemanticError("invalid namespace alias binding");
 	entry->name_space = target;
 }
 
@@ -1093,14 +1093,14 @@ void Program::AddUsingEdge(ScopeId owner, ScopeId target)
 	++using_index_probes;
 	if (using_edges_.size() >=
 		std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many PA11 using edges");
+		ThrowSemanticResourceLimit("too many PA11 using edges");
 	ScopeId owner_namespace = owner;
 	while (owner_namespace != kNoScope &&
 		scopes_[owner_namespace].kind != SCOPE_NAMESPACE)
 		owner_namespace = scopes_[owner_namespace].parent;
 	if (owner_namespace == kNoScope || target >= scopes_.size() ||
 		scopes_[target].kind != SCOPE_NAMESPACE)
-		throw std::logic_error("using edge has no namespace injection scope");
+		ThrowInternalCompilerError("using edge has no namespace injection scope");
 	ScopeId left = owner_namespace;
 	ScopeId right = target;
 	while (scopes_[left].depth > scopes_[right].depth)
@@ -1211,7 +1211,7 @@ std::uint32_t Program::EnsureVisibleName(ScopeId scope, NameId name,
 		slot = (slot + 1) & mask;
 	}
 	if (visible_names_.size() >= std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many visible scope names");
+		ThrowSemanticResourceLimit("too many visible scope names");
 	const std::uint32_t fact =
 		static_cast<std::uint32_t>(visible_names_.size());
 	visible_names_.push_back(ScopeVisibleName(
@@ -1270,7 +1270,7 @@ bool Program::AddUsingNameRelation(std::uint32_t edge, NameId name,
 		EnsureVisibleName(owner, name, owner_became_visible);
 	if (using_name_relations_.size() >=
 		std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many indexed using names");
+		ThrowSemanticResourceLimit("too many indexed using names");
 	const std::uint32_t relation =
 		static_cast<std::uint32_t>(using_name_relations_.size());
 	using_name_relations_.push_back(UsingNameRelation(
@@ -1333,7 +1333,7 @@ EntityId Program::NewEntity(NameId emission_name, NamedFlavor flavor,
 	EntityEmissionNameForm emission_name_form)
 {
 	if (entities.size() >= kNoEntity)
-		throw std::runtime_error("too many PA11 entities");
+		ThrowSemanticResourceLimit("too many PA11 entities");
 	const EntityId entity = static_cast<EntityId>(entities.size());
 	entities.push_back(EntityRecord());
 	base_jump_offsets_.push_back(0);
@@ -1409,7 +1409,7 @@ std::string Program::RenderEntityEmissionName(EntityId entity,
 	std::size_t* components) const
 {
 	if (entity >= entities.size())
-		throw std::logic_error("invalid entity emission name");
+		ThrowInternalCompilerError("invalid entity emission name");
 	const EntityRecord& record = entities[entity];
 	if (record.emission_name_form == ENTITY_EMISSION_LAMBDA)
 		return semantic::presentation::RenderLambdaEntityEmissionName(
@@ -1428,7 +1428,7 @@ BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 	NameEntry* entry = EnsureEntry(owner, name);
 	bool composite_variable_type = false;
 	if (entry->name_space != kNoScope)
-		throw std::runtime_error("binding conflicts with namespace");
+		ThrowSemanticError("binding conflicts with namespace");
 	if (merge_redeclaration && canonical == kNoBinding &&
 		entry->ordinary != kNoBinding &&
 		(kind == BIND_FUNCTION || kind == BIND_VARIABLE))
@@ -1449,7 +1449,7 @@ BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 		}
 	}
 	if (bindings.size() >= kNoBinding)
-		throw std::runtime_error("too many PA11 bindings");
+		ThrowSemanticResourceLimit("too many PA11 bindings");
 	const BindingId binding = static_cast<BindingId>(bindings.size());
 	bindings.push_back(BindingRecord());
 	BindingRecord& record = bindings.back();
@@ -1488,7 +1488,7 @@ BindingId Program::AddUnindexedBinding(ScopeId owner, BindingKind kind,
 	NameId name, TypeId type, BindingId canonical)
 {
 	if (bindings.size() >= kNoBinding)
-		throw std::runtime_error("too many PA11 bindings");
+		ThrowSemanticResourceLimit("too many PA11 bindings");
 	const BindingId binding = static_cast<BindingId>(bindings.size());
 	bindings.push_back(BindingRecord());
 	BindingRecord& record = bindings.back();
@@ -1524,7 +1524,7 @@ BindingLayoutFact& Program::MutableBindingLayout(BindingRecord& binding)
 	if (binding.layout_fact == kNoBindingLayoutFact)
 	{
 		if (binding_layout_facts_.size() >= kNoBindingLayoutFact)
-			throw std::runtime_error("too many PA11 binding layout facts");
+			ThrowSemanticResourceLimit("too many PA11 binding layout facts");
 		binding.layout_fact = static_cast<std::uint32_t>(
 			binding_layout_facts_.size());
 		binding_layout_facts_.push_back(BindingLayoutFact());
@@ -1536,7 +1536,7 @@ BindingId Program::AddOutputTypeBinding(ScopeId owner, NameId display_name,
 	TypeId type, NamedFlavor display)
 {
 	if (bindings.size() >= kNoBinding)
-		throw std::runtime_error("too many PA11 bindings");
+		ThrowSemanticResourceLimit("too many PA11 bindings");
 	const BindingId binding = static_cast<BindingId>(bindings.size());
 	bindings.push_back(BindingRecord());
 	BindingRecord& record = bindings.back();
@@ -1557,7 +1557,7 @@ void Program::SetTypeName(ScopeId owner, NameId name, TypeId type)
 {
 	NameEntry* entry = EnsureEntry(owner, name);
 	if (entry->name_space != kNoScope)
-		throw std::runtime_error("type conflicts with namespace");
+		ThrowSemanticError("type conflicts with namespace");
 	entry->type = type;
 }
 
@@ -1565,19 +1565,19 @@ void Program::SetEntityScope(EntityId entity, ScopeId scope)
 {
 	entities[entity].member_scope = scope;
 	if (scope >= scopes_.size())
-		throw std::logic_error("entity member scope is invalid");
+		ThrowInternalCompilerError("entity member scope is invalid");
 	scopes_[scope].entity = entity;
 }
 
 void Program::ResetClassDefinition(EntityId entity)
 {
 	if (entity >= entities.size())
-		throw std::logic_error("class reset entity is invalid");
+		ThrowInternalCompilerError("class reset entity is invalid");
 	const EntityRecord old = entities[entity];
 	if (old.member_scope != kNoScope)
 	{
 		if (old.member_scope >= scopes_.size())
-			throw std::logic_error("class reset member scope is invalid");
+			ThrowInternalCompilerError("class reset member scope is invalid");
 		scopes_[old.member_scope].entity = kNoEntity;
 	}
 	EntityRecord reset;
@@ -1618,7 +1618,7 @@ ScopeId Program::ParentScope(ScopeId scope) const
 ScopeKind Program::KindOfScope(ScopeId scope) const
 {
 	if (scope >= scopes_.size())
-		throw std::logic_error("invalid scope kind query");
+		ThrowInternalCompilerError("invalid scope kind query");
 	return scopes_[scope].kind;
 }
 
@@ -1641,7 +1641,7 @@ NameId Program::NameOfScope(ScopeId scope) const
 NameId Program::EmissionNameOfScope(ScopeId scope) const
 {
 	if (scope >= scopes_.size())
-		throw std::logic_error("invalid scope emission-name query");
+		ThrowInternalCompilerError("invalid scope emission-name query");
 	return scopes_[scope].emission_name;
 }
 
@@ -1661,12 +1661,12 @@ void Program::SetDirectBases(EntityId derived,
 	const std::vector<DirectBaseEdge>& bases)
 {
 	if (derived >= entities.size())
-		throw std::runtime_error("invalid direct base owner");
+		ThrowInternalCompilerError("invalid direct base owner");
 	EntityRecord& record = entities[derived];
 	if (record.direct_base_count != 0)
-		throw std::runtime_error("direct bases are already fixed");
+		ThrowInternalCompilerError("direct bases are already fixed");
 	if (record.member_scope != kNoScope)
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"direct bases must be fixed before publishing the member scope");
 	if (direct_base_input_marks_.size() < entities.size())
 		direct_base_input_marks_.resize(entities.size(), 0);
@@ -1682,20 +1682,22 @@ void Program::SetDirectBases(EntityId derived,
 	{
 		++direct_base_validation_visits;
 		const EntityId base = bases[i].entity;
-		if (base >= entities.size() || derived == base)
-			throw std::runtime_error("invalid direct base relationship");
+		if (base >= entities.size())
+			ThrowInternalCompilerError("invalid direct base relationship");
+		if (derived == base)
+			ThrowSemanticError("invalid direct base relationship");
 		if (direct_base_input_marks_[base] == input_generation)
-			throw std::runtime_error("duplicate direct base");
+			ThrowSemanticError("duplicate direct base");
 		direct_base_input_marks_[base] = input_generation;
 		if (IsBaseOf(derived, base))
-			throw std::runtime_error("cyclic class inheritance");
+			ThrowSemanticError("cyclic class inheritance");
 		if (base_depths_[base] == std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("class inheritance is too deep");
+			ThrowSemanticResourceLimit("class inheritance is too deep");
 	}
 	if (bases.size() > std::numeric_limits<std::uint32_t>::max() ||
 		direct_bases.size() > std::numeric_limits<std::uint32_t>::max() -
 			bases.size())
-		throw std::runtime_error("too many direct base relationships");
+		ThrowSemanticResourceLimit("too many direct base relationships");
 	record.direct_base_begin = static_cast<std::uint32_t>(direct_bases.size());
 	record.direct_base_count = static_cast<std::uint32_t>(bases.size());
 	direct_bases.insert(direct_bases.end(), bases.begin(), bases.end());
@@ -1747,7 +1749,7 @@ const DirectBaseEdge& Program::DirectBase(EntityId derived,
 	std::size_t ordinal) const
 {
 	if (derived >= entities.size() || ordinal >= entities[derived].direct_base_count)
-		throw std::logic_error("invalid direct base edge query");
+		ThrowInternalCompilerError("invalid direct base edge query");
 	return direct_bases[entities[derived].direct_base_begin + ordinal];
 }
 
@@ -1755,7 +1757,7 @@ DirectBaseEdge& Program::MutableDirectBase(EntityId derived,
 	std::size_t ordinal)
 {
 	if (derived >= entities.size() || ordinal >= entities[derived].direct_base_count)
-		throw std::logic_error("invalid direct base edge mutation");
+		ThrowInternalCompilerError("invalid direct base edge mutation");
 	if (++base_graph_versions_[derived] == 0)
 		base_graph_versions_[derived] = 1;
 	return direct_bases[entities[derived].direct_base_begin + ordinal];
@@ -1922,14 +1924,14 @@ bool Program::MergeLookup(LookupResult* result,
 			(!merge_equivalent_namespace_types || result->type == kNoType)))
 	{
 		if (tolerate_ambiguity) return false;
-		throw std::runtime_error("ambiguous PA11 lookup");
+		ThrowSemanticError("ambiguous PA11 lookup");
 	}
 	if (result->ordinary == kNoBinding && candidate.ordinary == kNoBinding)
 		return true;
 	if (result->ordinary == kNoBinding || candidate.ordinary == kNoBinding)
 	{
 		if (tolerate_ambiguity) return false;
-		throw std::runtime_error("ambiguous PA11 lookup");
+		ThrowSemanticError("ambiguous PA11 lookup");
 	}
 	const bool result_functions =
 		bindings[result->ordinary].kind == BIND_FUNCTION;
@@ -1942,7 +1944,7 @@ bool Program::MergeLookup(LookupResult* result,
 				bindings[candidate.ordinary].canonical)
 			return true;
 		if (tolerate_ambiguity) return false;
-		throw std::runtime_error("ambiguous PA11 lookup");
+		ThrowSemanticError("ambiguous PA11 lookup");
 	}
 	for (std::size_t i = 0; i < candidate.OrdinaryCount(); ++i)
 		result->AddOrdinary(candidate.OrdinaryAt(i));
@@ -2107,7 +2109,7 @@ LookupResult Program::LookupUnqualifiedCandidate(ScopeId scope, NameId name,
 				lookup_pending_generation_;
 			if (lookup_pending_targets_.size() >=
 				std::numeric_limits<std::uint32_t>::max())
-				throw std::runtime_error("too many pending using targets");
+				ThrowSemanticResourceLimit("too many pending using targets");
 			const std::uint32_t pending =
 				static_cast<std::uint32_t>(lookup_pending_targets_.size());
 			lookup_pending_targets_.push_back(using_edge.target);
@@ -2390,7 +2392,7 @@ void Program::AppendType(std::string& output, TypeId type,
 			tasks.Push(Task(record.child, true));
 			break;
 		case TYPE_INVALID:
-			throw std::logic_error("cannot render invalid type");
+			ThrowInternalCompilerError("cannot render invalid type");
 		}
 	}
 	if (stack_storage_bytes)
@@ -2525,7 +2527,7 @@ void Program::WriteScope(std::ostream& output, ScopeId scope,
 					const TypeRecord& named = types.Get(
 						types.RemoveTopCv(item.type));
 					if (named.kind != TYPE_NAMED)
-						throw std::logic_error(
+						ThrowInternalCompilerError(
 							"qualified source-view name has non-named type");
 					const EntityRecord& entity = entities[named.entity];
 					output << RenderEmissionName(
