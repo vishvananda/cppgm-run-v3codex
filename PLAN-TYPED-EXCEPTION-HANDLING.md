@@ -706,7 +706,8 @@ Append one row for each retained or rejected increment:
 | E4a | declarations, lookup, and semantic index tables | source diagnostics, resource ceilings, and invariants shared generic standard bases | `SemanticError`, semantic-domain `ResourceLimitError`, and `InternalCompilerError`; cold shared throw helpers | PA12 declarations and expressions, with cumulative PA21/PA23 recovery coverage | successful full remains 0; generic logic/runtime sites -43/-160 | -10,368 text, -32 rodata, -1,972 exception table, -32 unwind | frozen 0.520/0.520 s; full O1 -0.46% CPU, O3 -0.07% CPU | through-PA12 842/842; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `5d25136f` | retained |
 | E4b | expressions, calls, and overload resolution | expression rejection and failed overloads shared generic bases with representation limits and invariants | ordinary diagnostics use `SemanticError`; candidate failure stays status-based; limits and invariants bypass recovery | PA12 expressions/intrinsics; PA23 substitution and overload recovery | successful full remains 0; generic logic/runtime sites -28/-113 | -8,256 text, -1,328 exception table, +208 unwind | frozen 0.525/0.520 s; full O1 -0.08% CPU, O3 -0.45% CPU | PA12 184/184; PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `0bda33df` | retained |
 | E4c | initialization and lifetime | construction/destruction diagnostics, capacity ceilings, and synthesized-state contradictions shared generic bases | typed semantic/resource/internal dispositions; substitution and constexpr status remain explicit | PA17 initialization/lifetime, PA21 constexpr, PA23 templates | successful full remains 0; generic logic/runtime sites -71/-125 | -14,336 text, -2,132 exception table, +200 unwind | frozen neutral; repeated full O1 -0.10% CPU, O3 +0.08% CPU | PA17 247/247; PA21 151/151; PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `e743a077` | retained |
-| E4d | template arguments, deduction, placeholders, validation, and identity support | template diagnostics and retained-state invariants shared generic bases | terminal source diagnostics typed; candidate substitution remains explicit status; limits/invariants bypass it | PA23 template deduction/substitution and retained templates | successful full remains 0; generic logic/runtime sites -86/-125 | -768 text, -1,820 exception table, +168 unwind | frozen neutral; repeated full O1 -0.10% CPU, O3 -0.05% CPU | PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | pending | retained |
+| E4d | template arguments, deduction, placeholders, validation, and identity support | template diagnostics and retained-state invariants shared generic bases | terminal source diagnostics typed; candidate substitution remains explicit status; limits/invariants bypass it | PA23 template deduction/substitution and retained templates | successful full remains 0; generic logic/runtime sites -86/-125 | -768 text, -1,820 exception table, +168 unwind | frozen neutral; repeated full O1 -0.10% CPU, O3 -0.05% CPU | PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | `63354ba4` | retained |
+| E4e | class/function template formation and exception-specification cache | terminal template diagnostics and cache policy shared generic bases; runtime base selected permanent failure | typed semantic/resource/internal failures; only ordinary semantic disposition is cached failed, all other unwinds remain deferred | PA23 class/function templates and deferred exception-specification demand | successful full remains 0; generic logic/runtime sites -81/-73; internal runtime catches -1 | -11,840 text, -1,460 exception table, -376 unwind | frozen -1.0% user; repeated full O1 -0.14% CPU, O3 -0.17% CPU | PA23 414/414; through-PA23 3,142/3,142; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1123,6 +1124,41 @@ optimization, O1 baseline/candidate aggregate CPU averages 488.695/488.200
 seconds (-0.10%); O3 averages 493.078/492.855 seconds (-0.05%).  The template
 infrastructure migration is dynamically neutral and removes another 2,588
 bytes of text and exception-table data.
+
+### E4e execution record
+
+Class and function template formation now separate terminal source rejection,
+semantic-domain representation ceilings, and retained-state contradictions.
+The slice converts 81 generic logic throws and 73 generic runtime throws.  It
+does not change candidate substitution: expected discarded alternatives still
+use the existing owner-local status instead of throwing.
+
+Dependent function exception specifications no longer use
+`std::runtime_error` inheritance as cache policy.  The typed handler caches
+only `SEMANTIC` failures as permanently failed.  Hard-semantic diagnostics,
+resource exhaustion, internal failures, and other project dispositions restore
+the retryable deferred state and rethrow.  The remaining catch-all solely
+restores that state for allocation or foreign exceptions and rethrows; it does
+not convert an exception into a semantic result.  The PA23 handout already
+describes typed substitution status and deferred instantiation, and
+`300-function-template-exception-demand.t` behaviorally checks lazy demand,
+successful specialization reuse, and recursive class completion without
+depending on compiler source or diagnostic text.
+
+PA23 passes 414/414 and through-PA23 passes 3,142/3,142.  All architecture
+audits pass, including a ratchet to 1,101 generic logic throws, 829 generic
+runtime throws in 173 files, and one remaining internal runtime catch.  The
+PA38 file audit remains at zero fatal findings and 32 established warnings.
+Against `63354ba4`, `.text` changes 6,590,374 -> 6,578,534, `.rodata` stays
+214,240, `.eh_frame_hdr` 51,180 -> 51,156, `.eh_frame` 323,856 -> 323,504,
+and `.gcc_except_table` 157,188 -> 155,728.  Twelve frozen objects remain exact
+at `8545fec6...`; baseline/candidate user medians are 0.480/0.475 seconds.
+
+The initial full block was within 1%, so a mirrored B/A/A/B block was run.
+All 222 requested-O1 and O3 objects match in all lanes.  Across eight lanes
+per optimization, O1 baseline/candidate aggregate CPU averages
+488.263/487.565 seconds (-0.14%), and O3 averages 492.643/491.805 seconds
+(-0.17%).  The result is dynamically neutral and favorable in code size.
 
 ## Initial code map
 

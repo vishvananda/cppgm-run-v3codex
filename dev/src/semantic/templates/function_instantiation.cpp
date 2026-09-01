@@ -1,9 +1,9 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/extensions/function_control_attributes.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,7 +42,7 @@ public:
 		const TemplateSpecializationKey& key)
 	{
 		if (active_ || table == 0)
-			throw std::logic_error("invalid function template request");
+			ThrowInternalCompilerError("invalid function template request");
 		table_ = table;
 		key_ = key;
 		table_->SetRequest(key_, TEMPLATE_REQUEST_IN_PROGRESS);
@@ -51,7 +51,7 @@ public:
 	void Complete(BindingId binding)
 	{
 		if (!active_)
-			throw std::logic_error("inactive function template request");
+			ThrowInternalCompilerError("inactive function template request");
 		table_->SetRequest(key_, TEMPLATE_REQUEST_SUCCEEDED, binding);
 		active_ = false;
 	}
@@ -95,7 +95,7 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 				pattern.abi_function_parameter_types.size() ||
 		program->function_template_abi_recipes.size() >=
 			kNoFunctionTemplateAbiRecipe)
-		throw std::runtime_error("too many function template ABI recipes");
+		ThrowSemanticResourceLimit("too many function template ABI recipes");
 	const std::uint32_t shape_begin = static_cast<std::uint32_t>(
 		program->function_template_parameter_shapes.size());
 	const std::uint32_t source_type_begin = static_cast<std::uint32_t>(
@@ -112,13 +112,13 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 		EntityRecord& entity = program->entities[shape_record.entity];
 		if (entity.template_parameter_ordinal != kNoTemplateParameter &&
 			entity.template_parameter_ordinal != parameter)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template ABI proxy ordinal diverged");
 		entity.template_parameter_ordinal =
 			static_cast<std::uint32_t>(parameter);
 	}
 	if (pattern.abi_template_parameter_types.size() != parameters.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"function template ABI source-type recipe is incomplete");
 	program->function_template_abi_template_parameter_types.insert(
 		program->function_template_abi_template_parameter_types.end(),
@@ -127,7 +127,7 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 	if (!program->types.IsFunction(pattern.shape_type) ||
 		program->types.Get(pattern.shape_type).parameter_count !=
 			pattern.abi_function_parameter_types.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"function template ABI parameter source-type recipe is incomplete");
 	program->function_template_abi_function_parameter_types.insert(
 		program->function_template_abi_function_parameter_types.end(),
@@ -165,7 +165,7 @@ void MarkOverloadedFunctionTemplateAbiRecipes(Program* program,
 			patterns[overloads[overload]].abi_recipe;
 		if (recipe == kNoFunctionTemplateAbiRecipe ||
 			recipe >= program->function_template_abi_recipes.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template overload has no ABI recipe");
 		program->function_template_abi_recipes[recipe].overloaded_pattern = true;
 	}
@@ -308,7 +308,7 @@ void ApplyFunctionTemplateControlAttributes(Program* program,
 	BindingId binding, BindingId canonical, std::uint8_t attributes)
 {
 	if (program->bindings[binding].canonical != canonical)
-		throw std::logic_error("function template control canonical mismatch");
+		ThrowInternalCompilerError("function template control canonical mismatch");
 	ApplyFunctionControlAttributes(program, binding, attributes);
 }
 
@@ -470,7 +470,7 @@ void InheritFunctionParameterMetadata(FunctionTemplatePattern* retained,
 			incoming->function_parameter_defaults.size() ||
 		retained->function_parameter_nondeduced !=
 			incoming->function_parameter_nondeduced)
-		throw std::runtime_error("function template parameter count mismatch");
+		ThrowSemanticError("function template parameter count mismatch");
 	FunctionTemplatePattern* destination = incoming_is_definition ?
 		incoming : retained;
 	const FunctionTemplatePattern& source = incoming_is_definition ?
@@ -513,11 +513,11 @@ void MergeFunctionTemplateDefaults(FunctionTemplatePattern* retained,
 			retained->parameters.size() ||
 		incoming.default_context_by_parameter.size() !=
 			incoming.parameters.size())
-		throw std::logic_error("function template default metadata mismatch");
+		ThrowInternalCompilerError("function template default metadata mismatch");
 	for (std::size_t i = 0; i < retained->parameters.size(); ++i)
 		if (retained->parameters[i].default_argument != kNoNode &&
 			incoming.parameters[i].default_argument != kNoNode)
-			throw std::runtime_error("duplicate default template argument");
+			ThrowSemanticError("duplicate default template argument");
 
 	std::vector<std::uint32_t> remapped(
 		incoming.default_contexts.size(), kNoDumpEdge);
@@ -528,12 +528,12 @@ void MergeFunctionTemplateDefaults(FunctionTemplatePattern* retained,
 			incoming.default_context_by_parameter[i];
 		if (source == kNoDumpEdge ||
 			source >= incoming.default_contexts.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template default has no declaration context");
 		if (remapped[source] == kNoDumpEdge)
 		{
 			if (retained->default_contexts.size() >= kNoDumpEdge)
-				throw std::runtime_error(
+				ThrowSemanticResourceLimit(
 					"too many function template default contexts");
 			remapped[source] = static_cast<std::uint32_t>(
 				retained->default_contexts.size());
@@ -566,7 +566,7 @@ void Analyzer::InheritFunctionTemplateResultLookups(
 	FunctionTemplatePattern* destination)
 {
 	if (!destination)
-		throw std::logic_error("function template result lookup has no target");
+		ThrowInternalCompilerError("function template result lookup has no target");
 	NodeId source_global_owner = kNoNode;
 	NodeId destination_global_owner = kNoNode;
 	(void)EquivalentResultRootLookup(source, *destination,
@@ -692,7 +692,7 @@ void Analyzer::InheritFunctionTemplateResultLookups(
 						kind == BIND_TYPE || kind == BIND_TYPE_ALIAS;
 				}
 				if (expanded_type) continue;
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"equivalent function template result lookup diverged");
 			}
 			used[match] = 1;
@@ -739,7 +739,7 @@ void Analyzer::InheritFunctionTemplateResultLookups(
 					break;
 				}
 			if (match == destination_calls.size())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"equivalent function template retained call diverged");
 			used_calls[match] = 1;
 			CopyRetainedCallLookup(source_calls[i], destination_calls[match]);
@@ -747,7 +747,7 @@ void Analyzer::InheritFunctionTemplateResultLookups(
 	}
 	if (!expanded_equivalent &&
 		remapped.size() != source.result_lookup_facts.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"function template result lookup remap is incomplete");
 	std::sort(remapped.begin(), remapped.end(),
 		[](const FunctionTemplateResultLookupFact& left,
@@ -764,10 +764,10 @@ void Analyzer::AdoptFunctionTemplateDefinition(
 	FunctionTemplatePattern* incoming, bool explicit_member_definition)
 {
 	if (!retained || !incoming)
-		throw std::logic_error("function template definition has no pattern");
+		ThrowInternalCompilerError("function template definition has no pattern");
 	if (retained->defined && (!explicit_member_definition ||
 		retained->explicit_member_definition))
-		throw std::runtime_error("duplicate function template definition");
+		ThrowSemanticError("duplicate function template definition");
 	retained->lexical_scope = incoming->lexical_scope;
 	retained->specifiers = incoming->specifiers;
 	retained->declarator = incoming->declarator;
@@ -856,7 +856,7 @@ void Analyzer::RegisterFunctionTemplateFriend(
 	std::size_t pattern_index, EntityId owner, bool hidden)
 {
 	if (pattern_index >= function_templates_.size() || owner == kNoEntity)
-		throw std::logic_error("invalid function template friend owner");
+		ThrowInternalCompilerError("invalid function template friend owner");
 	FunctionTemplatePattern& pattern = function_templates_[pattern_index];
 	if (std::find(pattern.friend_owners.begin(), pattern.friend_owners.end(),
 		owner) == pattern.friend_owners.end())
@@ -1049,7 +1049,7 @@ void Analyzer::RegisterFunctionTemplatePattern(NodeId target,
 	TypeId dependent_result_shape, bool dependent_exception_specification)
 {
 	const NamePath path = DeclaratorNamePath(declarator);
-	if (path.Empty()) throw std::runtime_error("function template has no name");
+	if (path.Empty()) ThrowSemanticError("function template has no name");
 	FunctionTemplatePattern pattern;
 	pattern.lexical_scope = scope;
 	pattern.name = path.Last();
@@ -1107,7 +1107,7 @@ void Analyzer::RegisterFunctionTemplatePattern(NodeId target,
 				ResolveOwner(scope, path);
 		}
 		if (pattern.owner == kNoScope)
-			throw std::runtime_error("function template owner not found");
+			ThrowSemanticError("function template owner not found");
 		if (program_->EntityForScope(pattern.owner) != kNoEntity)
 			pattern.lexical_scope =
 				TemplateLexicalScope(scope, pattern.owner);
@@ -1164,7 +1164,7 @@ void Analyzer::RegisterFunctionTemplatePattern(NodeId target,
 		friend_owner = class_scope == kNoScope ? kNoEntity :
 			program_->EntityForScope(class_scope);
 		if (friend_owner == kNoEntity)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"friend function template has no class owner");
 		if (qualified_friend) pattern.owner = ResolveOwner(scope, path);
 		else
@@ -1180,12 +1180,12 @@ void Analyzer::RegisterFunctionTemplatePattern(NodeId target,
 	else if (pattern.owner == kNoScope)
 		pattern.owner = ResolveOwner(scope, path);
 	if (pattern.owner == kNoScope)
-		throw std::runtime_error("function template owner not found");
+		ThrowSemanticError("function template owner not found");
 	pattern.trailing_return_syntax = FindChild(declarator, ::cppgm::syntax::STAG_TRAILING_RETURN_TYPE);
 	const bool defer_trailing_return = dependent_trailing_return;
 	const EntityId member_owner = program_->EntityForScope(pattern.owner);
 	if (special_member_template && member_owner == kNoEntity)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"special-member template owner is not a class");
 	const bool nonstatic_member = member_owner != kNoEntity &&
 		shape_spec.storage_class != STORAGE_CLASS_STATIC;
@@ -1200,7 +1200,7 @@ void Analyzer::RegisterFunctionTemplatePattern(NodeId target,
 	ConfigureFunctionTemplateException(&pattern, declarator, shape_declarator);
 	ValidateFunctionTemplatePatternResults(&pattern, shape_declarator, shape_scope,
 		parameter_names, defer_trailing_return);
-	if (!program_->types.IsFunction(shape_declarator.type)) throw std::runtime_error(
+	if (!program_->types.IsFunction(shape_declarator.type)) ThrowSemanticError(
 			"function template has non-function declaration");
 	if (shape_spec.is_constexpr && !pattern.constructor_template)
 		shape_declarator.type = ApplyConstexprMemberFunctionType(
@@ -1212,12 +1212,12 @@ void Analyzer::RegisterFunctionTemplatePattern(NodeId target,
 	CaptureFunctionTemplateDefaultContexts(&pattern);
 	if (pattern.constructor_template && pattern.name !=
 		program_->entities[member_owner].identity_name)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"only constructor special-member templates are supported");
 	if (pattern.conversion_template &&
 		(!shape_declarator.parameters.empty() ||
 		 program_->types.Get(shape_declarator.type).child != shape_spec.type))
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"invalid conversion function template declarator");
 	if (pattern.constructor_template)
 		RecordConstructorTemplateDeclaration(*arena_, program_, member_owner,
@@ -1241,7 +1241,7 @@ void Analyzer::RegisterFunctionTemplatePattern(NodeId target,
 		if (prior.nonthrowing != pattern.nonthrowing ||
 			prior.dependent_exception_specification !=
 				pattern.dependent_exception_specification)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"conflicting function template exception specification");
 		if (friend_owner != kNoEntity)
 			RegisterFunctionTemplateFriend(
@@ -1257,10 +1257,10 @@ void Analyzer::RegisterFunctionTemplatePattern(NodeId target,
 		return;
 	}
 	if (explicit_member_definition)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"explicit member template definition target was not found");
 	if (friend_owner != kNoEntity && qualified_friend)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"qualified friend function template was not declared");
 	pattern.abi_recipe = PublishFunctionTemplateAbiRecipe(program_, parameters,
 		function_template_shape_parameters_, pattern);
@@ -1463,7 +1463,7 @@ ScopeId Analyzer::BindFunctionTemplateArguments(
 	if (parameter_offsets.size() != pattern.parameters.size() + 1 ||
 		parameter_offsets.empty() || parameter_offsets.front() != 0 ||
 		parameter_offsets.back() != arguments.size())
-		throw std::logic_error("function template argument offsets are invalid");
+		ThrowInternalCompilerError("function template argument offsets are invalid");
 	const ScopeId template_scope = NewScope(pattern.lexical_scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(pattern.lexical_scope));
 	for (std::size_t parameter = 0;
@@ -1472,7 +1472,7 @@ ScopeId Analyzer::BindFunctionTemplateArguments(
 		const std::size_t first = parameter_offsets[parameter];
 		const std::size_t last = parameter_offsets[parameter + 1];
 		if (first > last || last > arguments.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template argument offset range is invalid");
 		if (pattern.parameters[parameter].pack)
 			BindTemplateArgumentPack(template_scope,
@@ -1480,7 +1480,7 @@ ScopeId Analyzer::BindFunctionTemplateArguments(
 		else
 		{
 			if (last != first + 1)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"fixed function template parameter has invalid arity");
 			BindTemplateArgument(template_scope, pattern.parameters[parameter],
 				arguments[first]);
@@ -1561,14 +1561,14 @@ DeclaratorInfo Analyzer::BuildFunctionTemplateSpecializationDeclarator(
 	const std::size_t metadata_count =
 		pattern.function_parameter_names.size();
 	if (metadata_count != pattern.function_parameter_defaults.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"function template parameter metadata is truncated");
 	const std::size_t pack_position = metadata_count == 0 ? 0 :
 		metadata_count - 1;
 	if (parsed.parameters.size() != metadata_count &&
 		(!pattern.function_parameter_pack || metadata_count == 0 ||
 		 parsed.parameters.size() < pack_position))
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"function template parameter metadata does not match declarator");
 	for (std::size_t parameter = 0;
 		parameter < parsed.parameters.size(); ++parameter)
@@ -1608,7 +1608,7 @@ void Analyzer::UpgradeFunctionTemplateSpecializations(
 	std::size_t index)
 {
 	if (index >= function_templates_.size())
-		throw std::logic_error("invalid function template upgrade");
+		ThrowInternalCompilerError("invalid function template upgrade");
 	const FunctionTemplatePattern& pattern = function_templates_[index];
 	const std::vector<BindingId> specializations =
 		pattern.specialization_bindings;
@@ -1619,7 +1619,7 @@ void Analyzer::UpgradeFunctionTemplateSpecializations(
 	const std::vector<std::uint32_t> parameter_offsets =
 		pattern.specialization_parameter_offsets;
 	if (specialization_offsets.size() != specializations.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"function template specialization offsets are invalid");
 	for (std::size_t specialization = 0;
 		specialization < specializations.size(); ++specialization)
@@ -1629,7 +1629,7 @@ void Analyzer::UpgradeFunctionTemplateSpecializations(
 			specialization_offsets[specialization + 1] :
 			specialization_arguments.size();
 		if (first > last || last > specialization_arguments.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template specialization argument range is invalid");
 		std::vector<TemplateArgument> arguments;
 		arguments.reserve(last - first);
@@ -1643,7 +1643,7 @@ void Analyzer::UpgradeFunctionTemplateSpecializations(
 			if (partition_first > parameter_offsets.size() ||
 				pattern.parameters.size() + 1 >
 					parameter_offsets.size() - partition_first)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"function template specialization partitions are invalid");
 			partitions.assign(parameter_offsets.begin() + partition_first,
 				parameter_offsets.begin() + partition_first +
@@ -1651,7 +1651,7 @@ void Analyzer::UpgradeFunctionTemplateSpecializations(
 		}
 		else if (!BuildFunctionTemplateArgumentOffsets(
 			pattern.parameters, arguments.size(), &partitions))
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template specialization shape is invalid");
 		const ScopeId template_scope =
 			BindFunctionTemplateArguments(pattern, arguments, partitions);
@@ -1665,7 +1665,7 @@ void Analyzer::UpgradeFunctionTemplateSpecializations(
 			spec.placeholder_cv);
 		if (function.explicit_specialization) continue;
 		if (function.type != parsed.type)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"function template definition does not match declaration");
 		const bool constexpr_specialization = spec.is_constexpr &&
 			IsConstexprCallableType(parsed.type, pattern.constructor_template);
@@ -1695,7 +1695,7 @@ BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<TypeId>& arguments)
 {
 	if (index >= function_templates_.size())
-		throw std::logic_error("invalid PA12 function template pattern");
+		ThrowInternalCompilerError("invalid PA12 function template pattern");
 	const FunctionTemplatePattern& pattern = function_templates_[index];
 	std::vector<std::uint32_t> offsets;
 	if (!BuildFunctionTemplateArgumentOffsets(
@@ -1719,7 +1719,7 @@ BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<TemplateArgument>& arguments)
 {
 	if (index >= function_templates_.size())
-		throw std::logic_error("invalid PA12 function template pattern");
+		ThrowInternalCompilerError("invalid PA12 function template pattern");
 	const FunctionTemplatePattern& pattern = function_templates_[index];
 	std::vector<std::uint32_t> offsets;
 	if (!BuildFunctionTemplateArgumentOffsets(
@@ -1733,7 +1733,7 @@ void Analyzer::PublishFunctionTemplateSpecialMemberRole(
 {
 	if (!pattern.constructor_template && !pattern.conversion_template) return;
 	if (member_owner == kNoEntity)
-		throw std::logic_error(pattern.constructor_template ?
+		ThrowInternalCompilerError(pattern.constructor_template ?
 			"constructor template has no class owner" :
 			"conversion function template has no class owner");
 	BindingRecord& record = program_->bindings[binding];
@@ -1782,7 +1782,7 @@ bool Analyzer::MaterializeFunctionTemplateDefaults(
 	std::vector<TemplateArgument>* completed)
 {
 	if (!completed)
-		throw std::logic_error("missing completed function template arguments");
+		ThrowInternalCompilerError("missing completed function template arguments");
 	const EntityId member_owner = program_->EntityForScope(pattern.owner);
 	const EntityId access_owner = member_owner != kNoEntity ? member_owner :
 		pattern.friend_owners.empty() ? kNoEntity : pattern.friend_owners.front();
@@ -1790,7 +1790,7 @@ bool Analyzer::MaterializeFunctionTemplateDefaults(
 	*completed = arguments;
 	if (pattern.default_context_by_parameter.size() !=
 		pattern.parameters.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"function template default context map is truncated");
 	std::vector<ScopeId> default_scopes(
 		pattern.default_contexts.size(), kNoScope);
@@ -1799,7 +1799,7 @@ bool Analyzer::MaterializeFunctionTemplateDefaults(
 		std::size_t parameter_index)
 	{
 		if (parameter_index >= context.parameters.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template default context has wrong arity");
 		const std::size_t first = parameter_offsets[parameter_index];
 		const std::size_t last = parameter_offsets[parameter_index + 1];
@@ -1842,12 +1842,12 @@ bool Analyzer::MaterializeFunctionTemplateDefaults(
 			pattern.default_context_by_parameter[parameter_index];
 		if (context_index == kNoDumpEdge ||
 			context_index >= pattern.default_contexts.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template default has no retained context");
 		const FunctionTemplateDefaultContext& context =
 			pattern.default_contexts[context_index];
 		if (context.parameters.size() != pattern.parameters.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template default context has wrong arity");
 		ScopeId& default_scope = default_scopes[context_index];
 		if (default_scope == kNoScope)
@@ -1863,7 +1863,7 @@ bool Analyzer::MaterializeFunctionTemplateDefaults(
 		NodeId source = FirstSemanticChild(
 			source_parameter.default_argument);
 		if (source == kNoNode)
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"empty function template default argument");
 		if (source_parameter.kind == TEMPLATE_ARGUMENT_TYPE)
 		{
@@ -1905,7 +1905,7 @@ bool Analyzer::MaterializeFunctionTemplateDefaults(
 					RecordCandidateSubstitutionFailure();
 					return false;
 				}
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"default non-type function template argument is not constant");
 			}
 		}
@@ -1952,7 +1952,7 @@ BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<std::uint32_t>& parameter_offsets)
 {
 	if (index >= function_templates_.size())
-		throw std::logic_error("invalid PA12 function template pattern");
+		ThrowInternalCompilerError("invalid PA12 function template pattern");
 	const FunctionTemplatePattern& pattern = function_templates_[index];
 	if (parameter_offsets.size() != pattern.parameters.size() + 1 ||
 		parameter_offsets.empty() || parameter_offsets.front() != 0 ||
@@ -2086,7 +2086,7 @@ BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	PublishFunctionTemplateInternalEmission(program_, binding, canonical_binding, completed);
 	if (pattern.abi_recipe == kNoFunctionTemplateAbiRecipe ||
 		pattern.abi_recipe >= program_->function_template_abi_recipes.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"function template specialization has no ABI recipe");
 	binding_record.function_template_abi_recipe = pattern.abi_recipe;
 	program_->bindings[canonical_binding].function_template_abi_recipe =
@@ -2163,7 +2163,7 @@ BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	FunctionTemplatePattern& mutable_pattern = function_templates_[index];
 	if (mutable_pattern.specialization_arguments.size() >
 		std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error(
+		ThrowSemanticResourceLimit(
 			"too many function template specialization arguments");
 	mutable_pattern.specialization_bindings.push_back(binding);
 	mutable_pattern.specialization_argument_offsets.push_back(
@@ -2176,7 +2176,7 @@ BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	{
 		if (mutable_pattern.specialization_parameter_offsets.size() >
 			std::numeric_limits<std::uint32_t>::max() - parameter_offsets.size())
-			throw std::runtime_error(
+			ThrowSemanticResourceLimit(
 				"too many function template specialization partitions");
 		mutable_pattern.specialization_parameter_offsets.insert(
 			mutable_pattern.specialization_parameter_offsets.end(),
@@ -2202,11 +2202,11 @@ void Analyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 	if (state == EXCEPTION_SPECIFICATION_FAILED)
 	{
 		++function_template_exception_specification_cache_hits_;
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"invalid dependent function exception specification");
 	}
 	if (state == EXCEPTION_SPECIFICATION_IN_PROGRESS)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"recursive dependent function exception specification");
 	GetMutableFunction(binding).exception_specification_state =
 		EXCEPTION_SPECIFICATION_IN_PROGRESS;
@@ -2219,7 +2219,7 @@ void Analyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 		{
 			const EntityId owner = program_->bindings[binding].member_owner;
 			if (owner == kNoEntity || owner >= program_->entities.size())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"destructor has no class owner");
 			if (!program_->entities[owner].layout_complete)
 			{
@@ -2249,7 +2249,7 @@ void Analyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 			}
 			BindingRecord& completed = program_->bindings[binding];
 			if (completed.exception_type_count != 0)
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"implicit destructor has explicit exception types");
 			const FunctionExceptionBoundaryKind boundary = nonthrowing ?
 				FUNCTION_EXCEPTION_BOUNDARY_TERMINATE :
@@ -2257,7 +2257,7 @@ void Analyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 			FunctionInfo& completed_function = GetMutableFunction(binding);
 			if (completed_function.exception_specification_configured &&
 				completed.exception_boundary != boundary)
-				throw std::runtime_error(
+				ThrowSemanticError(
 					"conflicting function exception specification");
 			completed.exception_boundary = boundary;
 			completed.exception_type_begin = static_cast<std::uint32_t>(
@@ -2290,7 +2290,7 @@ void Analyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 		else
 		{
 			if (function.template_pattern >= function_templates_.size())
-				throw std::logic_error(
+				ThrowInternalCompilerError(
 					"deferred exception specification has no owner");
 			const FunctionTemplatePattern& pattern =
 				function_templates_[function.template_pattern];
@@ -2314,10 +2314,16 @@ void Analyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 				pattern.declarator, scope, true);
 		}
 	}
-	catch (const std::runtime_error&)
+	catch (const CompilerError& error)
 	{
+		// Only an ordinary source-semantic failure is stable enough to cache.
+		// Hard diagnostics, resource exhaustion, and compiler failures may be
+		// affected by the surrounding instantiation and remain retryable.
+		const CompilerErrorDisposition disposition = error.Disposition();
 		GetMutableFunction(binding).exception_specification_state =
-			EXCEPTION_SPECIFICATION_FAILED;
+			disposition == CompilerErrorDisposition::SEMANTIC ?
+				EXCEPTION_SPECIFICATION_FAILED :
+				EXCEPTION_SPECIFICATION_DEFERRED;
 		throw;
 	}
 	catch (...)
@@ -2341,7 +2347,7 @@ void Analyzer::RecordFunctionTemplateUsing(ScopeId owner,
 	NameId name, std::size_t pattern, AccessKind access)
 {
 	if (pattern > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many function template patterns");
+		ThrowSemanticResourceLimit("too many function template patterns");
 	const std::uint64_t key =
 		(static_cast<std::uint64_t>(owner) << 32) | name;
 	CompactIndexSequence& indexed =
@@ -2350,14 +2356,14 @@ void Analyzer::RecordFunctionTemplateUsing(ScopeId owner,
 	{
 		const std::size_t fact = indexed[i];
 		if (fact >= function_template_using_facts_.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template using fact index is invalid");
 		if (function_template_using_facts_[fact].pattern == pattern)
 			return;
 	}
 	if (function_template_using_facts_.size() >
 		std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many function template using facts");
+		ThrowSemanticResourceLimit("too many function template using facts");
 	indexed.Push(function_template_using_facts_.size());
 	function_template_using_facts_.push_back(FunctionTemplateUsingFact(
 		static_cast<std::uint32_t>(pattern), access));
@@ -2369,7 +2375,7 @@ BindingId Analyzer::MaterializeFunctionTemplateUsing(ScopeId owner,
 	if (specialization == kNoBinding ||
 		specialization >= program_->bindings.size() ||
 		pattern >= function_templates_.size())
-		throw std::logic_error(
+		ThrowInternalCompilerError(
 			"invalid function template using specialization");
 	const std::uint64_t key =
 		(static_cast<std::uint64_t>(owner) << 32) | name;
@@ -2381,7 +2387,7 @@ BindingId Analyzer::MaterializeFunctionTemplateUsing(ScopeId owner,
 	{
 		const std::size_t fact = (*indexed)[i];
 		if (fact >= function_template_using_facts_.size())
-			throw std::logic_error(
+			ThrowInternalCompilerError(
 				"function template using fact index is invalid");
 		if (function_template_using_facts_[fact].pattern == pattern)
 		{
