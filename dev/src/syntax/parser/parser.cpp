@@ -666,7 +666,8 @@ private:
 	NodeId ParseBracedInitList();
 	NodeId ParsePackExpansion(NodeId value);
 	NodeId ParseParameterClause();
-	NodeId ParseDeclarator(bool abstract, TextId* name = 0);
+	ParserAttempt TryParseParameterClause(bool speculative);
+	NodeId ParseDeclarator(bool abstract, TextId* name = 0, bool speculative = false);
 	NodeId ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type = 0);
 	bool ParseTypeId(NodeId parent, bool attach = true);
 	NodeId ParseCtorInitializer();
@@ -864,37 +865,34 @@ bool SyntaxParser::ParseTypeId(NodeId parent, bool attach)
 	}
 	arena_.Add(type_id, specifiers);
 	const Mark declarator_mark = Checkpoint();
-	NodeId declarator = kNoNode;
-	try
-	{
-		declarator = ParseDeclarator(true);
-	}
-	catch (const std::runtime_error&) {
-		// `&& (` can enter an abstract declarator speculatively; rollback lets
-		// the template-argument or cast caller retry it as an expression.
-	}
+	// A committed clause error is a no-match at this speculative boundary.
+	const NodeId declarator = ParseDeclarator(true, 0, true);
 	if (declarator != kNoNode) arena_.Add(type_id, declarator);
 	else Rollback(declarator_mark);
 	if (attach) arena_.Add(parent, type_id);
 	return true;
 }
-NodeId SyntaxParser::ParseParameterClause()
-{
-	if (!Match(OP_LPAREN)) return kNoNode;
+NodeId SyntaxParser::ParseParameterClause() {
+	const ParserAttempt attempt = TryParseParameterClause(false);
+	if (attempt.CommittedError()) throw Error(attempt.Diagnostic());
+	return attempt.node; }
+ParserAttempt SyntaxParser::TryParseParameterClause(bool speculative) {
+	if (!Match(OP_LPAREN)) return ParserAttempt(PARSER_NO_MATCH);
 	const NodeId clause = arena_.Make("parameter-clause");
-	if (Match(OP_RPAREN)) return clause;
+	if (Match(OP_RPAREN)) return ParserAttempt(PARSER_MATCHED, clause);
 	if (Match(OP_DOTS))
 	{
 		arena_.Add(clause, arena_.Make("parameter-pack", "..."));
-		Expect(OP_RPAREN);
-		return clause;
+		if (!Match(OP_RPAREN))
+			return ParserAttempt(PARSER_EXPECTED_CLOSE_PAREN);
+		return ParserAttempt(PARSER_MATCHED, clause);
 	}
 	while (true)
 	{
 		const NodeId parameter = arena_.Make("parameter-declaration");
-		std::string parameter_type;
-		const NodeId specifiers = ParseDeclSpecifierSeq(false, &parameter_type);
-		if (specifiers == kNoNode) throw Error("expected parameter declaration");
+		const NodeId specifiers = ParseDeclSpecifierSeq(false);
+		if (specifiers == kNoNode)
+			return ParserAttempt(PARSER_EXPECTED_PARAMETER);
 		arena_.Add(parameter, specifiers);
 		bool pack_before_name = Match(OP_DOTS);
 		const Mark declarator_mark = Checkpoint();
@@ -907,7 +905,7 @@ NodeId SyntaxParser::ParseParameterClause()
 		{
 			position_ += 1;
 			const std::string inner_type = Spelling(position_++);
-			Expect(OP_RPAREN);
+			++position_;
 			declarator = arena_.Make("declarator");
 			const NodeId inner_clause = arena_.Make("parameter-clause");
 			const NodeId inner_parameter = arena_.Make("parameter-declaration");
@@ -921,11 +919,11 @@ NodeId SyntaxParser::ParseParameterClause()
 			arena_.Add(inner_clause, inner_parameter);
 			arena_.Add(declarator, inner_clause);
 		}
-		else declarator = ParseDeclarator(false, &name);
+		else declarator = ParseDeclarator(false, &name, speculative);
 		if (declarator == kNoNode)
 		{
 			Rollback(declarator_mark);
-			declarator = ParseDeclarator(true, &name);
+			declarator = ParseDeclarator(true, &name, speculative);
 		}
 		if (declarator != kNoNode)
 		{
@@ -946,7 +944,8 @@ NodeId SyntaxParser::ParseParameterClause()
 			const NodeId default_argument = arena_.Make("default-argument");
 			const NodeId initializer = arena_.Make("initializer");
 			const NodeId value = ParseExpression(2);
-			if (value == kNoNode) throw Error("expected default argument");
+			if (value == kNoNode)
+				return ParserAttempt(PARSER_EXPECTED_DEFAULT_ARGUMENT);
 			arena_.Add(initializer, value);
 			arena_.Add(default_argument, initializer);
 			arena_.Add(parameter, default_argument);
@@ -959,11 +958,11 @@ NodeId SyntaxParser::ParseParameterClause()
 			break;
 		}
 	}
-	Expect(OP_RPAREN);
-	return clause;
+	if (!Match(OP_RPAREN))
+		return ParserAttempt(PARSER_EXPECTED_CLOSE_PAREN);
+	return ParserAttempt(PARSER_MATCHED, clause);
 }
-NodeId SyntaxParser::ParseDeclarator(bool abstract, TextId* name)
-{
+NodeId SyntaxParser::ParseDeclarator(bool abstract, TextId* name, bool speculative) {
 	const Mark mark = Checkpoint();
 	const NodeId result = arena_.Make(abstract ?
 		"abstract-declarator" : "declarator");
@@ -1018,7 +1017,7 @@ NodeId SyntaxParser::ParseDeclarator(bool abstract, TextId* name)
 	{
 		const NodeId nested_declarator = arena_.Make("nested-declarator");
 		TextId nested_name = 0;
-		const NodeId nested = ParseDeclarator(abstract, &nested_name);
+		const NodeId nested = ParseDeclarator(abstract, &nested_name, speculative);
 		if (nested == kNoNode)
 		{
 			Rollback(mark);
@@ -1079,10 +1078,18 @@ NodeId SyntaxParser::ParseDeclarator(bool abstract, TextId* name)
 					  (!StartsQualifiedCallArgument() && (IsLikelyTypeIdentifier(position_ + 1) ||
 					   QualifiedStartsTypeAt(position_ + 1)))));
 			if (!parameter_like) break;
-			const Mark parameter_mark = Checkpoint(); NodeId parameters = kNoNode;
-			try { parameters = ParseParameterClause(); }
-			catch (const std::runtime_error&) { Rollback(parameter_mark); if (abstract || !consumed) throw; break; }
-			arena_.Add(result, parameters);
+			const Mark parameter_mark = Checkpoint();
+			const ParserAttempt parameters =
+				TryParseParameterClause(speculative);
+			if (parameters.CommittedError())
+			{
+				Rollback(parameter_mark);
+				if (!abstract && consumed) break;
+				if (!speculative) throw Error(parameters.Diagnostic());
+				Rollback(mark); return kNoNode;
+			}
+			if (parameters.status == PARSER_NO_MATCH) break;
+			arena_.Add(result, parameters.node);
 			consumed = true;
 			while (true)
 			{

@@ -1,6 +1,6 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E1 baseline, taxonomy, and terminal boundaries complete
+Status: in progress; E0-E2 baseline, taxonomy, and syntax recovery complete
 
 Date: 2026-09-01
 
@@ -697,8 +697,9 @@ Append one row for each retained or rejected increment:
 
 | ID | Family/sites | Old ambiguity | New type/status | Earliest coverage | Dynamic throws before/after | Text/EH/RTTI delta | Fast/full timing | Correctness and hashes | Commit | Result |
 | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- |
-| E0 | baseline and audit | generic standard categories and broad catches | report-only ceilings plus native throw census | PA1-PA39 | frozen 1; full 302; focused counts below | section baseline below | frozen/full baseline below | 5,473/5,473; output hashes below | pending | retained |
-| E1 | taxonomy and terminal boundaries | standard bases and dead not-implemented exit route | compact disposition/domain types; typed terminal adapter before fallback | staged tools and PA10-PA38 integrated driver | valid-input throws unchanged; generic runtime sites -20 | +384 text, -4 exception table, +88 unwind | frozen wall 0.520/0.520 s | through-PA23 3,139/3,139; focused later suites pass | pending | retained |
+| E0 | baseline and audit | generic standard categories and broad catches | report-only ceilings plus native throw census | PA1-PA39 | frozen 1; full 302; focused counts below | section baseline below | frozen/full baseline below | 5,473/5,473; output hashes below | `8b2216ff` | retained |
+| E1 | taxonomy and terminal boundaries | standard bases and dead not-implemented exit route | compact disposition/domain types; typed terminal adapter before fallback | staged tools and PA10-PA38 integrated driver | valid-input throws unchanged; generic runtime sites -20 | +384 text, -4 exception table, +88 unwind | frozen wall 0.520/0.520 s | through-PA23 3,139/3,139; focused later suites pass | `e9bde193` | retained |
+| E2 | syntax speculation | runtime exception used for type-id/parameter-clause retry | 8-byte matched/no-match/committed-error result; committed `SyntaxError` | PA10 dependent logical template argument and malformed syntax | frozen 1->0; full syntax 231->0; full total 302->71 | +640 text, -76 exception table, +136 unwind | frozen 0.520/0.520 s; full O1/O3 neutral below | through-PA10 586/586; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -808,6 +809,59 @@ with exact 98,736-byte object `8545fec6...`; paired wall and user ratios favor
 the candidate by 0.48% and 1.04%, both within this lane's timer granularity.
 The taxonomy is therefore retained as a neutral correctness boundary, not
 claimed as a performance win.
+
+### E2 execution record
+
+E2 changes every committed parser failure produced by `ParserCursor::Error`
+from a generic runtime error to `SyntaxError`.  The two syntax catches are
+removed rather than merely narrowed.  The exception audit ratchets its generic
+return-helper count from two to one and its internal runtime catches from four
+to two; neither remaining catch is in syntax.
+
+The measured retry is owned by the parameter-clause/type-id parser and now
+uses one register-sized `ParserAttempt`:
+
+| State | Representation | State and rollback owner |
+| --- | --- | --- |
+| matched | syntax node plus `PARSER_MATCHED` | declarator attaches the completed clause |
+| no match | `kNoNode` plus `PARSER_NO_MATCH` | caller retains the pre-probe position |
+| committed error | `kNoNode` plus a compact expected-token/parameter/default code | ordinary caller constructs `SyntaxError`; speculative declarator rolls back its parameter mark and outer declarator mark before returning no-match |
+
+Diagnostic strings are selected only after a committed result.  The carrier
+is statically fixed at eight bytes; an earlier padded node/status/string form
+was tightened before retention because its first two full-source screens were
+about 0.25% higher in aggregate CPU despite removing unwinds.
+
+The native census proves the control-flow change.  Frozen `preprocessor.cpp`
+falls from one parser throw to zero.  The complete 222-object O1 workload falls
+from 302 throws to 71: all 231 `ParserCursor::Expect` events disappear and only
+the already identified constructor-selection family remains.  A malformed
+PA10 parameter-list case still exits through exactly one `SyntaxError`.
+
+PA10 now documents dependent qualified operands in parenthesized logical
+template arguments and owns a behavioral AST fixture for that syntax.  The E1
+compiler accepts the fixture while performing one speculative throw; E2 emits
+the same AST without throwing.  This is grammar/output coverage that a student
+can implement from the handout, not inspection of exception classes or source
+text.  Focused PA10, PA21, and PA23 suites pass 165/165, 149/149, and 414/414;
+the cumulative through-PA10 report passes 586/586.  All architecture audits
+pass and the file audit remains zero-fatal with 32 established warnings.
+
+Against the E1 GCC-O3 producer, E2 changes `.text` 6,623,846 -> 6,624,486,
+`.rodata` 214,176 -> 214,208, `.eh_frame_hdr` 50,844 -> 50,876,
+`.eh_frame` 322,968 -> 323,104, and `.gcc_except_table` 164,924 -> 164,848.
+Three frozen ABBA blocks remain exact at object `8545fec6...`; baseline and
+candidate wall medians are both 0.520 seconds and user medians are 0.480 and
+0.475 seconds.  The paired wall movement is +0.97%, within the serial timer's
+single-tick band.
+
+Fresh 32-way final-carrier full controls reproduce all 222 objects at each
+level.  O1 baseline/candidate are 18.89/18.41 seconds wall and 517.06/513.97
+seconds aggregate CPU; O3 is 18.43/18.31 wall and 516.90/517.63 aggregate CPU.
+Thus the only unfavorable full metric is +0.14% O3 CPU, while O1 CPU improves
+0.60%; neither level shows a material regression.  E2 is retained for typed
+committed failures and elimination of proven successful-control-flow unwinds,
+not claimed as a broad throughput optimization.
 
 ## Initial code map
 

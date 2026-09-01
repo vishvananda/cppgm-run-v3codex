@@ -1,0 +1,40 @@
+1 translation units
+start translation unit 1
+translation-unit
+  template-declaration
+    template-parameter-clause
+      template-parameter-list
+        non-type-template-parameter
+          decl-specifier-seq
+            decl-specifier KW_BOOL:bool
+        type-parameter
+          parameter-key KW_CLASS:class
+    class-specifier enable_if
+      class-key KW_STRUCT:struct
+  template-declaration
+    template-parameter-clause
+      template-parameter-list
+        type-parameter
+          parameter-key KW_CLASS:class
+        type-parameter
+          parameter-key KW_CLASS:class
+    class-specifier same
+      class-key KW_STRUCT:struct
+  template-declaration
+    template-parameter-clause
+      template-parameter-list
+        type-parameter
+          parameter-key KW_CLASS:class
+          identifier T
+        type-parameter
+          parameter-key KW_CLASS:class
+          identifier U
+    simple-declaration
+      decl-specifier-seq
+        decl-specifier enable_if<same<T,U>::value&&(same<T,T>::value||same<U,U>::value),void>::type
+      init-declarator-list
+        init-declarator
+          declarator
+            identifier select
+            parameter-clause
+end translation unit

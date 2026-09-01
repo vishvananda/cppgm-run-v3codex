@@ -1,10 +1,10 @@
 #pragma once
 
 #include "syntax/model/arena.h"
+#include "support/exceptions.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -12,11 +12,39 @@ namespace cppgm
 namespace syntax
 {
 
+enum ParserAttemptStatus : std::uint8_t
+{
+	PARSER_MATCHED,
+	PARSER_NO_MATCH,
+	PARSER_EXPECTED_CLOSE_PAREN,
+	PARSER_EXPECTED_PARAMETER,
+	PARSER_EXPECTED_DEFAULT_ARGUMENT
+};
+
+struct ParserAttempt
+{
+	NodeId node;
+	ParserAttemptStatus status;
+	ParserAttempt(ParserAttemptStatus status_value,
+		NodeId node_value = kNoNode) : node(node_value), status(status_value) {}
+	bool CommittedError() const { return status >= PARSER_EXPECTED_CLOSE_PAREN; }
+	const char* Diagnostic() const
+	{
+		if (status == PARSER_EXPECTED_PARAMETER)
+			return "expected parameter declaration";
+		if (status == PARSER_EXPECTED_DEFAULT_ARGUMENT)
+			return "expected default argument";
+		return "expected OP_RPAREN";
+	}
+};
+static_assert(sizeof(ParserAttempt) == 8,
+	"parser speculation result must stay register-sized");
+
 template <class Derived>
 class ParserCursor
 {
 protected:
-	std::runtime_error Error(const std::string& message) const
+	SyntaxError Error(const std::string& message) const
 	{
 		const Derived& parser = static_cast<const Derived&>(*this);
 		const std::string location =
@@ -27,7 +55,7 @@ protected:
 			std::to_string(parser.tokens_[parser.position_].source_line) + ":" +
 			std::to_string(parser.tokens_[parser.position_].source_column) :
 			std::string();
-		return std::runtime_error(message + location + " at token " +
+		return SyntaxError(message + location + " at token " +
 			std::to_string(parser.position_) +
 			(parser.position_ < parser.tokens_.size() ?
 			 " (`" + Spelling(parser.position_) + "`)" : std::string()));

@@ -192,6 +192,9 @@ PA12 passes consume, including:
 - class members, access labels, bit-fields, base clauses, and constructor
   initializer syntax
 - template declarations with type, non-type, and template-template parameters
+- dependent template arguments whose qualified operands participate in
+  parenthesized logical expressions, even when the prefix could also begin a
+  type-id
 - common template-id, explicit-instantiation, and explicit-specialization syntax
 - `static_assert`
 - declarator-derived syntax, including pointers, references, arrays, function
