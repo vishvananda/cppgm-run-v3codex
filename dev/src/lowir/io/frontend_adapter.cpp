@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstdlib>
-#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -176,7 +175,7 @@ lowir_model::LowType AdaptType(const LowType& type)
 	}
 	case LOW_INVALID: break;
 	}
-	throw std::logic_error("invalid typed LowIR type at native boundary");
+	lowir_model::ThrowLowirInternalError("invalid typed LowIR type at native boundary");
 }
 
 struct AdaptedValues
@@ -189,7 +188,7 @@ void AdaptSymbolReference(std::uint32_t symbol_id,
 	const cppgm::lowering::ir::Program& program, lowir_model::Operand* result)
 {
 	if (symbol_id >= program.symbols.size())
-		throw std::logic_error("invalid typed LowIR symbol operand");
+		lowir_model::ThrowLowirInternalError("invalid typed LowIR symbol operand");
 	const Symbol& symbol = program.symbols[symbol_id];
 	result->kind = lowir_model::Operand::OP_GLOBAL;
 	result->symbol = lowir_model::SymbolId(symbol_id);
@@ -211,19 +210,19 @@ void AdaptOperand(const Operand& operand,
 	case Operand::TEMP:
 		if (operand.id >= values.temporaries.size() ||
 			!values.temporaries[operand.id].valid())
-			throw std::logic_error("invalid typed LowIR temporary operand");
+			lowir_model::ThrowLowirInternalError("invalid typed LowIR temporary operand");
 		result.kind = lowir_model::Operand::OP_TEMP;
 		result.value = values.temporaries[operand.id];
 		break;
 	case Operand::PARAMETER:
 		if (operand.id >= values.parameters.size())
-			throw std::logic_error("invalid typed LowIR parameter operand");
+			lowir_model::ThrowLowirInternalError("invalid typed LowIR parameter operand");
 		result.kind = lowir_model::Operand::OP_TEMP;
 		result.value = values.parameters[operand.id];
 		break;
 	case Operand::SLOT:
 		if (operand.id >= function.slots.size())
-			throw std::logic_error("invalid typed LowIR slot operand");
+			lowir_model::ThrowLowirInternalError("invalid typed LowIR slot operand");
 		result.kind = lowir_model::Operand::OP_SLOT;
 		result.slot = lowir_model::SlotId(operand.id);
 		break;
@@ -342,10 +341,10 @@ void PrepareInstructionValue(const Instruction& instruction,
 {
 	if (instruction.dest == kNoLowId) return;
 	if (instruction.dest >= values->temporaries.size())
-		throw std::logic_error(
+		lowir_model::ThrowLowirInternalError(
 			"typed LowIR result exceeds its dense temporary limit");
 	if (values->temporaries[instruction.dest].valid())
-		throw std::logic_error("duplicate typed LowIR result identity");
+		lowir_model::ThrowLowirInternalError("duplicate typed LowIR result identity");
 	values->temporaries[instruction.dest] =
 		presentation_policy == lowir_model::PRESENTATION_SERIALIZABLE ?
 		lowir_model::append_lowir_generated_value(
@@ -493,7 +492,7 @@ lowir_model::LowOperation AdaptOperation(LowOperation source)
 		"typed and compact LowIR operation tables must stay synchronized");
 	const std::size_t index = static_cast<std::size_t>(source);
 	if (index >= sizeof(operations) / sizeof(operations[0]))
-		throw std::logic_error("invalid typed LowIR operation");
+		lowir_model::ThrowLowirInternalError("invalid typed LowIR operation");
 	return operations[index];
 }
 
@@ -528,7 +527,7 @@ void AdaptInstruction(const Instruction& source,
 	{
 		if (source.dest >= values.temporaries.size() ||
 			!values.temporaries[source.dest].valid())
-			throw std::logic_error("invalid typed LowIR result identity");
+			lowir_model::ThrowLowirInternalError("invalid typed LowIR result identity");
 		target.dest = values.temporaries[source.dest];
 	}
 	if (source.type.kind != LOW_INVALID) target.type = AdaptType(source.type);
@@ -619,7 +618,7 @@ void AdaptInstruction(const Instruction& source,
 			 source.first.kind == Operand::GLOBAL))
 		{
 			if (source.first.id >= program.symbols.size())
-				throw std::logic_error("invalid typed LowIR call target");
+				lowir_model::ThrowLowirInternalError("invalid typed LowIR call target");
 			AdaptBoundaryFacts(
 				program.symbols[source.first.id], &target.call_boundary);
 		}
@@ -628,7 +627,7 @@ void AdaptInstruction(const Instruction& source,
 			if (source.extra_first == kNoLowId ||
 				source.extra_first > program.call_arguments.size() ||
 				source.extra_count > program.call_arguments.size() - source.extra_first)
-				throw std::logic_error("invalid typed LowIR call arguments");
+				lowir_model::ThrowLowirInternalError("invalid typed LowIR call arguments");
 			for (std::size_t i = 0; i < source.extra_count; ++i)
 				AppendAdaptedOperand(
 					program.call_arguments[source.extra_first + i], program, function,
@@ -691,13 +690,13 @@ void AdaptInstruction(const Instruction& source,
 			source.extra_first > program.exception_filter_types.size() ||
 			source.extra_count > program.exception_filter_types.size() -
 				source.extra_first)
-			throw std::logic_error("invalid typed LowIR exception filter types");
+			lowir_model::ThrowLowirInternalError("invalid typed LowIR exception filter types");
 		for (std::size_t i = 0; i < source.extra_count; ++i)
 		{
 			const SymbolId symbol = program.exception_filter_types[
 				source.extra_first + i];
 			if (symbol >= program.symbols.size())
-				throw std::logic_error("invalid exception filter RTTI symbol");
+				lowir_model::ThrowLowirInternalError("invalid exception filter RTTI symbol");
 			lowir_model::Operand type;
 			AdaptSymbolReference(symbol, program, &type);
 			target.args.push_back(type);
@@ -718,7 +717,7 @@ void AdaptInstruction(const Instruction& source,
 	case Instruction::JUMP:
 		target.kind = lowir_model::Instruction::IK_JUMP;
 		if (source.target >= function.blocks.size())
-			throw std::logic_error("invalid typed LowIR jump target");
+			lowir_model::ThrowLowirInternalError("invalid typed LowIR jump target");
 		target.first.kind = lowir_model::Operand::OP_LABEL;
 		target.first.block = lowir_model::BlockId(source.target);
 		break;
@@ -726,7 +725,7 @@ void AdaptInstruction(const Instruction& source,
 		target.kind = lowir_model::Instruction::IK_BRANCH;
 		if (source.target >= function.blocks.size() ||
 			source.alternate >= function.blocks.size())
-			throw std::logic_error("invalid typed LowIR branch target");
+			lowir_model::ThrowLowirInternalError("invalid typed LowIR branch target");
 		target.second.kind = lowir_model::Operand::OP_LABEL;
 		target.second.block = lowir_model::BlockId(source.target);
 		target.third.kind = lowir_model::Operand::OP_LABEL;
@@ -735,7 +734,7 @@ void AdaptInstruction(const Instruction& source,
 	case Instruction::SWITCH:
 		target.kind = lowir_model::Instruction::IK_SWITCH;
 		if (source.target >= function.blocks.size())
-			throw std::logic_error("invalid typed LowIR switch target");
+			lowir_model::ThrowLowirInternalError("invalid typed LowIR switch target");
 		target.second.kind = lowir_model::Operand::OP_LABEL;
 		target.second.block = lowir_model::BlockId(source.target);
 		if (source.extra_count && (source.extra_first == kNoLowId ||
@@ -745,7 +744,7 @@ void AdaptInstruction(const Instruction& source,
 			source.extra_first > program.switch_case_targets.size() ||
 			source.extra_count > program.switch_case_targets.size() -
 				source.extra_first))
-			throw std::logic_error("invalid typed LowIR switch cases");
+			lowir_model::ThrowLowirInternalError("invalid typed LowIR switch cases");
 		for (std::size_t i = 0; i < source.extra_count; ++i)
 		{
 			lowir_model::Operand value;
@@ -759,7 +758,7 @@ void AdaptInstruction(const Instruction& source,
 			const BlockId block =
 				program.switch_case_targets[source.extra_first + i];
 			if (block >= function.blocks.size())
-				throw std::logic_error("invalid typed LowIR switch case target");
+				lowir_model::ThrowLowirInternalError("invalid typed LowIR switch case target");
 			lowir_model::Operand label;
 			label.kind = lowir_model::Operand::OP_LABEL;
 			label.block = lowir_model::BlockId(block);
@@ -782,7 +781,7 @@ void AdaptInstruction(const Instruction& source,
 		if (source.target != kNoLowId)
 		{
 			if (source.target >= function.blocks.size())
-				throw std::logic_error("invalid typed LowIR EH target");
+				lowir_model::ThrowLowirInternalError("invalid typed LowIR EH target");
 			target.first.kind = lowir_model::Operand::OP_LABEL;
 			target.first.block = lowir_model::BlockId(source.target);
 		}
@@ -797,7 +796,7 @@ void DiscardObjectOnlyPresentation(lowir_model::LowirProgram* program)
 		if (!id.valid()) return;
 		const std::uint32_t index = id;
 		if (index >= retained.size())
-			throw std::logic_error(
+			lowir_model::ThrowLowirInternalError(
 				"invalid object-only LowIR presentation identity");
 		retained[index] = 1;
 	};
@@ -1018,7 +1017,7 @@ lowir_model::LowirProgram AdaptTypedLowirForBackend(
 				const std::uint32_t parameter =
 					item.slots[j].parameter_origin;
 				if (parameter >= values.parameters.size())
-					throw std::logic_error(
+					lowir_model::ThrowLowirInternalError(
 						"typed LowIR slot has invalid parameter origin");
 				result.slot_parameter_values[j] = values.parameters[parameter];
 			}
@@ -1030,7 +1029,7 @@ lowir_model::LowirProgram AdaptTypedLowirForBackend(
 		{
 			const BlockId block_id = item.block_order[order];
 			if (block_id >= item.blocks.size())
-				throw std::logic_error("invalid typed LowIR block order");
+				lowir_model::ThrowLowirInternalError("invalid typed LowIR block order");
 			const Block& block = item.blocks[block_id];
 			lowir_model::Block lowered;
 			lowered.id = lowir_model::BlockId(block_id);
@@ -1056,7 +1055,7 @@ lowir_model::LowirProgram AdaptTypedLowirForBackend(
 		{
 			if (!item.block_presentation_order.empty() &&
 				item.block_presentation_order.size() != item.blocks.size())
-				throw std::logic_error(
+				lowir_model::ThrowLowirInternalError(
 					"typed LowIR has no compact block presentation order");
 			result.block_presentation_order = item.block_presentation_order;
 		}

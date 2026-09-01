@@ -1,6 +1,6 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E5 and E6a complete; E6 compiler-object migration is next
+Status: in progress; E0-E6 complete; E7 compiler-core and tool migration is next
 
 Date: 2026-09-01
 
@@ -718,7 +718,8 @@ Append one row for each retained or rejected increment:
 | E5c | post-tokenization, recognition, and hosted intrinsic registry | API/invariant, embedded-grammar, resource-limit, and invalid-token failures shared generic bases | lexical/recognition internal, recognition resource, and lexical source dispositions; explicit shared string-flush boundary | PA2 literal/token behavior, PA5 preprocessing, PA6 invalid-token and grammar acceptance | successful frozen remains 0; generic logic/runtime sites -26/-3 | -640 text, +96 rodata, -200 exception table, -48 unwind | frozen user median 0.450/0.450 s; paired +0.55% noise | PA2 26/26; PA5 70/70; PA6 48/48; through-PA6 292/292; frozen objects exact | `8311aeb4` | retained |
 | E5d | PA3-PA5 macro processor | source, invocation, transport, resource, and state-machine failures shared generic bases | preprocessing source/I/O/resource/internal dispositions and driver invocation type; expected probes/invocation alternatives remain status flow | PA3 controlling expressions, PA4 macro replacement, PA5 directives/includes | successful frozen remains 0; generic logic/runtime sites -22/-56 | -4,800 text, +96 rodata, -708 exception table, +136 unwind | frozen paired user -0.56%; full O1 -0.85%, O3 -0.29% CPU | PA3 20/20; PA4 75/75; PA5 70/70; PA6 48/48; through-PA14 1,082/1,082; 222 O1/O3 objects and 32-way inception exact | `7cf04f4b` | retained |
 | E6a | LowIR text, model identity, serialization, and PA13 CY86 adapter | one parse type mixed malformed input, I/O, limits, and invariants; model helpers used generic bases | format/domain-specific serialized-input, I/O, resource, invocation, and internal failures; valid flow unchanged | PA13 malformed/valid text, identity, role, metadata, phi, and adapter behavior | successful frozen remains 0; 126 `ParseError` sites removed; generic logic/runtime sites -41/-9 | -14,528 text, -64 rodata, +56 EH header, -168 unwind, -2,536 exception table | frozen user -1.12%; full O1 -0.39%, O3 -0.26% CPU | PA13 122/122; through-PA13 965/965; LowIR contract unchanged; 222 O1/O3 objects exact | `23294aa9` | retained |
-| E6b | compiler-object serialization, ELF import, and join | malformed bytes, I/O, size ceilings, link conflicts, and invariants shared generic bases | compiler-object serialized-input/I/O/resource/internal types; no-input and target mismatch are invocation failures; probes stay status-based | PA30 separate/direct/mixed compilation, helper ELF import, duplicate/missing/unresolved link behavior | successful frozen remains 0; generic logic/runtime sites -4/-41 | -5,568 text, +128 rodata, -72 EH header, -480 unwind, -2,060 exception table | frozen 0.450/0.450 s; full O1 -0.23%, O3 neutral CPU | PA30 100/100; through-PA30 4,355/4,355; malformed/I/O fail; 222 O1/O3 objects exact | pending | retained |
+| E6b | compiler-object serialization, ELF import, and join | malformed bytes, I/O, size ceilings, link conflicts, and invariants shared generic bases | compiler-object serialized-input/I/O/resource/internal types; no-input and target mismatch are invocation failures; probes stay status-based | PA30 separate/direct/mixed compilation, helper ELF import, duplicate/missing/unresolved link behavior | successful frozen remains 0; generic logic/runtime sites -4/-41 | -5,568 text, +128 rodata, -72 EH header, -480 unwind, -2,060 exception table | frozen 0.450/0.450 s; full O1 -0.23%, O3 neutral CPU | PA30 100/100; through-PA30 4,355/4,355; malformed/I/O fail; 222 O1/O3 objects exact | `fd1c98ff` | retained |
+| E6c | integrated typed-LowIR adapter | lowering-model identity, bounds, operation, CFG, EH, and presentation invariants used a generic logic base inside adapter loops | LowIR-domain internal failures through the existing shared cold boundary; successful checks unchanged | PA15 source-to-LowIR plus PA37 optimizer and PA38 native consumers | successful frozen remains 0; generic logic sites -23 | -1,280 text, -16 EH header, -72 unwind, -180 exception table | frozen 0.450/0.450 s; full O1 -0.39%, O3 -0.09% CPU | PA15 121/121; PA37 190/190; PA38 45/45; through-PA38 5,477/5,477; 222 O1/O3 objects and 32-way inception exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1527,6 +1528,36 @@ user median; the paired -1.66% result is below timer resolution and recorded as
 neutral.  The final 32-way full controls reproduce all 222 objects and final
 compilers: O1 aggregate CPU averages 501.17/500.02 seconds (-0.23%) and O3
 averages 503.76/503.78 seconds (neutral).
+
+### E6c execution record
+
+The in-memory source-to-LowIR adapter's 23 remaining generic checks are all
+producer-owned invariants: typed operation/type enums, dense result and
+operand identities, call/EH/switch side-table spans, block targets and order,
+parameter origins, and presentation retention.  They do not parse external
+LowIR and therefore use LowIR-domain `InternalCompilerError`, not
+`SerializedInputError`.  The existing shared cold, non-inlined LowIR helper
+keeps exception construction out of the adapter loops; every successful bounds
+or identity check is unchanged.
+
+The instrumented frozen compile remains at zero throws.  Generic logic throws
+fall by 23 and the adapter leaves the generic-file inventory, bringing the
+audit to 789/446/122.  Against `fd1c98ff`, `.text` changes 6,505,638 ->
+6,504,358, `.rodata` remains 214,464, `.eh_frame_hdr` 51,476 -> 51,460,
+`.eh_frame` 322,120 -> 322,048, and `.gcc_except_table` 139,016 -> 138,836.
+Four frozen A/B/B/A blocks reproduce object hash `8545fec6...` and tie at a
+0.450-second user median; the paired +0.56% fluctuation is below resolution.
+The 32-way full controls reproduce all 222 objects and final compilers: O1
+aggregate CPU averages 500.80/498.84 seconds (-0.39%) and O3 averages
+504.93/504.48 seconds (-0.09%).
+
+PA15 passes 121/121, PA37 190/190, PA38 45/45, and through-PA38 passes
+5,477/5,477.  The LowIR contract audit remains exactly 127/102/140/23/21, and
+the closing inception run uses 32-way outer, inner, and object parallelism and
+matches every object plus the final `cppgm++`.  E6 therefore changes no LowIR
+field or serialized fact while separating malformed LowIR/compiler objects,
+transport failures, limits, link invocation failures, and internal typed-model
+corruption.
 
 ## Initial code map
 
