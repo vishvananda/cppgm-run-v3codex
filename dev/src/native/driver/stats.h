@@ -89,6 +89,8 @@ struct Stats
   std::size_t machine_opt_block_recolor_candidates = 0;
   std::size_t machine_opt_block_recolor_registers = 0;
   std::size_t machine_opt_block_recolor_blocks = 0;
+  std::size_t machine_opt_terminal_call_results = 0;
+  std::size_t machine_opt_sibling_parameter_retains = 0;
   std::size_t machine_opt_frameless_functions = 0;
   std::size_t machine_opt_frameless_call_functions = 0;
   std::size_t machine_opt_frameless_saved_registers = 0;

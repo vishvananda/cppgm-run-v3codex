@@ -729,6 +729,41 @@ must remain conservative barriers unless an independent rule proves them
 safe. Direct writes still invalidate the bytes they change. The analysis is
 not run at `-O0`, `-O1`, or `-O2`.
 
+After the final O3 scalar cleanup, one repeatedly called internal integer or
+pointer query may move its effectful slow suffix out of line. The query must
+have exactly three blocks: an entry guard, one straight-line slow block, and a
+pure terminal block reached both directly and from the slow block. It must
+have fixed arity, at most six direct scalar parameters, no slots or exception
+operations, no recursive or address-observable use, and at least eight direct
+call sites. The query itself must remain eligible for ordinary inlining; this
+late transform is for a call population that survived that earlier choice.
+
+The terminal block may contain only nonvolatile scalar address calculations
+and loads followed by one scalar load/return. The slow block may contain
+nonvolatile scalar work, direct calls, and stores before its jump to that
+terminal block. One slow-path direct call result must be stored to the same
+bounded address that the terminal block would load. Any loads used to
+reconstruct that address must remain valid through the rest of the slow block.
+The PA13 `object_bytes` fact, a finite nonnegative index range such as a mask,
+and disjoint byte intervals must prove both the complete access and every
+intervening store harmless. A later call, overlapping store, unbounded index,
+ordinary pointer without a complete-object extent, volatile access, or a
+different value/address relationship rejects the split.
+
+When proven, retain the guard and pure terminal arm under the original query
+identity. Replace its slow block by an exact call/return to a private,
+non-inline helper taking the original parameter tuple. The helper contains the
+old slow block and returns the call value that it stored, so the common path
+does not repeat the terminal address calculation and load. Select at most one
+such query per translation unit, preferring the largest surviving direct-call
+population. `-O0` through `-O2` do not perform the split. With `--stats`, report
+`o3_terminal_query_splits`, `o3_terminal_query_call_sites`, and
+`o3_terminal_query_extracted_instructions`; all three remain zero below O3.
+The focused control discovers the wrapper/helper relationship from their
+loads, stores, calls, and returns, checks unbounded and overlapping-store
+guards, replays the serialized result, and executes every level without
+requiring a helper name or exact LowIR text.
+
 After all ordinary O3 rewrites, the optimizer may version one internal void
 function around a short call-free path. The original function must have fixed
 arity, at most six direct scalar parameters, no recursive or address-observable

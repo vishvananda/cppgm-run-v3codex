@@ -206,8 +206,14 @@ bool is_effective_call(const Instruction & instruction,
 bool direct_sibling_call_shape(const lowir_model::LowirFunction & function,
                                int optimization_level)
 {
+  const bool void_return =
+    function.return_type.kind == lowir_model::LTK_VOID;
+  const bool gpr_scalar_return =
+    (function.return_type.kind >= lowir_model::LTK_I1 &&
+     function.return_type.kind <= lowir_model::LTK_I64) ||
+    function.return_type.kind == lowir_model::LTK_PTR;
   if(optimization_level < 3 ||
-     function.return_type.kind != lowir_model::LTK_VOID ||
+     (!void_return && !gpr_scalar_return) ||
      function.boundary.arity != lowir_model::CAM_FIXED ||
      function.params.size() > 6 || !function.slots.empty())
     return false;
@@ -221,6 +227,7 @@ bool direct_sibling_call_shape(const lowir_model::LowirFunction & function,
       return false;
   }
   std::size_t calls = 0;
+  std::size_t returns = 0;
   bool sibling = false;
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
     const std::vector<Instruction> & instructions =
@@ -234,15 +241,26 @@ bool direct_sibling_call_shape(const lowir_model::LowirFunction & function,
          instruction.kind == Instruction::IK_VA_START ||
          instruction.kind == Instruction::IK_VA_ARG)
         return false;
+      if(instruction.kind == Instruction::IK_RETURN) ++returns;
       if(instruction.kind != Instruction::IK_CALL) continue;
       ++calls;
       if(i + 1 >= instructions.size() ||
          instructions[i + 1].kind != Instruction::IK_RETURN ||
          i + 2 != instructions.size() ||
          instruction.first.kind != Operand::OP_GLOBAL ||
-         !instruction.call_returns_void || instruction.has_call_signature ||
+         instruction.call_returns_void != void_return ||
+         instruction.has_call_signature ||
          instruction.call_boundary.arity != lowir_model::CAM_FIXED ||
          instruction.args.size() != function.params.size())
+        continue;
+      const Instruction & returned = instructions[i + 1];
+      if(!void_return &&
+         (!lowir_model::same_lowir_type(
+            instruction.type, function.return_type) ||
+          !lowir_model::same_lowir_type(
+            returned.type, function.return_type) ||
+          returned.first.kind != Operand::OP_TEMP ||
+          returned.first.value != instruction.dest))
         continue;
       sibling = true;
       for(std::size_t argument = 0; argument < instruction.args.size();
@@ -252,7 +270,7 @@ bool direct_sibling_call_shape(const lowir_model::LowirFunction & function,
           sibling = false;
     }
   }
-  return calls == 1 && sibling;
+  return calls == 1 && sibling && (void_return || returns >= 2);
 }
 
 bool direct_memory_index_use(const FunctionFacts & facts,

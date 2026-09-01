@@ -20,6 +20,7 @@
 #include "lowir/optimize/scalar_rules.h"
 #include "lowir/optimize/staged_copy_forwarding.h"
 #include "lowir/optimize/small_object_promotion.h"
+#include "lowir/optimize/terminal_query_split.h"
 #include "lowir/optimize/unreachable.h"
 #include <algorithm>
 #include <chrono>
@@ -2695,6 +2696,28 @@ void finish_optimizer_pipeline(
             &program.functions[i], stats, &cfg_scratch, &analysis);
         }
     }
+
+    std::vector<unsigned char> query_split_rewritten(
+      program.symbol_names.size(), 0);
+    const std::chrono::steady_clock::time_point query_split_started = stats ?
+      std::chrono::steady_clock::now() :
+      std::chrono::steady_clock::time_point();
+    if(split_o3_terminal_query_slow_suffix(
+         program, &query_split_rewritten, stats)) {
+      boundaries = function_boundaries(program);
+      for(std::size_t i = 0; i < program.functions.size(); ++i)
+        if(query_split_rewritten[program.functions[i].symbol]) {
+          lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
+          timed_dce(
+            &program.functions[i], boundaries, stats, &dce_scratch);
+          timed_cfg(
+            &program.functions[i], stats, &cfg_scratch, &analysis);
+        }
+    }
+    if(stats)
+      stats->o3_terminal_query_nanoseconds += static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - query_split_started).count());
 
     std::vector<unsigned char> fast_split_rewritten(
       program.symbol_names.size(), 0);

@@ -65,6 +65,10 @@ void report_codegen_pipeline_stats(std::ostream & output,
          << stats.machine_opt_block_recolor_registers
          << " machine_opt_block_recolor_blocks="
          << stats.machine_opt_block_recolor_blocks
+         << " machine_opt_terminal_call_results="
+         << stats.machine_opt_terminal_call_results
+         << " machine_opt_sibling_parameter_retains="
+         << stats.machine_opt_sibling_parameter_retains
          << " machine_opt_frameless_functions="
          << stats.machine_opt_frameless_functions
          << " machine_opt_frameless_call_functions="

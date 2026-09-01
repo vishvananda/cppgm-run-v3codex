@@ -2644,6 +2644,7 @@ private:
       append_operand(add, immediate(static_cast<long long>(stack_bytes)));
       out.push_back(add);
     }
+    if(facts_.has_direct_sibling_call) { active_instruction_ = 0; return; }
     const bool materialize_result = !instruction.call_returns_void &&
       (instruction.type.kind == lowir_model::LTK_OBJECT ||
        facts_.uses[instruction.dest] != 0);

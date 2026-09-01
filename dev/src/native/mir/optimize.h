@@ -24,6 +24,8 @@ struct Stats
   std::size_t block_recolor_candidates = 0;
   std::size_t block_recolor_registers = 0;
   std::size_t block_recolor_blocks = 0;
+  std::size_t terminal_call_results = 0;
+  std::size_t sibling_parameter_retains = 0;
   std::size_t frame_rewrites = 0;
   std::size_t implicit_return_rewrites = 0;
   std::size_t frameless_functions = 0;

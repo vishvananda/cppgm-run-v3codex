@@ -1,6 +1,6 @@
 # Plan: O2/O3 Generated-Compiler Optimization
 
-Status: executing
+Status: complete for O3; residual O2 normalized gap and 20% stretch recorded
 
 Date: 2026-08-30
 
@@ -5152,6 +5152,89 @@ target the stable-query fast/slow body, whose larger slow-edge and unconditional
 save costs can clear the deterministic floor together, rather than retrying
 this division encoding.
 
+### Retained terminal-query slow-suffix extraction and scalar sibling transfer
+
+The closing O3 increment targets that stable-query body without adding a new
+PA13 field.  Existing serialized LowIR already provides the required direct
+call graph, scalar types, complete parameter-object extents, instructions,
+stores, loads, and control flow.  The new bounded PA37 transform recognizes an
+internal nonrecursive three-block scalar query with at least eight direct call
+sites, a guard selecting a pure terminal load/return arm or one straight-line
+slow arm, and a slow call result stored into the recursively equivalent
+terminal load address.  Interval reasoning over literals, copies, masks, and
+nonnegative products proves the access stays in the PA13 `object_bytes`
+boundary.  Every dependency load must remain stable through later stores;
+unknown, overlapping, volatile, exceptional, address-observable, recursive,
+or unbounded forms are rejected.  At most one function per translation unit
+is selected.  Its slow suffix becomes one internal non-inline scalar helper,
+and the wrapper's slow arm becomes an exact call/return.
+
+PA38 extends the existing complete-frame sibling rule to exact integer and
+pointer scalar returns.  A scalar wrapper must have multiple return arms and
+its terminal slow call must pass the original direct scalar parameters in
+order.  Final MIR then performs two independently proved cleanups: a one-block
+helper may keep a call result in the ABI return carrier through same-width
+stores and the final return, and a strict three-block sibling wrapper may keep
+its incoming ABI parameter live instead of creating an eager home.  Explicit
+carrier conflicts are recolored only to a globally unused scratch register.
+The sibling opcode is now a CFG control barrier, preventing a false physical-
+layout fallthrough edge.  Slots, stack arguments, debug variables, EH,
+varargs, changed results or arguments, wider observations, unsafe conflicts,
+and nonterminal uses retain the ordinary path.
+
+The PA37 README and role-discovered property control cover the positive split,
+bounded dynamic address, shared slow helper, O0--O2 isolation, replay, stats,
+behavior, and unbounded/overwritten negatives.  The PA38 README and structural
+control discover the helper, producer, wrapper, changed-result guard, incoming
+parameter, and ABI result carrier from their relationships rather than names,
+fixed registers, or complete MIR text.  They prove ordinary calls below O3,
+the O3 sibling edge, absence of false fallthrough, both MIR retention
+properties, replay, counters, and slow/fast behavior.  The fixture reports one
+split, eight call sites, twelve extracted LowIR instructions, one retained
+terminal result, and one retained sibling parameter at O3; all counters are
+zero below O3.
+
+The final deterministic common-input result falls from 3,553,692,388 to
+3,505,367,910 self instructions (`0.986401615x`).  The freshly rebuilt
+same-source GCC control moves from 2,427,216,076 to 2,427,456,273
+(`1.000098960x`), so the normalized ratio is `0.986304010x`, a 1.369599%
+improvement.  The self/GCC frozen-TU gap falls from `1.464102196x` to
+`1.444049868x`; all three producers emit the exact object hash
+`09d9fdc0bdd901d35c4f46075a4109b1a0c29ddb51fd5a17428335a2379dabba`.
+The linked self compiler grows from 8,786,048 to 8,839,600 text bytes and from
+340,312 to 341,480 data bytes.
+
+The first full O1-workload screen caught implementation-layout interference:
+placing the new object in the middle of the source list displaced every later
+compiler object and made a reversed block about 5.2% slower in aggregate CPU,
+even though the O1 output was exact and the O3 generated-code oracle improved.
+The final mechanically inert source-set order preserves every established
+object position and appends the new implementation object.  With that order,
+a reversed explicit-32-way block emits the same 222-object result and linked
+hash on every lane.  Candidate means are 26.545 seconds wall / 762.220 seconds
+aggregate CPU versus 27.830 / 790.995 for baseline; changing host load makes
+the full mean too favorable for a precise claim, but the clean adjacent pair
+alone is `0.990363232x` wall and `0.983188069x` CPU.  Thus the deterministic
+gain is corroborated and the O1 regression is removed rather than hidden.
+
+The complete report passes 5,473/5,473.  PA37/PA38 debug and debug object-
+roundtrip lanes pass; the LowIR contract, source-set, diff, and PA39 file
+audits pass with zero fatal findings and the established 32 warnings.  Fresh
+all-32 G1/G2 builds match every object and the linked compiler at
+`5846b8b045a32b3969a5fb3261b01e96881f806eb8ddf3235ea09bc4f62ab575`.
+
+This closes the O3 work.  The original complete matrix put O3 13.3--14.4%
+ahead of the same-revision O1 producer and at normalized parity on the fixed
+O2 and O3 workloads.  The subsequently retained fast/slow versioning and this
+increment improve that position further.  The full-workload 20% stretch was
+not separately demonstrated, and O2's normalized deficit remains recorded.
+No untried lead has evidence comparable to the two retained structural
+partitioning wins: global inline caps, broad or partial query inlining,
+isolated memory forwarding, register pinning, local peepholes, and strength
+reduction have measured dispositions.  Further work should begin with a fresh
+profile and require another source-diverse one-percent population rather than
+continue this plan speculatively.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -5280,6 +5363,7 @@ Fill one row for every retained or rejected dose.
 | D.narrow-compare-return | write a terminal narrow comparison directly to the ABI byte return register and remove its widen/transfer/narrow tail | none; rejected before PA38 movement | macro -42 further MIR; G1 producer -800 text vs the safe native pair | explicit-32-way G1 failed its first frozen compile with `invalid internal paste sequence` | build completed, execution gate failed; removing only this fold restored exact output | rejected as unsound; callers rely on the current full-register narrow-return invariant |
 | D.terminal-store-load-return | return an edge's stored scalar directly instead of entering a pure terminal merge that recomputes its equivalent address and reloads it | none; rejected before PA37 movement; existing PA13 `object_bytes` is sufficient | hot refill edge -4 native instructions; helper 116 to 121 bytes; `memory_gvn.o` +11,662 text; G1 +10,592 linked text; output exact | hot task-clock mean/median/trimmed `1.003380920x`/`1.001532907x`/`1.001948236x`; bundled-native screen `1.001780636x`/`0.999218504x`/`1.002306278x`; deterministic ceiling about -0.81% | PA37 190/190; PA38 45/45; explicit-32-way 221-object G1 plus exact hybrid relink; prototypes removed | rejected; relationship needs no new LowIR fact and neither isolated nor bundled dose clears the 1% gate |
 | D.terminal-call-result-residency | combine terminal store/load return forwarding with final-MIR retention of a narrow call result in its ABI carrier through same-width stores | none; rejected before PA37/PA38 movement; existing serialized facts are sufficient | refill edge -6 dynamic instructions; helper 116 to 114 bytes; G2 producer +20,880 linked text | pinned mean/median/trimmed `0.991614x`/`0.992215x`/`0.991681x`; static ceiling about -1.21% | PA37 190/190; PA38 45/45 in the combined screen; explicit-32-way G1/G2; deterministic hot output; no stale Valgrind | rejected; stable 0.78--0.84% saving remains below the 1% source-diverse gate after pass overhead was moved behind a cheap prefilter |
-| C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
-| D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
-| Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
+| D.terminal-query-slow-suffix | extract one proved slow scalar query suffix, use an exact scalar sibling transfer, and retain the call result/incoming parameter in their ABI carriers | PA37/PA38 READMEs plus role-discovered positive, level, guard, replay, stats, native-relationship, CFG-terminal, and behavior properties | no LowIR contract addition; one split/eight sites/12 instructions; one result and parameter retention; producer +53,552 text/+1,168 data | self Ir `0.986401615x`, GCC `1.000098960x`, normalized `0.986304010x`; gap `1.464102196x` to `1.444049868x`; conservative full O1 pair `0.990363232x` wall/`0.983188069x` CPU | 5,473/5,473; debug/round-trip and zero-fatal audits clean; exact 222-object G1/G2 and final `5846b8b0...` | retained; final source order removes measured implementation-layout interference while preserving the generated-code win |
+| C | make O2 at least 5% faster than O1 | current retained contracts remain covered | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | raw hard floor met; residual normalized and 5% targets recorded on closure |
+| D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact; two later structural wins retained | matrix raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x`; later increments improve O3 further | complete matrix plus deterministic/full corroboration; final G1/G2 exact | practical O3 goal and normalized O2/O3-workload parity achieved; 20% stretch not independently demonstrated |
+| Final | complete matrix and closure | no uncovered retained behavior | three 221-object matrix workloads exact; final increment exact across 222 objects | original/current gaps and every retained/rejected dose recorded | 5,473/5,473; debug/round-trip and all audits clean; final 32-way inception exact | complete; no untried source-diverse lead justifies extending the plan |

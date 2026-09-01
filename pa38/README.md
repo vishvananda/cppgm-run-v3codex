@@ -362,13 +362,15 @@ interference rejects the complete source color; partial elimination is not
 permitted.
 
 O3 may also turn an exact final direct call into a sibling transfer using only
-facts derivable from serialized LowIR. The enclosing function must return
-void, have fixed arity, at most six direct scalar parameters, and have no local
-slots, dynamic stack allocation, variadic state, or exception operations. Its
-only call must return void, target a direct fixed-arity function, pass the
-enclosing function's original parameters once in the same order, and be
-followed immediately by that block's void return. Other paths may still return
-normally.
+facts derivable from serialized LowIR. The enclosing function must return void
+or an integer/pointer scalar, have fixed arity, at most six direct scalar
+parameters, and have no local slots, dynamic stack allocation, variadic state,
+or exception operations. Its only call must target a direct fixed-arity
+function, pass the enclosing function's original parameters once in the same
+order, and be followed immediately by that block's return. A void call must be
+followed by a void return. A scalar call must have exactly the enclosing return
+type, and that exact call result must be returned; the enclosing function must
+also contain at least one other normal return.
 
 For that shape, optimized MIR records a terminal `sibling_call` rather than an
 ordinary call followed by a return. Native emission restores the complete
@@ -378,6 +380,33 @@ arguments and creates no ordinary call-alignment requirement. A changed or
 reordered argument, an indirect or additional call, local storage, an
 unsupported parameter representation, or any exceptional/stack boundary keeps
 the ordinary call and return. O0 through O2 also keep the ordinary form.
+
+Two narrow O3 machine cleanups preserve the benefit of PA37's terminal-query
+split without assigning semantic meaning to helper names. In a one-block
+integer helper with exactly one call, a normalized call result may remain in
+the ABI return carrier when every later use is a same-width store or the final
+return and at least one such store exists. Any independent use of that carrier
+must be explicit, defined before use, and recolorable to one register unused
+through the suffix. The rewrite removes only the result move and redundant
+normalization; implicit effects, debug locations, a second call, a mismatched
+store width, or another result use retain the ordinary form.
+
+In an exact three-block scalar sibling wrapper, O3 may also omit an eager copy
+of an incoming register parameter. The entry's later uses, the sibling arm,
+and the fast return arm must make the two register lifetimes explicit. The
+fast arm may use the incoming carrier directly when it has no conflicting
+local lifetime; one later write-only local lifetime may instead be recolored
+to a register unused throughout that arm. A hidden or implicit use, additional
+predecessor, call, debug range, unproved definition, or unavailable scratch
+register rejects the complete rewrite. MIR control-flow analysis treats a
+`sibling_call` as terminal even when its block is not last in layout.
+
+With `--stats`, report `machine_opt_terminal_call_results` and
+`machine_opt_sibling_parameter_retains`; both remain zero below O3. The focused
+control identifies the wrapper, helper, producer, and changed-result guard by
+their call/store/return relationships. It checks carrier relationships and
+behavior at all four levels and through driver replay without requiring a
+particular helper name, physical register, or complete MIR sequence.
 
 Call-boundary facts that have no machine-level encoding, including PA13
 `query=stable_prefix`, remain valid input at every PA38 optimization level.
@@ -532,6 +561,11 @@ N3485 source-language clauses.
   fast-return and transferred paths at every backend level and through
   `cppgm++ -O3`, without requiring a particular helper name, register choice,
   or complete MIR dump.
+  A scalar sibling-query control checks the exact-result extension, terminal
+  result-carrier retention, and incoming-parameter retention as separate
+  structural relationships. A changed-result arm remains an ordinary call;
+  the test also checks O0/O1/O2 isolation, bounded counters, driver replay, and
+  both slow and fast behavior without matching generated names or registers.
   A staged parameter-address control selects its reducer by the relationship
   between a bounded pointer, a call, and four post-call field loads. It checks
   O2/O3 LowIR placement, a reduction in call-preserved native pressure, direct

@@ -422,6 +422,12 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.repeat_stable_budget_skips
 		 << " repeat_stable_peak_analysis_bytes="
 		 << stats.repeat_stable_peak_analysis_bytes
+		 << " o3_terminal_query_splits="
+		 << stats.o3_terminal_query_splits
+		 << " o3_terminal_query_call_sites="
+		 << stats.o3_terminal_query_call_sites
+		 << " o3_terminal_query_extracted_instructions="
+		 << stats.o3_terminal_query_extracted_instructions
 		 << " budget_skips=" << stats.budget_skips
 		 << " rewrites=" << stats.rewrites
 		 << " simplify_runs=" << stats.simplify_runs
@@ -588,6 +594,8 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " partial_inline_census_ns="
 		 << stats.partial_inline_census_nanoseconds
 		 << " repeat_stable_ns=" << stats.repeat_stable_nanoseconds
+		 << " o3_terminal_query_ns="
+		 << stats.o3_terminal_query_nanoseconds
 		 << " licm_ns=" << stats.licm_nanoseconds
 		 << " elapsed_ns=" << stats.elapsed_nanoseconds;
 	output << " inline_retained_discardable_definition_matrix=";

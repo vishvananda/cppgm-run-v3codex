@@ -283,6 +283,7 @@ bool is_control_barrier(MirInstruction::Opcode opcode)
 {
   return opcode == MirInstruction::MI_JMP ||
     opcode == MirInstruction::MI_JMP_INDIRECT ||
+    opcode == MirInstruction::MI_SIBLING_CALL ||
     opcode == MirInstruction::MI_RET || opcode == MirInstruction::MI_FRET ||
     opcode == MirInstruction::MI_EXIT || opcode == MirInstruction::MI_THROW ||
     opcode == MirInstruction::MI_RESUME;
@@ -835,6 +836,265 @@ void rewrite_register(MirOperand * operand, X64Register source,
     if(operand->has_index && operand->index == source)
       operand->index = destination;
   }
+}
+
+// A one-block scalar helper may preserve a call result in the ABI return
+// carrier while it performs same-width stores, provided every intervening
+// rax use belongs to an explicit, independently recolorable temporary.  This
+// avoids moving and normalizing a value that ultimately returns unchanged.
+bool retain_terminal_scalar_call_result(MirFunction & function, Stats * stats)
+{
+  if(function.blocks.size() != 1 || !function.debug_variables.empty() ||
+     function.return_type.kind == lowir_model::LTK_VOID ||
+     function.return_type.kind == lowir_model::LTK_OBJECT ||
+     function.return_type.kind == lowir_model::LTK_I128 ||
+     function.return_type.kind == lowir_model::LTK_F32 ||
+     function.return_type.kind == lowir_model::LTK_F64 ||
+     function.return_type.kind == lowir_model::LTK_F80)
+    return false;
+  std::vector<MirInstruction> & instructions =
+    function.blocks[0].instructions;
+  std::size_t call_index = instructions.size();
+  std::size_t calls = 0;
+  for(std::size_t index = 0; index < instructions.size(); ++index)
+    if(instructions[index].opcode == MirInstruction::MI_CALL ||
+       instructions[index].opcode == MirInstruction::MI_CALL_INDIRECT) {
+      call_index = index;
+      ++calls;
+    }
+  if(calls != 1 || call_index + 3 >= instructions.size()) return false;
+  const MirInstruction & move = instructions[call_index + 1];
+  const MirInstruction & normalization = instructions[call_index + 2];
+  if(move.opcode != MirInstruction::MI_MOV || move.operands.size() != 2 ||
+     move.operands[0].kind != MirOperand::OP_REG ||
+     move.operands[1].kind != MirOperand::OP_REG ||
+     move.operands[1].reg != XR_RAX ||
+     move.operands[0].reg == XR_RAX ||
+     (normalization.opcode != MirInstruction::MI_SEXT &&
+      normalization.opcode != MirInstruction::MI_ZEXT) ||
+     normalization.operands.size() != 1 ||
+     normalization.operands[0].kind != MirOperand::OP_REG ||
+     normalization.operands[0].reg != move.operands[0].reg ||
+     !lowir_model::same_lowir_type(
+       normalization.type, function.return_type))
+    return false;
+  const X64Register carrier = move.operands[0].reg;
+  std::size_t stores = 0;
+  for(std::size_t index = call_index + 3; index < instructions.size(); ++index) {
+    const MirInstruction & instruction = instructions[index];
+    if(!(explicit_registers(instruction) & gpr_bit(carrier))) continue;
+    const bool store = instruction.opcode == MirInstruction::MI_STORE &&
+      instruction.operands.size() == 2 &&
+      instruction.operands[1].kind == MirOperand::OP_REG &&
+      instruction.operands[1].reg == carrier &&
+      lowir_model::same_lowir_type(
+        instruction.type, function.return_type);
+    const bool result = index + 1 == instructions.size() &&
+      instruction.opcode == MirInstruction::MI_RET &&
+      instruction.operands.size() == 1 &&
+      instruction.operands[0].kind == MirOperand::OP_REG &&
+      instruction.operands[0].reg == carrier;
+    if(!store && !result) return false;
+    if(store) ++stores;
+  }
+  if(!stores || instructions.back().opcode != MirInstruction::MI_RET ||
+     instructions.back().operands.size() != 1 ||
+     instructions.back().operands[0].kind != MirOperand::OP_REG ||
+     instructions.back().operands[0].reg != carrier)
+    return false;
+
+  static const X64Register scratch_candidates[] = {
+    XR_R10, XR_R11, XR_RCX, XR_RDX, XR_RSI, XR_RDI, XR_R9
+  };
+  X64Register scratch = XR_RSP;
+  for(std::size_t candidate = 0;
+      candidate < sizeof(scratch_candidates) / sizeof(scratch_candidates[0]);
+      ++candidate) {
+    const RegisterMask bit = gpr_bit(scratch_candidates[candidate]);
+    bool free = true;
+    for(std::size_t index = call_index + 3;
+        free && index < instructions.size(); ++index)
+      free = !((instruction_defs(instructions[index]) |
+                instruction_uses(instructions[index], true)) & bit);
+    if(free) {
+      scratch = scratch_candidates[candidate];
+      break;
+    }
+  }
+  if(scratch == XR_RSP) return false;
+
+  bool alternate_rax_defined = false;
+  for(std::size_t index = call_index + 3; index < instructions.size(); ++index) {
+    const RegisterMask defs = instruction_defs(instructions[index]);
+    const RegisterMask uses = instruction_uses(instructions[index], true);
+    const RegisterMask explicit_mask = explicit_registers(instructions[index]);
+    if(((defs | uses) & gpr_bit(XR_RAX)) &&
+       !(explicit_mask & gpr_bit(XR_RAX)))
+      return false;
+    if((uses & gpr_bit(XR_RAX)) && !alternate_rax_defined) return false;
+    if(defs & gpr_bit(XR_RAX)) alternate_rax_defined = true;
+  }
+
+  for(std::size_t index = call_index + 3; index < instructions.size(); ++index) {
+    MirInstruction & instruction = instructions[index];
+    for(std::size_t operand = 0; operand < instruction.operands.size();
+        ++operand)
+      rewrite_register(&instruction.operands[operand], XR_RAX, scratch);
+    for(std::size_t operand = 0; operand < instruction.operands.size();
+        ++operand)
+      rewrite_register(&instruction.operands[operand], carrier, XR_RAX);
+  }
+  instructions.erase(
+    instructions.begin() + call_index + 1,
+    instructions.begin() + call_index + 3);
+  if(stats) {
+    ++stats->terminal_call_results;
+    stats->rewrites += 2;
+  }
+  return true;
+}
+
+// A scalar fast/slow wrapper can keep an incoming parameter in its ABI
+// carrier when the slow arm transfers it unchanged and the fast arm's only
+// conflicting carrier lifetime can be recolored locally.  The strict
+// three-block shape keeps the rewrite independent of path probabilities.
+bool retain_sibling_wrapper_parameter(MirFunction & function, Stats * stats)
+{
+  if(function.blocks.size() != 3 || !function.debug_variables.empty() ||
+     function.return_type.kind == lowir_model::LTK_VOID)
+    return false;
+  std::vector<MirInstruction> & entry = function.blocks[0].instructions;
+  if(entry.size() < 2 || entry[0].opcode != MirInstruction::MI_MOV ||
+     entry[0].operands.size() != 2 ||
+     entry[0].operands[0].kind != MirOperand::OP_REG ||
+     entry[0].operands[1].kind != MirOperand::OP_REG)
+    return false;
+  const X64Register carrier = entry[0].operands[0].reg;
+  const X64Register incoming = entry[0].operands[1].reg;
+  if(carrier == incoming) return false;
+  bool parameter = false;
+  for(std::size_t index = 0; index < function.params.size(); ++index)
+    if(function.params[index].location == mir_model::MirParamBinding::PL_REG &&
+       function.params[index].reg == incoming)
+      parameter = true;
+  if(!parameter) return false;
+
+  std::size_t sibling_block = function.blocks.size();
+  std::size_t return_block = function.blocks.size();
+  std::size_t sibling_calls = 0;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::vector<MirInstruction> & instructions =
+      function.blocks[block].instructions;
+    for(std::size_t index = 0; index < instructions.size(); ++index) {
+      if(instructions[index].opcode == MirInstruction::MI_SIBLING_CALL) {
+        sibling_block = block;
+        ++sibling_calls;
+      } else if(instructions[index].opcode == MirInstruction::MI_CALL ||
+                instructions[index].opcode == MirInstruction::MI_CALL_INDIRECT) {
+        return false;
+      }
+    }
+    if(!instructions.empty() &&
+       instructions.back().opcode == MirInstruction::MI_RET)
+      return_block = block;
+  }
+  if(sibling_calls != 1 || sibling_block == 0 || return_block == 0 ||
+     sibling_block == return_block)
+    return false;
+  const ControlFlow cfg = build_control_flow(function, 0, 0);
+  if(cfg.successors[0].size() != 2 ||
+     std::find(cfg.successors[0].begin(), cfg.successors[0].end(),
+               sibling_block) == cfg.successors[0].end() ||
+     std::find(cfg.successors[0].begin(), cfg.successors[0].end(),
+               return_block) == cfg.successors[0].end() ||
+     cfg.predecessors[sibling_block].size() != 1 ||
+     cfg.predecessors[sibling_block][0] != 0 ||
+     cfg.predecessors[return_block].size() != 1 ||
+     cfg.predecessors[return_block][0] != 0)
+    return false;
+  for(std::size_t index = 1; index < entry.size(); ++index) {
+    const RegisterMask defs = instruction_defs(entry[index]);
+    const RegisterMask uses = instruction_uses(entry[index], true);
+    const RegisterMask explicit_mask = explicit_registers(entry[index]);
+    if((defs & (gpr_bit(carrier) | gpr_bit(incoming))) ||
+       ((uses & gpr_bit(carrier)) &&
+        !(explicit_mask & gpr_bit(carrier))))
+      return false;
+  }
+  const MirBlock & sibling = function.blocks[sibling_block];
+  for(std::size_t index = 0; index < sibling.instructions.size(); ++index)
+    if(explicit_registers(sibling.instructions[index]) & gpr_bit(carrier))
+      return false;
+
+  std::vector<MirInstruction> & fast =
+    function.blocks[return_block].instructions;
+  if(fast.empty()) return false;
+  bool carrier_used = false;
+  std::size_t incoming_definition = fast.size();
+  for(std::size_t index = 0; index < fast.size(); ++index) {
+    const RegisterMask defs = instruction_defs(fast[index]);
+    const RegisterMask uses = instruction_uses(fast[index], true);
+    const RegisterMask explicit_mask = explicit_registers(fast[index]);
+    if(defs & gpr_bit(carrier)) return false;
+    if((uses & gpr_bit(carrier)) && !(explicit_mask & gpr_bit(carrier)))
+      return false;
+    carrier_used = carrier_used || ((uses & gpr_bit(carrier)) != 0);
+    if(incoming_definition == fast.size() &&
+       (defs & gpr_bit(incoming))) {
+      if(!(explicit_mask & gpr_bit(incoming)) ||
+         !is_write_only_destination(fast[index].opcode) ||
+         fast[index].operands.empty() ||
+         fast[index].operands[0].kind != MirOperand::OP_REG ||
+         fast[index].operands[0].reg != incoming ||
+         (uses & gpr_bit(incoming)))
+        return false;
+      incoming_definition = index;
+    }
+    if(index >= incoming_definition &&
+       ((defs | uses) & gpr_bit(incoming)) &&
+       !(explicit_mask & gpr_bit(incoming)))
+      return false;
+  }
+  if(!carrier_used) return false;
+
+  static const X64Register scratch_candidates[] = {
+    XR_R10, XR_R11, XR_RCX, XR_RDX, XR_RSI, XR_R9
+  };
+  X64Register scratch = XR_RSP;
+  if(incoming_definition != fast.size()) {
+    for(std::size_t candidate = 0;
+        candidate < sizeof(scratch_candidates) / sizeof(scratch_candidates[0]);
+        ++candidate) {
+      const RegisterMask bit = gpr_bit(scratch_candidates[candidate]);
+      bool free = true;
+      for(std::size_t index = 0; free && index < fast.size(); ++index)
+        free = !((instruction_defs(fast[index]) |
+                  instruction_uses(fast[index], true)) & bit);
+      if(free) {
+        scratch = scratch_candidates[candidate];
+        break;
+      }
+    }
+    if(scratch == XR_RSP) return false;
+    for(std::size_t index = incoming_definition; index < fast.size(); ++index)
+      for(std::size_t operand = 0; operand < fast[index].operands.size();
+          ++operand)
+        rewrite_register(&fast[index].operands[operand], incoming, scratch);
+  }
+  for(std::size_t index = 0; index < fast.size(); ++index)
+    for(std::size_t operand = 0; operand < fast[index].operands.size();
+        ++operand)
+      rewrite_register(&fast[index].operands[operand], carrier, incoming);
+  for(std::size_t index = 1; index < entry.size(); ++index)
+    for(std::size_t operand = 0; operand < entry[index].operands.size();
+        ++operand)
+      rewrite_register(&entry[index].operands[operand], carrier, incoming);
+  entry.erase(entry.begin());
+  if(stats) {
+    ++stats->sibling_parameter_retains;
+    ++stats->rewrites;
+  }
+  return true;
 }
 
 // Lowering allocates physical registers online.  A short call-free range can
@@ -2042,6 +2302,10 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
   if(level >= 2) {
     select_medium_copy_chunks(function, stats);
     combine_adjacent_integer_normalizations(function, stats);
+  }
+  if(level >= 3) {
+    retain_terminal_scalar_call_result(function, stats);
+    retain_sibling_wrapper_parameter(function, stats);
   }
   if(level >= 2) trace_layout(function, stats);
   forward_adjacent_single_use_frame_compares(function, stats);

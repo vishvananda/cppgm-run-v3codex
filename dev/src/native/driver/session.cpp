@@ -556,6 +556,10 @@ struct ProgramLoweringSession::Impl
         opt_stats.block_recolor_registers;
       stats->machine_opt_block_recolor_blocks +=
         opt_stats.block_recolor_blocks;
+      stats->machine_opt_terminal_call_results +=
+        opt_stats.terminal_call_results;
+      stats->machine_opt_sibling_parameter_retains +=
+        opt_stats.sibling_parameter_retains;
       stats->machine_opt_frameless_functions += opt_stats.frameless_functions;
       stats->machine_opt_frameless_call_functions +=
         opt_stats.frameless_call_functions;
