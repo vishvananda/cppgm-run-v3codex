@@ -2549,13 +2549,6 @@ bool Analyzer::TryEvaluateConstexprConstructor(BindingId function,
 	constexpr_frames_.push_back(ConstexprFrame(function,
 		constexpr_locals_.size(), constexpr_scope_facts_.size(),
 		constexpr_block_offsets_.size(), next_constexpr_storage_identity_));
-	bool valid = AddConstexprInvocationArguments(info, arguments);
-	ConstexprConstructorPlan plan(entity_data_members_[entity].size(),
-		program_->entities[entity].direct_base_count, info.lexical_scope);
-	if (valid) valid = PlanConstexprConstructorInitializers(
-		info, entity, arguments.size(), &plan);
-	if (valid) valid = EvaluateConstexprConstructorInitializers(
-		info, entity, arguments, plan, object);
 	const TypeId previous_return = current_return_type_;
 	const EntityId previous_class = current_class_context_;
 	const BindingId previous_function = current_function_context_;
@@ -2563,6 +2556,13 @@ bool Analyzer::TryEvaluateConstexprConstructor(BindingId function,
 	current_return_type_ = result_type;
 	current_class_context_ = entity;
 	current_function_context_ = function;
+	bool valid = AddConstexprInvocationArguments(info, arguments);
+	ConstexprConstructorPlan plan(entity_data_members_[entity].size(),
+		program_->entities[entity].direct_base_count, info.lexical_scope);
+	if (valid) valid = PlanConstexprConstructorInitializers(
+		info, entity, arguments.size(), &plan);
+	if (valid) valid = EvaluateConstexprConstructorInitializers(
+		info, entity, arguments, plan, object);
 	if (valid && info.definition_body != kNoNode)
 	{
 		ConstexprScalarValue ignored;

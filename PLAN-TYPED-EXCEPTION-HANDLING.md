@@ -1,6 +1,6 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E2 baseline, taxonomy, and syntax recovery complete
+Status: in progress; E0-E2 complete; E3 constructor-context slice retained
 
 Date: 2026-09-01
 
@@ -699,7 +699,8 @@ Append one row for each retained or rejected increment:
 | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- |
 | E0 | baseline and audit | generic standard categories and broad catches | report-only ceilings plus native throw census | PA1-PA39 | frozen 1; full 302; focused counts below | section baseline below | frozen/full baseline below | 5,473/5,473; output hashes below | `8b2216ff` | retained |
 | E1 | taxonomy and terminal boundaries | standard bases and dead not-implemented exit route | compact disposition/domain types; typed terminal adapter before fallback | staged tools and PA10-PA38 integrated driver | valid-input throws unchanged; generic runtime sites -20 | +384 text, -4 exception table, +88 unwind | frozen wall 0.520/0.520 s | through-PA23 3,139/3,139; focused later suites pass | `e9bde193` | retained |
-| E2 | syntax speculation | runtime exception used for type-id/parameter-clause retry | 8-byte matched/no-match/committed-error result; committed `SyntaxError` | PA10 dependent logical template argument and malformed syntax | frozen 1->0; full syntax 231->0; full total 302->71 | +640 text, -76 exception table, +136 unwind | frozen 0.520/0.520 s; full O1/O3 neutral below | through-PA10 586/586; 222 O1/O3 objects exact | pending | retained |
+| E2 | syntax speculation | runtime exception used for type-id/parameter-clause retry | 8-byte matched/no-match/committed-error result; committed `SyntaxError` | PA10 dependent logical template argument and malformed syntax | frozen 1->0; full syntax 231->0; full total 302->71 | +640 text, -76 exception table, +136 unwind | frozen 0.520/0.520 s; full O1/O3 neutral below | through-PA10 586/586; 222 O1/O3 objects exact | `9109b2d9` | retained |
+| E3a | constexpr constructor initializer access | catch-all converted a lost class context into ordinary non-constant flow | constructor class/function context spans arguments and base/member initializers | PA21 protected base construction in a required constant expression | full 71->0; all events were three valid lookup tables in `lowir/io/parse.cpp` | text/rodata/unwind unchanged; exception table -8 | frozen neutral; full O1 +0.34% CPU, O3 -0.24% CPU | through-PA21 2,416/2,416; PA23 414/414; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -862,6 +863,48 @@ Thus the only unfavorable full metric is +0.14% O3 CPU, while O1 CPU improves
 0.60%; neither level shows a material regression.  E2 is retained for typed
 committed failures and elimination of proven successful-control-flow unwinds,
 not claimed as a broad throughput optimization.
+
+### E3a execution record
+
+The remaining 71 successful-workload exceptions all came from one translation
+unit, `lowir/io/parse.cpp`.  The optional
+`CPPGM_EXCEPTION_CENSUS_TAG` field now identifies the source workload in each
+process-level census record, which localized every event to the three static
+`std::pair<const char*, enum>` lookup tables for operations, LowIR types, and
+symbol roles.  A debug stack showed that constant initialization entered the
+selected `std::pair` constructor, then tried to construct its internal base
+while `current_class_context_` was `kNoEntity`.  `SelectConstructor` therefore
+reported an inaccessible constructor, and
+`EvaluateConstexprConstructorInitializers`' catch-all silently classified the
+analyzer's lost context as an ordinary non-constant result.
+
+Constructor arguments and base/member initializers are evaluated in the
+constructor's class and function context.  E3a now installs that context before
+invocation arguments and the initializer plan, retaining it through the body,
+and restores the outer context at the existing single cleanup point.  This is
+a semantic correction rather than a source-specific bypass.  PA21 documents
+the rule and adds a behavioral protected-base constexpr fixture: the E2
+compiler rejects its `static_assert`, while E3a accepts it and emits the
+reviewed ordinary `main` LowIR.  No test inspects exception classes, messages,
+or production source.
+
+The full 220 shared-source O1 census drops from 71 throws to zero.  The affected
+`lowir/io/parse.cpp` object remains exact at `1fcf8c53...`, and source-matched
+O1 and O3 controls reproduce all 222 objects.  The GCC-O3 compiler has identical
+`.text`, `.rodata`, `.eh_frame_hdr`, and `.eh_frame`; only
+`.gcc_except_table` falls from 164,848 to 164,840 bytes.  Eight frozen samples
+remain exact at `8545fec6...`, with 0.520-second wall and 0.480-second user
+medians for both compilers.
+
+The 32-way full B/A/A/B guard is neutral.  At requested O1, baseline/candidate
+average wall is 19.560/20.025 seconds and aggregate CPU is 486.785/488.420
+seconds (+0.34% CPU; wall includes one candidate outlier).  At requested O3,
+wall is 19.685/19.690 seconds and CPU is 491.040/489.855 seconds (-0.24%).
+PA21 passes 150/150, through-PA21 passes 2,416/2,416, and PA23 passes 414/414;
+the architecture audits remain clean and the PA38 file audit retains exactly
+32 warnings.  All six swallowing constexpr sites, including this now-cold
+initializer site, still require explicit classification/status work before E3
+closes.
 
 ## Initial code map
 

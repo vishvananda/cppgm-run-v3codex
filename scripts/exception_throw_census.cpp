@@ -34,6 +34,7 @@ thread_local bool inside_interposer;
 void FlushCensus()
 {
 	const char* path = std::getenv("CPPGM_EXCEPTION_CENSUS_FILE");
+	const char* tag = std::getenv("CPPGM_EXCEPTION_CENSUS_TAG");
 	if (!path || !*path || entry_count == 0) return;
 	const int output = open(path, O_WRONLY | O_CREAT | O_APPEND, 0666);
 	if (output < 0) return;
@@ -46,8 +47,9 @@ void FlushCensus()
 	{
 		const ThrowEntry& entry = entries[i];
 		dprintf(output,
-			"pid=%ld type=%s object=%s symbol=%s pc=0x%llx count=%llu\n",
+			"pid=%ld tag=%s type=%s object=%s symbol=%s pc=0x%llx count=%llu\n",
 			static_cast<long>(getpid()),
+			tag && *tag ? tag : "<none>",
 			entry.type ? entry.type->name() : "<null>",
 			entry.object ? entry.object : "<unknown>",
 			entry.symbol ? entry.symbol : "<unknown>",

@@ -165,7 +165,9 @@ after a valid declaration is instantiated with concrete template arguments:
   already part of the supported language surface
 - `constexpr` free-function calls, including recursive calls and default arguments
 - `constexpr` constructors, including member-initializer lists and base/member
-  initialization for literal class types
+  initialization for literal class types; access checks performed while
+  evaluating those initializers use the constructor's class context, so a
+  derived constructor may invoke an accessible protected base constructor
 - `constexpr` member-function calls on constant objects
 - constant object values, not just integral scalars:
   - aggregate/class values
