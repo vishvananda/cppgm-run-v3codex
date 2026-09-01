@@ -1,8 +1,8 @@
 #include "native/analysis/data_layout.h"
+#include "native/errors.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace lowir_native {
 namespace data_layout {
@@ -12,7 +12,7 @@ std::size_t type_size(const lowir_model::LowType & type)
   if(type.kind == lowir_model::LTK_INVALID ||
      type.kind == lowir_model::LTK_VOID ||
      type.kind == lowir_model::LTK_OBJECT)
-    throw std::logic_error("unsupported native data type");
+    native_errors::ThrowInternal("unsupported native data type");
   return type.storage_size;
 }
 
@@ -22,7 +22,7 @@ unsigned type_width(const lowir_model::LowType & type)
      type.kind == lowir_model::LTK_VOID ||
      type.kind == lowir_model::LTK_OBJECT ||
      type.kind == lowir_model::LTK_I128)
-    throw std::logic_error("unsupported native scalar type");
+    native_errors::ThrowInternal("unsupported native scalar type");
   return type.kind == lowir_model::LTK_I1 ? 8 :
     static_cast<unsigned>(lowir_model::lowir_type_bit_width(type));
 }
@@ -43,7 +43,8 @@ std::size_t global_alignment(const mir_model::MirGlobalDefinition & global)
       continue;
     }
     if(zero_bytes > std::numeric_limits<std::size_t>::max() - item.zero_bytes)
-      throw std::logic_error("native zero-only global size overflows");
+      native_errors::ThrowResourceLimit(
+        "native zero-only global size overflows");
     zero_bytes += item.zero_bytes;
   }
 

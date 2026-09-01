@@ -1,8 +1,8 @@
 #include "native/allocation/registers.h"
+#include "native/errors.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace lowir_native {
 namespace allocation {
@@ -41,14 +41,14 @@ AllocationDecision AllocationDecisionLog::resolve(
     return decision;
   }
   if(cursor_ == decisions_.size())
-    throw std::logic_error("allocation decision replay exhausted");
+    native_errors::ThrowInternal("allocation decision replay exhausted");
   const AllocationDecision decision = decisions_[cursor_++];
   if(decision.operation != operation || decision.position != position_ ||
      decision.value != value_ ||
      decision.requested_register != requested_register ||
      decision.across_call != across_call || decision.success != success ||
      (success && decision.selected_register != selected_register))
-    throw std::logic_error("allocation decision replay diverged");
+    native_errors::ThrowInternal("allocation decision replay diverged");
   return decision;
 }
 
@@ -63,7 +63,7 @@ void AllocationDecisionLog::begin_replay()
 void AllocationDecisionLog::finish_replay() const
 {
   if(!replaying_ || cursor_ != decisions_.size())
-    throw std::logic_error("allocation decision replay incomplete");
+    native_errors::ThrowInternal("allocation decision replay incomplete");
 }
 
 RegisterPool::RegisterPool(AllocationDecisionLog * decisions)
@@ -86,7 +86,7 @@ void RegisterPool::reserve_raw(X64Register reg)
 void RegisterPool::reserve(X64Register reg)
 {
   const unsigned index = static_cast<unsigned>(reg);
-  if(used_[index]) throw std::runtime_error("MIR register allocation conflict");
+  if(used_[index]) native_errors::ThrowInternal("MIR register allocation conflict");
   if(decisions_) decisions_->resolve(
     ADO_GPR_RESERVE, index, index, false, true);
   reserve_raw(reg);
@@ -131,7 +131,8 @@ X64Register RegisterPool::allocate(bool across_call)
     success) : AllocationDecision();
   if(decisions_ && decision.success)
     result = static_cast<X64Register>(decision.selected_register);
-  if(!success) throw std::runtime_error("foundation register pool exhausted");
+  if(!success) native_errors::ThrowResourceLimit(
+    "foundation register pool exhausted");
   reserve_raw(result);
   return result;
 }
@@ -220,7 +221,8 @@ XmmRegister XmmPool::allocate()
     AllocationDecision();
   if(decisions_ && decision.success)
     result = static_cast<XmmRegister>(decision.selected_register);
-  if(!success) throw std::runtime_error("scalar XMM register pool exhausted");
+  if(!success) native_errors::ThrowResourceLimit(
+    "scalar XMM register pool exhausted");
   used_[static_cast<unsigned>(result)] = true;
   return result;
 }

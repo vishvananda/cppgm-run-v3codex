@@ -2,6 +2,7 @@
 
 #include "lowir/model/program.h"
 #include "native/driver/stats.h"
+#include "native/errors.h"
 #include "native/analysis/function.h"
 #include "native/lowering/control_flow.h"
 #include "native/allocation/location_planning.h"
@@ -9,7 +10,6 @@
 #include "native/mir/model.h"
 #include "native/mir/registers.h"
 
-#include <stdexcept>
 #include <vector>
 
 namespace lowir_native {
@@ -145,7 +145,7 @@ protected:
         if(lowerer.stats_) ++lowerer.stats_->spill_value_visits;
         const lowir_model::ValueId value = occupants[i];
         if(!lowerer.value_known_[value])
-          throw std::logic_error("native live-location value is missing");
+          native_errors::ThrowInternal("native live-location value is missing");
         if(!spill_candidate(value, needs_callee_saved)) continue;
         if(lowerer.stats_) ++lowerer.stats_->spill_candidates;
         const std::size_t last = lowerer.facts_.last_use[value] ==

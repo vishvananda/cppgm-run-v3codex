@@ -1,12 +1,12 @@
 #include "native/allocation/location_planning.h"
 
 #include "native/driver/stats.h"
+#include "native/errors.h"
 #include "native/lowering/control_flow.h"
 
 #include <algorithm>
 #include <limits>
 #include <utility>
-#include <stdexcept>
 
 namespace lowir_native {
 namespace location_planning {
@@ -36,7 +36,7 @@ void LiveLocationIndex::remove(
   const std::vector<lowir_model::ValueId>::iterator found =
     std::find(values->begin(), values->end(), value);
   if(found == values->end())
-    throw std::logic_error("native live-location index is inconsistent");
+    native_errors::ThrowInternal("native live-location index is inconsistent");
   *found = values->back();
   values->pop_back();
   if(stats_) ++stats_->live_location_updates;

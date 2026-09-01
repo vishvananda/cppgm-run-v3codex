@@ -1,12 +1,12 @@
 #include "native/frame/home_planning.h"
 
+#include "native/errors.h"
 #include "native/lowering/abi.h"
 #include "native/frame/layout.h"
 #include "native/mir/construction.h"
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace lowir_native {
 namespace frame_home_planning {
@@ -31,7 +31,7 @@ std::uint32_t append_binding(
 {
   if(target.frame_bindings.size() >=
      std::numeric_limits<std::uint32_t>::max())
-    throw std::runtime_error("too many native frame bindings");
+    native_errors::ThrowResourceLimit("too many native frame bindings");
   mir_model::MirFrameBinding binding;
   binding.kind = kind;
   binding.name = name;

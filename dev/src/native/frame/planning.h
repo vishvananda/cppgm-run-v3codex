@@ -1,12 +1,12 @@
 #pragma once
 
 #include "native/analysis/function.h"
+#include "native/errors.h"
 #include "native/frame/layout.h"
 #include "native/eh/host_regions.h"
 #include "native/lowering/varargs.h"
 
 #include <cstddef>
-#include <stdexcept>
 
 namespace lowir_native {
 namespace frame_planning_detail {
@@ -20,7 +20,7 @@ protected:
     Derived & lowerer = static_cast<Derived &>(*this);
     if(!lowerer.facts_.has_va_start) return;
     if(lowerer.source_.boundary.arity != lowir_model::CAM_VARIADIC)
-      throw std::runtime_error("va_start in non-variadic function");
+      native_errors::ThrowLowirInput("va_start in non-variadic function");
     lowerer.variadic_state_ = abi::variadic_state(lowerer.source_.params);
     lowerer.variadic_register_save_offset_ = lowerer.allocate_frame_binding(
       mir_model::MirFrameBinding::FB_TEMP,

@@ -1,9 +1,9 @@
 #include "native/driver/program.h"
 
+#include "native/errors.h"
 #include "native/mir/construction.h"
 #include "native/lowering/selection.h"
 
-#include <stdexcept>
 
 namespace lowir_native {
 namespace program_lowering {
@@ -116,7 +116,7 @@ std::vector<lowir_model::SymbolId> tls_wrapper_index(
     lowir_model::SymbolId & wrapper =
       result[function.metadata.tls_for_symbol_id];
     if(wrapper.valid() && wrapper != function.symbol)
-      throw std::runtime_error("multiple TLS wrappers for " +
+      native_errors::ThrowLowirInput("multiple TLS wrappers for " +
         lowir_model::lowir_symbol_name(
           source, function.metadata.tls_for_symbol_id));
     wrapper = function.symbol;
@@ -127,7 +127,7 @@ std::vector<lowir_model::SymbolId> tls_wrapper_index(
     lowir_model::SymbolId & wrapper =
       result[function.metadata.tls_for_symbol_id];
     if(wrapper.valid() && wrapper != function.symbol)
-      throw std::runtime_error("multiple TLS wrappers for " +
+      native_errors::ThrowLowirInput("multiple TLS wrappers for " +
         lowir_model::lowir_symbol_name(
           source, function.metadata.tls_for_symbol_id));
     wrapper = function.symbol;

@@ -1,9 +1,9 @@
 #include "native/mir/model.h"
+#include "native/errors.h"
 
 #include <fstream>
 #include <iomanip>
 #include <sstream>
-#include <stdexcept>
 
 namespace mir_model {
 namespace {
@@ -16,7 +16,7 @@ const char * register_name(X64Register reg)
   };
   const std::size_t index = static_cast<std::size_t>(reg);
   if(index >= sizeof(names) / sizeof(names[0]))
-    throw std::logic_error("invalid MIR register");
+    native_errors::ThrowInternal("invalid MIR register");
   return names[index];
 }
 
@@ -27,7 +27,7 @@ const char * xmm_name(XmmRegister reg)
   };
   const std::size_t index = static_cast<std::size_t>(reg);
   if(index >= sizeof(names) / sizeof(names[0]))
-    throw std::logic_error("invalid MIR XMM register");
+    native_errors::ThrowInternal("invalid MIR XMM register");
   return names[index];
 }
 
@@ -93,12 +93,12 @@ std::string operand_text(const Operand & operand, const Program & program,
     return "@" + mir_symbol_name(program, operand.symbol);
   case Operand::OP_LABEL:
     if(!function)
-      throw std::logic_error("MIR label operand outside function");
+      native_errors::ThrowInternal("MIR label operand outside function");
     return "^" + mir_block_label(program, *function, operand.block);
   case Operand::OP_FRAME: return frame_address(operand.offset);
   case Operand::OP_DEREF: return dereference(operand);
   }
-  throw std::logic_error("invalid MIR operand");
+  native_errors::ThrowInternal("invalid MIR operand");
 }
 
 const char * condition_suffix(X86Condition condition)
@@ -121,7 +121,7 @@ const char * condition_suffix(X86Condition condition)
   case XC_LE: return "le";
   case XC_G: return "g";
   }
-  throw std::logic_error("invalid MIR condition");
+  native_errors::ThrowInternal("invalid MIR condition");
 }
 
 const char * opcode_name(Instruction::Opcode opcode)
@@ -202,7 +202,7 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_EXIT: return "exit";
   default: break;
   }
-  throw std::logic_error("MIR serializer does not support opcode");
+  native_errors::ThrowInternal("MIR serializer does not support opcode");
 }
 
 void render_operands(std::ostringstream & out, const Instruction & instruction,
@@ -467,7 +467,7 @@ void render_function(std::ostringstream & out, const Program & program,
     if(binding.kind == FrameBinding::FB_SLOT) {
       if(!binding.name.valid() || binding.name.generated() ||
          binding.name.fixed())
-        throw std::logic_error("invalid MIR slot presentation identity");
+        native_errors::ThrowInternal("invalid MIR slot presentation identity");
       out << '$' << mir_string(program, binding.name.spelling());
     } else out << mir_presentation_name(program, binding.name);
     out << " -> "
@@ -496,7 +496,7 @@ const std::string & mir_block_label(const MirProgram & program,
 {
   const std::uint32_t index = block;
   if(!block.valid() || index >= function.block_labels.size())
-    throw std::logic_error("invalid MIR block identity");
+    native_errors::ThrowInternal("invalid MIR block identity");
   return mir_string(program, function.block_labels[index]);
 }
 
@@ -505,7 +505,7 @@ const std::string & mir_symbol_name(const MirProgram & program,
 {
   const std::uint32_t index = symbol;
   if(!symbol.valid() || index >= program.symbol_names.size())
-    throw std::logic_error("invalid MIR symbol identity");
+    native_errors::ThrowInternal("invalid MIR symbol identity");
   return mir_string(program, program.symbol_names[index]);
 }
 
@@ -519,7 +519,7 @@ const std::string & mir_string(const MirProgram & program,
                                lowir_model::StringId string)
 {
   if(!program.strings.valid() || !string.valid())
-    throw std::logic_error("invalid MIR string identity");
+    native_errors::ThrowInternal("invalid MIR string identity");
   return program.strings.get(string);
 }
 
@@ -527,7 +527,7 @@ std::string mir_presentation_name(
     const MirProgram & program, lowir_model::PresentationName name)
 {
   if(!name.valid())
-    throw std::logic_error("invalid MIR presentation identity");
+    native_errors::ThrowInternal("invalid MIR presentation identity");
   if(name.generated())
     return "%t" + std::to_string(name.generated_ordinal());
   if(name.fixed())
@@ -563,9 +563,9 @@ void write_mir_program_file(const std::string & path,
 {
   const std::string text = serialize_mir_program(program);
   std::ofstream out(path.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
-  if(!out) throw std::runtime_error("unable to open MIR output: " + path);
+  if(!out) native_errors::ThrowInputOutput("unable to open MIR output: " + path);
   out.write(text.data(), static_cast<std::streamsize>(text.size()));
-  if(!out) throw std::runtime_error("unable to write MIR output: " + path);
+  if(!out) native_errors::ThrowInputOutput("unable to write MIR output: " + path);
 }
 
 }  // namespace mir_model

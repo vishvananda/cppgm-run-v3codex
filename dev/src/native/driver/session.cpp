@@ -1,6 +1,7 @@
 #include "native/driver/stats.h"
 
 #include "lowir/optimize/force_inline.h"
+#include "native/errors.h"
 #include "native/eh/lowering.h"
 #include "native/mir/control_flow.h"
 #include "native/mir/optimize.h"
@@ -11,7 +12,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <stdexcept>
 #include <utility>
 
 namespace lowir_native {
@@ -111,7 +111,7 @@ struct ProgramLoweringSession::Impl
     std::chrono::steady_clock::time_point started;
     if(stats) started = std::chrono::steady_clock::now();
     if(target != "linux")
-      throw std::runtime_error("unsupported native target: " + target);
+      native_errors::ThrowInvocation("unsupported native target: " + target);
 	shell.target = mir_model::MirProgram::TARGET_LINUX;
 	shell.symbol_names = source.symbol_names;
 	shell.strings = source.strings.seal();
@@ -524,7 +524,7 @@ struct ProgramLoweringSession::Impl
   mir_model::MirFunction LowerFunction(std::size_t index)
   {
     if(index >= source.functions.size())
-      throw std::logic_error("native function index is out of bounds");
+      native_errors::ThrowInternal("native function index is out of bounds");
     std::chrono::steady_clock::time_point started;
     if(stats) started = std::chrono::steady_clock::now();
     FunctionCensusSnapshot census_before;

@@ -1,8 +1,8 @@
 #include "native/frame/epilogue.h"
 
 #include "native/allocation/registers.h"
+#include "native/errors.h"
 
-#include <stdexcept>
 
 namespace lowir_native {
 namespace epilogue_detail {
@@ -61,7 +61,7 @@ std::size_t function_stack_adjustment(
 {
   if(function.omit_frame_pointer) {
     if(function.has_dynamic_stack)
-      throw std::logic_error("dynamic stack cannot omit the frame pointer");
+      native_errors::ThrowInternal("dynamic stack cannot omit the frame pointer");
     // SysV enters with rsp == 8 (mod 16). An odd number of eight-byte saves
     // aligns a call naturally; an even number needs one padding word. Leaves
     // need no padding because they make no aligned-call promise of their own.
@@ -70,7 +70,7 @@ std::size_t function_stack_adjustment(
   }
   const std::size_t preserved = function.callee_saved_regs.size() * 8;
   if(function.stack_size < preserved)
-    throw std::logic_error("MIR stack reservation is smaller than its saves");
+    native_errors::ThrowInternal("MIR stack reservation is smaller than its saves");
   return function.stack_size - preserved;
 }
 

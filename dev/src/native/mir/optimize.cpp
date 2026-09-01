@@ -1,4 +1,5 @@
 #include "native/mir/optimize.h"
+#include "native/errors.h"
 
 #include <algorithm>
 #include <array>
@@ -6,7 +7,6 @@
 #include <cstdint>
 #include <deque>
 #include <limits>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -2284,7 +2284,7 @@ std::uint64_t instruction_definition_mask(
 void optimize_function(MirFunction & function, int level, Stats * stats)
 {
   if(level < 0 || level > 3)
-    throw std::logic_error("unsupported machine optimization level");
+    native_errors::ThrowInvocation("unsupported machine optimization level");
   if(level == 0) return;
   function.share_epilogues = false;
   const std::chrono::steady_clock::time_point started =
