@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/constants/wide_integer.h"
+#include "support/exceptions.h"
 
 #include <cstdint>
 #include <stdexcept>
@@ -65,7 +66,7 @@ bool SignBit(const WideBits& value, std::size_t width)
 WideBits NormalizeBits(WideBits value, std::size_t width, bool is_unsigned)
 {
 	if (width == 0 || width > 128)
-		throw std::logic_error("unsupported wide constant width");
+		ThrowInternalCompilerError("unsupported wide constant width");
 	if (width < 64)
 	{
 		const std::uint64_t mask = (std::uint64_t(1) << width) - 1;
@@ -137,7 +138,7 @@ void DivideUnsigned(const WideBits& dividend, const WideBits& divisor,
 	WideBits* quotient, WideBits* remainder)
 {
 	if (divisor.low == 0 && divisor.high == 0)
-		throw std::runtime_error("division by zero");
+		ThrowSemanticError("division by zero");
 	*quotient = WideBits();
 	*remainder = WideBits();
 	for (std::size_t bit = 128; bit-- != 0;)
@@ -224,7 +225,8 @@ ConstexprScalarValue NormalizeWideConstant(
 	const ConstexprScalarValue& value, std::size_t width, bool is_unsigned)
 {
 	if (value.kind != CONSTEXPR_SCALAR_INTEGRAL)
-		throw std::logic_error("normalizing a non-integral wide constant");
+		ThrowInternalCompilerError(
+			"normalizing a non-integral wide constant");
 	return Scalar(NormalizeBits(Bits(value), width, is_unsigned));
 }
 
@@ -239,7 +241,7 @@ ConstexprScalarValue NegateWideConstant(
 			WideBits(0, std::uint64_t(1) << (width - 65)),
 			width, false);
 		if (CompareUnsigned(normalized, minimum) == 0)
-			throw std::runtime_error("signed constant unary negation overflow");
+			ThrowSemanticError("signed constant unary negation overflow");
 	}
 	return Scalar(NormalizeBits(Negate(normalized), width, is_unsigned));
 }
@@ -282,15 +284,15 @@ ConstexprScalarValue ApplyWideConstantBinary(const std::string& operation,
 	if (op == OP_LSHIFT || op == OP_RSHIFT)
 	{
 		if (right.high != 0 || right_negative || right.low >= width)
-			throw std::runtime_error("invalid constant shift count");
+			ThrowSemanticError("invalid constant shift count");
 		const std::size_t count = static_cast<std::size_t>(right.low);
 		if (op == OP_LSHIFT)
 		{
 			if (left_negative)
-				throw std::runtime_error("invalid negative constant left shift");
+				ThrowSemanticError("invalid negative constant left shift");
 			if (!is_unsigned &&
 				CompareUnsigned(left, ShiftRight(WidthMaximum(width), count)) > 0)
-				throw std::runtime_error("constant left shift overflow");
+				ThrowSemanticError("constant left shift overflow");
 			return Scalar(NormalizeBits(
 				ShiftLeft(left, count), width, is_unsigned));
 		}
@@ -315,7 +317,7 @@ ConstexprScalarValue ApplyWideConstantBinary(const std::string& operation,
 				left_negative == right_negative && result_negative != left_negative :
 				left_negative != right_negative && result_negative != left_negative;
 			if (overflow)
-				throw std::runtime_error("signed constant arithmetic overflow");
+				ThrowSemanticError("signed constant arithmetic overflow");
 		}
 		return Scalar(result);
 	}
@@ -332,7 +334,7 @@ ConstexprScalarValue ApplyWideConstantBinary(const std::string& operation,
 				WideBits(0, std::uint64_t(1) << (width - 65));
 			if (!negative) limit = Subtract(limit, WideBits(1, 0));
 			if (ProductExceeds(product, limit))
-				throw std::runtime_error("signed constant arithmetic overflow");
+				ThrowSemanticError("signed constant arithmetic overflow");
 			result = ProductLow(product);
 			if (negative) result = Negate(result);
 		}
@@ -348,13 +350,13 @@ ConstexprScalarValue ApplyWideConstantBinary(const std::string& operation,
 		if (!is_unsigned && left_negative && right_magnitude.low == 1 &&
 			right_magnitude.high == 0 && right_negative &&
 			SignBit(quotient, width))
-			throw std::runtime_error("signed division overflow");
+			ThrowSemanticError("signed division overflow");
 		result = op == OP_DIV ? quotient : remainder;
 		if (op == OP_DIV ? left_negative != right_negative : left_negative)
 			result = Negate(result);
 		return Scalar(NormalizeBits(result, width, is_unsigned));
 	}
-	throw std::runtime_error("unsupported wide constant binary operator");
+	ThrowInternalCompilerError("unsupported wide constant binary operator");
 }
 
 ConstexprScalarValue Analyzer::ApplyConstantIntegralUnary(
@@ -372,7 +374,7 @@ ConstexprScalarValue Analyzer::ApplyConstantIntegralUnary(
 			- static_cast<std::int64_t>(
 				std::uint64_t(1) << (width - 1));
 		if (!is_unsigned && value.integral == minimum)
-			throw std::runtime_error(
+			ThrowSemanticError(
 				"signed constant unary negation overflow");
 		ConstexprScalarValue result = value;
 		result.integral = static_cast<std::int64_t>(

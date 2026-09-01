@@ -700,7 +700,8 @@ Append one row for each retained or rejected increment:
 | E0 | baseline and audit | generic standard categories and broad catches | report-only ceilings plus native throw census | PA1-PA39 | frozen 1; full 302; focused counts below | section baseline below | frozen/full baseline below | 5,473/5,473; output hashes below | `8b2216ff` | retained |
 | E1 | taxonomy and terminal boundaries | standard bases and dead not-implemented exit route | compact disposition/domain types; typed terminal adapter before fallback | staged tools and PA10-PA38 integrated driver | valid-input throws unchanged; generic runtime sites -20 | +384 text, -4 exception table, +88 unwind | frozen wall 0.520/0.520 s | through-PA23 3,139/3,139; focused later suites pass | `e9bde193` | retained |
 | E2 | syntax speculation | runtime exception used for type-id/parameter-clause retry | 8-byte matched/no-match/committed-error result; committed `SyntaxError` | PA10 dependent logical template argument and malformed syntax | frozen 1->0; full syntax 231->0; full total 302->71 | +640 text, -76 exception table, +136 unwind | frozen 0.520/0.520 s; full O1/O3 neutral below | through-PA10 586/586; 222 O1/O3 objects exact | `9109b2d9` | retained |
-| E3a | constexpr constructor initializer access | catch-all converted a lost class context into ordinary non-constant flow | constructor class/function context spans arguments and base/member initializers | PA21 protected base construction in a required constant expression | full 71->0; all events were three valid lookup tables in `lowir/io/parse.cpp` | text/rodata/unwind unchanged; exception table -8 | frozen neutral; full O1 +0.34% CPU, O3 -0.24% CPU | through-PA21 2,416/2,416; PA23 414/414; 222 O1/O3 objects exact | pending | retained |
+| E3a | constexpr constructor initializer access | catch-all converted a lost class context into ordinary non-constant flow | constructor class/function context spans arguments and base/member initializers | PA21 protected base construction in a required constant expression | full 71->0; all events were three valid lookup tables in `lowir/io/parse.cpp` | text/rodata/unwind unchanged; exception table -8 | frozen neutral; full O1 +0.34% CPU, O3 -0.24% CPU | through-PA21 2,416/2,416; PA23 414/414; 222 O1/O3 objects exact | `ee6d0cb8` | retained |
+| E3b | scalar conversion and compound update | two catch-alls swallowed arithmetic failure, invariant failure, allocation, or any future type alike | recover only `SemanticError`; scalar invariants use `InternalCompilerError`; shared cold throw helpers | PA21 scalar/constexpr evaluation, including rejected required constants | successful full 0->0; catch-all sites 59->57 | -512 text, +32 rodata, -352 exception table, +296 unwind | frozen neutral; full O1 -0.23% CPU, O3 -0.31% CPU | PA21 150/150; 222 O1/O3 objects exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -905,6 +906,38 @@ the architecture audits remain clean and the PA38 file audit retains exactly
 32 warnings.  All six swallowing constexpr sites, including this now-cold
 initializer site, still require explicit classification/status work before E3
 closes.
+
+### E3b execution record
+
+The two scalar catches in compound assignment were not observed in the frozen,
+full-source, PA21-positive, or PA23-positive successful censuses.  Adding a
+status branch to every constant scalar conversion or arithmetic operation is
+therefore not justified by the hot-control-flow rule.  E3b instead makes the
+cold distinction explicit: range, overflow, zero-divisor, and invalid-shift
+outcomes are `SemanticError`; impossible scalar kinds, widths, normalized
+forms, and operator dispatches are `InternalCompilerError`.  The assignment
+sites catch only `SemanticError` and convert that known arithmetic outcome to a
+non-constant local.  Allocation, internal, hard semantic, and resource failures
+now propagate.  This removes two swallowing catch-alls and ratchets the audit
+from 59 to 57; generic logic/runtime throws fall by 6/25 and the generic-file
+census falls from 218 to 217.
+
+Direct construction of the project error at every throw site was screened and
+rejected before retention: it added 4,480 bytes of text and 244 bytes of
+exception table.  Two shared cold, no-inline helpers preserve the typed
+disposition and lazy error construction while merging the repeated cold path.
+Against E3a the final carrier changes `.text` 6,624,486 -> 6,623,974,
+`.rodata` 214,208 -> 214,240, `.eh_frame_hdr` 50,876 -> 50,956,
+`.eh_frame` 323,104 -> 323,400, and `.gcc_except_table` 164,840 ->
+164,488.  No new RTTI type is introduced.
+
+Eight frozen samples are exact at `8545fec6...` and remain in the same
+0.52-0.53-second timer band.  The 32-way full B/A/A/B guard reproduces all 222
+objects.  Requested O1 baseline/candidate average wall is 19.585/19.435
+seconds and aggregate CPU is 488.415/487.280 seconds (-0.23%); requested O3
+wall is 19.905/19.830 seconds and CPU is 492.930/491.390 seconds (-0.31%).
+PA21 passes 150/150 and all architecture audits pass at the ratcheted ceilings.
+Four swallowing constexpr construction/function-evaluation catches remain.
 
 ## Initial code map
 

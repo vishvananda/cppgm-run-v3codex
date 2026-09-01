@@ -174,6 +174,18 @@ public:
 			domain, message, code) {}
 };
 
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowSemanticError(const char* message)
+{
+	throw SemanticError(message);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowInternalCompilerError(const char* message)
+{
+	throw InternalCompilerError(message);
+}
+
 static_assert(!std::is_base_of<SemanticError, HardSemanticError>::value,
 	"hard semantic failures must bypass ordinary semantic recovery");
 static_assert(!std::is_base_of<std::runtime_error, CompilerError>::value,

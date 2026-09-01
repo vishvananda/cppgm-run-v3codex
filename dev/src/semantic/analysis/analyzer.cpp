@@ -1,6 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/analysis/switch.h"
 #include "semantic/extensions/hosted_extensions.h"
+#include "support/exceptions.h"
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
@@ -1600,7 +1601,7 @@ ExpressionInfo Analyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 				assigned = ConvertScalarConstant(
 					right.type, result_type, ExpressionScalar(right));
 			}
-			catch (...)
+			catch (const SemanticError&)
 			{
 				valid = false;
 			}
@@ -1619,7 +1620,7 @@ ExpressionInfo Analyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 				assigned = ApplyConstantScalarBinary(
 					binary, left_operand, right_operand, operand_type);
 			}
-			catch (...)
+			catch (const SemanticError&)
 			{
 				valid = false;
 			}

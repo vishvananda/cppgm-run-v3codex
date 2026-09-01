@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "preprocess/tokens/post_tokenizer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -309,7 +310,7 @@ std::int64_t Analyzer::ApplyConstantBinary(
 		}
 		if (addition_overflow || subtraction_overflow ||
 			multiplication_overflow)
-			throw std::runtime_error("signed constant arithmetic overflow");
+			ThrowSemanticError("signed constant arithmetic overflow");
 	}
 	std::int64_t value = 0;
 	if (operation == "+")
@@ -320,25 +321,25 @@ std::int64_t Analyzer::ApplyConstantBinary(
 		value = static_cast<std::int64_t>(unsigned_left * unsigned_right);
 	if (operation == "/")
 	{
-		if (right == 0) throw std::runtime_error("division by zero");
+		if (right == 0) ThrowSemanticError("division by zero");
 		if (unsigned_type)
 			value = static_cast<std::int64_t>(unsigned_left / unsigned_right);
 		else
 		{
 			if (left == signed_minimum && right == -1)
-				throw std::runtime_error("signed division overflow");
+				ThrowSemanticError("signed division overflow");
 			value = left / right;
 		}
 	}
 	else if (operation == "%")
 	{
-		if (right == 0) throw std::runtime_error("division by zero");
+		if (right == 0) ThrowSemanticError("division by zero");
 		if (unsigned_type)
 			value = static_cast<std::int64_t>(unsigned_left % unsigned_right);
 		else
 		{
 			if (left == signed_minimum && right == -1)
-				throw std::runtime_error("signed division overflow");
+				ThrowSemanticError("signed division overflow");
 			value = left % right;
 		}
 	}
@@ -346,16 +347,16 @@ std::int64_t Analyzer::ApplyConstantBinary(
 	{
 		if (right < 0 || static_cast<std::uint64_t>(right) >=
 			width)
-			throw std::runtime_error("invalid constant shift count");
+			ThrowSemanticError("invalid constant shift count");
 		if (operation == "<<")
 		{
 			if (!unsigned_type && left < 0)
-				throw std::runtime_error("invalid negative constant left shift");
+				ThrowSemanticError("invalid negative constant left shift");
 			const std::uint64_t maximum = width == 64 ?
 				std::numeric_limits<std::uint64_t>::max() :
 				(std::uint64_t(1) << width) - 1;
 			if (!unsigned_type && unsigned_left > (maximum >> right))
-				throw std::runtime_error("constant left shift overflow");
+				ThrowSemanticError("constant left shift overflow");
 			value = static_cast<std::int64_t>(unsigned_left << right);
 		}
 		else value = unsigned_type ?
@@ -379,7 +380,7 @@ std::int64_t Analyzer::ApplyConstantBinary(
 	else if (operation == ",") return right;
 	else if (operation != "+" && operation != "-" && operation != "*" &&
 		operation != "/" && operation != "%")
-		throw std::runtime_error("unsupported constant binary operator");
+		ThrowInternalCompilerError("unsupported constant binary operator");
 	return integral_type ?
 		NormalizeIntegralConstant(operand_type, value) : value;
 }

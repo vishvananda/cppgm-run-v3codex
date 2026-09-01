@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/constants/wide_integer.h"
+#include "support/exceptions.h"
 
 #include <algorithm>
 #include <cmath>
@@ -69,12 +70,13 @@ ConstexprScalarValue Analyzer::ConvertScalarConstant(
 	if (source_member_pointer && target_member_pointer)
 	{
 		if (value.kind != CONSTEXPR_SCALAR_MEMBER_POINTER)
-			throw std::logic_error("invalid member pointer constant");
+			ThrowInternalCompilerError("invalid member pointer constant");
 		return value;
 	}
 	if ((!IsIntegral(source_type, true) && !IsFloating(source_type)) ||
 		(!IsIntegral(target_type, true) && !IsFloating(target_type)))
-		throw std::logic_error("non-arithmetic scalar constant conversion");
+		ThrowInternalCompilerError(
+			"non-arithmetic scalar constant conversion");
 	if (target_record.kind == TYPE_FUNDAMENTAL &&
 		target_record.fundamental == FUND_BOOL)
 		return ConstexprScalarValue(
@@ -118,16 +120,18 @@ ConstexprScalarValue Analyzer::ConvertScalarConstant(
 		case FUND_FLOAT64X:
 		case FUND_STDFLOAT128:
 		case FUND_FLOAT128: break;
-		default: throw std::logic_error("invalid floating constant target");
+		default: ThrowInternalCompilerError(
+			"invalid floating constant target");
 		}
 		if (!std::isfinite(converted))
-			throw std::runtime_error("non-finite floating constant");
+			ThrowSemanticError("non-finite floating constant");
 		return ConstexprScalarValue(converted);
 	}
 	if (value.kind == CONSTEXPR_SCALAR_FLOATING)
 	{
 		if (!std::isfinite(value.floating))
-			throw std::runtime_error("non-finite floating to integral conversion");
+			ThrowSemanticError(
+				"non-finite floating to integral conversion");
 		const std::size_t width = IntegralWidth(target_type);
 		const long double minimum = IsUnsignedIntegral(target_type) ? 0.0L :
 			width == 64 ?
@@ -142,7 +146,7 @@ ConstexprScalarValue Analyzer::ConvertScalarConstant(
 				static_cast<long double>(std::numeric_limits<std::int64_t>::max()) :
 				std::ldexp(1.0L, static_cast<int>(width - 1)) - 1.0L;
 		if (value.floating < minimum || value.floating > maximum)
-			throw std::runtime_error("floating constant outside integral range");
+			ThrowSemanticError("floating constant outside integral range");
 		const std::int64_t converted = IsUnsignedIntegral(target_type) ?
 			static_cast<std::int64_t>(
 				static_cast<std::uint64_t>(value.floating)) :
@@ -790,7 +794,7 @@ ConstexprScalarValue Analyzer::ApplyConstantScalarBinary(
 		if (left.kind != CONSTEXPR_SCALAR_MEMBER_POINTER ||
 			right.kind != CONSTEXPR_SCALAR_MEMBER_POINTER ||
 			(op != OP_EQ && op != OP_NE))
-			throw std::runtime_error(
+			ThrowInternalCompilerError(
 				"unsupported member pointer constant operator");
 		const bool equal = left == right;
 		return ConstexprScalarValue(static_cast<std::int64_t>(
@@ -800,7 +804,8 @@ ConstexprScalarValue Analyzer::ApplyConstantScalarBinary(
 	{
 		if (left.kind != CONSTEXPR_SCALAR_FLOATING ||
 			right.kind != CONSTEXPR_SCALAR_FLOATING)
-			throw std::logic_error("unnormalized floating constant operands");
+			ThrowInternalCompilerError(
+				"unnormalized floating constant operands");
 		const long double l = left.floating;
 		const long double r = right.floating;
 		if (op == OP_EQ || op == OP_NE || op == OP_LT ||
@@ -812,11 +817,14 @@ ConstexprScalarValue Analyzer::ApplyConstantScalarBinary(
 			return ConstexprScalarValue(static_cast<std::int64_t>(compared));
 		}
 		if (op == OP_DIV && r == 0.0L)
-			throw std::runtime_error("floating constant division by zero");
-		long double calculated = op == OP_PLUS ? l + r :
-			op == OP_MINUS ? l - r : op == OP_STAR ? l * r :
-			op == OP_DIV ? l / r :
-			throw std::runtime_error("unsupported floating constant operator");
+			ThrowSemanticError("floating constant division by zero");
+		long double calculated = 0.0L;
+		if (op == OP_PLUS) calculated = l + r;
+		else if (op == OP_MINUS) calculated = l - r;
+		else if (op == OP_STAR) calculated = l * r;
+		else if (op == OP_DIV) calculated = l / r;
+		else ThrowInternalCompilerError(
+			"unsupported floating constant operator");
 		return NormalizeScalarConstant(
 			operand_type, ConstexprScalarValue(calculated));
 	}
