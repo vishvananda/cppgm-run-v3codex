@@ -33,6 +33,11 @@ const std::size_t kO3MaximumConstantGroupsPerTarget = 64;
 const std::size_t kO3MaximumGroupedClones = 24;
 const std::size_t kO3MaximumGroupedInstructions = 1536;
 const std::size_t kO3MaximumStringGroupsPerTarget = 12;
+const std::size_t kO3MinimumFastSplitInstructions = 128;
+const std::size_t kO3MaximumFastSplitInstructions = 768;
+const std::size_t kO3MaximumFastPathInstructions = 128;
+const std::size_t kO3MinimumFastSplitCalls = 4;
+const std::size_t kO3MinimumFastSplitBailouts = 3;
 
 enum AgreementState
 {
@@ -1798,6 +1803,641 @@ std::size_t eliminate_repeated_stable_calls(
     }
   }
   return rewrites;
+}
+
+bool fast_path_store(const Instruction & instruction)
+{
+  return instruction.kind == Instruction::IK_STORE &&
+    !instruction.volatile_access;
+}
+
+bool private_slot_store(const Instruction & instruction)
+{
+  return fast_path_store(instruction) &&
+    instruction.second.kind == Operand::OP_SLOT;
+}
+
+bool fast_path_instruction(const Instruction & instruction)
+{
+  if(instruction.volatile_access) return false;
+  switch(instruction.kind) {
+  case Instruction::IK_CONST:
+  case Instruction::IK_COPY:
+  case Instruction::IK_ADDR:
+  case Instruction::IK_LOAD:
+  case Instruction::IK_INDEX:
+  case Instruction::IK_UNARY:
+  case Instruction::IK_BINARY:
+  case Instruction::IK_CMP:
+  case Instruction::IK_CONVERT:
+  case Instruction::IK_JUMP:
+  case Instruction::IK_BRANCH:
+  case Instruction::IK_RETURN:
+  case Instruction::IK_PHI:
+  case Instruction::IK_STORE:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool block_fast_path_eligible(const lowir_model::Block & block)
+{
+  if(block.instructions.empty()) return false;
+  for(std::size_t i = 0; i < block.instructions.size(); ++i)
+    if(!fast_path_instruction(block.instructions[i])) return false;
+  const Instruction::Kind terminal = block.instructions.back().kind;
+  return terminal == Instruction::IK_JUMP ||
+    terminal == Instruction::IK_BRANCH ||
+    terminal == Instruction::IK_RETURN;
+}
+
+bool has_observable_slot_address(const Function & function)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t i = 0;
+        i < function.blocks[block].instructions.size(); ++i) {
+      const Instruction & instruction =
+        function.blocks[block].instructions[i];
+      if(instruction.kind == Instruction::IK_ADDR &&
+         instruction.first.kind == Operand::OP_SLOT)
+        return true;
+    }
+  return false;
+}
+
+bool fast_split_parameter(const lowir_model::Parameter & parameter)
+{
+  if(parameter.metadata.passing != lowir_model::PPM_DIRECT) return false;
+  const lowir_model::LowTypeKind kind = parameter.type.kind;
+  return kind != lowir_model::LTK_OBJECT &&
+    kind != lowir_model::LTK_I128 && kind != lowir_model::LTK_F80;
+}
+
+std::size_t fast_split_call_count(const Function & function)
+{
+  std::size_t result = 0;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t i = 0;
+        i < function.blocks[block].instructions.size(); ++i)
+      if(function.blocks[block].instructions[i].kind == Instruction::IK_CALL)
+        ++result;
+  return result;
+}
+
+bool find_fast_path(const Function & function,
+                    const lowir_analysis::Graph & graph,
+                    std::vector<std::size_t> * path)
+{
+  const std::size_t count = function.blocks.size();
+  const std::size_t infinity = std::numeric_limits<std::size_t>::max();
+  std::vector<std::size_t> distance(count, infinity), predecessor(count, count);
+  std::vector<unsigned char> done(count, 0);
+  distance[0] = function.blocks[0].instructions.size();
+  for(std::size_t round = 0; round < count; ++round) {
+    std::size_t block = count;
+    for(std::size_t i = 0; i < count; ++i)
+      if(!done[i] && distance[i] != infinity &&
+         (block == count || distance[i] < distance[block]))
+        block = i;
+    if(block == count) break;
+    done[block] = 1;
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    if(instructions.back().kind == Instruction::IK_RETURN &&
+       function.return_type.kind == lowir_model::LTK_VOID) {
+      std::vector<std::size_t> reversed;
+      for(std::size_t cursor = block; cursor != count;
+          cursor = predecessor[cursor])
+        reversed.push_back(cursor);
+      path->assign(reversed.rbegin(), reversed.rend());
+      return true;
+    }
+    for(std::size_t edge = 0; edge < graph.successors[block].size(); ++edge) {
+      const std::size_t successor = graph.successors[block][edge];
+      if(done[successor] ||
+         !block_fast_path_eligible(function.blocks[successor]))
+        continue;
+      const std::size_t cost = function.blocks[successor].instructions.size();
+      if(distance[block] > infinity - cost) continue;
+      const std::size_t candidate = distance[block] + cost;
+      if(candidate < distance[successor]) {
+        distance[successor] = candidate;
+        predecessor[successor] = block;
+      }
+    }
+  }
+  return false;
+}
+
+bool pure_detour_instruction(const Instruction & instruction)
+{
+  return fast_path_instruction(instruction) &&
+    !fast_path_store(instruction) &&
+    instruction.kind != Instruction::IK_RETURN;
+}
+
+bool collect_pure_detour(const Function & function,
+                         const lowir_analysis::Graph & graph,
+                         std::size_t start, std::size_t join,
+                         const std::vector<unsigned char> & path,
+                         std::vector<unsigned char> * detour)
+{
+  const std::size_t count = function.blocks.size();
+  std::vector<unsigned char> state(count, 0);
+  std::vector<std::pair<std::size_t, std::size_t> > stack;
+  if(start == join) return true;
+  if(path[start]) return false;
+  stack.push_back(std::make_pair(start, 0));
+  while(!stack.empty()) {
+    const std::size_t block = stack.back().first;
+    if(state[block] == 0) {
+      state[block] = 1;
+      const std::vector<Instruction> & instructions =
+        function.blocks[block].instructions;
+      if(instructions.empty()) return false;
+      for(std::size_t i = 0; i < instructions.size(); ++i)
+        if(!pure_detour_instruction(instructions[i])) return false;
+    }
+    if(stack.back().second == graph.successors[block].size()) {
+      state[block] = 2;
+      (*detour)[block] = 1;
+      stack.pop_back();
+      continue;
+    }
+    const std::size_t successor =
+      graph.successors[block][stack.back().second++];
+    if(successor == join) continue;
+    if(path[successor] || state[successor] == 1) return false;
+    if(state[successor] == 0)
+      stack.push_back(std::make_pair(successor, 0));
+  }
+  return true;
+}
+
+void expand_fast_path_diamonds(const Function & function,
+                               const lowir_analysis::Graph & graph,
+                               const std::vector<std::size_t> & ordered_path,
+                               std::vector<unsigned char> * path)
+{
+  for(std::size_t i = 0; i + 1 < ordered_path.size(); ++i) {
+    const std::size_t branch = ordered_path[i];
+    if(graph.successors[branch].size() != 2) continue;
+    const std::size_t selected = ordered_path[i + 1];
+    std::size_t alternate = function.blocks.size();
+    for(std::size_t edge = 0; edge < 2; ++edge)
+      if(graph.successors[branch][edge] != selected)
+        alternate = graph.successors[branch][edge];
+    if(alternate == function.blocks.size()) continue;
+    for(std::size_t join_pos = i + 2; join_pos < ordered_path.size();
+        ++join_pos) {
+      std::vector<unsigned char> detour(function.blocks.size(), 0);
+      if(!collect_pure_detour(function, graph, alternate,
+                             ordered_path[join_pos], *path, &detour))
+        continue;
+      for(std::size_t block = 0; block < detour.size(); ++block)
+        if(detour[block]) (*path)[block] = 1;
+      break;
+    }
+  }
+}
+
+bool operand_value_is_available(
+    const Operand & operand,
+    const std::vector<unsigned char> & parameter,
+    const std::vector<std::size_t> & definition_block,
+    const std::vector<unsigned char> & retained)
+{
+  if(operand.kind != Operand::OP_TEMP) return true;
+  const std::size_t value = operand.value;
+  return value < parameter.size() &&
+    (parameter[value] ||
+     (value < definition_block.size() &&
+      definition_block[value] < retained.size() &&
+      retained[definition_block[value]]));
+}
+
+bool fast_path_values_available(const Function & function,
+                                const std::vector<unsigned char> & retained)
+{
+  std::vector<unsigned char> parameter(function.value_names.size(), 0);
+  for(std::size_t i = 0; i < function.params.size(); ++i)
+    parameter[function.params[i].value] = 1;
+  std::vector<std::size_t> definition_block(
+    function.value_names.size(), function.blocks.size());
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t i = 0;
+        i < function.blocks[block].instructions.size(); ++i) {
+      const Instruction & instruction =
+        function.blocks[block].instructions[i];
+      if(instruction.dest.valid()) definition_block[instruction.dest] = block;
+    }
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    if(!retained[block]) continue;
+    for(std::size_t i = 0;
+        i < function.blocks[block].instructions.size(); ++i) {
+      const Instruction & instruction =
+        function.blocks[block].instructions[i];
+      const Operand * fixed[] = {
+        &instruction.first, &instruction.second, &instruction.third
+      };
+      for(std::size_t operand = 0; operand < 3; ++operand)
+        if(!operand_value_is_available(
+             *fixed[operand], parameter, definition_block, retained))
+          return false;
+      for(std::size_t operand = 0; operand < instruction.args.size(); ++operand) {
+        if(instruction.kind == Instruction::IK_PHI && !(operand & 1))
+          continue;
+        if(!operand_value_is_available(
+             instruction.args[operand], parameter, definition_block, retained))
+          return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool fast_path_exits_before_effects(const Function & function,
+                                    const lowir_analysis::Graph & graph,
+                                    const std::vector<unsigned char> & retained,
+                                    std::size_t * bailout_edges)
+{
+  std::vector<unsigned char> dirty(function.blocks.size(), 0), queued(
+    function.blocks.size(), 0), seen(function.blocks.size(), 0);
+  std::deque<std::size_t> work;
+  work.push_back(0);
+  queued[0] = 1;
+  seen[0] = 1;
+  *bailout_edges = 0;
+  while(!work.empty()) {
+    const std::size_t block = work.front();
+    work.pop_front();
+    queued[block] = 0;
+    bool output_dirty = dirty[block] != 0;
+    for(std::size_t i = 0;
+        i < function.blocks[block].instructions.size(); ++i) {
+      const Instruction & instruction =
+        function.blocks[block].instructions[i];
+      if(fast_path_store(instruction) && !private_slot_store(instruction))
+        output_dirty = true;
+    }
+    for(std::size_t edge = 0; edge < graph.successors[block].size(); ++edge) {
+      const std::size_t successor = graph.successors[block][edge];
+      if(!retained[successor]) {
+        ++*bailout_edges;
+        if(output_dirty) return false;
+        continue;
+      }
+      const bool changed = output_dirty && !dirty[successor];
+      if(changed) dirty[successor] = 1;
+      if((!seen[successor] || changed) && !queued[successor]) {
+        seen[successor] = 1;
+        work.push_back(successor);
+        queued[successor] = 1;
+      }
+    }
+  }
+  return true;
+}
+
+bool rewrite_outside_label(Operand * operand,
+                           const std::vector<unsigned char> & retained_by_id,
+                           lowir_model::BlockId fallback)
+{
+  if(operand->kind != Operand::OP_LABEL) return false;
+  const std::size_t id = operand->block;
+  if(id < retained_by_id.size() && retained_by_id[id]) return false;
+  operand->block = fallback;
+  return true;
+}
+
+void filter_phi_inputs(Instruction * instruction,
+                       const std::vector<unsigned char> & retained_by_id)
+{
+  if(instruction->kind != Instruction::IK_PHI) return;
+  std::size_t output = 0;
+  for(std::size_t input = 0; input + 1 < instruction->args.size(); input += 2) {
+    const Operand & label = instruction->args[input];
+    if(label.kind != Operand::OP_LABEL ||
+       static_cast<std::size_t>(label.block) >= retained_by_id.size() ||
+       !retained_by_id[label.block])
+      continue;
+    if(output != input) {
+      instruction->args[output] = instruction->args[input];
+      instruction->args[output + 1] = instruction->args[input + 1];
+    }
+    output += 2;
+  }
+  instruction->args.resize(output);
+}
+
+struct FastSplitCandidate
+{
+  std::size_t function = InlineCallGraph::no_function();
+  std::size_t instructions = 0;
+  std::size_t path_instructions = 0;
+  std::size_t bailout_edges = 0;
+  std::vector<unsigned char> retained;
+};
+
+bool fast_split_candidate_shape(const Function & function)
+{
+  if(function.metadata.binding != lowir_model::SBM_INTERNAL ||
+     function.metadata.no_inline || function.blocks.empty() ||
+     function.return_type.kind != lowir_model::LTK_VOID ||
+     function.params.size() > 6)
+    return false;
+  for(std::size_t parameter = 0; parameter < function.params.size();
+      ++parameter)
+    if(!fast_split_parameter(function.params[parameter])) return false;
+  const std::size_t instructions = instruction_count(function);
+  return instructions >= kO3MinimumFastSplitInstructions &&
+    instructions <= kO3MaximumFastSplitInstructions &&
+    !has_observable_slot_address(function) &&
+    fast_split_call_count(function) >= kO3MinimumFastSplitCalls;
+}
+
+bool analyze_fast_split_candidate(
+    const LowirProgram & program, const InlineCallGraph & call_graph,
+    std::size_t function_index, FastSplitCandidate * result)
+{
+  const Function & function = program.functions[function_index];
+  const std::size_t instructions = instruction_count(function);
+  if(call_graph.recursive[function_index] ||
+     call_graph.non_call_use[function_index] ||
+     !fast_split_candidate_shape(function))
+    return false;
+  const lowir_analysis::Graph graph = lowir_analysis::build_graph(function, 0);
+  std::vector<std::size_t> ordered_path;
+  if(!block_fast_path_eligible(function.blocks[0]) ||
+     !find_fast_path(function, graph, &ordered_path))
+    return false;
+  std::vector<unsigned char> retained(function.blocks.size(), 0);
+  for(std::size_t i = 0; i < ordered_path.size(); ++i)
+    retained[ordered_path[i]] = 1;
+  expand_fast_path_diamonds(function, graph, ordered_path, &retained);
+  std::size_t path_instructions = 0;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    if(retained[block])
+      path_instructions += function.blocks[block].instructions.size();
+  std::size_t bailouts = 0;
+  const bool values = fast_path_values_available(function, retained);
+  const bool effects = fast_path_exits_before_effects(
+    function, graph, retained, &bailouts);
+  if(path_instructions > kO3MaximumFastPathInstructions || !values ||
+     !effects || bailouts < kO3MinimumFastSplitBailouts)
+    return false;
+  result->function = function_index;
+  result->instructions = instructions;
+  result->path_instructions = path_instructions;
+  result->bailout_edges = bailouts;
+  result->retained.swap(retained);
+  return true;
+}
+
+void apply_fast_split(LowirProgram * program,
+                      const FastSplitCandidate & candidate,
+                      lowir_model::SymbolId clone_symbol)
+{
+  Function clone = program->functions[candidate.function];
+  make_internal_clone(&clone, clone_symbol);
+  clone.metadata.no_inline = true;
+
+  Function & function = program->functions[candidate.function];
+  const lowir_model::StringId fallback_label = program->strings.intern(
+    std::string("__o3fastslow_fallback_") +
+    std::to_string(function.next_block_id));
+  const lowir_model::BlockId fallback_id =
+    lowir_model::allocate_lowir_block_id(function, fallback_label);
+  std::vector<unsigned char> retained_by_id(function.next_block_id, 0);
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    if(candidate.retained[block])
+      retained_by_id[function.blocks[block].id] = 1;
+  std::vector<lowir_model::Block> blocks;
+  blocks.reserve(function.blocks.size() + 1);
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    if(!candidate.retained[block]) continue;
+    lowir_model::Block retained = std::move(function.blocks[block]);
+    for(std::size_t i = 0; i < retained.instructions.size(); ++i) {
+      Instruction & instruction = retained.instructions[i];
+      filter_phi_inputs(&instruction, retained_by_id);
+      if(instruction.kind == Instruction::IK_JUMP)
+        rewrite_outside_label(
+          &instruction.first, retained_by_id, fallback_id);
+      else if(instruction.kind == Instruction::IK_BRANCH) {
+        rewrite_outside_label(
+          &instruction.second, retained_by_id, fallback_id);
+        rewrite_outside_label(
+          &instruction.third, retained_by_id, fallback_id);
+      }
+    }
+    blocks.push_back(std::move(retained));
+  }
+  lowir_model::Block fallback;
+  fallback.id = fallback_id;
+  Instruction call;
+  call.kind = Instruction::IK_CALL;
+  call.first.kind = Operand::OP_GLOBAL;
+  call.first.symbol = clone_symbol;
+  call.call_returns_void = true;
+  call.type = lowir_model::builtin_lowir_type(lowir_model::LTK_VOID);
+  call.call_boundary = clone.boundary;
+  call.debug_location = function.debug_location;
+  for(std::size_t parameter = 0; parameter < function.params.size();
+      ++parameter) {
+    Operand argument;
+    argument.kind = Operand::OP_TEMP;
+    argument.value = function.params[parameter].value;
+    call.args.push_back(argument);
+  }
+  fallback.instructions.push_back(call);
+  Instruction return_instruction;
+  return_instruction.kind = Instruction::IK_RETURN;
+  return_instruction.type =
+    lowir_model::builtin_lowir_type(lowir_model::LTK_VOID);
+  return_instruction.debug_location = function.debug_location;
+  fallback.instructions.push_back(return_instruction);
+  blocks.push_back(std::move(fallback));
+  function.blocks.swap(blocks);
+  program->functions.push_back(std::move(clone));
+}
+
+std::size_t split_o3_fast_function_path(
+    LowirProgram & program, std::vector<unsigned char> * rewritten_symbols,
+    Stats *)
+{
+  const std::size_t function_count = program.functions.size();
+  std::vector<std::size_t> plausible;
+  for(std::size_t function = 0; function < function_count; ++function)
+    if(fast_split_candidate_shape(program.functions[function]))
+      plausible.push_back(function);
+  if(plausible.empty()) return 0;
+  const InlineCallGraph call_graph = analyze_inline_call_graph(program, 0);
+  FastSplitCandidate best;
+  for(std::size_t index = 0; index < plausible.size(); ++index) {
+    const std::size_t function = plausible[index];
+    FastSplitCandidate candidate;
+    if(!analyze_fast_split_candidate(
+         program, call_graph, function, &candidate))
+      continue;
+    if(best.function == InlineCallGraph::no_function() ||
+       candidate.instructions - candidate.path_instructions >
+         best.instructions - best.path_instructions)
+      best = std::move(candidate);
+  }
+  if(best.function == InlineCallGraph::no_function()) return 0;
+
+  std::vector<unsigned char> used_names(program.strings.size(), 0);
+  for(std::size_t symbol = 0; symbol < program.symbol_names.size(); ++symbol)
+    used_names[program.symbol_names[symbol]] = 1;
+  std::size_t ordinal = 0;
+  const lowir_model::SymbolId clone_symbol = allocate_clone_symbol(
+    &program, &used_names, &ordinal, "__o3fastslow");
+  const lowir_model::SymbolId rewritten =
+    program.functions[best.function].symbol;
+  apply_fast_split(&program, best, clone_symbol);
+  if(rewritten_symbols) {
+    rewritten_symbols->resize(program.symbol_names.size(), 0);
+    (*rewritten_symbols)[rewritten] = 1;
+  }
+  return 1;
+}
+
+bool thread_fast_split_phi_comparison(Function * function)
+{
+  if(!function || function->blocks.size() < 4) return false;
+  const lowir_analysis::Graph graph = lowir_analysis::build_graph(*function, 0);
+  std::vector<std::size_t> block_by_id(
+    function->next_block_id, function->blocks.size());
+  std::vector<std::size_t> uses(function->value_names.size(), 0);
+  for(std::size_t block = 0; block < function->blocks.size(); ++block) {
+    block_by_id[function->blocks[block].id] = block;
+    for(std::size_t i = 0;
+        i < function->blocks[block].instructions.size(); ++i) {
+      const Instruction & instruction =
+        function->blocks[block].instructions[i];
+      const Operand * fixed[] = {
+        &instruction.first, &instruction.second, &instruction.third
+      };
+      for(std::size_t operand = 0; operand < 3; ++operand)
+        if(fixed[operand]->kind == Operand::OP_TEMP)
+          ++uses[fixed[operand]->value];
+      for(std::size_t operand = 0; operand < instruction.args.size(); ++operand)
+        if(instruction.args[operand].kind == Operand::OP_TEMP)
+          ++uses[instruction.args[operand].value];
+    }
+  }
+  for(std::size_t join = 0; join < function->blocks.size(); ++join) {
+    std::vector<Instruction> & join_instructions =
+      function->blocks[join].instructions;
+    if(join_instructions.size() != 2 ||
+       join_instructions[0].kind != Instruction::IK_PHI ||
+       join_instructions[0].args.size() != 4 ||
+       join_instructions[1].kind != Instruction::IK_JUMP ||
+       graph.predecessors[join].size() != 2)
+      continue;
+    Instruction & phi = join_instructions[0];
+    if(uses[phi.dest] != 1 ||
+       join_instructions[1].first.kind != Operand::OP_LABEL)
+      continue;
+    const std::size_t continuation_id = join_instructions[1].first.block;
+    const std::size_t continuation = continuation_id < block_by_id.size() ?
+      block_by_id[continuation_id] : function->blocks.size();
+    if(continuation >= function->blocks.size() ||
+       graph.predecessors[continuation].size() != 1)
+      continue;
+    const std::vector<Instruction> & continuation_instructions =
+      function->blocks[continuation].instructions;
+    if(continuation_instructions.size() != 2 ||
+       continuation_instructions[0].kind != Instruction::IK_CMP ||
+       continuation_instructions[1].kind != Instruction::IK_BRANCH ||
+       continuation_instructions[1].first.kind != Operand::OP_TEMP ||
+       continuation_instructions[1].first.value !=
+         continuation_instructions[0].dest ||
+       uses[continuation_instructions[0].dest] != 1)
+      continue;
+    const Instruction & comparison = continuation_instructions[0];
+    const bool first_phi = comparison.first.kind == Operand::OP_TEMP &&
+      comparison.first.value == phi.dest;
+    const bool second_phi = comparison.second.kind == Operand::OP_TEMP &&
+      comparison.second.value == phi.dest;
+    if(first_phi == second_phi) continue;
+    const Instruction & branch = continuation_instructions[1];
+    const Operand * targets[] = {&branch.second, &branch.third};
+    bool successor_phi = false;
+    for(std::size_t target = 0; target < 2; ++target) {
+      if(targets[target]->kind != Operand::OP_LABEL) {
+        successor_phi = true;
+        break;
+      }
+      const std::size_t id = targets[target]->block;
+      const std::size_t successor = id < block_by_id.size() ?
+        block_by_id[id] : function->blocks.size();
+      if(successor >= function->blocks.size()) {
+        successor_phi = true;
+        break;
+      }
+      const std::vector<Instruction> & instructions =
+        function->blocks[successor].instructions;
+      if(!instructions.empty() && instructions[0].kind == Instruction::IK_PHI)
+        successor_phi = true;
+    }
+    if(successor_phi) continue;
+
+    struct IncomingRewrite
+    {
+      std::size_t predecessor;
+      Operand value;
+    };
+    std::vector<IncomingRewrite> rewrites;
+    rewrites.reserve(graph.predecessors[join].size());
+    bool valid = true;
+    for(std::size_t edge = 0; edge < graph.predecessors[join].size(); ++edge) {
+      const std::size_t predecessor = graph.predecessors[join][edge];
+      const std::vector<Instruction> & instructions =
+        function->blocks[predecessor].instructions;
+      if(instructions.empty() ||
+         instructions.back().kind != Instruction::IK_JUMP) {
+        valid = false;
+        break;
+      }
+      Operand incoming;
+      bool found = false;
+      for(std::size_t input = 0; input < phi.args.size(); input += 2)
+        if(phi.args[input].kind == Operand::OP_LABEL &&
+           phi.args[input].block == function->blocks[predecessor].id) {
+          incoming = phi.args[input + 1];
+          found = true;
+        }
+      if(!found) {
+        valid = false;
+        break;
+      }
+      rewrites.push_back(IncomingRewrite{predecessor, incoming});
+    }
+    if(!valid) continue;
+    for(std::size_t edge = 0; edge < rewrites.size(); ++edge) {
+      std::vector<Instruction> & instructions =
+        function->blocks[rewrites[edge].predecessor].instructions;
+      Instruction local_comparison = comparison;
+      local_comparison.dest = lowir_model::append_lowir_fresh_generated_value(
+        *function, comparison.type);
+      if(first_phi) local_comparison.first = rewrites[edge].value;
+      else local_comparison.second = rewrites[edge].value;
+      Instruction local_branch = branch;
+      local_branch.first.kind = Operand::OP_TEMP;
+      local_branch.first.value = local_comparison.dest;
+      instructions.pop_back();
+      instructions.push_back(std::move(local_comparison));
+      instructions.push_back(std::move(local_branch));
+    }
+    const std::size_t later = std::max(join, continuation);
+    const std::size_t earlier = std::min(join, continuation);
+    function->blocks.erase(function->blocks.begin() + later);
+    function->blocks.erase(function->blocks.begin() + earlier);
+    return true;
+  }
+  return false;
 }
 
 }  // namespace lowir_opt

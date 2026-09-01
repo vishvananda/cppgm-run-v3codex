@@ -874,10 +874,9 @@ private:
          transfers[i].source.value == value) return true;
     return false;
   }
-  // The active instruction's result may take over a backedge-fed phi home
-  // only when it cannot outlive this block's phi transfers: it dies before
-  // the terminator, or its sole use IS a transfer at the terminator (a
-  // deferred-compare read after the transfers would see the rewrite).
+  // The result may take over a backedge-fed phi home only when it dies before
+  // the terminator or its sole use is a transfer there. A deferred comparison
+  // after the transfers would otherwise see the rewrite.
   bool phi_home_takeover_tail_allowed() const
   {
     if(!active_instruction_ || !active_instruction_->dest.valid())
@@ -894,9 +893,8 @@ private:
     return value_holds_planned_register(id) && block_transfers_into(id) &&
       phi_home_takeover_tail_allowed();
   }
-  // A fully consumed planned phi awaiting its backedge rewrite may share
-  // its register with the value chain that computes the next iteration's
-  // value; any other co-resident blocks destructive reuse.
+  // A consumed phi awaiting its backedge rewrite may share its register with
+  // the next value's computation; any other co-resident blocks destructive reuse.
   bool location_alias_blocks_reuse(lowir_model::ValueId id,
                                    const MirOperand & location) const
   {
@@ -922,9 +920,8 @@ private:
        values_[id].location.kind != MirOperand::OP_REG ||
        location_alias_blocks_reuse(id, values_[id].location))
       return false;
-    // A phi home register is rewritten by this block's own backedge
-    // transfer, so the chain computing the next iteration's value may run
-    // destructively in the register; any other consumer may not.
+    // A block's backedge rewrites its phi home, so the next value's chain may
+    // run destructively in that register; any other consumer may not.
     if(phi_planned_home_[id] != 0) return phi_backedge_takeover_allowed(id);
     const bool destructive_parameter =
       incoming_parameter_register_known_[id] &&
@@ -946,9 +943,8 @@ private:
     const bool interval_over = facts_.uses[id] == 1 &&
       value_outlives_counted_uses(id) &&
       planned_interval_over(id);
-    // An unplanned edge-live register is also genuinely dead at a final
-    // counted use lying outside every backedge and backward exception
-    // span — nothing can re-execute a read.  Parameters keep their homes:
+    // An unplanned edge-live register is dead at a final use outside every
+    // backedge and backward exception span. Parameters keep their homes because
     // promoted-slot forwarding replays them beyond their counted uses.
     const bool span_free_interval_over = facts_.uses[id] == 1 &&
       value_outlives_counted_uses(id) && !interval_over &&
@@ -968,11 +964,10 @@ private:
     if(interval_over || span_free_interval_over) note_planned_release(id);
     if(facts_.uses[id] == 0) {
       const ValueFact & value = values_[id];
-      // An edge-live register outlives its final use unless the planned
-      // interval end cleared every backedge and backward exception region.
-      // The alias query must not count the value itself (removed above).
-      // A planned loop-invariant resident may release once its extended
-      // interval (which covers every re-reading span) is over.
+      // An edge-live register outlives its final use unless its planned interval
+      // cleared every backedge and backward exception region. The alias query
+      // excludes the value itself. A planned loop invariant may release once
+      // its extended interval covers every re-reading span.
       if(value.location.kind == MirOperand::OP_REG &&
          !value.parameter &&
          !value.fixed_register_home &&
@@ -1025,8 +1020,7 @@ private:
   }
   static bool managed_register(X64Register reg)
   { return location_planning::managed_register(reg); }
-  // A retained dereference operand is replayed at every later consumer, so
-  // its carrier registers may never reenter the allocation pool.
+  // A replayed dereference keeps its carriers out of the allocation pool.
   void reserve_deferred_address_carriers(const MirOperand & address)
   {
     if(address.kind != MirOperand::OP_DEREF) return;
@@ -2619,7 +2613,8 @@ private:
                   immediate(static_cast<long long>(abi::xmm_register_count(plan))));
     }
     if(inline_unused_memcpy) out.push_back(machine_instruction(MirInstruction::MI_COPY_BYTES)); else if(direct) {
-      MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
+      MirInstruction call = machine_instruction(facts_.has_direct_sibling_call ?
+        MirInstruction::MI_SIBLING_CALL : MirInstruction::MI_CALL);
       call.call_encoding = strlen_detail::call_encoding(
         optimization_level_, instruction, parameters, variadic, strlen_symbol_);
       call.call_variadic = variadic;
@@ -2971,7 +2966,11 @@ private:
       MirInstruction jump = machine_instruction(MirInstruction::MI_JMP);
       append_operand(jump, native_block_operand(source_, instruction.first));
       out.push_back(jump);
-    } else if(instruction.kind == Instruction::IK_RETURN) emit_return(instruction, out);
+    } else if(instruction.kind == Instruction::IK_RETURN) {
+      if(!(facts_.has_direct_sibling_call && instruction_index != 0 &&
+           block.instructions[instruction_index - 1].kind == Instruction::IK_CALL))
+        emit_return(instruction, out);
+    }
     else if(instruction.kind == Instruction::IK_UNREACHABLE) return;
     else if(eh::lower_marker(program_, source_, instruction, out)) return;
     else if(instruction.kind == Instruction::IK_EXCEPTION ||

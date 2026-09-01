@@ -185,6 +185,7 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_TLS_ADDR: return "tls_addr";
   case Instruction::MI_CALL: return "call";
   case Instruction::MI_CALL_INDIRECT: return "call";
+  case Instruction::MI_SIBLING_CALL: return "sibling_call";
   case Instruction::MI_EH_PUSH: return "eh_push";
   case Instruction::MI_EH_POP: return "eh_pop";
   case Instruction::MI_EH_CATCH: return "eh_catch";
@@ -223,6 +224,7 @@ void render_call_facts(std::ostringstream & out,
                        const Instruction & instruction)
 {
   if(instruction.opcode != Instruction::MI_CALL &&
+     instruction.opcode != Instruction::MI_SIBLING_CALL &&
      instruction.opcode != Instruction::MI_CALL_INDIRECT) return;
   const bool has_facts = instruction.call_argument_registers_known ||
     instruction.call_stack_bytes != 0 || instruction.call_variadic ||

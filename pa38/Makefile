@@ -102,6 +102,8 @@ define run_structural_control_bucket
 			$(LOWIR2NATIVE_APP) $(CPPGM_DRIVER_APP) "$(1)"; \
 		perl ../scripts/check_lowir_native_parameter_rematerialization.pl \
 			$(LOWIROPT_APP) $(LOWIR2NATIVE_APP) $(CPPGM_DRIVER_APP) "$(1)"; \
+		perl ../scripts/check_lowir_native_sibling_tail.pl \
+			$(LOWIR2NATIVE_APP) $(CPPGM_DRIVER_APP) "$(1)"; \
 	else \
 		if [ "$(REPORT_EMPTY_OPTIONAL_TEST_ROOTS)" = "1" ]; then echo "$(TARGET) $(1): no tests"; fi; \
 	fi
@@ -168,6 +170,7 @@ esac
 
 
 CHECK_RUN = perl ../scripts/run_routed_test_spec.pl "$(TEST)" \
+	'$(COURSE_STRUCTURAL_CONTROL_TEST_ROOT)/*o3-sibling-tail-transfer*.t::perl ../scripts/check_lowir_native_sibling_tail.pl $(LOWIR2NATIVE_APP) $(CPPGM_DRIVER_APP) {tests}' \
 	'$(COURSE_DRIVER_CENSUS_TEST_ROOT)/*::perl ../scripts/check_cppgm_function_census.pl $(CPPGM_DRIVER_APP) {tests}' \
 	'$(COURSE_STRUCTURAL_CONTROL_TEST_ROOT)/*o3-parameter-address-rematerialization*.t::perl ../scripts/check_lowir_native_parameter_rematerialization.pl $(LOWIROPT_APP) $(LOWIR2NATIVE_APP) $(CPPGM_DRIVER_APP) {tests}' \
 	'$(COURSE_STRUCTURAL_CONTROL_TEST_ROOT)/*::perl ../scripts/check_lowir_native_structural_controls.pl $(LOWIR2NATIVE_APP) $(CPPGM_DRIVER_APP) {tests}' \

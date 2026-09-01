@@ -361,6 +361,24 @@ source is live. A call clobber, implicit use, debug dependency, or unproved
 interference rejects the complete source color; partial elimination is not
 permitted.
 
+O3 may also turn an exact final direct call into a sibling transfer using only
+facts derivable from serialized LowIR. The enclosing function must return
+void, have fixed arity, at most six direct scalar parameters, and have no local
+slots, dynamic stack allocation, variadic state, or exception operations. Its
+only call must return void, target a direct fixed-arity function, pass the
+enclosing function's original parameters once in the same order, and be
+followed immediately by that block's void return. Other paths may still return
+normally.
+
+For that shape, optimized MIR records a terminal `sibling_call` rather than an
+ordinary call followed by a return. Native emission restores the complete
+current frame and callee-saved state before jumping to the direct target, so
+the target returns directly to the original caller. The transfer has no stack
+arguments and creates no ordinary call-alignment requirement. A changed or
+reordered argument, an indirect or additional call, local storage, an
+unsupported parameter representation, or any exceptional/stack boundary keeps
+the ordinary call and return. O0 through O2 also keep the ordinary form.
+
 Call-boundary facts that have no machine-level encoding, including PA13
 `query=stable_prefix`, remain valid input at every PA38 optimization level.
 PA37 may consume the fact and rewrite calls before native lowering; PA38 must
@@ -508,6 +526,12 @@ N3485 source-language clauses.
   escaping-stage guards, object encoding, driver replay, and behavior. It
   compares operand roles, frame-use relationships, and native vector-transfer
   counts without fixing physical registers or matching a complete MIR dump.
+  A sibling-tail control checks that an exact scalar-parameter call/return pair
+  becomes an O3 terminal sibling transfer, while O0 through O2 and changed-
+  argument or local-storage guards retain ordinary calls. It executes both the
+  fast-return and transferred paths at every backend level and through
+  `cppgm++ -O3`, without requiring a particular helper name, register choice,
+  or complete MIR dump.
   A staged parameter-address control selects its reducer by the relationship
   between a bounded pointer, a call, and four post-call field loads. It checks
   O2/O3 LowIR placement, a reduction in call-preserved native pressure, direct

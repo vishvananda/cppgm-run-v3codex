@@ -322,6 +322,7 @@ struct Instruction
     // dead temporary copy.
     MI_CALL,
     MI_CALL_INDIRECT,
+    MI_SIBLING_CALL,
     // Fixed bulk-memory operands name logical address registers or direct
     // non-indexed memory ranges. A dynamic copy has no operands: it consumes
     // the SysV rdi/rsi/rdx argument carriers directly. The encoder owns the

@@ -10,6 +10,7 @@ inline bool ends_unconditional_control_flow(
 {
   return opcode == mir_model::MirInstruction::MI_JMP ||
     opcode == mir_model::MirInstruction::MI_JMP_INDIRECT ||
+    opcode == mir_model::MirInstruction::MI_SIBLING_CALL ||
     opcode == mir_model::MirInstruction::MI_RET ||
     opcode == mir_model::MirInstruction::MI_FRET ||
     opcode == mir_model::MirInstruction::MI_RESUME ||

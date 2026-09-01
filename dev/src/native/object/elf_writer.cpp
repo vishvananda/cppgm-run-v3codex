@@ -101,7 +101,8 @@ void emit_function_prologue(CodeBuffer & out, const mir_model::MirFunction & fun
                       epilogue_detail::function_stack_adjustment(function)));
 }
 
-void emit_function_return(CodeBuffer & out, const mir_model::MirFunction & function)
+void emit_function_teardown(CodeBuffer & out,
+                            const mir_model::MirFunction & function)
 {
   if(function.omit_frame_pointer) {
     emit_stack_adjust(out, false,
@@ -118,6 +119,11 @@ void emit_function_return(CodeBuffer & out, const mir_model::MirFunction & funct
   for(std::size_t i = function.callee_saved_regs.size(); i != 0; --i)
     emit_pop(out, function.callee_saved_regs[i - 1]);
   if(!function.omit_frame_pointer) emit_pop(out, XR_RBP);
+}
+
+void emit_function_return(CodeBuffer & out, const mir_model::MirFunction & function)
+{
+  emit_function_teardown(out, function);
   out.byte(0xc3);
 }
 
@@ -1637,6 +1643,15 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
       throw std::logic_error("direct call target is not a symbol");
     if(strlen_detail::emit_prefix16_call(out, instruction)) return;
     out.byte(0xe8);
+    out.relative32(instruction.operands[0].symbol);
+    return;
+  case mir_model::MirInstruction::MI_SIBLING_CALL:
+    if(!function) throw std::logic_error("sibling call outside function");
+    require_operands(instruction, 1);
+    if(instruction.operands[0].kind != mir_model::MirOperand::OP_SYMBOL)
+      throw std::logic_error("sibling call target is not a symbol");
+    emit_function_teardown(out, *function);
+    out.byte(0xe9);
     out.relative32(instruction.operands[0].symbol);
     return;
   case mir_model::MirInstruction::MI_CALL_INDIRECT:

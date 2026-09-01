@@ -4746,6 +4746,89 @@ or PA38 contract movement. Further allocation work must split values that
 are genuinely live through hot call/branch regions, not merely refine the
 connectivity of already disjoint physical-color lifetimes.
 
+### Retained bounded fast/slow versioning and sibling transfer
+
+The next D5 dose separates a common call-free return corridor from one large
+internal O3 function.  This does not require another PA13 LowIR fact.  Internal
+linkage, direct uses, parameter representations, instructions, memory effects,
+exception operations, slot-address uses, and calls are already serialized.
+Recursion and address observability are derived from those uses and the TU call
+graph.  Encoding any of those conclusions again would duplicate information
+that PA37 can and must prove from the ordinary LowIR contract.  PA37 therefore
+owns the versioning transform; the only new downstream representation is the
+PA38 machine-level sibling transfer.
+
+The bounded transform first performs a cheap per-function shape screen, so a
+TU without a plausible candidate never pays to construct the call graph.  It
+then considers internal, nonrecursive, non-address-observable, fixed-arity void
+functions with at most six direct scalar parameters, 128--768 instructions,
+at least four call instructions, and no `inline=free` permission.  The retained
+entry-to-return corridor is call-free and at most 128 instructions, may expand
+pure scalar diamonds, and must expose at least three bailout edges.  Every
+bailout precedes an externally visible store; a private-slot store is admitted
+only when its address is never taken.  At most one function per TU is selected,
+preferring the largest slow-only body.  A complete non-inline internal clone
+keeps the original body.  The original identity keeps the corridor, and all
+bailouts converge on one block that calls the clone with the exact original
+parameter tuple and returns.  A prevalidated phi/comparison cleanup removes a
+private continuation only when both incoming edges can be threaded without
+successor-phi repair.
+
+PA38 recognizes the resulting final direct void call and return structurally.
+When the enclosing function has no slots, dynamic stack, exception or variadic
+state, its sole call passes the original zero-to-six direct scalar parameters
+unchanged and in order, and both signatures are compatible, MIR records a
+terminal sibling call.  ELF emission restores the complete frame and saved
+register state and jumps directly to the target.  Changed arguments, local
+storage, indirect or additional calls, stack arguments, and exceptional or
+variadic boundaries retain the ordinary call/return path.
+
+The PA37 property checks O0--O2 isolation, bounded selection, identity and
+parameter relationships, one shared fallback, at least three bailout edges,
+the retained guard and clone arms, phi cleanup, replay, and behavior without
+matching a source name or whole-program text.  The PA38 property checks the
+terminal transfer and argument-register relationships, guarded ordinary-call
+forms, every optimization level, replay, and both fast and slow behavior
+without fixing registers or a complete MIR dump.  The student READMEs describe
+the same implementable structural contract.
+
+The first native full-build measurements exposed destructive code-layout
+interference in the compiler that implements the pass: inserting roughly 450
+lines of new helpers before the established repeat-stable specialization code
+displaced that existing hot implementation and produced repeated candidate
+outliers near 820 aggregate CPU seconds.  A mechanically inert move of the new
+helper family after the existing hot code restored stable throughput.  This is
+why the source order is deliberate even though it has no LowIR or object-output
+semantic effect.
+
+Against the retained complete-object-memory checkpoint, deterministic frozen
+compile instructions fell from 3,621,818,198 to 3,553,692,388
+(`0.981190163x`).  A freshly rebuilt same-source GCC control was essentially
+flat, 2,427,240,778 to 2,427,216,076 (`0.999989823x`), for a normalized
+`0.981200149x` and a gap reduction from `1.492154479x` to `1.464102196x`.
+Every lane emitted
+`09d9fdc0bdd901d35c4f46075a4109b1a0c29ddb51fd5a17428335a2379dabba`.
+The linked self producer grows from 8,751,672 to 8,786,048 text bytes and 160
+data bytes.  In the selected hot function, the original identity becomes a
+98-byte wrapper while the complete slow clone retains the 1,814-byte body.
+
+Two explicit-32-way self full-build ABBA blocks reproduced the common
+221-object manifest and exact final compiler.  Candidate/baseline was
+`0.999102656x` wall and `0.992814333x` CPU in the first block, then
+`0.995681900x` wall and `0.992333429x` CPU in the reversed block.  A same-source
+GCC ABBA control was `0.998927901x` wall and `1.000506098x` CPU.  The normalized
+self ratios are therefore `1.000174942x` wall and `0.992312127x` CPU for block
+one, and `0.996750515x` wall and `0.991831466x` CPU for block two.  The
+deterministic normalized 1.88% saving clears D5, and the stable 0.77--0.82%
+normalized full-build CPU saving corroborates it despite one flat wall block.
+
+Focused PA37 and PA38 controls, 5,473/5,473 tests through PA38, both serial
+debug/round-trip lanes, `git diff --check`, the zero-fatal file audit (with its
+32 baseline warnings), and the layout, rename, source-set, semantic, lowering,
+and native-ownership audits all pass.  Explicit-32 G1/G2 is exact.  Retain this
+dose; refresh the complete O1/O2/O3 matrix after the next checkpoint rather
+than substituting this incremental result for the existing raw O3/O1 row.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4863,6 +4946,7 @@ Fill one row for every retained or rejected dose.
 | C.private-table-o2 | run only the retained private structured-table prefilter at O2 | none; existing PA37 O3 contract retained after rejection | fixture O2/O3 shapes exact; O2 producer -376 text bytes; requested-O1 workload exact | hot normalized `0.970720x`; full self CPU `0.994712x`; full normalized wall/CPU `1.005306x`/`0.994908x` | focused O2 stats; 20 exact hot observations per side; exact all-32 self and position-balanced GCC blocks | rejected; source-diverse full CPU gain is only 0.509% and normalized wall regresses |
 | C.complete-memory-o2 | run the retained whole-program parameter-memory analysis at O2 while keeping its companion cleanups at O3 | none; existing PA37 O3 contract retained after rejection | O2 producer -2,584 text bytes; requested-O1 workload exact | hot mean/median `0.994103x`/`0.995585x`; full wall/CPU `1.005060x`/`1.000808x` | focused O2 population; 20 exact hot observations per side; one exact all-32 221-object ABBA block | rejected; complete raw throughput regresses before pass-cost or normalized escalation |
 | D.edge-live-color-components | split final-MIR physical-color components across adjacent blocks only when the source is live on their edge | none; rejected behavior was not moved into PA38 | tokenizer -42 text, `Lexer::Run` -12 bytes, producer -816 text; `AppendUTF8` unchanged | complete hot Ir `0.999640086x` (-0.035991%) | exact hot object; explicit-32-way 221-object G1/G2; prototype removed before G3/full timing | rejected; real but immaterial register-choice refinement, far below the 1% D5 floor |
+| D.fast-slow-function-versioning | keep one bounded call-free return corridor under the original identity, restart every bailout in a complete slow clone, and lower the exact final call as a sibling transfer | PA37/PA38 READMEs plus level-isolated structural, guard, replay, native-relationship, and behavior properties; no source-name or whole-program matching | no LowIR contract addition; producer +34,376 text/+160 data; selected original 98 bytes plus unchanged 1,814-byte slow clone | self Ir `0.981190163x`, GCC `0.999989823x`, normalized `0.981200149x`; two full-build normalized CPU blocks `0.992312127x`/`0.991831466x` | focused controls; 5,473/5,473; serial debug/round-trip and all zero-fatal audits clean; explicit-32 G1/G2 and every measured output exact | retained; clears deterministic D5 and stable full CPU corroboration after removing measured source-layout interference |
 | C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
 | D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
 | Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |

@@ -729,6 +729,39 @@ must remain conservative barriers unless an independent rule proves them
 safe. Direct writes still invalidate the bytes they change. The analysis is
 not run at `-O0`, `-O1`, or `-O2`.
 
+After all ordinary O3 rewrites, the optimizer may version one internal void
+function around a short call-free path. The original function must have fixed
+arity, at most six direct scalar parameters, no recursive or address-observable
+use, from 128 through 768 LowIR instructions, and at least four call
+instructions in its body. A candidate fast region must contain at most 128
+instructions and reach a normal
+void return using only nonvolatile scalar operations, loads, direct private-slot
+traffic, phis, and control flow. It must expose at least three edges to the
+remaining body.
+
+Every edge leaving that region must occur before an externally observable
+store. A private-slot store may precede an exit only when no instruction takes
+the slot's address. Calls, volatile or atomic operations, object operations,
+exception operations, and other effects are not admitted to the retained fast
+region. A nonvolatile external store is permitted only on retained paths after
+their last possible bailout. If the proof succeeds, keep the region under the
+original function identity and route every leaving edge to one fallback block.
+That block calls a
+private, non-inline complete clone with the original scalar parameter tuple and
+then returns. Thus the fast path avoids the full body's frame and call-bearing
+control flow, while every slow path restarts before any visible effect. Select
+at most one candidate per translation unit, preferring the largest amount of
+body kept only in the slow clone and using function order to break ties. `-O0`
+through `-O2` do not perform this versioning.
+
+Versioning must preserve ordinary SSA edge rules. In particular, if a retained
+two-input scalar phi has one use in a comparison and reaches that comparison
+through a private jump-only continuation, O3 may copy the comparison and branch
+onto the two direct incoming edges. Both branch destinations must be phi-free,
+and the join and continuation disappear only after both incoming values and
+edges have been validated. This cleanup is a structural consequence of the
+versioned fast region, not a source-name or complete-program special case.
+
 The final O3 cleanup may use a single-predecessor equality edge exposed by a
 bounded-memory rewrite to replace dominated uses with the established integer
 constant. If that exposes a loop-header load whose latch stores the next

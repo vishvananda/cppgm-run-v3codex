@@ -87,6 +87,10 @@ struct FunctionFacts
   // parameter addresses.  O3 may preserve those incoming carriers across
   // that copy and a later inlined bulk copy in the same composite move.
   bool has_small_direct_parameter_copy = false;
+  // The function's only call is an exact scalar-parameter transfer followed
+  // immediately by its void return. Native lowering may end the frame before
+  // transferring control to that callee.
+  bool has_direct_sibling_call = false;
   bool has_eh = false;
 
   static std::size_t missing_position()

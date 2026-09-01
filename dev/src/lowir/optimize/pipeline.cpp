@@ -2695,6 +2695,26 @@ void finish_optimizer_pipeline(
             &program.functions[i], stats, &cfg_scratch, &analysis);
         }
     }
+
+    std::vector<unsigned char> fast_split_rewritten(
+      program.symbol_names.size(), 0);
+    if(split_o3_fast_function_path(
+         program, &fast_split_rewritten, stats)) {
+      boundaries = function_boundaries(program);
+      for(std::size_t i = 0; i < program.functions.size(); ++i)
+        if(fast_split_rewritten[program.functions[i].symbol]) {
+          lowir_analysis::FunctionAnalysis analysis(program.functions[i], stats);
+          timed_dce(
+            &program.functions[i], boundaries, stats, &dce_scratch);
+          timed_function_pass(remove_dead_slots, &program.functions[i], stats,
+            &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
+          if(thread_fast_split_phi_comparison(&program.functions[i]))
+            timed_dce(
+              &program.functions[i], boundaries, stats, &dce_scratch);
+          timed_cfg(
+            &program.functions[i], stats, &cfg_scratch, &analysis);
+        }
+    }
   }
   const std::uint64_t elapsed = stats ? static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(

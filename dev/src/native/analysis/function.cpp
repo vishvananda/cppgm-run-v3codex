@@ -196,10 +196,63 @@ bool is_effective_call(const Instruction & instruction,
                        int optimization_level)
 {
   return instruction.kind == Instruction::IK_CALL &&
+    !facts.has_direct_sibling_call &&
     !(optimization_level >= 3 &&
       facts.has_small_direct_parameter_copy &&
       memcpy_detail::is_inline_unused_call(
         instruction, facts.uses, memcpy_symbol));
+}
+
+bool direct_sibling_call_shape(const lowir_model::LowirFunction & function,
+                               int optimization_level)
+{
+  if(optimization_level < 3 ||
+     function.return_type.kind != lowir_model::LTK_VOID ||
+     function.boundary.arity != lowir_model::CAM_FIXED ||
+     function.params.size() > 6 || !function.slots.empty())
+    return false;
+  for(std::size_t parameter = 0; parameter < function.params.size();
+      ++parameter) {
+    const lowir_model::Parameter & value = function.params[parameter];
+    if(value.metadata.passing != lowir_model::PPM_DIRECT ||
+       value.type.kind == lowir_model::LTK_OBJECT ||
+       value.type.kind == lowir_model::LTK_I128 ||
+       value.type.kind == lowir_model::LTK_F80)
+      return false;
+  }
+  std::size_t calls = 0;
+  bool sibling = false;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    for(std::size_t i = 0; i < instructions.size(); ++i) {
+      const Instruction & instruction = instructions[i];
+      if((instruction.kind >= Instruction::IK_EH_TRY &&
+          instruction.kind <= Instruction::IK_RESUME) ||
+         instruction.kind == Instruction::IK_THROW ||
+         instruction.kind == Instruction::IK_STACK_ALLOC ||
+         instruction.kind == Instruction::IK_VA_START ||
+         instruction.kind == Instruction::IK_VA_ARG)
+        return false;
+      if(instruction.kind != Instruction::IK_CALL) continue;
+      ++calls;
+      if(i + 1 >= instructions.size() ||
+         instructions[i + 1].kind != Instruction::IK_RETURN ||
+         i + 2 != instructions.size() ||
+         instruction.first.kind != Operand::OP_GLOBAL ||
+         !instruction.call_returns_void || instruction.has_call_signature ||
+         instruction.call_boundary.arity != lowir_model::CAM_FIXED ||
+         instruction.args.size() != function.params.size())
+        continue;
+      sibling = true;
+      for(std::size_t argument = 0; argument < instruction.args.size();
+          ++argument)
+        if(instruction.args[argument].kind != Operand::OP_TEMP ||
+           instruction.args[argument].value != function.params[argument].value)
+          sibling = false;
+    }
+  }
+  return calls == 1 && sibling;
 }
 
 bool direct_memory_index_use(const FunctionFacts & facts,
@@ -640,6 +693,8 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
                                lowir_model::SymbolId memcpy_symbol)
 {
   FunctionFacts facts;
+  facts.has_direct_sibling_call =
+    direct_sibling_call_shape(function, optimization_level);
   const std::size_t value_count = function.value_names.size();
   facts.uses.assign(value_count, 0);
   facts.first_use.assign(value_count, FunctionFacts::missing_position());

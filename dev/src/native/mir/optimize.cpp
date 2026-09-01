@@ -180,6 +180,7 @@ RegisterMask instruction_defs(const MirInstruction & instruction)
     break;
   case MirInstruction::MI_CALL:
   case MirInstruction::MI_CALL_INDIRECT:
+  case MirInstruction::MI_SIBLING_CALL:
   case MirInstruction::MI_THROW:
     defs |= kCallClobbers;
     break;
@@ -250,6 +251,7 @@ RegisterMask instruction_uses(
     break;
   case MirInstruction::MI_CALL:
   case MirInstruction::MI_CALL_INDIRECT:
+  case MirInstruction::MI_SIBLING_CALL:
     // The MIR call target is explicit, while SysV register arguments are
     // physical live-ins to the call instruction.
     uses |= exact_call_arguments && instruction.call_argument_registers_known ?
@@ -435,6 +437,7 @@ bool has_call_before_redefinition(const MirBlock & block, std::size_t start,
   for(std::size_t i = start; i < block.instructions.size(); ++i) {
     const MirInstruction & instruction = block.instructions[i];
     if(instruction.opcode == MirInstruction::MI_CALL ||
+       instruction.opcode == MirInstruction::MI_SIBLING_CALL ||
        instruction.opcode == MirInstruction::MI_CALL_INDIRECT) {
       return true;
     }

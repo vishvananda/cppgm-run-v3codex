@@ -45,4 +45,13 @@ std::size_t eliminate_repeated_stable_calls(
     Stats * stats = 0,
     const StablePrefixSpecializationIndex * stable_prefix_specializations = 0);
 
+// Keep one bounded, call-free entry-to-return corridor in the original
+// function and send pre-side-effect exits to a complete private clone.
+std::size_t split_o3_fast_function_path(
+    lowir_model::LowirProgram & program,
+    std::vector<unsigned char> * rewritten_symbols,
+    Stats * stats = 0);
+
+bool thread_fast_split_phi_comparison(lowir_model::Function * function);
+
 }  // namespace lowir_opt
