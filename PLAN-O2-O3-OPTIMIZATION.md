@@ -4646,6 +4646,26 @@ memory analysis. Promote them individually in that order of implementation
 cost, retaining only a structural dose that improves the complete normalized
 matrix without eroding O3.
 
+### Rejected O2 terminal staged-object-swap promotion
+
+The first promotion screen changed only the existing terminal staged-object
+swap gate from O3 to O2. It added no LowIR surface or implementation and left
+requested-O1 output byte-exact. The resulting explicit-32-way O2-produced
+compiler shrank by 104 linked text bytes. Twenty position-balanced software
+task-clock observations per side on the frozen `preprocessor.cpp` compile
+were consistently favorable: candidate/baseline was `0.994193750x` by the
+mean of ten block ratios and `0.993608856x` by their median, with nine of ten
+blocks favoring the candidate. All output objects matched exactly.
+
+The complete requested-O1 workload did not preserve enough of that local
+gain. One all-32 ABBA block reproduced the same 221-object manifest and final
+compiler in every lane. Mean aggregate CPU moved from 886.030 to 883.185
+seconds (`0.996789048x`), only a 0.3211% improvement and below the plan's 0.5%
+close-result threshold. Wall time was scheduler-sensitive and unfavorable at
+30.735 versus 31.370 seconds (`1.020660485x`). The original O3 behavior and
+its PA37 coverage remain unchanged; the O2 gate prototype was removed without
+moving the student contract. Continue with the private-table-prefilter dose.
+
 Fill one row for every retained or rejected dose.
 
 | Phase/dose | Hypothesis | README/test movement | LowIR/MIR/object delta | Raw and normalized timing | Report/audit/inception | Decision/commit |
@@ -4759,6 +4779,7 @@ Fill one row for every retained or rejected dose.
 | D.complete-object-memory | serialize a positive complete parameter-object extent, derive body effects/capture intervals, and consume disjoint regions at O3 | PA13/PA17/PA37/PA38 README plus pointer-only syntax/transport, source-production, level, structural positive/negative, replay, native-pressure, and behavior properties; no complete-program matching | compiler object v6; 1,387 populated extents on the largest TU; indexed 9,336-site analysis; linked producer +55,956 text/+752 data; final G1/G2 exact | self Ir `0.976039x`; GCC `1.000713x`; normalized `0.975343x`; gap `1.529720x` to `1.492001x`; Clang-normalized `0.975533x`; final O1/O3 native CPU `0.988085x`/`0.988883x` | 221-object all-32 fixed point at `30132bf2...`; focused suites, full report, debug/round-trip, and all zero-fatal audits clean | retained; populated O0 semantic fact justifies the narrow LowIR addition, while indexed fixed points remove the initial critical-path regression |
 | D.external-write-stable-reuse | preserve an established repeat-stable query result across calls proven not to write outside their own frame | none; rejected behavior was not moved into PA37 | static reuses 31 to 53; 882,230 dynamic query calls removed; producer +4,424 text | self Ir `0.996729x`, below the 1% gate | `lowiropt` and PA37 190/190; exact fixed point `c18cd945...`; prototype removed | rejected; sound whole-program summary has too little source-diverse benefit |
 | D.compared-quotient-encoding | let existing constant-division encoding consume a quotient read directly by the adjacent comparison | none; rejected behavior was not moved into PA38; LowIR/MIR contracts unchanged | hot `idiv 104` removed; object +20 text; producer +30,316 text; 221-object G1/G2 exact | self task-clock `0.991361x`, GCC `1.001352x`, normalized `0.990022x`; self Ir `1.003239x` over its direct control and combined Ir `0.999957x` vs retained | PA38 45/45; exact fixed point `cc7c277f...`; prototypes removed | rejected; borderline native win contradicts deterministic instruction cost and adds footprint |
+| C.terminal-swap-o2 | promote the retained terminal staged-object swap from O3 to O2 | none; existing PA37 O3 contract retained after rejection | O2 producer -104 text bytes; requested-O1 workload exact | hot task-clock mean/median `0.994194x`/`0.993609x`; full CPU `0.996789x`, wall `1.020660x` | 20 exact hot observations per side; one exact all-32 221-object ABBA block | rejected; complete CPU gain is only 0.321% and wall is unfavorable |
 | C | make O2 at least 5% faster than O1 | current retained contracts remain covered; promotion candidates pending | current fixed workloads exact | raw CPU `0.977720x` / `0.985111x` / `0.988435x`; normalized `1.097342x` / `1.060648x` / `1.107673x` | one all-32 ABBA block per self/GCC cell | hard floor met; 5% and normalized targets pending |
 | D | make O3 at least 20% faster than O1 | all retained additions covered | current fixed workloads exact | raw CPU `0.864519x` / `0.855679x` / `0.866759x`; normalized `1.028530x` / `0.987659x` / `0.992245x` | one all-32 ABBA block per self/GCC cell; deterministic hot `0.698859x` | normalized parity nearly met; raw 20% target pending |
 | Final | complete matrix and closure | no uncovered retained behavior | three 221-object workloads exact at current checkpoint | initial complete matrix recorded; extension after next retained dose | final full gates pending | pending |
