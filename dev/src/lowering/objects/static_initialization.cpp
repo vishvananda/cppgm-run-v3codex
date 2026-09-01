@@ -1,11 +1,11 @@
 #include "lowering/objects/static_initialization.h"
 
 #include "lowering/core/source_types.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "preprocess/tokens/post_tokenizer.h"
 
 #include <algorithm>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -25,7 +25,7 @@ lowir_model::StringId DecodeTypedFloating(lowering::ir::Program& program,
 	std::uint64_t* low, std::uint64_t* high)
 {
 	if (!DecodeFloatingLiteral(spelling, type, low, high))
-		throw std::logic_error("invalid typed floating initializer");
+		ThrowLoweringInternal("invalid typed floating initializer");
 	return program.retain_local_names ? program.strings.intern(spelling) :
 		lowir_model::StringId();
 }
@@ -128,7 +128,7 @@ bool StaticInitializerLowering::SymbolForBinding(BindingId binding,
 SymbolId StaticInitializerLowering::EnsureStringLiteral(std::uint32_t node)
 {
 	if (node >= literal_symbols_.size())
-		throw std::logic_error("invalid PA15 literal node");
+		ThrowLoweringInternal("invalid PA15 literal node");
 	if (literal_symbols_[node] != kNoLowId) return literal_symbols_[node];
 	const std::string spelling = program_.names.Get(arena_.nodes[node].text);
 	literal_symbols_[node] = EnsureStringLiteralSpelling(spelling);
@@ -157,7 +157,7 @@ SymbolId StaticInitializerLowering::EnsureStringLiteralSpelling(
 	std::vector<std::uint32_t> units;
 	if (!DecodeStringLiteralCodeUnits(spelling, &decoded_type, &units) ||
 		units.empty())
-		throw std::runtime_error("invalid PA16 string literal spelling");
+		ThrowLoweringSource("invalid PA16 string literal spelling");
 	LowType element;
 	std::size_t alignment = 1;
 	if (decoded_type == FT_CHAR) element = LowI8();
@@ -176,7 +176,7 @@ SymbolId StaticInitializerLowering::EnsureStringLiteralSpelling(
 		element = LowU32();
 		alignment = 4;
 	}
-	else throw std::runtime_error("unsupported string literal element type");
+	else ThrowLoweringInternal("unsupported string literal element type");
 	Global global;
 	global.symbol = symbol;
 	global.type = LowObject(units.size() * alignment, alignment);

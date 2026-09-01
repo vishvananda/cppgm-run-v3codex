@@ -2,11 +2,11 @@
 #define CPPGM_LOWERING_STORAGE_SLOTS_H
 
 #include "semantic/model/graph.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -58,11 +58,11 @@ protected:
 			return derived.LowerStorageType(record.type);
 		if (record.kind != DUMP_VARIABLE || record.storage_alignment == 0 ||
 			record.storage_size > std::numeric_limits<std::size_t>::max())
-			throw std::logic_error("invalid explicit object storage fact");
+			ThrowLoweringInternal("invalid explicit object storage fact");
 		const TypeRecord& source = derived.program_.types.Get(
 			derived.program_.types.RemoveTopCv(record.type));
 		if (source.kind != TYPE_ARRAY || source.bound != 0)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"explicit object storage requires an unbounded array");
 		return LowObject(static_cast<std::size_t>(record.storage_size),
 			record.storage_alignment);
@@ -87,7 +87,7 @@ protected:
 		const TypeRecord& function_type = derived.program_.types.Get(action.type);
 		if (function_type.kind != TYPE_FUNCTION ||
 			function_type.parameter_count == 0)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"constructor slot plan has invalid function type");
 		const TypeId* parameters =
 			derived.program_.types.Parameters(action.type);
@@ -188,7 +188,7 @@ protected:
 					{
 						if (derived.parameter_slot_index_ >=
 							derived.function_->parameters.size())
-							throw std::logic_error(
+							ThrowLoweringInternal(
 								"parameter slot has no boundary origin");
 						slot.parameter_origin = ParameterId(
 							static_cast<std::uint32_t>(

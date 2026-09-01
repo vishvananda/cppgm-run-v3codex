@@ -3,11 +3,11 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 #include "lowering/objects/member_function_pointers.h"
 
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -30,7 +30,7 @@ protected:
 	{
 		if (children.size() != 2 ||
 			!this->IsMemberPointerApplication(application))
-			throw std::runtime_error("invalid member pointer application");
+			ThrowLoweringInternal("invalid member pointer application");
 		Derived& derived = static_cast<Derived&>(*this);
 		Operand object = application.OperationIs(OP_ARROWSTAR) ?
 			derived.LowerValue(children[0], LowPtr()) :
@@ -54,12 +54,12 @@ protected:
 	{
 		if (children.size() != 1 || !conversion.member_pointer_conversion ||
 			!conversion.has_base_projection_offset)
-			throw std::runtime_error("invalid member pointer conversion");
+			ThrowLoweringInternal("invalid member pointer conversion");
 		Derived& derived = static_cast<Derived&>(*this);
 		const TypeRecord& target = derived.program_.types.Get(
 			derived.program_.types.RemoveTopCv(conversion.type));
 		if (target.kind != TYPE_MEMBER_POINTER)
-			throw std::runtime_error("member pointer conversion has no target");
+			ThrowLoweringInternal("member pointer conversion has no target");
 		const bool function_member =
 			derived.program_.types.IsFunction(target.child);
 		const LowType value_type = function_member ? LowI128() : LowI64();

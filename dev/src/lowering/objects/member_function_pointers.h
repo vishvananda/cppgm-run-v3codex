@@ -3,10 +3,10 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -59,7 +59,7 @@ protected:
 		const NodeChildren& children, const Operand& object_value)
 	{
 		if (children.size() != 2 || !IsMemberPointerApplication(application))
-			throw std::runtime_error("invalid member function pointer application");
+			ThrowLoweringInternal("invalid member function pointer application");
 		Derived& derived = static_cast<Derived&>(*this);
 		Operand object = object_value;
 		const DumpNode& designator = derived.arena_.nodes[children[1]];
@@ -86,7 +86,7 @@ protected:
 				const NodeChildren address_children =
 					derived.Children(address_node);
 				if (address_children.size() != 1)
-					throw std::runtime_error(
+					ThrowLoweringInternal(
 						"direct member pointer has no address operand");
 				address_node = address_children[0];
 			}

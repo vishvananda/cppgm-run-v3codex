@@ -3,9 +3,9 @@
 
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -30,7 +30,7 @@ protected:
 				static_cast<std::size_t>(target) + 1, kNoLowId);
 		if (derived.tls_access_wrapper_symbols_[target] != kNoLowId &&
 			derived.tls_access_wrapper_symbols_[target] != wrapper)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"thread-local storage has multiple access wrappers");
 		derived.tls_access_wrapper_symbols_[target] = wrapper;
 	}
@@ -133,7 +133,7 @@ protected:
 		if (thread_local_object)
 		{
 			if (object_address.kind == Operand::NONE)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"thread-local destructor registration has no object");
 			arguments.Push(object_address);
 			passing.Push(Instruction::CALL_PASS_VALUE);

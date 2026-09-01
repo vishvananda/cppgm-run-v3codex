@@ -2,8 +2,8 @@
 
 #include "lowering/presentation/local_names.h"
 #include "lowering/core/source_types.h"
+#include "lowering/support/errors.h"
 
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -72,7 +72,7 @@ private:
 	{
 		if (thunk.function >= function_symbols_.size() ||
 			thunk.target == kNoLowId)
-			throw std::logic_error("vtable thunk target is not emitted");
+			ThrowLoweringInternal("vtable thunk target is not emitted");
 		const BindingRecord& binding = program_.bindings[thunk.function];
 		const TypeRecord& type = program_.types.Get(binding.type);
 		const TypeId* parameters = program_.types.Parameters(binding.type);
@@ -114,7 +114,7 @@ private:
 		if (adjust_return)
 		{
 			if (function.result.kind != LOW_PTR)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"covariant vtable thunk result is not pointer-shaped");
 			const Operand returned(TempId(2), LowPtr());
 			const Operand is_null(TempId(3), LowI64());

@@ -4,10 +4,10 @@
 #include "semantic/model/graph.h"
 #include "lowering/api.h"
 #include "lowering/ir/model.h"
+#include "lowering/support/errors.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -171,7 +171,7 @@ protected:
 			entity >= derived.polymorphism_.class_vtable_symbols.size() ||
 			derived.polymorphism_.class_vtable_symbols[entity] == kNoLowId ||
 			derived.current_this_binding_ == kNoBinding)
-			throw std::logic_error("vptr action has no class or vtable");
+			ThrowLoweringInternal("vptr action has no class or vtable");
 		const Operand object = derived.LoadStorage(derived.StorageFor(
 			derived.current_this_binding_, LowPtr()), LowPtr());
 		Operand address_point;

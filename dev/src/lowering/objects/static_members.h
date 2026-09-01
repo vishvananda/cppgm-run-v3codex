@@ -3,8 +3,8 @@
 
 #include "lowering/abi/mangling.h"
 #include "lowering/abi/symbol_names.h"
+#include "lowering/support/errors.h"
 
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -26,7 +26,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (record.binding == kNoBinding ||
 			record.binding >= derived.program_.bindings.size())
-			throw std::logic_error("invalid PA15 global variable binding");
+			ThrowLoweringInternal("invalid PA15 global variable binding");
 		const BindingId canonical =
 			derived.program_.bindings[record.binding].canonical;
 		if (derived.global_symbols_[canonical] == kNoLowId)

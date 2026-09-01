@@ -3,11 +3,11 @@
 
 #include "semantic/model/program.h"
 #include "semantic/model/graph.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "lowering/ir/model.h"
 
 #include <cstdint>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -48,7 +48,7 @@ protected:
 		const TypeId type = CanonicalRttiType(requested);
 		if (type >= derived.polymorphism_.type_rtti_symbols.size() ||
 			derived.polymorphism_.type_rtti_symbols[type] == kNoLowId)
-			throw std::logic_error("semantic RTTI fact has no emitted symbol");
+			ThrowLoweringInternal("semantic RTTI fact has no emitted symbol");
 		const SymbolId symbol = derived.polymorphism_.type_rtti_symbols[type];
 		derived.output_.symbols[symbol].referenced = true;
 		const Operand result = derived.Temp(LowPtr());
@@ -64,7 +64,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (symbol == kNoLowId)
-			throw std::logic_error("RTTI runtime call has no symbol");
+			ThrowLoweringInternal("RTTI runtime call has no symbol");
 		Instruction call = derived.DirectCallInstruction(symbol, result_type);
 		CallArgumentFlags references;
 		for (std::size_t i = 0; i < arguments.size(); ++i)
@@ -128,7 +128,7 @@ protected:
 		if (!record.dynamic_type_query)
 			return RttiAddress(record.operand_type);
 		if (children.size() != 1)
-			throw std::logic_error("dynamic typeid has no object expression");
+			ThrowLoweringInternal("dynamic typeid has no object expression");
 		const Operand object =
 			derived.AddressOfStorage(derived.LowerStorage(children[0]));
 		const BlockId fail = derived.AddBlock(derived.NewLabel("typeid_fail"));
@@ -169,7 +169,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 1)
-			throw std::logic_error("dynamic_cast has no source expression");
+			ThrowLoweringInternal("dynamic_cast has no source expression");
 		const Operand source = record.dynamic_cast_reference ?
 			derived.AddressOfStorage(derived.LowerStorage(children[0])) :
 			derived.LowerValue(children[0], LowPtr());

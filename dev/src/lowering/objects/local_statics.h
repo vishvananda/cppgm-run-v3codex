@@ -4,9 +4,9 @@
 #include "semantic/model/graph.h"
 #include "lowering/ir/model.h"
 #include "lowering/abi/symbol_names.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -65,7 +65,7 @@ protected:
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (action.function >= derived.function_symbols_.size() ||
 			derived.function_symbols_[action.function] == kNoLowId)
-			throw std::logic_error(
+			ThrowLoweringInternal(
 				"local static function has no emission symbol");
 		const Symbol& owner = derived.output_.symbols[
 			derived.function_symbols_[action.function]];
@@ -323,7 +323,7 @@ protected:
 			const SymbolId guard_symbol =
 				derived.local_static_guard_symbols_[action_index];
 			if (guard_symbol == kNoLowId)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"dynamic local static finalizer has no guard symbol");
 			const BlockId destroy =
 				derived.AddBlock(derived.NewLabel("local_static_destroy"));
@@ -379,12 +379,12 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (action_index >= derived.graph_.local_static_objects.size() ||
 			!derived.local_static_emitted_[action_index])
-			throw std::logic_error("invalid emitted local static action");
+			ThrowLoweringInternal("invalid emitted local static action");
 		if (!derived.local_static_dynamic_[action_index]) return;
 		const SymbolId guard_symbol =
 			derived.local_static_guard_symbols_[action_index];
 		if (guard_symbol == kNoLowId)
-			throw std::logic_error("dynamic local static has no guard symbol");
+			ThrowLoweringInternal("dynamic local static has no guard symbol");
 		const BlockId ready =
 			derived.AddBlock(derived.NewLabel("local_static_ready"));
 		const BlockId initialize =

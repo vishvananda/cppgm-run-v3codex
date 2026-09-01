@@ -2,12 +2,12 @@
 
 #include "lowering/ir/model.h"
 #include "lowering/objects/storage_facts.h"
+#include "lowering/support/errors.h"
 #include "lowering/support/sequences.h"
 #include "semantic/model/graph.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 
 namespace cppgm
@@ -51,7 +51,7 @@ protected:
 			{
 				if (global >= derived.tls_access_wrapper_symbols_.size() ||
 					derived.tls_access_wrapper_symbols_[global] == kNoLowId)
-					throw std::logic_error(
+					ThrowLoweringInternal(
 						"thread-local storage has no access wrapper");
 				const SymbolId wrapper =
 					derived.tls_access_wrapper_symbols_[global];
@@ -64,7 +64,7 @@ protected:
 			}
 			return Operand(Operand::GLOBAL, global, type);
 		}
-		throw std::runtime_error("PA15 binding has no lowered storage: " +
+		ThrowLoweringInternal("PA15 binding has no lowered storage: " +
 			MissingStorageBindingDetail(derived.program_, binding));
 	}
 
@@ -111,7 +111,7 @@ protected:
 			 storage.type.kind == LOW_PTR))
 		{
 			if (storage.type.kind != LOW_PTR)
-				throw std::logic_error(
+				ThrowLoweringInternal(
 					"PA15 indirect storage is not a pointer");
 			return storage;
 		}
@@ -301,7 +301,7 @@ protected:
 			return derived.ProjectBaseSubobjects(source, 0,
 				derived.arena_.nodes[children[0]].type);
 		}
-		throw std::runtime_error("expression kind " +
+		ThrowLoweringSource("expression kind " +
 			std::to_string(static_cast<unsigned>(record.kind)) +
 			" does not designate scalar storage");
 	}
