@@ -1,12 +1,12 @@
 #include "native/object/code_buffer.h"
 
 #include "native/driver/stats.h"
+#include "native/errors.h"
 
 #include <algorithm>
 #include <climits>
 #include <cstring>
 #include <limits>
-#include <stdexcept>
 #include <utility>
 
 namespace lowir_native
@@ -24,15 +24,15 @@ std::uint32_t checked_relative32_delta(std::size_t target,
 {
 	if (target > static_cast<std::size_t>(LLONG_MAX) ||
 		offset > static_cast<std::size_t>(LLONG_MAX - 4))
-		throw std::runtime_error(error);
+		native_errors::ThrowResourceLimit(error);
 	std::int64_t delta = static_cast<std::int64_t>(target) -
 		static_cast<std::int64_t>(offset + 4);
 	if ((addend > 0 && delta > LLONG_MAX - addend) ||
 		(addend < 0 && delta < LLONG_MIN - addend))
-		throw std::runtime_error(error);
+		native_errors::ThrowResourceLimit(error);
 	delta += addend;
 	if (delta < INT32_MIN || delta > INT32_MAX)
-		throw std::runtime_error(error);
+		native_errors::ThrowResourceLimit(error);
 	return static_cast<std::uint32_t>(delta);
 }
 
@@ -42,13 +42,13 @@ std::uint64_t apply_absolute_addend(std::uint64_t address, long long addend)
 	{
 		const std::uint64_t magnitude = static_cast<std::uint64_t>(addend);
 		if (UINT64_MAX - address < magnitude)
-			throw std::runtime_error("native address fixup overflows");
+			native_errors::ThrowResourceLimit("native address fixup overflows");
 		return address + magnitude;
 	}
 	const std::uint64_t magnitude =
 		static_cast<std::uint64_t>(-(addend + 1)) + 1;
 	if (address < magnitude)
-		throw std::runtime_error("native address fixup underflows");
+		native_errors::ThrowResourceLimit("native address fixup underflows");
 	return address - magnitude;
 }
 
@@ -66,7 +66,7 @@ std::size_t CodeOffsetAdjustment::translate(std::size_t offset) const
 	}
 	const std::size_t removed = first ? removals[first - 1].total : 0;
 	if (removed > offset)
-		throw std::logic_error("native code offset adjustment underflows");
+		native_errors::ThrowInternal("native code offset adjustment underflows");
 	return offset - removed;
 }
 
@@ -108,14 +108,14 @@ void CodeBuffer::patch(std::size_t offset, std::uint64_t value,
 	unsigned count)
 {
 	if (offset + count > bytes_.size())
-		throw std::logic_error("invalid ELF patch");
+		native_errors::ThrowInternal("invalid ELF patch");
 	for (unsigned i = 0; i < count; ++i)
 		bytes_[offset + i] = static_cast<unsigned char>(value >> (i * 8));
 }
 
 void CodeBuffer::align(std::size_t alignment)
 {
-	if (!alignment) throw std::logic_error("zero data alignment");
+	if (!alignment) native_errors::ThrowInternal("zero data alignment");
 	while ((base_offset_ + bytes_.size()) % alignment) byte(0);
 }
 
@@ -130,9 +130,9 @@ void CodeBuffer::label(lowir_model::SymbolId symbol)
 	if (stats_) ++stats_->code_buffer_typed_labels;
 	const std::uint32_t index = symbol;
 	if (!symbol.valid() || index >= symbol_label_offsets_.size())
-		throw std::logic_error("invalid native symbol identity");
+		native_errors::ThrowInternal("invalid native symbol identity");
 	if (symbol_label_known_[index])
-		throw std::logic_error("duplicate native symbol label");
+		native_errors::ThrowInternal("duplicate native symbol label");
 	symbol_label_offsets_[index] = bytes_.size();
 	symbol_label_known_[index] = 1;
 	label_offsets_.push_back(&symbol_label_offsets_[index]);
@@ -148,9 +148,9 @@ void CodeBuffer::label_object(lowir_model::StringId symbol)
 	if (stats_) ++stats_->code_buffer_object_labels;
 	const std::uint32_t index = symbol;
 	if (!symbol.valid() || index >= object_label_offsets_.size())
-		throw std::logic_error("invalid native object-symbol identity");
+		native_errors::ThrowInternal("invalid native object-symbol identity");
 	if (object_label_known_[index])
-		throw std::logic_error("duplicate native object-symbol label");
+		native_errors::ThrowInternal("duplicate native object-symbol label");
 	object_label_offsets_[index] = bytes_.size();
 	object_label_known_[index] = 1;
 	label_offsets_.push_back(&object_label_offsets_[index]);
@@ -161,10 +161,10 @@ void CodeBuffer::label_eh_type_ref(lowir_model::SymbolId symbol)
 	if (stats_) ++stats_->code_buffer_typed_labels;
 	const std::uint32_t identity = symbol;
 	if (!symbol.valid() || !symbol_names_ || identity >= symbol_names_->size())
-		throw std::logic_error("invalid native EH type-reference identity");
+		native_errors::ThrowInternal("invalid native EH type-reference identity");
 	for (std::size_t i = 0; i < eh_type_ref_labels_.size(); ++i)
 		if (eh_type_ref_labels_[i].symbol == symbol)
-			throw std::logic_error("duplicate native EH type-reference label");
+			native_errors::ThrowInternal("duplicate native EH type-reference label");
 	EhTypeRefLabelBinding label;
 	label.symbol = symbol;
 	label.offset = bytes_.size();
@@ -176,7 +176,7 @@ void CodeBuffer::label_eh_personality_ref()
 {
 	if (stats_) ++stats_->code_buffer_typed_labels;
 	if (eh_personality_ref_label_known_)
-		throw std::logic_error("duplicate native EH personality-reference label");
+		native_errors::ThrowInternal("duplicate native EH personality-reference label");
 	eh_personality_ref_label_offset_ = bytes_.size();
 	eh_personality_ref_label_known_ = true;
 	label_offsets_.push_back(&eh_personality_ref_label_offset_);
@@ -185,7 +185,7 @@ void CodeBuffer::label_eh_personality_ref()
 lowir_model::LocalLabelId CodeBuffer::allocate_local_label()
 {
 	if (local_label_offsets_.size() >= lowir_model::kInvalidCompactId)
-		throw std::runtime_error("too many native local labels");
+		native_errors::ThrowResourceLimit("too many native local labels");
 	const lowir_model::LocalLabelId result(
 		static_cast<std::uint32_t>(local_label_offsets_.size()));
 	local_label_offsets_.push_back(std::numeric_limits<std::size_t>::max());
@@ -198,7 +198,7 @@ std::size_t CodeBuffer::local_label_offset(
 	const std::uint32_t index = label;
 	if (!label.valid() || index >= local_label_offsets_.size() ||
 		local_label_offsets_[index] == std::numeric_limits<std::size_t>::max())
-		throw std::logic_error("unbound native local label");
+		native_errors::ThrowInternal("unbound native local label");
 	return local_label_offsets_[index];
 }
 
@@ -206,9 +206,9 @@ void CodeBuffer::label(lowir_model::LocalLabelId label)
 {
 	const std::uint32_t index = label;
 	if (!label.valid() || index >= local_label_offsets_.size())
-		throw std::logic_error("invalid native local label");
+		native_errors::ThrowInternal("invalid native local label");
 	if (local_label_offsets_[index] != std::numeric_limits<std::size_t>::max())
-		throw std::logic_error("duplicate native local label");
+		native_errors::ThrowInternal("duplicate native local label");
 	local_label_offsets_[index] = bytes_.size();
 	bound_local_labels_.push_back(label);
 }
@@ -216,7 +216,7 @@ void CodeBuffer::label(lowir_model::LocalLabelId label)
 void CodeBuffer::label_at(const std::string& name, std::size_t offset)
 {
 	if (offset > bytes_.size())
-		throw std::logic_error("native label is out of bounds");
+		native_errors::ThrowInternal("native label is out of bounds");
 	if (stats_) ++stats_->code_buffer_named_labels;
 	insert_named_label(name, offset, true);
 }
@@ -229,8 +229,8 @@ void CodeBuffer::insert_named_label(const std::string& name,
 	if (!inserted.second)
 	{
 		if (duplicate_is_runtime_error)
-			throw std::runtime_error("duplicate native symbol: " + name);
-		throw std::logic_error("duplicate native label: " + name);
+			native_errors::ThrowSource("duplicate native symbol: " + name);
+		native_errors::ThrowInternal("duplicate native label: " + name);
 	}
 	// References to unordered_map elements remain valid across rehashes.  Keep
 	// insertion-order pointers so per-function compaction only adjusts labels
@@ -247,7 +247,7 @@ void CodeBuffer::alias(const std::string& name, const std::string& target)
 	const std::unordered_map<std::string, std::size_t>::const_iterator found =
 		labels_.find(target);
 	if (found == labels_.end())
-		throw std::runtime_error("native alias has undefined target: " + target);
+		native_errors::ThrowSource("native alias has undefined target: " + target);
 	label_at(name, found->second);
 }
 
@@ -257,7 +257,7 @@ void CodeBuffer::alias(const std::string& name,
 	const std::uint32_t index = target;
 	if (!target.valid() || index >= symbol_label_offsets_.size() ||
 		!symbol_label_known_[index])
-		throw std::runtime_error("native alias has undefined target: " +
+		native_errors::ThrowSource("native alias has undefined target: " +
 			symbol_name(target));
 	label_at(name, symbol_label_offsets_[index]);
 }
@@ -268,13 +268,13 @@ void CodeBuffer::alias_object(lowir_model::StringId name,
 	const std::uint32_t symbol = target;
 	if (!target.valid() || symbol >= symbol_label_offsets_.size() ||
 		!symbol_label_known_[symbol])
-		throw std::runtime_error("native alias has undefined target: " +
+		native_errors::ThrowSource("native alias has undefined target: " +
 			symbol_name(target));
 	const std::uint32_t object = name;
 	if (!name.valid() || object >= object_label_offsets_.size())
-		throw std::logic_error("invalid native object-symbol identity");
+		native_errors::ThrowInternal("invalid native object-symbol identity");
 	if (object_label_known_[object])
-		throw std::runtime_error("duplicate native object symbol: " +
+		native_errors::ThrowSource("duplicate native object symbol: " +
 			literal_spelling(name));
 	object_label_offsets_[object] = symbol_label_offsets_[symbol];
 	object_label_known_[object] = 1;
@@ -286,7 +286,7 @@ void CodeBuffer::begin_function_blocks(std::size_t count)
 {
 	if (!local_fixups_.empty() || !short_relative_fixups_.empty() ||
 		!named_short_relative_fixups_.empty())
-		throw std::logic_error("native local labels outlive their function");
+		native_errors::ThrowInternal("native local labels outlive their function");
 	local_label_offsets_.clear();
 	bound_local_labels_.clear();
 	block_labels_.clear();
@@ -300,7 +300,7 @@ lowir_model::LocalLabelId CodeBuffer::block_label(
 {
 	const std::uint32_t index = block;
 	if (!block.valid() || index >= block_labels_.size())
-		throw std::logic_error("invalid native block label");
+		native_errors::ThrowInternal("invalid native block label");
 	return block_labels_[index];
 }
 
@@ -326,11 +326,11 @@ void CodeBuffer::bind_symbol_names(
 	if (symbol_names_)
 	{
 		if (symbol_names_ != &names)
-			throw std::logic_error("native symbol names rebound");
+			native_errors::ThrowInternal("native symbol names rebound");
 		return;
 	}
 	if (!label_bindings_.empty())
-		throw std::logic_error("native symbol names bound after labels");
+		native_errors::ThrowInternal("native symbol names bound after labels");
 	symbol_names_ = &names;
 	symbol_label_offsets_.assign(names.size(), 0);
 	symbol_label_known_.assign(names.size(), 0);
@@ -341,7 +341,7 @@ const std::string& CodeBuffer::symbol_name(lowir_model::SymbolId symbol) const
 	const std::uint32_t index = symbol;
 	if (!symbol_names_ || !strings_ || !symbol.valid() ||
 		index >= symbol_names_->size())
-		throw std::logic_error("invalid native symbol identity");
+		native_errors::ThrowInternal("invalid native symbol identity");
 	return strings_->get((*symbol_names_)[index]);
 }
 
@@ -350,7 +350,7 @@ void CodeBuffer::bind_strings(const lowir_model::SealedStringPool& strings)
 	if (strings_)
 	{
 		if (strings_ != &strings)
-			throw std::logic_error("native string pool rebound");
+			native_errors::ThrowInternal("native string pool rebound");
 		return;
 	}
 	strings_ = &strings;
@@ -386,7 +386,7 @@ void CodeBuffer::note_direct_zero_encoding(std::size_t bytes,
 
 const lowir_model::SealedStringPool& CodeBuffer::strings() const
 {
-	if (!strings_) throw std::logic_error("native string pool is not bound");
+	if (!strings_) native_errors::ThrowInternal("native string pool is not bound");
 	return *strings_;
 }
 
@@ -394,7 +394,7 @@ const std::string& CodeBuffer::literal_spelling(
 	lowir_model::StringId literal) const
 {
 	if (!strings_ || !literal.valid())
-		throw std::logic_error("invalid native literal identity");
+		native_errors::ThrowInternal("invalid native literal identity");
 	if (stats_) ++stats_->native_semantic_string_reads;
 	return strings_->get(literal);
 }
@@ -429,7 +429,7 @@ bool CodeBuffer::short_relative(unsigned opcode,
 {
 	const std::uint32_t target_index = target;
 	if (!target.valid() || target_index >= local_label_offsets_.size())
-		throw std::logic_error("invalid native local branch target");
+		native_errors::ThrowInternal("invalid native local branch target");
 	const std::size_t target_offset = local_label_offsets_[target_index];
 	if (target_offset == std::numeric_limits<std::size_t>::max()) return false;
 	if (target_offset > static_cast<std::size_t>(LLONG_MAX) ||
@@ -457,7 +457,7 @@ void CodeBuffer::resolve_short_relatives(std::size_t begin)
 			local_label_offset(fixup.target)) -
 			static_cast<std::int64_t>(fixup.offset + 1);
 		if (delta < INT8_MIN || delta > INT8_MAX)
-			throw std::logic_error("native branch displacement exceeds rel8");
+			native_errors::ThrowInternal("native branch displacement exceeds rel8");
 		patch(fixup.offset, static_cast<std::uint8_t>(delta), 1);
 	}
 	short_relative_fixups_.resize(first);
@@ -470,11 +470,11 @@ void CodeBuffer::resolve_short_relatives(std::size_t begin)
 		const std::unordered_map<std::string, std::size_t>::const_iterator
 			target = labels_.find(fixup.target);
 		if (target == labels_.end())
-			throw std::logic_error("native rel8 fixup lost its target");
+			native_errors::ThrowInternal("native rel8 fixup lost its target");
 		const std::int64_t delta = static_cast<std::int64_t>(target->second) -
 			static_cast<std::int64_t>(fixup.offset + 1);
 		if (delta < INT8_MIN || delta > INT8_MAX)
-			throw std::logic_error("native branch displacement exceeds rel8");
+			native_errors::ThrowInternal("native branch displacement exceeds rel8");
 		patch(fixup.offset, static_cast<std::uint8_t>(delta), 1);
 	}
 	named_short_relative_fixups_.resize(first);
@@ -483,7 +483,7 @@ void CodeBuffer::resolve_short_relatives(std::size_t begin)
 CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 {
 	if (begin > bytes_.size())
-		throw std::logic_error("native branch relaxation begins out of bounds");
+		native_errors::ThrowInternal("native branch relaxation begins out of bounds");
 	struct Candidate
 	{
 		std::size_t fixup = 0;
@@ -552,7 +552,7 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 	{
 		if (candidates[i].start < read_cursor ||
 			candidates[i].start + candidates[i].size > old_size)
-			throw std::logic_error("overlapping native branch relaxation");
+			native_errors::ThrowInternal("overlapping native branch relaxation");
 		const std::size_t retained = candidates[i].start - read_cursor;
 		if (retained)
 			std::memmove(bytes_.data() + write_cursor,
@@ -642,7 +642,7 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 			local_label_offset(candidates[i].target)) -
 			static_cast<std::int64_t>(short_starts[i] + 2);
 		if (delta < INT8_MIN || delta > INT8_MAX)
-			throw std::logic_error("relaxed native branch exceeds rel8");
+			native_errors::ThrowInternal("relaxed native branch exceeds rel8");
 		bytes_[short_starts[i] + 1] = static_cast<unsigned char>(delta);
 	}
 	resolve_short_relatives(begin);
@@ -781,7 +781,7 @@ void CodeBuffer::relative32_at(std::size_t offset,
 {
 	if (stats_) ++stats_->code_buffer_named_fixups;
 	if (offset > bytes_.size() || 4 > bytes_.size() - offset)
-		throw std::logic_error("native relative relocation is out of bounds");
+		native_errors::ThrowInternal("native relative relocation is out of bounds");
 	Fixup fixup;
 	fixup.kind = Fixup::RELATIVE32;
 	fixup.offset = offset;
@@ -795,7 +795,7 @@ void CodeBuffer::absolute64_at(std::size_t offset,
 {
 	if (stats_) ++stats_->code_buffer_named_fixups;
 	if (offset > bytes_.size() || 8 > bytes_.size() - offset)
-		throw std::logic_error("native absolute relocation is out of bounds");
+		native_errors::ThrowInternal("native absolute relocation is out of bounds");
 	Fixup fixup;
 	fixup.kind = Fixup::ABSOLUTE64;
 	fixup.offset = offset;
@@ -837,7 +837,7 @@ void CodeBuffer::resolve()
 		const std::unordered_map<std::string, std::size_t>::const_iterator target =
 			labels.find(fixup.target);
 		if (target == labels.end())
-			throw std::runtime_error("undefined native symbol: " + fixup.target);
+			native_errors::ThrowSource("undefined native symbol: " + fixup.target);
 		if (fixup.kind == Fixup::RELATIVE32 ||
 			fixup.kind == Fixup::ADDRESS32 ||
 			fixup.kind == Fixup::TLS_OFFSET32)
@@ -858,7 +858,7 @@ void CodeBuffer::resolve()
 		const SymbolFixup& fixup = symbol_fixups_[i];
 		const std::uint32_t symbol = fixup.target;
 		if (!fixup.target.valid() || symbol >= symbol_label_offsets_.size())
-			throw std::logic_error("invalid native symbol fixup identity");
+			native_errors::ThrowInternal("invalid native symbol fixup identity");
 		std::size_t target = 0;
 		if (symbol_label_known_[symbol])
 			target = symbol_label_offsets_[symbol];
@@ -868,7 +868,7 @@ void CodeBuffer::resolve()
 			const std::unordered_map<std::string, std::size_t>::const_iterator found =
 				labels.find(name);
 			if (found == labels.end())
-				throw std::runtime_error("undefined native symbol: " + name);
+				native_errors::ThrowSource("undefined native symbol: " + name);
 			target = found->second;
 		}
 		if (fixup.kind == Fixup::RELATIVE32 ||
@@ -907,7 +907,7 @@ CodeBuffer::materialized_labels() const
 		const std::string& name = binding.symbol ?
 			symbol_name(binding.symbol_id) : *binding.name;
 		if (!result.emplace(name, *binding.offset).second)
-			throw std::runtime_error("duplicate native symbol: " + name);
+			native_errors::ThrowSource("duplicate native symbol: " + name);
 	}
 	for (std::size_t i = 1; i < object_label_known_.size(); ++i)
 	{
@@ -917,7 +917,7 @@ CodeBuffer::materialized_labels() const
 		const std::string name = !raw.empty() && raw[0] == '@' ?
 			raw.substr(1) : raw;
 		if (!result.emplace(name, object_label_offsets_[i]).second)
-			throw std::runtime_error("duplicate native symbol: " + name);
+			native_errors::ThrowSource("duplicate native symbol: " + name);
 	}
 	return result;
 }
@@ -944,7 +944,7 @@ std::size_t CodeBuffer::symbol_label_offset(
 	lowir_model::SymbolId symbol) const
 {
 	if (!has_symbol_label(symbol))
-		throw std::logic_error("undefined native symbol identity");
+		native_errors::ThrowInternal("undefined native symbol identity");
 	return symbol_label_offsets_[static_cast<std::uint32_t>(symbol)];
 }
 
@@ -964,7 +964,7 @@ std::size_t CodeBuffer::object_label_offset(
 	lowir_model::StringId symbol) const
 {
 	if (!has_object_label(symbol))
-		throw std::logic_error("undefined native object-symbol identity");
+		native_errors::ThrowInternal("undefined native object-symbol identity");
 	return object_label_offsets_[static_cast<std::uint32_t>(symbol)];
 }
 
@@ -977,14 +977,14 @@ lowir_model::SymbolId CodeBuffer::eh_type_ref_label_symbol(
 	std::size_t index) const
 {
 	if (index >= eh_type_ref_labels_.size())
-		throw std::logic_error("invalid native EH type-reference label index");
+		native_errors::ThrowInternal("invalid native EH type-reference label index");
 	return eh_type_ref_labels_[index].symbol;
 }
 
 std::size_t CodeBuffer::eh_type_ref_label_offset(std::size_t index) const
 {
 	if (index >= eh_type_ref_labels_.size())
-		throw std::logic_error("invalid native EH type-reference label index");
+		native_errors::ThrowInternal("invalid native EH type-reference label index");
 	return eh_type_ref_labels_[index].offset;
 }
 
@@ -996,7 +996,7 @@ bool CodeBuffer::has_eh_personality_ref_label() const
 std::size_t CodeBuffer::eh_personality_ref_label_offset() const
 {
 	if (!eh_personality_ref_label_known_)
-		throw std::logic_error(
+		native_errors::ThrowInternal(
 			"undefined native EH personality-reference identity");
 	return eh_personality_ref_label_offset_;
 }

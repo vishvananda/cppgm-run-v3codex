@@ -1,8 +1,8 @@
 #include "native/object/fixups.h"
+#include "native/errors.h"
 
 #include <climits>
 #include <cstdint>
-#include <stdexcept>
 #include <utility>
 
 namespace lowir_native {
@@ -40,7 +40,7 @@ void add_symbol_labels(
     const EncodedSymbolLabel & label = source.symbol_labels[i];
     const std::uint32_t symbol = label.symbol;
     if(!label.symbol.valid() || symbol >= locations.size())
-      throw std::logic_error("invalid encoded symbol label identity");
+      native_errors::ThrowInternal("invalid encoded symbol label identity");
     // Some TLS wrapper identities are also published at their backing
     // storage address.  Preserve the text-before-data definition.
     if(known[symbol]) continue;
@@ -56,18 +56,21 @@ void patch_relative32(EncodedSection & source, const EncodedFixup & fixup,
 {
   if(fixup.offset > source.bytes.size() ||
      4 > source.bytes.size() - fixup.offset)
-    throw std::logic_error("native object relative fixup is out of bounds");
+    native_errors::ThrowInternal("native object relative fixup is out of bounds");
   if(target > static_cast<std::size_t>(LLONG_MAX) ||
      fixup.offset > static_cast<std::size_t>(LLONG_MAX - 4))
-    throw std::runtime_error("native object relative fixup exceeds rel32");
+    native_errors::ThrowResourceLimit(
+      "native object relative fixup exceeds rel32");
   const long long base = static_cast<long long>(target) -
     static_cast<long long>(fixup.offset + 4);
   if((fixup.addend > 0 && base > LLONG_MAX - fixup.addend) ||
      (fixup.addend < 0 && base < LLONG_MIN - fixup.addend))
-    throw std::runtime_error("native object relative fixup exceeds rel32");
+    native_errors::ThrowResourceLimit(
+      "native object relative fixup exceeds rel32");
   const long long delta = base + fixup.addend;
   if(delta < INT32_MIN || delta > INT32_MAX)
-    throw std::runtime_error("native object relative fixup exceeds rel32");
+    native_errors::ThrowResourceLimit(
+      "native object relative fixup exceeds rel32");
   const std::uint32_t encoded = static_cast<std::uint32_t>(delta);
   for(unsigned byte = 0; byte < 4; ++byte)
     source.bytes[fixup.offset + byte] =
@@ -110,7 +113,7 @@ void resolve_section_fixups(
     const EncodedSymbolFixup & fixup = source.symbol_fixups[i];
     const std::uint32_t symbol = fixup.target;
     if(!fixup.target.valid() || symbol >= symbol_locations.size())
-      throw std::logic_error("invalid encoded symbol fixup identity");
+      native_errors::ThrowInternal("invalid encoded symbol fixup identity");
     const bool relative = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
       (fixup.kind == EncodedFixup::EF_ADDRESS32 &&
        fixup.address_binding == mir_model::MirOperand::ADDRESS_LOCAL);

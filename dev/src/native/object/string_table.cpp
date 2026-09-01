@@ -1,7 +1,7 @@
 #include "native/object/string_table.h"
+#include "native/errors.h"
 
 #include <limits>
-#include <stdexcept>
 #include <utility>
 
 namespace lowir_native {
@@ -69,17 +69,17 @@ std::uint32_t & ElfStringTableBuilder::SectionOffset(
     const SectionIdentity & identity)
 {
   if(identity.kind == SK_NONE || identity.kind >= kKindCount)
-    throw std::logic_error("ELF section has no identity");
+    native_errors::ThrowInternal("ELF section has no identity");
   const unsigned relocation = identity.relocation ? 1 : 0;
   if(identity.kind != SK_TEXT_COMDAT && identity.kind != SK_CUSTOM)
     return fixed_offsets_[identity.kind][relocation];
   if(!identity.spelling.valid())
-    throw std::logic_error("dynamic ELF section has no spelling identity");
+    native_errors::ThrowInternal("dynamic ELF section has no spelling identity");
   const std::uint32_t spelling = identity.spelling;
   std::vector<std::uint32_t> & offsets = identity.kind == SK_TEXT_COMDAT ?
     comdat_offsets_[relocation] : custom_offsets_[relocation];
   if(spelling >= offsets.size())
-    throw std::logic_error("ELF section spelling identity is out of range");
+    native_errors::ThrowInternal("ELF section spelling identity is out of range");
   return offsets[spelling];
 }
 
@@ -88,7 +88,7 @@ void ElfStringTableBuilder::RegisterObjectSuffix(
 {
   const std::uint32_t identity = spelling;
   if(!spelling.valid() || identity >= object_offsets_.size())
-    throw std::logic_error("ELF string spelling identity is out of range");
+    native_errors::ThrowInternal("ELF string spelling identity is out of range");
   if(object_offsets_[identity] != kMissingOffset) return;
   object_offsets_[identity] = offset;
   if(suffix) ++suffix_aliases_;
@@ -117,7 +117,7 @@ std::uint32_t ElfStringTableBuilder::InternSection(
     Append(spellings_.get(identity.spelling));
   } else {
     const char * name = fixed_section_name(identity.kind);
-    if(!name) throw std::logic_error("invalid fixed ELF section identity");
+    if(!name) native_errors::ThrowInternal("invalid fixed ELF section identity");
     Append(name);
   }
   bytes_.push_back(0);
@@ -180,19 +180,19 @@ std::uint32_t * ElfStringTableBuilder::TypedSymbolOffset(
   if(!internal_program_symbol && object_symbol.valid()) {
     const std::uint32_t identity = object_symbol;
     if(identity >= object_offsets_.size())
-      throw std::logic_error("ELF object-symbol identity is out of range");
+      native_errors::ThrowInternal("ELF object-symbol identity is out of range");
     return &object_offsets_[identity];
   }
   if(program_symbol.valid()) {
     const std::uint32_t identity = program_symbol;
     if(identity >= program_offsets_[0].size())
-      throw std::logic_error("ELF program-symbol identity is out of range");
+      native_errors::ThrowInternal("ELF program-symbol identity is out of range");
     return &program_offsets_[internal_program_symbol ? 1 : 0][identity];
   }
   if(eh_type_ref_symbol.valid()) {
     const std::uint32_t identity = eh_type_ref_symbol;
     if(identity >= eh_type_ref_offsets_.size())
-      throw std::logic_error("ELF EH-reference identity is out of range");
+      native_errors::ThrowInternal("ELF EH-reference identity is out of range");
     return &eh_type_ref_offsets_[identity];
   }
   if(eh_personality_ref) return &eh_personality_ref_offset_;
@@ -202,7 +202,8 @@ std::uint32_t * ElfStringTableBuilder::TypedSymbolOffset(
 std::uint32_t ElfStringTableBuilder::CurrentOffset() const
 {
   if(bytes_.size() >= kMissingOffset)
-    throw std::runtime_error("ELF string table exceeds 32-bit offsets");
+    native_errors::ThrowResourceLimit(
+      "ELF string table exceeds 32-bit offsets");
   return static_cast<std::uint32_t>(bytes_.size());
 }
 
