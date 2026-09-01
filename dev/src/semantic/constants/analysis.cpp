@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -360,21 +361,13 @@ ExpressionInfo Analyzer::AnalyzeNoexcept(NodeId node, ScopeId scope)
 	const NodeId operand = FirstSemanticChild(node);
 	if (operand == kNoNode)
 		ThrowSemanticError("noexcept expression has no operand");
-	++unevaluated_depth_;
-	++constant_evaluation_suppressed_depth_;
 	ExpressionInfo analyzed;
-	try
 	{
+		ScopedCounterIncrement unevaluated(&unevaluated_depth_);
+		ScopedCounterIncrement suppressed(
+			&constant_evaluation_suppressed_depth_);
 		analyzed = AnalyzeExpression(operand, scope);
 	}
-	catch (...)
-	{
-		--constant_evaluation_suppressed_depth_;
-		--unevaluated_depth_;
-		throw;
-	}
-	--constant_evaluation_suppressed_depth_;
-	--unevaluated_depth_;
 	if (CandidateSubstitutionFailed()) return ExpressionInfo();
 	const bool nonthrowing = InitializationActionsAreNonthrowing(analyzed.node);
 	ExpressionInfo result = MakeLiteral(
@@ -467,31 +460,18 @@ void Analyzer::ValidateOrdinaryMemberFunctionBody(BindingId function)
 		BindFunctionParameterPackElement(
 			function_scope, parameter.pack_name, binding);
 	}
-	const TypeId previous_return = current_return_type_;
-	const EntityId previous_class = current_class_context_;
-	const BindingId previous_function = current_function_context_;
-	current_return_type_ = program_->types.Get(info.type).child;
-	current_class_context_ = program_->bindings[info.binding].member_owner;
-	current_function_context_ = program_->bindings[info.binding].canonical;
-	const std::uint32_t detached = MakeDump(DUMP_COMPOUND_STATEMENT);
-	++unevaluated_depth_;
-	try
 	{
+		ScopedValueRestore<TypeId> return_type(&current_return_type_,
+			program_->types.Get(info.type).child);
+		ScopedValueRestore<EntityId> class_context(&current_class_context_,
+			program_->bindings[info.binding].member_owner);
+		ScopedValueRestore<BindingId> function_context(&current_function_context_,
+			program_->bindings[info.binding].canonical);
+		const std::uint32_t detached = MakeDump(DUMP_COMPOUND_STATEMENT);
+		ScopedCounterIncrement unevaluated(&unevaluated_depth_);
 		ValidateStaticAssertionsInBlock(
 			info.definition_body, function_scope, detached);
 	}
-	catch (...)
-	{
-		--unevaluated_depth_;
-		current_return_type_ = previous_return;
-		current_class_context_ = previous_class;
-		current_function_context_ = previous_function;
-		throw;
-	}
-	--unevaluated_depth_;
-	current_return_type_ = previous_return;
-	current_class_context_ = previous_class;
-	current_function_context_ = previous_function;
 }
 
 void Analyzer::ValidateOrdinaryMemberFunctionBodies(EntityId entity)
@@ -677,24 +657,14 @@ void Analyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 	// expression is still an independent constant-evaluation root.  Preserve
 	// the caller's suppression state, but do not let it disable the assertion's
 	// required constexpr calls and conversions.
-	const std::size_t outer_suppression =
-		constant_evaluation_suppressed_depth_;
-	constant_evaluation_suppressed_depth_ = 0;
-	++constant_expression_required_depth_;
 	ExpressionInfo condition;
-	try
 	{
+		ScopedValueRestore<std::size_t> suppression(
+			&constant_evaluation_suppressed_depth_, 0);
+		ScopedCounterIncrement required(&constant_expression_required_depth_);
 		condition = AnalyzeExpression(condition_syntax, scope);
 		condition = ApplyContextualBool(condition);
 	}
-	catch (...)
-	{
-		--constant_expression_required_depth_;
-		constant_evaluation_suppressed_depth_ = outer_suppression;
-		throw;
-	}
-	--constant_expression_required_depth_;
-	constant_evaluation_suppressed_depth_ = outer_suppression;
 	if (!IsIntegral(condition.type, true) || !condition.constant)
 		ThrowSemanticError(
 			"static_assert requires an integral constant expression" +

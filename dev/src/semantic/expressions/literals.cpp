@@ -1,6 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "preprocess/tokens/post_tokenizer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -978,21 +979,12 @@ TypeId Analyzer::DecltypeType(NodeId node, ScopeId scope)
 		return program_->types.Reference(TYPE_LVALUE_REFERENCE,
 			EffectiveType(binding.type));
 	}
-	++unevaluated_depth_;
-	++decltype_operand_depth_;
 	ExpressionInfo expression;
-	try
 	{
+		ScopedCounterIncrement unevaluated(&unevaluated_depth_);
+		ScopedCounterIncrement decltype_operand(&decltype_operand_depth_);
 		expression = AnalyzeExpression(node, scope);
 	}
-	catch (...)
-	{
-		--decltype_operand_depth_;
-		--unevaluated_depth_;
-		throw;
-	}
-	--decltype_operand_depth_;
-	--unevaluated_depth_;
 	if (CandidateSubstitutionFailed()) return kNoType;
 	if ((unparenthesized_member || unparenthesized_id) &&
 		expression.binding != kNoBinding)

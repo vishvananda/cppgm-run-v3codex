@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 
 namespace cppgm
@@ -70,19 +71,13 @@ bool Analyzer::AnalyzeHostedSelectionStatement(
 			arena_->IsTag(expression_syntax, ::cppgm::syntax::STAG_CONDITION_DECLARATION))
 			ThrowSemanticError(
 				"constexpr if requires an expression condition");
-		++constant_expression_required_depth_;
 		ExpressionInfo condition;
-		try
 		{
+			ScopedCounterIncrement required(
+				&constant_expression_required_depth_);
 			condition = ApplyContextualBool(
 				AnalyzeExpression(expression_syntax, control));
 		}
-		catch (...)
-		{
-			--constant_expression_required_depth_;
-			throw;
-		}
-		--constant_expression_required_depth_;
 		if (!condition.constant || !IsIntegral(condition.type, true))
 			ThrowSemanticError(
 				"constexpr if requires an integral constant expression");

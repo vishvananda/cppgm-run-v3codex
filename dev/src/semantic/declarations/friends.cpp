@@ -1,6 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/extensions/function_control_attributes.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <vector>
 
@@ -170,18 +171,10 @@ void Analyzer::AnalyzeFriendClass(NodeId node,
 		// Friendship needs the canonical class identity, not its definition or
 		// layout. In particular, mutually befriending class specializations may
 		// contain one another after the first specialization completes.
-		++class_template_completion_suppressed_depth_;
-		try
-		{
-			found = LookupStructuredName(
-				declaration, class_scope, LOOKUP_TYPE);
-		}
-		catch (...)
-		{
-			--class_template_completion_suppressed_depth_;
-			throw;
-		}
-		--class_template_completion_suppressed_depth_;
+		ScopedCounterIncrement suppressed(
+			&class_template_completion_suppressed_depth_);
+		found = LookupStructuredName(
+			declaration, class_scope, LOOKUP_TYPE);
 	}
 	else found = LookupPath(class_scope, path, LOOKUP_TYPE);
 	TypeId friend_type = found.type;

@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <cstdint>
 #include <unordered_set>
@@ -22,35 +23,16 @@ bool Analyzer::HasDeclSpecifier(
 SpecInfo Analyzer::BuildIdentityOnlySpecifiers(
 	NodeId node, ScopeId scope, const std::string& hint, bool has_declarators)
 {
-	++class_template_completion_suppressed_depth_;
-	try
-	{
-		const SpecInfo result = BuildSpecifiers(
-			node, scope, hint, has_declarators);
-		--class_template_completion_suppressed_depth_;
-		return result;
-	}
-	catch (...)
-	{
-		--class_template_completion_suppressed_depth_;
-		throw;
-	}
+	ScopedCounterIncrement suppressed(
+		&class_template_completion_suppressed_depth_);
+	return BuildSpecifiers(node, scope, hint, has_declarators);
 }
 
 TypeId Analyzer::BuildIdentityOnlyTypeId(NodeId node, ScopeId scope)
 {
-	++class_template_completion_suppressed_depth_;
-	try
-	{
-		const TypeId result = BuildTypeId(node, scope);
-		--class_template_completion_suppressed_depth_;
-		return result;
-	}
-	catch (...)
-	{
-		--class_template_completion_suppressed_depth_;
-		throw;
-	}
+	ScopedCounterIncrement suppressed(
+		&class_template_completion_suppressed_depth_);
+	return BuildTypeId(node, scope);
 }
 
 void Analyzer::BindDeclaratorImplicitObject(
@@ -80,17 +62,10 @@ TypeId Analyzer::BuildArrayDeclaratorType(NodeId suffix,
 		return CandidateTypeFormation(program_->types.TryArray(element, 0),
 			"invalid array element type");
 
-	++constant_expression_required_depth_;
 	ExpressionInfo expression;
-	try
 	{
+		ScopedCounterIncrement required(&constant_expression_required_depth_);
 		expression = AnalyzeExpression(bound_node, scope);
-		--constant_expression_required_depth_;
-	}
-	catch (...)
-	{
-		--constant_expression_required_depth_;
-		throw;
 	}
 	if (CandidateSubstitutionFailed()) return kNoType;
 	if (expression.constant)
@@ -130,17 +105,10 @@ TypeId Analyzer::BuildBitIntSpecifierType(
 	const NodeId width_node = FirstSemanticChild(specifier);
 	if (width_node == kNoNode)
 		return CandidateTypeFormation(kNoType, "_BitInt has no width");
-	++constant_expression_required_depth_;
 	ExpressionInfo width;
-	try
 	{
+		ScopedCounterIncrement required(&constant_expression_required_depth_);
 		width = AnalyzeExpression(width_node, scope);
-		--constant_expression_required_depth_;
-	}
-	catch (...)
-	{
-		--constant_expression_required_depth_;
-		throw;
 	}
 	if (CandidateSubstitutionFailed()) return kNoType;
 	if (width.constant)

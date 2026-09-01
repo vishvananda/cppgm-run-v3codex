@@ -1,6 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/analysis/switch.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <limits>
 
@@ -35,24 +36,14 @@ bool Analyzer::IsNonthrowing(NodeId declarator, ScopeId scope,
 	const NodeId expression_node = FirstSemanticChild(qualifier);
 	if (expression_node == kNoNode)
 		ThrowInternalCompilerError("missing noexcept expression");
-	const std::size_t outer_suppression =
-		constant_evaluation_suppressed_depth_;
-	constant_evaluation_suppressed_depth_ = 0;
-	++constant_expression_required_depth_;
 	ExpressionInfo expression;
-	try
 	{
+		ScopedValueRestore<std::size_t> suppression(
+			&constant_evaluation_suppressed_depth_, 0);
+		ScopedCounterIncrement required(&constant_expression_required_depth_);
 		expression = ApplyContextualBool(
 			AnalyzeExpression(expression_node, scope));
 	}
-	catch (...)
-	{
-		--constant_expression_required_depth_;
-		constant_evaluation_suppressed_depth_ = outer_suppression;
-		throw;
-	}
-	--constant_expression_required_depth_;
-	constant_evaluation_suppressed_depth_ = outer_suppression;
 	if (!expression.constant || !IsIntegral(expression.type, true))
 		ThrowSemanticError("nonconstant noexcept expression");
 	return expression.value != 0;

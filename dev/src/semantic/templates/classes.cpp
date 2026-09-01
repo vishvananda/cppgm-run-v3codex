@@ -1,6 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/presentation/templates.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1391,23 +1392,13 @@ void Analyzer::ApplyClassTemplateMemberDefinitions(
 
 		if (arena_->IsTag(node, ::cppgm::syntax::STAG_TEMPLATE_DECLARATION))
 		{
-			++class_template_member_replay_depth_;
 			const bool explicit_member =
 				definition.concrete_owner != kNoBinding;
-			if (explicit_member) ++explicit_member_template_replay_depth_;
-			try
-			{
-				AnalyzeTemplate(node, definition_scope, ACCESS_PUBLIC);
-			}
-			catch (...)
-			{
-				if (explicit_member)
-					--explicit_member_template_replay_depth_;
-				--class_template_member_replay_depth_;
-				throw;
-			}
-			if (explicit_member) --explicit_member_template_replay_depth_;
-			--class_template_member_replay_depth_;
+			ScopedCounterIncrement member_replay(
+				&class_template_member_replay_depth_);
+			ScopedCounterIncrement explicit_replay(
+				&explicit_member_template_replay_depth_, explicit_member);
+			AnalyzeTemplate(node, definition_scope, ACCESS_PUBLIC);
 		}
 		else if (arena_->IsTag(node, ::cppgm::syntax::STAG_FUNCTION_DEFINITION))
 			AnalyzeFunction(node, definition_scope, root_, true);
@@ -2335,21 +2326,15 @@ std::size_t Analyzer::SelectClassTemplatePartial(
 					bindings.fixed_arguments[parameter]);
 			std::vector<TemplateArgument> replayed;
 			bool valid = false;
-			candidate_substitution_failures_.push_back(0);
-			try
 			{
+				ScopedContainerPush<std::vector<std::uint8_t> > substitution(
+					&candidate_substitution_failures_, 0);
 				valid = BuildTemplateArguments(pattern.parameters,
 					candidate.arguments, substitution_scope,
 					candidate.lexical_scope, &replayed);
+				const bool substitution_failed = CandidateSubstitutionFailed();
+				if (substitution_failed) valid = false;
 			}
-			catch (...)
-			{
-				candidate_substitution_failures_.pop_back();
-				throw;
-			}
-			const bool substitution_failed = CandidateSubstitutionFailed();
-			candidate_substitution_failures_.pop_back();
-			if (substitution_failed) valid = false;
 			if (!valid || replayed != arguments) continue;
 		}
 		matches.push_back(candidate_index);
@@ -2499,19 +2484,13 @@ BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 		{
 			argument.type = ResolveTemplateParameterType(
 				parameter, argument_scope);
-			++constant_expression_required_depth_;
 			ExpressionInfo expression;
-			try
 			{
+				ScopedCounterIncrement required(
+					&constant_expression_required_depth_);
 				expression = AnalyzeExpression(
 					source, argument_scope, argument.type);
 			}
-			catch (...)
-			{
-				--constant_expression_required_depth_;
-				throw;
-			}
-			--constant_expression_required_depth_;
 			if (!FormNonTypeTemplateArgumentValue(expression, &argument))
 				ThrowSemanticError(
 					"default non-type template argument is not constant");

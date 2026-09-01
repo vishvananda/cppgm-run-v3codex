@@ -711,7 +711,8 @@ Append one row for each retained or rejected increment:
 | E4f | constant evaluation, constexpr objects/addresses, and alignment | source rejection, representation limits, and evaluator invariants shared generic bases | typed semantic/resource/internal failures; non-constant probe results and cleanup/rethrow guards remain status-based | PA21 constant expressions, constexpr initialization, and required-constant diagnostics | successful full remains 0; generic logic/runtime sites -48/-27 | -2,112 text, -1,068 exception table, -216 unwind | frozen neutral; full deferred to next periodic semantic checkpoint | PA21 151/151; through-PA21 2,417/2,417; frozen object exact | `56214019` | retained |
 | E4g | class layout, inheritance, virtual dispatch, RTTI, and object attributes | object diagnostics, ABI/resource ceilings, and graph invariants shared generic bases | typed semantic/resource/internal failures; cleanup catches still rethrow | PA17 object model plus cumulative PA18-PA21 inheritance/RTTI behavior | successful full remains 0; generic logic/runtime sites -39/-57 | +1,856 text, +32 rodata, -920 exception table, +336 unwind | frozen neutral; clean mirrored full O1 -0.16% CPU, full O3 -0.34% CPU | PA17 247/247; through-PA21 2,417/2,417; 222 O1/O3 objects exact | `64bfa60b` | retained |
 | E4h | language/host extensions, builtins, range-for, source exceptions, and ABI tags | extension diagnostics, limits, and retained syntax invariants shared generic bases | typed semantic/resource/internal failures; candidate and cleanup status flow unchanged | PA23 builtin/template behavior and PA26 source-language exceptions | successful full remains 0; generic logic/runtime sites -44/-129 | -11,264 text, -1,856 exception table, +264 unwind | frozen neutral; full covered by adjacent periodic checkpoints | PA23 414/414; PA26 114/114; through-PA26 3,821/3,821; frozen object exact | `c3f1bf9d` | retained |
-| E4i | semantic graph/model and source presentation | model diagnostics, capacity, and identity invariants shared generic bases | typed semantic/resource/internal failures; semantic generic-throw census reaches zero | PA12 graph/type model and cumulative PA23 presentation behavior | successful full remains 0; semantic generic logic/runtime sites -36/-41 | -19,136 text, -4,424 exception table, -696 unwind | frozen exact tie; clean mirrored full O1 -0.09% CPU, O3 -0.52% CPU | PA12 184/184; PA23 414/414; through-PA26 3,821/3,821; 32-way inception exact | pending | retained |
+| E4i | semantic graph/model and source presentation | model diagnostics, capacity, and identity invariants shared generic bases | typed semantic/resource/internal failures; semantic generic-throw census reaches zero | PA12 graph/type model and cumulative PA23 presentation behavior | successful full remains 0; semantic generic logic/runtime sites -36/-41 | -19,136 text, -4,424 exception table, -696 unwind | frozen exact tie; clean mirrored full O1 -0.09% CPU, O3 -0.52% CPU | PA12 184/184; PA23 414/414; through-PA26 3,821/3,821; 32-way inception exact | `3bc47eb5` | retained |
+| E4j | semantic state restoration | 49 semantic catch-alls manually restored counters, values, or container depth | 39 simple regions use scoped restoration; 10 transactional/scratch cleanup-and-rethrow regions remain explicit | PA12, PA17, PA21, PA23, PA26 and cumulative semantic behavior | successful full remains 0; catch-all sites -39 | -896 text, -840 exception table, neutral unwind | frozen -1.04% user; 32-way full O1 -0.04% CPU, O3 -0.09% CPU | PA12 184/184; PA17 247/247; PA21 151/151; PA23 414/414; PA26 114/114; through-PA26 3,821/3,821; 222 O1/O3 objects and inception exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1276,6 +1277,52 @@ baseline/candidate aggregate CPU averages 490.950/490.530 seconds (-0.09%);
 requested-O3 averages 496.425/493.835 seconds (-0.52%).  The slice is retained
 as a code-size and exception-policy improvement with no measured throughput
 regression.
+
+### E4j execution record
+
+Thirty-nine of the 49 semantic catch-alls only restored a counter, scalar or
+pointer-valued context, or candidate-stack depth before rethrowing.  They now
+use three small C++11 scope guards: `ScopedCounterIncrement`,
+`ScopedValueRestore`, and `ScopedContainerPush`.  Normal return, early return,
+and exceptional exit consequently share one restoration path, without
+catching or inspecting an exception.  The guards are active only around the
+same analysis calls as the former increments and assignments.
+
+The ten retained semantic catch-alls own transactions that are not equivalent
+to a single value restoration:
+
+- the three scalar-evaluator sites restore paired constexpr node/edge scratch
+  arenas and their derived object map before rethrowing;
+- lambda-capture analysis records a failed cache state, restores several
+  parallel table bounds, and balances recursive depth;
+- alias, class-shape, function-default, exception-specification, and
+  placeholder-body sites commit distinct success, expected-failure, deferred,
+  or hard-failure cache states before rethrowing; and
+- placeholder variable formation invokes a multi-part context-release
+  operation shared with normal exit.
+
+These are explicit rollback/state-machine boundaries, not generic failure
+classification.  They remain for the E8 residual allowlist rather than being
+hidden behind a scope guard that cannot represent their commit semantics.  The
+architecture audit ratchets from 53 to 14 catch-all sites repository-wide:
+the ten above plus four non-semantic sites.  Generic-throw counts remain
+934 logic and 575 runtime throws in 136 files.
+
+PA12 passes 184/184, PA17 247/247, PA21 151/151, PA23 414/414, PA26
+114/114, and through-PA26 passes 3,821/3,821.  Against `3bc47eb5`, `.text`
+changes 6,547,878 -> 6,546,982, `.rodata` stays 214,272,
+`.eh_frame_hdr` stays 51,444, `.eh_frame` stays 322,904, and
+`.gcc_except_table` falls 147,460 -> 146,620.  Twelve frozen objects remain
+exact at `8545fec6...`; baseline/candidate user medians are 0.480/0.475
+seconds.
+
+The 32-way A/B/B/A full controls reproduce all 222 objects and final compiler
+hashes in every lane.  Requested-O1 baseline/candidate aggregate CPU averages
+512.060/511.855 seconds (-0.04%); requested-O3 averages
+518.865/518.385 seconds (-0.09%).  The state-restoration cleanup is therefore
+dynamically neutral while reducing duplicated cleanup code and exception
+metadata.  The closing 32-way inception run also matches every object and the
+final `cppgm++` binary exactly.
 
 ## Initial code map
 

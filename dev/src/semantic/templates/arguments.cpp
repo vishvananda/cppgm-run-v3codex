@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1012,21 +1013,16 @@ BindingId Analyzer::InstantiateVariableTemplate(
 					bindings.fixed_arguments[parameter]);
 			std::vector<TemplateArgument> replayed;
 			bool valid = false;
-			candidate_substitution_failures_.push_back(0);
-			try
 			{
+				ScopedContainerPush<std::vector<std::uint8_t> > substitution(
+					&candidate_substitution_failures_, 0);
 				valid = BuildTemplateArguments(primary.parameters,
 					candidate.specialization_arguments, substitution_scope,
 					candidate.lexical_scope, &replayed);
+				const bool substitution_failed = CandidateSubstitutionFailed();
+				if (substitution_failed) valid = false;
 			}
-			catch (...)
-			{
-				candidate_substitution_failures_.pop_back();
-				throw;
-			}
-			const bool substitution_failed = CandidateSubstitutionFailed();
-			candidate_substitution_failures_.pop_back();
-			if (!valid || substitution_failed || replayed != arguments)
+			if (!valid || replayed != arguments)
 				continue;
 		}
 		matches.push_back(candidate_index);
@@ -1596,21 +1592,15 @@ bool Analyzer::AppendTemplateArgument(
 				// declarator. In a non-type argument this is a call expression.
 				const std::vector<NodeId> no_argument_syntax;
 				const std::vector<ExpressionInfo> no_arguments;
-				++constant_expression_required_depth_;
 				bool formed = false;
-				try
 				{
+					ScopedCounterIncrement required(
+						&constant_expression_required_depth_);
 					formed = AnalyzeRetainedNamedCall(name,
 						PayloadSource(name), source_scope,
 						no_argument_syntax, no_arguments,
 						argument.type, &expression);
 				}
-				catch (...)
-				{
-					--constant_expression_required_depth_;
-					throw;
-				}
-				--constant_expression_required_depth_;
 				if (!formed) return false;
 			}
 			else if (name != kNoNode && arena_->IsTag(name, ::cppgm::syntax::STAG_TYPE_NAME) &&
@@ -1643,18 +1633,12 @@ bool Analyzer::AppendTemplateArgument(
 		}
 		else
 		{
-			++constant_expression_required_depth_;
-			try
 			{
+				ScopedCounterIncrement required(
+					&constant_expression_required_depth_);
 				expression = AnalyzeExpression(source, source_scope,
 					dependent_target ? kNoType : argument.type);
 			}
-			catch (...)
-			{
-				--constant_expression_required_depth_;
-				throw;
-			}
-			--constant_expression_required_depth_;
 		}
 		if (CandidateSubstitutionFailed()) return false;
 		if (!expression.constant && expression.binding != kNoBinding &&
@@ -1888,34 +1872,20 @@ TypeId Analyzer::BuildCanonicalTemplateTypeArgument(NodeId type_id,
 			*arena_, type_id, *dependent_names);
 	if (!nondeduced)
 	{
-		if (source_dependent) candidate_substitution_failures_.push_back(0);
 		TypeId result = kNoType;
-		try
 		{
+			ScopedContainerPush<std::vector<std::uint8_t> > substitution(
+				&candidate_substitution_failures_, 0, source_dependent);
 			// A template argument needs canonical type identity, not the layout
 			// of every class specialization named inside that identity.
-			++class_template_completion_suppressed_depth_;
-			try
 			{
+				ScopedCounterIncrement suppressed(
+					&class_template_completion_suppressed_depth_);
 				result = BuildTypeId(type_id, source_scope);
 			}
-			catch (...)
-			{
-				--class_template_completion_suppressed_depth_;
-				throw;
-			}
-			--class_template_completion_suppressed_depth_;
+			const bool substitution_failed = CandidateSubstitutionFailed();
+			if (!substitution_failed && result != kNoType) return result;
 		}
-		catch (...)
-		{
-			if (source_dependent)
-				candidate_substitution_failures_.pop_back();
-			throw;
-		}
-		if (!source_dependent) return result;
-		const bool substitution_failed = CandidateSubstitutionFailed();
-		candidate_substitution_failures_.pop_back();
-		if (!substitution_failed && result != kNoType) return result;
 	}
 	// A dependent partial argument is only a shape at declaration time.
 	// Failure to form it against synthetic shape parameters does not reject the

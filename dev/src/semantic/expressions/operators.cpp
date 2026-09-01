@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <climits>
 #include <limits>
@@ -176,17 +177,10 @@ ExpressionInfo Analyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	}
 	if (measured == kNoType)
 	{
-		++unevaluated_depth_;
-		try
 		{
+			ScopedCounterIncrement unevaluated(&unevaluated_depth_);
 			measured = EffectiveType(AnalyzeExpression(operand, scope).type);
 		}
-		catch (...)
-		{
-			--unevaluated_depth_;
-			throw;
-		}
-		--unevaluated_depth_;
 	}
 	const bool alignment_query = arena_->IsTag(node, ::cppgm::syntax::STAG_TYPE_TRAIT_EXPRESSION);
 	if (CandidateSubstitutionFailed() || measured == kNoType)
@@ -487,18 +481,12 @@ ExpressionInfo Analyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	const bool short_circuit = left.constant &&
 		((op == OP_LAND && !ExpressionTruth(left)) ||
 		 (op == OP_LOR && ExpressionTruth(left)));
-	if (short_circuit) ++constant_evaluation_suppressed_depth_;
 	ExpressionInfo right;
-	try
 	{
-			right = AnalyzeExpression(right_syntax, scope);
+		ScopedCounterIncrement suppressed(
+			&constant_evaluation_suppressed_depth_, short_circuit);
+		right = AnalyzeExpression(right_syntax, scope);
 	}
-	catch (...)
-	{
-		if (short_circuit) --constant_evaluation_suppressed_depth_;
-		throw;
-	}
-	if (short_circuit) --constant_evaluation_suppressed_depth_;
 	if (CandidateSubstitutionFailed()) return right;
 	return BuildBinaryExpression(operation, arena_->Payload(node),
 		left_syntax, right_syntax, left, right, scope);

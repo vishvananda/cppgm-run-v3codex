@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <string>
@@ -1373,22 +1374,13 @@ void Analyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	const NodeId structure = DeclaratorNameStructure(declarator);
 	if (declaration_scope == kNoScope && structure != kNoNode)
 	{
-		const EntityId previous_context = current_class_context_;
 		const EntityId provisional_class = path_owner == kNoScope ?
 			kNoEntity : program_->EntityForScope(path_owner);
-		if (provisional_class != kNoEntity)
-			current_class_context_ = provisional_class;
-		try
-		{
-			(void)LookupStructuredName(structure, scope,
-				LOOKUP_ORDINARY, &structured_owner);
-		}
-		catch (...)
-		{
-			current_class_context_ = previous_context;
-			throw;
-		}
-		current_class_context_ = previous_context;
+		ScopedValueRestore<EntityId> class_context(&current_class_context_,
+			provisional_class != kNoEntity ? provisional_class :
+				current_class_context_);
+		(void)LookupStructuredName(structure, scope,
+			LOOKUP_ORDINARY, &structured_owner);
 	}
 	const ScopeId owner = declaration_scope == kNoScope ?
 		(structured_owner != kNoScope ? structured_owner : path_owner) :

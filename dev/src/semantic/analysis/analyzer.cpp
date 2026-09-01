@@ -2,6 +2,7 @@
 #include "semantic/analysis/switch.h"
 #include "semantic/extensions/hosted_extensions.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
@@ -2277,19 +2278,11 @@ void Analyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	{
 		const EntityId provisional_class = path_owner == kNoScope ?
 			kNoEntity : program_->EntityForScope(path_owner);
-		if (provisional_class != kNoEntity)
-			current_class_context_ = provisional_class;
-		try
-		{
-			(void)LookupStructuredName(structure, scope,
-				LOOKUP_ORDINARY, &structured_owner);
-		}
-		catch (...)
-		{
-			current_class_context_ = previous_class;
-			throw;
-		}
-		current_class_context_ = previous_class;
+		ScopedValueRestore<EntityId> class_context(&current_class_context_,
+			provisional_class != kNoEntity ? provisional_class :
+				current_class_context_);
+		(void)LookupStructuredName(structure, scope,
+			LOOKUP_ORDINARY, &structured_owner);
 	}
 	const ScopeId owner = deferred_member_definition ?
 		path_owner :

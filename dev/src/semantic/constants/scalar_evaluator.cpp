@@ -1,6 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/constants/wide_integer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <cmath>
@@ -423,18 +424,9 @@ void Analyzer::PublishCanonicalBindingConstant(BindingId binding)
 ExpressionInfo Analyzer::AnalyzeConstantRequiredExpression(
 	NodeId node, ScopeId scope, TypeId type, bool required)
 {
-	if (required) ++constant_expression_required_depth_;
-	try
-	{
-		ExpressionInfo result = AnalyzeExpression(node, scope, type);
-		if (required) --constant_expression_required_depth_;
-		return result;
-	}
-	catch (...)
-	{
-		if (required) --constant_expression_required_depth_;
-		throw;
-	}
+	ScopedCounterIncrement required_context(
+		&constant_expression_required_depth_, required);
+	return AnalyzeExpression(node, scope, type);
 }
 
 void Analyzer::SetExpressionBindingConstant(
@@ -1215,37 +1207,15 @@ ExpressionInfo Analyzer::AnalyzeConstantAwareVariableInitializer(
 	NodeId initializer, ScopeId scope, TypeId type, bool local,
 	bool require_constant, bool preserve_recipe)
 {
-	if (require_constant)
-	{
-		++constant_expression_required_depth_;
-		++constant_initializer_required_depth_;
-		if (local) ++local_constant_initializer_depth_;
-	}
-	if (preserve_recipe) ++preserve_constant_initializer_recipe_depth_;
-	try
-	{
-		ExpressionInfo result = AnalyzeVariableInitializer(
-			initializer, scope, type, local);
-		if (require_constant)
-		{
-			if (local) --local_constant_initializer_depth_;
-			--constant_initializer_required_depth_;
-			--constant_expression_required_depth_;
-		}
-		if (preserve_recipe) --preserve_constant_initializer_recipe_depth_;
-		return result;
-	}
-	catch (...)
-	{
-		if (require_constant)
-		{
-			if (local) --local_constant_initializer_depth_;
-			--constant_initializer_required_depth_;
-			--constant_expression_required_depth_;
-		}
-		if (preserve_recipe) --preserve_constant_initializer_recipe_depth_;
-		throw;
-	}
+	ScopedCounterIncrement required_expression(
+		&constant_expression_required_depth_, require_constant);
+	ScopedCounterIncrement required_initializer(
+		&constant_initializer_required_depth_, require_constant);
+	ScopedCounterIncrement local_initializer(
+		&local_constant_initializer_depth_, require_constant && local);
+	ScopedCounterIncrement preserved_recipe(
+		&preserve_constant_initializer_recipe_depth_, preserve_recipe);
+	return AnalyzeVariableInitializer(initializer, scope, type, local);
 }
 
 bool Analyzer::ShouldProbeConstantInitialization(bool local,
@@ -1273,21 +1243,10 @@ ExpressionInfo Analyzer::AnalyzeInClassStaticInitializer(
 	// class specialization while looking up a static constant.  That class's
 	// own initializer is an independent constant-evaluation root; inheriting the
 	// arm's suppression would incorrectly publish it as nonconstant.
-	const std::size_t outer_suppression =
-		constant_evaluation_suppressed_depth_;
-	constant_evaluation_suppressed_depth_ = 0;
-	try
-	{
-		ExpressionInfo result = AnalyzeConstantAwareVariableInitializer(
-			initializer, scope, type, false, true, true);
-		constant_evaluation_suppressed_depth_ = outer_suppression;
-		return result;
-	}
-	catch (...)
-	{
-		constant_evaluation_suppressed_depth_ = outer_suppression;
-		throw;
-	}
+	ScopedValueRestore<std::size_t> suppression(
+		&constant_evaluation_suppressed_depth_, 0);
+	return AnalyzeConstantAwareVariableInitializer(
+		initializer, scope, type, false, true, true);
 }
 
 void Analyzer::InheritVariableRedeclarationFacts(BindingId binding)
@@ -1354,25 +1313,17 @@ ExpressionInfo Analyzer::AnalyzeDefaultConstexprObjectInitializer(
 	TypeId type, ScopeId scope, bool local)
 {
 	ExpressionInfo initializer;
-	++constant_expression_required_depth_;
-	++constant_initializer_required_depth_;
-	if (local) ++local_constant_initializer_depth_;
-	try
 	{
+		ScopedCounterIncrement required_expression(
+			&constant_expression_required_depth_);
+		ScopedCounterIncrement required_initializer(
+			&constant_initializer_required_depth_);
+		ScopedCounterIncrement local_initializer(
+			&local_constant_initializer_depth_, local);
 		initializer.node = BuildDefaultConstructorAction(type, scope);
 		initializer.type = type;
 		initializer.category = VALUE_NONE;
 		SetExpressionDumpObject(&initializer);
-		if (local) --local_constant_initializer_depth_;
-		--constant_initializer_required_depth_;
-		--constant_expression_required_depth_;
-	}
-	catch (...)
-	{
-		if (local) --local_constant_initializer_depth_;
-		--constant_initializer_required_depth_;
-		--constant_expression_required_depth_;
-		throw;
 	}
 	if (!initializer.constant)
 		ThrowSemanticError(

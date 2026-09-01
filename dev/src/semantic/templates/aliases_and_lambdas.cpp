@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <limits>
@@ -1551,23 +1552,17 @@ LookupResult Analyzer::LookupStructuredTypeSpecifier(
 			syntax, scope, LOOKUP_TYPE, 0, typename_specifier);
 	else
 	{
-		candidate_substitution_failures_.push_back(0);
-		try
 		{
+			ScopedContainerPush<std::vector<std::uint8_t> > substitution(
+				&candidate_substitution_failures_, 0);
 			found = LookupStructuredName(
 				syntax, scope, LOOKUP_TYPE, 0, typename_specifier);
-		}
-		catch (...)
-		{
-			candidate_substitution_failures_.pop_back();
-			throw;
-		}
-		const bool formation_failed = CandidateSubstitutionFailed();
-		candidate_substitution_failures_.pop_back();
-		if (formation_failed)
-		{
-			found.type = deferred_type;
-			return found;
+			const bool formation_failed = CandidateSubstitutionFailed();
+			if (formation_failed)
+			{
+				found.type = deferred_type;
+				return found;
+			}
 		}
 	}
 	if (deferred_type != kNoType && found.type != kNoType &&
@@ -1651,26 +1646,18 @@ TypeId Analyzer::InstantiateAliasTemplate(std::size_t index,
 		// the retained type-id still demand their carriers through lookup.  Name
 		// access in the retained type-id belongs to the alias declaration, not to
 		// whichever use happened to request this specialization.
-		++class_template_completion_suppressed_depth_;
-		const EntityId previous_class = current_class_context_;
 		const EntityId alias_owner = program_->EntityForScope(pattern.owner);
-		current_class_context_ = alias_owner;
 		TypeId result = kNoType;
-		try
 		{
+			ScopedCounterIncrement suppressed(
+				&class_template_completion_suppressed_depth_);
+			ScopedValueRestore<EntityId> class_context(
+				&current_class_context_, alias_owner);
 			result = BuildTypeId(pattern.type_id, substitution_scope);
 			if (result != kNoType)
 				result = ApplyGnuVectorAttributes(
 					alias_declaration, result, substitution_scope);
 		}
-		catch (...)
-		{
-			current_class_context_ = previous_class;
-			--class_template_completion_suppressed_depth_;
-			throw;
-		}
-		current_class_context_ = previous_class;
-		--class_template_completion_suppressed_depth_;
 		if (CandidateSubstitutionFailed())
 		{
 			alias_template_instantiation_states_[binding] =

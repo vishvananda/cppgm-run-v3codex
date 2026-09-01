@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <cstdint>
 #include <limits>
@@ -39,40 +40,25 @@ ExpressionInfo Analyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 	bool dynamic = false;
 	if (type_id != kNoNode)
 	{
-		++class_template_completion_suppressed_depth_;
-		try
 		{
+			ScopedCounterIncrement suppressed(
+				&class_template_completion_suppressed_depth_);
 			queried = BuildTypeId(type_id, scope);
 		}
-		catch (...)
-		{
-			--class_template_completion_suppressed_depth_;
-			throw;
-		}
-		--class_template_completion_suppressed_depth_;
 	}
 	else
 	{
 		const NodeId operand_syntax = FirstSemanticChild(node);
 		if (operand_syntax == kNoNode)
 			ThrowSemanticError("typeid expression has no operand");
-		++unevaluated_depth_;
-		++conditionally_evaluated_operand_depth_;
-		++resolved_call_demand_suppressed_depth_;
-		try
 		{
+			ScopedCounterIncrement unevaluated(&unevaluated_depth_);
+			ScopedCounterIncrement conditional(
+				&conditionally_evaluated_operand_depth_);
+			ScopedCounterIncrement suppressed(
+				&resolved_call_demand_suppressed_depth_);
 			operand = AnalyzeExpression(operand_syntax, scope);
 		}
-		catch (...)
-		{
-			--resolved_call_demand_suppressed_depth_;
-			--conditionally_evaluated_operand_depth_;
-			--unevaluated_depth_;
-			throw;
-		}
-		--resolved_call_demand_suppressed_depth_;
-		--conditionally_evaluated_operand_depth_;
-		--unevaluated_depth_;
 		if (CandidateSubstitutionFailed()) return ExpressionInfo();
 		queried = program_->types.RemoveTopCv(EffectiveType(operand.type));
 		const EntityId entity = EntityOf(queried);

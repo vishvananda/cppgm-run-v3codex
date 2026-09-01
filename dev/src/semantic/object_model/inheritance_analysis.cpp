@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <limits>
@@ -467,18 +468,12 @@ ExpressionInfo Analyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		AnalyzeParenthesizedValueBinaryCast(
 			type_id, operand_node, scope, &parenthesized_binary))
 		return parenthesized_binary;
-	++class_template_completion_suppressed_depth_;
 	TypeId target = kNoType;
-	try
 	{
+		ScopedCounterIncrement suppressed(
+			&class_template_completion_suppressed_depth_);
 		target = BuildTypeId(type_id, scope);
 	}
-	catch (...)
-	{
-		--class_template_completion_suppressed_depth_;
-		throw;
-	}
-	--class_template_completion_suppressed_depth_;
 	if (CandidateSubstitutionFailed() || target == kNoType)
 		return ExpressionInfo();
 	// Expression analysis can intern more types and reallocate TypeTable storage.
@@ -1040,30 +1035,18 @@ ExpressionInfo Analyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		ScalarTruth(ExpressionScalar(condition));
 	const bool suppress_yes = known_condition && !condition_truth;
 	const bool suppress_no = known_condition && condition_truth;
-	if (suppress_yes) ++constant_evaluation_suppressed_depth_;
 	ExpressionInfo yes;
-	try
 	{
+		ScopedCounterIncrement suppressed(
+			&constant_evaluation_suppressed_depth_, suppress_yes);
 		yes = AnalyzeExpression(children[1], scope);
 	}
-	catch (...)
-	{
-		if (suppress_yes) --constant_evaluation_suppressed_depth_;
-		throw;
-	}
-	if (suppress_yes) --constant_evaluation_suppressed_depth_;
-	if (suppress_no) ++constant_evaluation_suppressed_depth_;
 	ExpressionInfo no;
-	try
 	{
+		ScopedCounterIncrement suppressed(
+			&constant_evaluation_suppressed_depth_, suppress_no);
 		no = AnalyzeExpression(children[2], scope);
 	}
-	catch (...)
-	{
-		if (suppress_no) --constant_evaluation_suppressed_depth_;
-		throw;
-	}
-	if (suppress_no) --constant_evaluation_suppressed_depth_;
 	ApplyConditionalClassConversion(&yes, &no);
 	TypeId type = kNoType;
 	ValueCategory category = VALUE_PRVALUE;

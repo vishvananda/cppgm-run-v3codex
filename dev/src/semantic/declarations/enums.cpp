@@ -2,6 +2,7 @@
 // their underlying-type facts from syntax.
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 #include <string>
 #include <vector>
 
@@ -146,20 +147,12 @@ TypeId Analyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint
 		{
 			// A specialization demanded from a discarded expression arm still
 			// analyzes its enumerators as independent constant-expression roots.
-			const std::size_t outer_suppression =
-				constant_evaluation_suppressed_depth_;
-			constant_evaluation_suppressed_depth_ = 0;
 			ExpressionInfo expression;
-			try
 			{
+				ScopedValueRestore<std::size_t> suppression(
+					&constant_evaluation_suppressed_depth_, 0);
 				expression = AnalyzeExpression(initializer, value_scope);
 			}
-			catch (...)
-			{
-				constant_evaluation_suppressed_depth_ = outer_suppression;
-				throw;
-			}
-			constant_evaluation_suppressed_depth_ = outer_suppression;
 			if (!expression.constant)
 				ThrowSemanticError("nonconstant enumerator");
 			value = expression.value;

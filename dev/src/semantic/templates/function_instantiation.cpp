@@ -1,6 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/extensions/function_control_attributes.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <limits>
@@ -1497,14 +1498,13 @@ DeclaratorInfo Analyzer::BuildFunctionTemplateSpecializationDeclarator(
 	const EntityId semantic_owner = *member_owner != kNoEntity ?
 		*member_owner : pattern.friend_owners.empty() ? kNoEntity :
 		pattern.friend_owners.front();
-	const EntityId previous_class = current_class_context_;
-	const FunctionTemplatePattern* previous_result_pattern =
-		active_function_template_result_pattern_;
-	if (semantic_owner != kNoEntity) current_class_context_ = semantic_owner;
-	active_function_template_result_pattern_ = &pattern;
 	DeclaratorInfo parsed;
-	try
 	{
+		ScopedValueRestore<EntityId> class_context(&current_class_context_,
+			semantic_owner != kNoEntity ? semantic_owner :
+				current_class_context_);
+		ScopedValueRestore<const FunctionTemplatePattern*> result_pattern(
+			&active_function_template_result_pattern_, &pattern);
 		if (pattern.constructor_template)
 		{
 			spec->type = program_->types.Fundamental(FUND_VOID);
@@ -1524,18 +1524,12 @@ DeclaratorInfo Analyzer::BuildFunctionTemplateSpecializationDeclarator(
 			// Forming a candidate's retained alias result does not demand the
 			// body of a terminal class specialization. Qualified lookup still
 			// completes non-terminal carriers, and selected uses demand layout.
-			++class_template_completion_suppressed_depth_;
-			try
 			{
+				ScopedCounterIncrement suppressed(
+					&class_template_completion_suppressed_depth_);
 				*spec = BuildSpecifiers(pattern.specifiers, template_scope,
 					std::string(), true);
 			}
-			catch (...)
-			{
-				--class_template_completion_suppressed_depth_;
-				throw;
-			}
-			--class_template_completion_suppressed_depth_;
 		}
 		else *spec = BuildSpecifiers(pattern.specifiers, template_scope,
 			std::string(), true);
@@ -1549,14 +1543,6 @@ DeclaratorInfo Analyzer::BuildFunctionTemplateSpecializationDeclarator(
 						!pattern.static_member &&
 						spec->storage_class != STORAGE_CLASS_STATIC);
 	}
-	catch (...)
-	{
-		current_class_context_ = previous_class;
-		active_function_template_result_pattern_ = previous_result_pattern;
-		throw;
-	}
-	current_class_context_ = previous_class;
-	active_function_template_result_pattern_ = previous_result_pattern;
 	if (CandidateSubstitutionFailed() || spec->type == kNoType) return parsed;
 	const std::size_t metadata_count =
 		pattern.function_parameter_names.size();
@@ -1884,19 +1870,13 @@ bool Analyzer::MaterializeFunctionTemplateDefaults(
 				source_parameter, default_scope);
 			if (CandidateSubstitutionFailed() || argument.type == kNoType)
 				return false;
-			++constant_expression_required_depth_;
 			ExpressionInfo value;
-			try
 			{
+				ScopedCounterIncrement required(
+					&constant_expression_required_depth_);
 				value = AnalyzeExpression(
 					source, default_scope, argument.type);
 			}
-			catch (...)
-			{
-				--constant_expression_required_depth_;
-				throw;
-			}
-			--constant_expression_required_depth_;
 			if (CandidateSubstitutionFailed()) return false;
 			if (!FormNonTypeTemplateArgumentValue(value, &argument))
 			{

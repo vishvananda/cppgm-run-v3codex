@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -1584,18 +1585,12 @@ bool Analyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		arena_->NextEdge(object_edge);
 	if (name_edge == kNoEdge)
 		ThrowSemanticError("invalid member call expression");
-	++resolved_call_demand_suppressed_depth_;
 	ExpressionInfo object;
-	try
 	{
+		ScopedCounterIncrement suppressed(
+			&resolved_call_demand_suppressed_depth_);
 		object = AnalyzeExpression(arena_->EdgeChild(object_edge), scope);
 	}
-	catch (...)
-	{
-		--resolved_call_demand_suppressed_depth_;
-		throw;
-	}
-	--resolved_call_demand_suppressed_depth_;
 	if (CandidateSubstitutionFailed())
 	{
 		*result = ExpressionInfo();
