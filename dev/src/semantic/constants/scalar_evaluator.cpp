@@ -2270,7 +2270,7 @@ bool Analyzer::PlanConstexprConstructorInitializers(
 			plan->base_scopes[base_ordinal] = initializer_scope;
 		}
 	}
-	catch (...) { return false; }
+	catch (const SemanticError&) { return false; }
 	return true;
 }
 
@@ -2497,7 +2497,7 @@ bool Analyzer::EvaluateConstexprConstructorInitializers(
 			}
 		}
 	}
-	catch (...) { valid = false; }
+	catch (const SemanticError&) { valid = false; }
 	return valid;
 }
 
@@ -2586,7 +2586,7 @@ bool Analyzer::TryEvaluateConstexprConstructor(BindingId function,
 				&ignored_object, &ignored_complete_object) ==
 				CONSTEXPR_FLOW_NORMAL;
 		}
-		catch (...) { valid = false; }
+		catch (const SemanticError&) { valid = false; }
 	}
 	else if (valid && !info.defaulted_constructor &&
 		!info.implicit_constructor) valid = false;
@@ -2782,7 +2782,7 @@ bool Analyzer::TryEvaluateConstexprFunction(BindingId function,
 			&evaluated_address, &evaluated_object,
 			&evaluated_complete_object);
 	}
-	catch (...) { flow = CONSTEXPR_FLOW_INVALID; }
+	catch (const SemanticError&) { flow = CONSTEXPR_FLOW_INVALID; }
 	current_return_type_ = previous_return;
 	current_class_context_ = previous_class;
 	current_function_context_ = previous_function;

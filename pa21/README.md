@@ -187,6 +187,9 @@ after a valid declaration is instantiated with concrete template arguments:
   - constant initialization when the initializer is a constant expression
   - dynamic class-object local statics with the required guard/check behavior, including
     direct initialization from a class-prvalue factory call
+- ordinary namespace objects whose constant-initialization probe encounters a
+  core constant-expression failure use dynamic initialization; only contexts
+  that require a constant expression are rejected for that failure
 
 PA21 also owns the semantic validation side of C++11 `constexpr`, not just evaluation. In
 particular, the compiler should enforce the C++11-facing rules that matter for the

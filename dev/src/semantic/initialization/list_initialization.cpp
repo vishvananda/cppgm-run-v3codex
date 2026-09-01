@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "support/exceptions.h"
 
 #include <unordered_set>
 
@@ -803,12 +804,12 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 			{
 				if (constructor.deleted_constructor ||
 					constructor.deleted_special_member)
-					throw std::runtime_error("selected constructor is deleted");
+					ThrowSemanticError("selected constructor is deleted");
 				if (copy_initialization && constructor.explicit_constructor)
-					throw std::runtime_error(
+					ThrowSemanticError(
 						"copy initialization selected an explicit constructor");
 				if (!CanAccessMember(selection.selected))
-					throw std::runtime_error("inaccessible constructor");
+					ThrowSemanticError("inaccessible constructor");
 			}
 			return selection.selected;
 		}
@@ -827,7 +828,8 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 	const std::size_t arity = argument_syntax.size();
 	if (arity != 0 && candidates.size() >
 		std::numeric_limits<std::size_t>::max() / arity)
-		throw std::runtime_error("constructor conversion table is too large");
+		throw ResourceLimitError("constructor conversion table is too large",
+			CompilerErrorDomain::SEMANTIC);
 	std::vector<CallConversionFact> conversions(candidates.size() * arity);
 	std::vector<TypeId> braced_sources(candidates.size() * arity, kNoType);
 	CallConversionTable conversion_cache;
@@ -980,7 +982,7 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 	if (viable_count == 0)
 	{
 		if (quiet) return kNoBinding;
-		throw std::runtime_error("no viable constructor for " +
+		throw SemanticError("no viable constructor for " +
 			std::to_string(arity) + " argument(s) from " +
 			std::to_string(candidates.size()) + " candidate(s)");
 	}
@@ -989,7 +991,7 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 			if (c != champion && viable[c] && !better(champion, c))
 			{
 				if (quiet) return kNoBinding;
-				throw std::runtime_error("ambiguous constructor");
+				ThrowSemanticError("ambiguous constructor");
 			}
 	const BindingId selected = candidates[champion];
 	const FunctionInfo& constructor = GetFunction(selected);
@@ -1012,12 +1014,12 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 		!CanAccessMember(selected))) return kNoBinding;
 	if (!quiet &&
 		(constructor.deleted_constructor || constructor.deleted_special_member))
-		throw std::runtime_error("selected constructor is deleted");
+		ThrowSemanticError("selected constructor is deleted");
 	if (!quiet && copy_initialization && constructor.explicit_constructor)
-		throw std::runtime_error(
+		ThrowSemanticError(
 			"copy initialization selected an explicit constructor");
 	if (!quiet && !CanAccessMember(selected))
-		throw std::runtime_error("inaccessible constructor");
+		ThrowSemanticError("inaccessible constructor");
 	return selected;
 }
 

@@ -1,0 +1,24 @@
+global @runtime_value : i32 [binding=strong, object=_Z13runtime_value] = zero
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  block ^entry:
+    return i32 0
+}
+function @divide(%numerator : i32, %denominator : i32) -> i32 [binding=weak, object=_Z6divideii, inline_hint=yes] {
+  slot $numerator : i32
+  slot $denominator : i32
+
+  block ^entry:
+    store i32 %numerator, $numerator
+    store i32 %denominator, $denominator
+    %t1 = load i32 $numerator
+    %t2 = load i32 $denominator
+    %t3 = binary div i32 %t1, %t2
+    return i32 %t3
+}
+function @__cppgm_init() -> void [role=init, binding=internal] {
+  block ^entry:
+    %t1 = call i32 @divide(10, 0)
+    store i32 %t1, @runtime_value
+    return void
+}

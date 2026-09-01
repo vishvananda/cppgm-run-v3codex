@@ -14,10 +14,10 @@ my $root = abs_path("$FindBin::Bin/..");
 # each family is converted, and E8 sets the generic-policy ceilings to zero.
 my %ceiling = (
 	logic_throw => 1410,
-	runtime_throw => 1434,
+	runtime_throw => 1425,
 	generic_throw_files => 217,
 	generic_return_helper => 1,
-	catch_all => 57,
+	catch_all => 53,
 	internal_runtime_catch => 2,
 	internal_exception_catch => 3,
 	legacy_not_implemented => 0,
