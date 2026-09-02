@@ -343,6 +343,13 @@ std::string RenderTemplateArgument(const Program& program,
 }
 
 std::string RenderTemplateArgument(const Program& program,
+	const TemplateArgument& argument, bool show_anonymous_namespace)
+{
+	return RenderTemplateArgumentAt(
+		program, argument, 0, show_anonymous_namespace, 0, 0);
+}
+
+std::string RenderTemplateArgument(const Program& program,
 	const TemplateArgument& argument,
 	const TemplateParameterIdentity& identity)
 {
@@ -355,6 +362,14 @@ std::string RenderTemplateArgument(const Program& program,
 {
 	return RenderTemplateArgumentAt(
 		program, argument, 0, false, 0, &elision);
+}
+
+std::string RenderTemplateArgument(const Program& program,
+	const TemplateArgument& argument, const TemplateArgumentElision& elision,
+	bool show_anonymous_namespace)
+{
+	return RenderTemplateArgumentAt(
+		program, argument, 0, show_anonymous_namespace, 0, &elision);
 }
 
 std::string RenderEntity(const Program& program, EntityId entity,

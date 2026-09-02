@@ -64,10 +64,16 @@ std::string RenderTemplateArgument(const semantic::Program& program,
 	const semantic::TemplateArgument& argument);
 std::string RenderTemplateArgument(const semantic::Program& program,
 	const semantic::TemplateArgument& argument,
+	bool show_anonymous_namespace);
+std::string RenderTemplateArgument(const semantic::Program& program,
+	const semantic::TemplateArgument& argument,
 	const TemplateParameterIdentity& identity);
 std::string RenderTemplateArgument(const semantic::Program& program,
 	const semantic::TemplateArgument& argument,
 	const TemplateArgumentElision& elision);
+std::string RenderTemplateArgument(const semantic::Program& program,
+	const semantic::TemplateArgument& argument,
+	const TemplateArgumentElision& elision, bool show_anonymous_namespace);
 std::string RenderEntity(const semantic::Program& program,
 	semantic::EntityId entity, bool show_anonymous_namespace = false);
 std::string RenderEntity(const semantic::Program& program,

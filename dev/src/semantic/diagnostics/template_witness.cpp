@@ -74,7 +74,8 @@ std::string NormalizeWitnessTypeSpelling(std::string spelling)
 
 std::string RenderWitnessArgument(const Program& program,
 	const TemplateArgument& argument,
-	const presentation::TemplateArgumentElision* elision = 0)
+	const presentation::TemplateArgumentElision* elision = 0,
+	bool show_anonymous_namespace = false)
 {
 	if ((argument.kind == TEMPLATE_ARGUMENT_TYPE ||
 		 argument.kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
@@ -120,8 +121,9 @@ std::string RenderWitnessArgument(const Program& program,
 	}
 	std::string spelling = NormalizeWitnessTypeSpelling(
 		elision ? presentation::RenderTemplateArgument(
-			program, argument, *elision) :
-		presentation::RenderTemplateArgument(program, argument));
+			program, argument, *elision, show_anonymous_namespace) :
+		presentation::RenderTemplateArgument(
+			program, argument, show_anonymous_namespace));
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE &&
 		argument.type != kNoType && argument.type < program.types.Size() &&
 		program.types.Get(program.types.RemoveTopCv(argument.type)).IsIncompleteArray())
@@ -131,10 +133,11 @@ std::string RenderWitnessArgument(const Program& program,
 
 std::string RenderFunctionTypeSourceIdentity(const Program& program,
 	const TemplateArgument& argument, const std::string& source,
-	const presentation::TemplateArgumentElision* elision = 0)
+	const presentation::TemplateArgumentElision* elision = 0,
+	bool show_anonymous_namespace = false)
 {
 	const std::string canonical = RenderWitnessArgument(
-		program, argument, elision);
+		program, argument, elision, show_anonymous_namespace);
 	if (argument.kind != TEMPLATE_ARGUMENT_TYPE) return canonical;
 	const std::size_t close = source.rfind(')');
 	if (close == std::string::npos) return canonical;
@@ -424,7 +427,8 @@ void CollectExplicitTemplateArgumentSpellings(const SyntaxArena& arena,
 std::string RenderWitnessArgumentAtSource(const Program& program,
 	const SyntaxArena& arena, const TemplateArgument& argument,
 	syntax::NodeId source, bool prefer_source = false,
-	const presentation::TemplateArgumentElision* elision = 0)
+	const presentation::TemplateArgumentElision* elision = 0,
+	bool show_anonymous_namespace = false)
 {
 	if (source != syntax::kNoNode && prefer_source)
 	{
@@ -440,7 +444,8 @@ std::string RenderWitnessArgumentAtSource(const Program& program,
 		const std::string spelling = RenderSourceSyntax(arena, source);
 		if (!spelling.empty())
 			return RenderFunctionTypeSourceIdentity(
-				program, argument, spelling, elision);
+				program, argument, spelling, elision,
+				show_anonymous_namespace);
 	}
 	if (source != syntax::kNoNode && argument.IsDependent())
 	{
@@ -474,7 +479,8 @@ std::string RenderWitnessArgumentAtSource(const Program& program,
 				presentation::RenderType(program, argument.type)) + ")" +
 				RenderWitnessArgument(program, argument, elision);
 	}
-	return RenderWitnessArgument(program, argument, elision);
+	return RenderWitnessArgument(
+		program, argument, elision, show_anonymous_namespace);
 }
 
 std::size_t FinalTemplateOpening(const std::string& spelling)
@@ -1797,11 +1803,12 @@ std::string TemplateWitnessObserver::SourceDistinguishedClassName(
 		{
 			if (argument != 0) presented += ", ";
 			const std::string ordinary = RenderWitnessArgument(
-				*analyzer.program_, event.arguments[argument], &argument_elision);
+				*analyzer.program_, event.arguments[argument], &argument_elision,
+				true);
 			const std::string source = argument < spellings.size() ?
 				RenderFunctionTypeSourceIdentity(*analyzer.program_,
 					event.arguments[argument], spellings[argument],
-					&argument_elision) : ordinary;
+					&argument_elision, true) : ordinary;
 			if (source != ordinary) distinguished = true;
 			presented += source;
 		}
@@ -1919,7 +1926,7 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 		{
 			if (argument != 0) elided += ", ";
 			elided += RenderWitnessArgument(
-				*analyzer.program_, fact.arguments[argument]);
+				*analyzer.program_, fact.arguments[argument], 0, true);
 		}
 		elided += '>';
 		if (full != elided)
@@ -1948,7 +1955,7 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 			if (argument != 0) presented += ", ";
 			presented += RenderWitnessArgumentAtSource(*analyzer.program_, arena,
 				event.arguments[argument], argument < argument_syntax.size() ?
-					argument_syntax[argument] : syntax::kNoNode);
+					argument_syntax[argument] : syntax::kNoNode, false, 0, true);
 		}
 		presented += '>';
 		if (full != presented)

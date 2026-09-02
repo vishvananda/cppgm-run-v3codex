@@ -1142,6 +1142,13 @@ toward the same policy already applied to its owner.  Preserve byte-identical
 witness LowIR and normal frozen output, and benchmark because the shared source
 identity renderer also serves non-witness diagnostics.
 
+Replacement identities built from source events must carry the same policy.
+Otherwise a fully qualified canonical entity is immediately replaced by an
+otherwise identical argument rendered with the default hidden-anonymous
+policy.  Add explicit policy overloads to the shared typed-argument renderer
+and use them only while constructing closure/entity replacements; ordinary
+source-event bindings retain their existing spelling policy.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1203,7 +1210,7 @@ identity renderer also serves non-witness diagnostics.
 | W5M-O explicit class finalization | Published class finalization at the common completed-class boundary for explicit instantiation declarations and definitions | 3 witness deltas; PA22 +1 and PA24 +1 exact, no regression; PA22 311/311; frozen outputs/audits exact; extended paired user -0.488% | retain; class completion precedes the typed declaration/definition emission policy split |
 | W5M-O terminal object-type source | Used the authoritative terminal name component to distinguish explicit template-ids from alias/typedef/member results, while suppressing a retained dependent qualifier through W5D's exact-node provenance | terminal-only prototype improved 7 files but regressed one exact PA23 retained-body witness and was rejected; exact-node join changes 7 files, with PA22 +1 and PA24 +3 exact, no PA19/20/23 regression, all 1,532 LowIR artifacts exact; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; extended paired user +0.182%, wall +0.000%, RSS +0.020% | retain the source-role consumer; do not infer retained context from result type or source spelling |
 | W5M rejected retained-call shortcut | Allowed an explicit template-id call to bypass the retained-source suppression bit | one intended PA22 call became exact, but 6 PA19, 7 PA20, 6 PA22, 48 PA23, and 33 PA24 previously exact witnesses regressed; LowIR stayed exact | reject; explicit syntax does not prove that a call is a public evaluated use, so add typed evaluation/replay provenance before revisiting |
-| W5M-S recursive entity presentation | Propagated the existing anonymous-namespace policy through typed template arguments, declarator types, member-pointer owners, and value bindings | 2 witnesses change: PA22 gains 1 exact file, and a PA24 variable-instantiation identity gains its missing anonymous scopes; no regression, all 1,532 LowIR artifacts exact; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; paired user -0.608%, wall -0.326%, RSS -0.115% | retain as shared typed presentation machinery; keep ordinary rendering's default policy unchanged |
+| W5M-S recursive entity presentation | Propagated the existing anonymous-namespace policy through typed template arguments, declarator types, member-pointer owners, value bindings, and closure replacement identities | 2 witnesses change: PA22 gains 1 exact file, and every affected function/require/variable closure identity in one PA24 file gains its missing anonymous scopes; no regression, all 1,532 LowIR artifacts exact; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; cumulative paired user -0.547%, wall -0.650%, RSS +0.704% | retain as shared typed presentation machinery; keep ordinary source-event rendering's default policy unchanged |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
