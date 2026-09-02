@@ -1,5 +1,6 @@
 #include "lowir/cy86/converter.h"
 #include "lowir/model/program.h"
+#include "support/driver_errors.h"
 #include "support/exceptions.h"
 #include "support/tool_help_text.h"
 
@@ -7,7 +8,6 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -39,7 +39,7 @@ void parse_output_invocation(const vector<string> & args,
                              vector<string> & srcfiles)
 {
   if(args.size() < 3 || args[0] != "-o") {
-    throw logic_error("invalid usage");
+    cppgm::driver_errors::ThrowInvocation("invalid usage");
   }
 
   outfile = args[1];
@@ -70,9 +70,11 @@ int run_lowir2cy86_mode(const vector<string> & args)
   const string output = lowir_cy86::render_program(program, &stats);
   const chrono::steady_clock::time_point write_start = chrono::steady_clock::now();
   ofstream stream(outfile.c_str(), ios::out | ios::binary | ios::trunc);
-  if(!stream) throw runtime_error("unable to open output file: " + outfile);
+  if(!stream) cppgm::driver_errors::ThrowInputOutput(
+    "unable to open output file: " + outfile);
   stream.write(output.data(), static_cast<streamsize>(output.size()));
-  if(!stream) throw runtime_error("unable to write output file: " + outfile);
+  if(!stream) cppgm::driver_errors::ThrowInputOutput(
+    "unable to write output file: " + outfile);
   stream.close();
 
   if(report_stats) {

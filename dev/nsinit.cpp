@@ -3,11 +3,11 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 
 #include "namespace_initialization/driver.h"
 #include "preprocess/tool_support.h"
+#include "support/driver_errors.h"
 #include "support/exceptions.h"
 
 namespace
@@ -61,7 +61,7 @@ int main(int argc, char** argv)
 			std::string(argv[argc - 1]) == "--stats";
 		const int input_end = report_stats ? argc - 1 : argc;
 		if (input_end < 4 || std::string(argv[1]) != "-o")
-			throw std::logic_error("invalid usage");
+			cppgm::driver_errors::ThrowInvocation("invalid usage");
 		cppgm::namespace_initialization::Stats stats;
 		cppgm::namespace_initialization::Program program(report_stats ? &stats : 0);
 		const cppgm::PreprocessingOptions options =
@@ -74,7 +74,7 @@ int main(int argc, char** argv)
 		}
 		std::ofstream output(argv[2], std::ios::out | std::ios::binary |
 			std::ios::trunc);
-		if (!output) throw std::runtime_error("unable to open output file");
+		if (!output) cppgm::driver_errors::ThrowInputOutput("unable to open output file");
 		program.WriteImage(output);
 		if (report_stats) ReportStats(stats);
 		return EXIT_SUCCESS;

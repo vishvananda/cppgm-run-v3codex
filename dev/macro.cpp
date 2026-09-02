@@ -2,10 +2,10 @@
 #include <exception>
 #include <iostream>
 #include <iterator>
-#include <stdexcept>
 #include <string>
 
 #include "preprocess/macros/macro_processor.h"
+#include "support/driver_errors.h"
 #include "support/exceptions.h"
 
 namespace
@@ -103,7 +103,7 @@ int main(int argc, char** argv)
 	try
 	{
 		if (argc > 2 || (argc == 2 && std::string(argv[1]) != "--stats"))
-			throw std::logic_error("invalid usage");
+			cppgm::driver_errors::ThrowInvocation("invalid usage");
 		std::ios_base::sync_with_stdio(false);
 		std::cin.tie(0);
 		const std::string source((std::istreambuf_iterator<char>(std::cin)),

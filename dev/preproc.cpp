@@ -3,12 +3,12 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "preprocess/macros/macro_processor.h"
 #include "preprocess/tool_support.h"
+#include "support/driver_errors.h"
 #include "support/exceptions.h"
 
 namespace
@@ -40,7 +40,7 @@ public:
 	void EmitInvalid(const std::string& source)
 	{
 		(void)source;
-		throw std::runtime_error("invalid phase-7 token");
+		cppgm::driver_errors::ThrowLexicalSource("invalid phase-7 token");
 	}
 
 	void EmitSimple(const std::string& source, cppgm::SimpleTokenKind kind)
@@ -166,13 +166,13 @@ int main(int argc, char** argv)
 			std::string(argv[argc - 1]) == "--stats";
 		const int input_end = report_stats ? argc - 1 : argc;
 		if (input_end < 4 || std::string(argv[1]) != "-o")
-			throw std::logic_error("invalid usage");
+			cppgm::driver_errors::ThrowInvocation("invalid usage");
 
 		const cppgm::PreprocessingOptions options =
 			cppgm::BuildPreprocessingOptions();
 		std::ofstream output(argv[2], std::ios::out | std::ios::trunc);
 		if (!output)
-			throw std::runtime_error("unable to open output file");
+			cppgm::driver_errors::ThrowInputOutput("unable to open output file");
 		output << "preproc " << input_end - 3 << '\n';
 		PreprocessorOutput tokens(output);
 
@@ -188,7 +188,7 @@ int main(int argc, char** argv)
 				ReportStats(path, stats);
 		}
 		if (!output)
-			throw std::runtime_error("unable to write output file");
+			cppgm::driver_errors::ThrowInputOutput("unable to write output file");
 		return EXIT_SUCCESS;
 	}
 	catch (const CompilerError& error)

@@ -1,12 +1,13 @@
 // Student-facing scaffold for the PA14 `abimangle` binary.
 
 #include "abi/itanium/abi_mangle.h"
+#include "abi/itanium/abi_mangle_errors.h"
+#include "support/driver_errors.h"
 #include "support/exceptions.h"
 
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -44,7 +45,7 @@ AbimangleInvocation parse_invocation(int argc, char ** argv)
     const string arg = argv[i];
     if(arg == "-o") {
       if(i + 1 >= argc) {
-        throw logic_error("missing output file after -o");
+        cppgm::driver_errors::ThrowInvocation("missing output file after -o");
       }
       invocation.outfile = argv[++i];
       continue;
@@ -56,7 +57,7 @@ AbimangleInvocation parse_invocation(int argc, char ** argv)
     invocation.inputs.push_back(arg);
   }
   if(invocation.outfile.empty() || invocation.inputs.empty()) {
-    throw logic_error("invalid usage");
+    cppgm::driver_errors::ThrowInvocation("invalid usage");
   }
   return invocation;
 }
@@ -70,7 +71,8 @@ int run_abimangle(int argc, char ** argv)
   const AbimangleInvocation invocation = parse_invocation(argc, argv);
   ofstream out(invocation.outfile.c_str());
   if(!out) {
-    throw logic_error("unable to open output file '" + invocation.outfile + "'");
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to open output file '" + invocation.outfile + "'");
   }
   abi_mangle::AbiMangleStats stats;
   const bool collect_stats = invocation.collect_stats;
@@ -78,7 +80,8 @@ int run_abimangle(int argc, char ** argv)
                                           collect_stats ? &stats : nullptr);
   out.close();
   if(!out) {
-    throw logic_error("unable to write output file '" + invocation.outfile + "'");
+    cppgm::driver_errors::ThrowInputOutput(
+      "unable to write output file '" + invocation.outfile + "'");
   }
   if(collect_stats) {
     cerr << "abimangle_stats source_files=" << stats.source_files

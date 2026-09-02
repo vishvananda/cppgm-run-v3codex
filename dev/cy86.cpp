@@ -3,12 +3,12 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "cy86/cy86_program.h"
 #include "preprocess/tool_support.h"
+#include "support/driver_errors.h"
 #include "support/exceptions.h"
 
 namespace
@@ -53,12 +53,12 @@ int main(int argc, char** argv)
 			if (argument == "-o")
 			{
 				if (++i >= argc || !output_path.empty())
-					throw std::logic_error("invalid usage");
+					cppgm::driver_errors::ThrowInvocation("invalid usage");
 				output_path = argv[i];
 			}
 			else if (argument == "--target")
 			{
-				if (++i >= argc) throw std::logic_error("invalid usage");
+				if (++i >= argc) cppgm::driver_errors::ThrowInvocation("invalid usage");
 				// PA9's optional target selector does not change the x86-64 ELF path.
 			}
 			else if (argument == "--stats") report_stats = true;
@@ -68,7 +68,7 @@ int main(int argc, char** argv)
 			}
 		}
 		if (output_path.empty() || source_paths.empty())
-			throw std::logic_error("invalid usage");
+			cppgm::driver_errors::ThrowInvocation("invalid usage");
 
 		cppgm::Cy86Stats stats;
 		cppgm::Cy86Program program(report_stats ? &stats : 0);

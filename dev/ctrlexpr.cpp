@@ -4,12 +4,12 @@
 #include <exception>
 #include <iostream>
 #include <iterator>
-#include <stdexcept>
 #include <string>
 
 using namespace std;
 
 #include "preprocess/expressions/control_expression.h"
+#include "support/driver_errors.h"
 #include "support/exceptions.h"
 
 // Mock identifier-definition policy for the standalone expression adapter.
@@ -27,7 +27,7 @@ int main(int argc, char** argv)
 	try
 	{
 		if (argc > 2 || (argc == 2 && std::string(argv[1]) != "--stats"))
-			throw std::logic_error("invalid usage");
+			cppgm::driver_errors::ThrowInvocation("invalid usage");
 		ios_base::sync_with_stdio(false);
 		cin.tie(0);
 		const string source((istreambuf_iterator<char>(cin)),

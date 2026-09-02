@@ -1,6 +1,7 @@
 // Student-facing scaffold for the PA29 `lowir2native` binary.
 
 #include "support/exceptions.h"
+#include "native/errors.h"
 #include "lowir/model/program.h"
 #include "native/driver/session.h"
 #include "native/driver/stats.h"
@@ -12,7 +13,6 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -108,7 +108,7 @@ LowIR2NativeInvocation parse_lowir2native_invocation(const vector<string> & args
     }
     if(is_optimization_level(args[i], optimization_level)) {
       if(invocation.has_optimization_level) {
-        throw logic_error("multiple optimization levels provided");
+        native_errors::ThrowInvocation("multiple optimization levels provided");
       }
       invocation.has_optimization_level = true;
       invocation.optimization_level = optimization_level;
@@ -116,43 +116,43 @@ LowIR2NativeInvocation parse_lowir2native_invocation(const vector<string> & args
     }
     if(args[i] == "--target") {
       if(i + 1 >= args.size()) {
-        throw logic_error("missing target after --target");
+        native_errors::ThrowInvocation("missing target after --target");
       }
       if(!invocation.output_target.empty()) {
-        throw logic_error("multiple --target options provided");
+        native_errors::ThrowInvocation("multiple --target options provided");
       }
       invocation.output_target = args[++i];
       continue;
     }
     if(args[i] == "--dump-machine-ir" || args[i] == "--dump-native-plan") {
       if(i + 1 >= args.size()) {
-        throw logic_error("missing output file after --dump-machine-ir");
+        native_errors::ThrowInvocation("missing output file after --dump-machine-ir");
       }
       if(!invocation.machine_ir_file.empty()) {
-        throw logic_error("multiple machine IR dump paths provided");
+        native_errors::ThrowInvocation("multiple machine IR dump paths provided");
       }
       invocation.machine_ir_file = args[++i];
       continue;
     }
     if(args[i] == "-o") {
       if(i + 1 >= args.size()) {
-        throw logic_error("missing output file after -o");
+        native_errors::ThrowInvocation("missing output file after -o");
       }
       if(!invocation.outfile.empty()) {
-        throw logic_error("multiple output files provided");
+        native_errors::ThrowInvocation("multiple output files provided");
       }
       invocation.outfile = args[++i];
       continue;
     }
     if(starts_with_dash(args[i])) {
-      throw logic_error("unknown option: " + args[i]);
+      native_errors::ThrowInvocation("unknown option: " + args[i]);
     }
     invocation.srcfiles.push_back(args[i]);
   }
 
   if((invocation.outfile.empty() && invocation.machine_ir_file.empty()) ||
      invocation.srcfiles.empty()) {
-    throw logic_error("invalid usage");
+    native_errors::ThrowInvocation("invalid usage");
   }
 
   return invocation;

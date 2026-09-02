@@ -742,7 +742,8 @@ Append one row for each retained or rejected increment:
 | E7r | PA8 namespace initialization/parser/image model | syntax and semantic rejection, image I/O, capacity limits, and model/image invariants shared generic bases | typed lexical/syntax/semantic/I/O/resource/internal exits; parser probes remain Boolean | PA8 namespace initialization, semantic rejection, linking, and mock-image behavior | no recovery catch or valid-input unwind; generic logic/runtime sites -14/-136 | nsinit: -13,888 text, +32 rodata, +112 EH header, -48 unwind, -2,030 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA8 67/67; through-PA8 402/402; audits pass; integrated compiler binary exact | `091d3579` | retained |
 | E7s | integrated syntax arena, attributes, name facts, brace matches, and spelling interning | syntax/resource/invariant failures shared generic bases in hot parser support | typed lexical/syntax/resource/internal cold exits; attribute and name/declarator probes remain status flow | PA10 syntax structure, attributes, templates, ambiguity, and malformed-input behavior | successful frozen remains 0; generic logic/runtime sites -8/-13 | -704 text, neutral rodata, +64 EH header, +152 unwind, -296 exception table | frozen user medians 0.460/0.455 s; mean +0.83%, one-tick noise | PA10 165/165; through-PA10 587/587; frozen object exact; audits pass | `f8ae46f1` | retained |
 | E7t | ABI model, vocabulary, presentation, and mangler | ABI fact/model/encoding/resource/I/O failures shared generic bases; two catch-alls restored active graph cases | centralized ABI fact-input/internal/resource/I/O exits; scoped graph-case cleanup; ordinary cache/substitution lookup remains status flow | PA14 valid, malformed, numeric, model, and mangling behavior | successful frozen remains 0; generic logic/runtime -37/-1; catch-all -2 | +2,176 text, neutral rodata, +40 EH header, -288 unwind, -924 exception table | 16-run frozen mean exactly neutral at 0.45125/0.45125 s | PA14 117/117; through-PA14 1,082/1,082; frozen objects exact; audits pass | `b4433caf` | retained |
-| E7u | PA9 CY86 frontend, backend, model, and ELF writer | CY86 source rejection, capacities, output I/O, and backend/model invariants shared generic bases | centralized CY86 source/resource/I/O/internal exits; parsing/opcode lookup stays status flow; one transactional cleanup/rethrow retained for E8 review | PA9 valid/invalid CY86 and generated native behavior | no recovery catch or valid-input unwind; generic logic/runtime -25/-13 | cy86: +3,328 text, neutral rodata, +72 EH header, +384 unwind, -1,265 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA9 20/20; through-PA9 422/422; audits pass; integrated compiler binary exact | pending | retained |
+| E7u | PA9 CY86 frontend, backend, model, and ELF writer | CY86 source rejection, capacities, output I/O, and backend/model invariants shared generic bases | centralized CY86 source/resource/I/O/internal exits; parsing/opcode lookup stays status flow; one transactional cleanup/rethrow retained for E8 review | PA9 valid/invalid CY86 and generated native behavior | no recovery catch or valid-input unwind; generic logic/runtime -25/-13 | cy86: +3,328 text, neutral rodata, +72 EH header, +384 unwind, -1,265 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA9 20/20; through-PA9 422/422; audits pass; integrated compiler binary exact | `9b2da99f` | retained |
+| E7v | remaining staged executable adapters | invocation, output I/O, and one invalid phase-7 token used generic terminal throws | driver/optimizer/native invocation, driver I/O, and lexical source dispositions; terminal presentation unchanged | PA3-PA9, PA13/14, PA37/38 staged behavior | generic logic/runtime -29/-10; repository generic census reaches zero | eleven staged binaries aggregate: +5,152 text, -52 rodata, +208 EH header, +1,016 unwind, +140 exception table; integrated exact | adapters not on integrated hot path; no timing exposure | through-PA38 5,477/5,477; all 11 invalid invocations fail; audits pass; integrated compiler exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -2115,6 +2116,31 @@ passes 20/20 and through-PA9 passes 422/422.  Against E7t, staged `cy86`
 `.gcc_except_table` 6,423 -> 5,158.  CY86 is not in the integrated compiler
 source set, and the integrated binary remains exact at `44f180930596...`, so
 the staged typed-boundary size tradeoff has no frozen/full timing exposure.
+
+### E7v execution record
+
+The final generic throws were confined to eleven staged executable adapters.
+Invocation parsing now uses the appropriate driver, optimizer, or native
+invocation boundary; output creation/writing uses typed driver I/O; and the
+preprocessor output sink's invalid phase-7 token uses lexical source failure.
+Terminal `CompilerError` presentation and exit status are unchanged.  These
+adapters are not linked into the integrated compiler hot path.
+
+The generic audit falls by the final 29 logic and 10 runtime sites, reaching
+zero generic throws and zero generic-throw files.  Each changed executable's
+invalid-invocation path returns failure.  A clean supported
+`make test-report-through-pa38` passes 5,477/5,477; exception and source-set
+audits pass.  (A preceding attempt to request eleven root `test-paN` targets
+in one `make` invocation was discarded because their independent sub-builds
+raced on shared `.tmp` dependency/config paths; it was not a test failure.)
+
+Across the eleven staged binaries, `.text` changes 5,249,682 -> 5,254,834,
+`.rodata` 214,310 -> 214,258, `.eh_frame_hdr` 52,820 -> 53,028, `.eh_frame`
+304,416 -> 305,432, and `.gcc_except_table` 103,862 -> 104,002.  An initially
+added ABI I/O overload also moved the integrated binary by 128 bytes; routing
+that wrapper-owned operation through the existing driver I/O boundary restores
+the exact E7t integrated compiler hash `44f180930596...`.  The staged size cost
+therefore has no frozen/full compile-time exposure.
 
 ## Initial code map
 

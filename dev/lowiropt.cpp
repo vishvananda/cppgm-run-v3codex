@@ -4,11 +4,11 @@
 #include "lowir/driver/stats_report.h"
 #include "lowir/model/program.h"
 #include "lowir/optimize/pipeline.h"
+#include "lowir/optimize/errors.h"
 #include "support/tool_help_text.h"
 
 #include <cstdlib>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -103,14 +103,16 @@ LowIROptInvocation parse_lowiropt_invocation(const vector<string> & args)
     }
     if(args[i] == "--inline-limit") {
       if(i + 1 >= args.size())
-        throw logic_error("missing value after --inline-limit");
+        lowir_opt::ThrowOptimizerInvocationError(
+          "missing value after --inline-limit");
       lowir_opt::apply_inline_limit_option(
         &invocation.inline_limits, args[++i]);
       continue;
     }
     if(is_optimization_level(args[i], optimization_level)) {
       if(invocation.has_optimization_level) {
-        throw logic_error("multiple optimization levels provided");
+        lowir_opt::ThrowOptimizerInvocationError(
+          "multiple optimization levels provided");
       }
       invocation.has_optimization_level = true;
       invocation.optimization_level = optimization_level;
@@ -118,16 +120,18 @@ LowIROptInvocation parse_lowiropt_invocation(const vector<string> & args)
     }
     if(args[i] == "-o") {
       if(i + 1 >= args.size()) {
-        throw logic_error("missing output file after -o");
+        lowir_opt::ThrowOptimizerInvocationError(
+          "missing output file after -o");
       }
       if(!invocation.outfile.empty()) {
-        throw logic_error("multiple output files provided");
+        lowir_opt::ThrowOptimizerInvocationError(
+          "multiple output files provided");
       }
       invocation.outfile = args[++i];
       continue;
     }
     if(starts_with_dash(args[i])) {
-      throw logic_error("unknown option: " + args[i]);
+      lowir_opt::ThrowOptimizerInvocationError("unknown option: " + args[i]);
     }
     invocation.inputs.push_back(args[i]);
   }
@@ -135,7 +139,7 @@ LowIROptInvocation parse_lowiropt_invocation(const vector<string> & args)
   if(!invocation.has_optimization_level ||
      invocation.outfile.empty() ||
      invocation.inputs.empty()) {
-    throw logic_error("invalid usage");
+    lowir_opt::ThrowOptimizerInvocationError("invalid usage");
   }
 
   return invocation;
