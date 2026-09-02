@@ -20,14 +20,34 @@ struct TemplateBinding
 		: name(name_value), argument(argument_value) {}
 };
 
+// Opt-in presentation for dependent semantic identities.  Template parameter
+// provenance stays typed in EntityRecord/TemplateArgument; callers choose the
+// depth and whether a stored pack-expansion role is part of the presentation.
+struct TemplateParameterIdentity
+{
+	std::uint32_t depth;
+	bool render_pack_expansions;
+
+	explicit TemplateParameterIdentity(std::uint32_t depth_value,
+		bool render_pack_expansions_value = true)
+		: depth(depth_value),
+		  render_pack_expansions(render_pack_expansions_value) {}
+};
+
 std::string RenderType(const semantic::Program& program, semantic::TypeId type);
 std::string RenderName(const semantic::Program& program,
 	semantic::ScopeId owner, semantic::NameId name,
 	bool show_anonymous_namespace = false);
 std::string RenderTemplateArgument(const semantic::Program& program,
 	const semantic::TemplateArgument& argument);
+std::string RenderTemplateArgument(const semantic::Program& program,
+	const semantic::TemplateArgument& argument,
+	const TemplateParameterIdentity& identity);
 std::string RenderEntity(const semantic::Program& program,
 	semantic::EntityId entity, bool show_anonymous_namespace = false);
+std::string RenderEntity(const semantic::Program& program,
+	semantic::EntityId entity, const TemplateParameterIdentity& identity,
+	bool show_anonymous_namespace = false);
 std::string RenderFunction(const semantic::Program& program,
 	semantic::BindingId binding, semantic::TypeId type,
 	const std::vector<TemplateBinding>& substitutions);

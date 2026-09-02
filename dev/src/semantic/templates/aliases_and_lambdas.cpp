@@ -1392,6 +1392,8 @@ TypeId Analyzer::CreateTemplateTemplateParameterProxy(ScopeId scope,
 	pattern.marker_entity = program_->NewEntity(parameter.name,
 		NAMED_TEMPLATE_PARAMETER, false, kNoType, scope, parameter.name,
 		ENTITY_EMISSION_OWNER_QUALIFIED);
+	program_->entities[pattern.marker_entity].template_parameter_ordinal =
+		static_cast<std::uint32_t>(ordinal);
 	const TypeId marker_type = program_->entities[pattern.marker_entity].type;
 	program_->SetTypeName(scope, parameter.name, marker_type);
 	program_->AddBinding(scope, BIND_TYPE, parameter.name, marker_type,

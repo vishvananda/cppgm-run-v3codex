@@ -17,7 +17,7 @@ namespace
 
 
 std::string RenderTypeAt(const Program& program, TypeId type,
-	std::size_t depth);
+	std::size_t depth, const TemplateParameterIdentity* identity);
 
 std::string ScopePrefix(const Program& program, ScopeId owner,
 	bool show_anonymous_namespace = false)
@@ -64,37 +64,52 @@ bool IsLocalEntity(const Program& program, const EntityRecord& entity)
 }
 
 std::string RenderTemplateArgumentAt(const Program& program,
-	const TemplateArgument& argument, std::size_t depth)
+	const TemplateArgument& argument, std::size_t depth,
+	const TemplateParameterIdentity* identity)
 {
+	std::string result;
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE ||
 		argument.kind == TEMPLATE_ARGUMENT_TEMPLATE)
-		return RenderTypeAt(program, argument.type, depth + 1);
+		result = RenderTypeAt(program, argument.type, depth + 1, identity);
 	if (argument.IsDependent())
-		return "dependent(" + std::to_string(argument.dependent_parameter) + ')';
-	if (argument.value_binding != kNoBinding)
+	{
+		if (identity && argument.kind == TEMPLATE_ARGUMENT_INTEGRAL)
+			result = "value-parameter-" + std::to_string(identity->depth) + '-' +
+				std::to_string(argument.dependent_parameter);
+		else if (result.empty())
+			result = "dependent(" +
+				std::to_string(argument.dependent_parameter) + ')';
+	}
+	if (result.empty() && argument.value_binding != kNoBinding)
 	{
 		if (argument.value_binding >= program.bindings.size())
 			ThrowInternalCompilerError("source identity argument binding is invalid");
 		const BindingRecord& binding =
 			program.bindings[argument.value_binding];
-		std::string result = ScopePrefix(program, binding.owner);
+		result = ScopePrefix(program, binding.owner);
 		if (!result.empty()) result += "::";
 		result += program.names.Get(binding.name);
 		const TypeRecord& value_type = program.types.Get(
 			program.types.RemoveTopCv(argument.type));
 		if (value_type.kind == TYPE_POINTER) result.insert(result.begin(), '&');
-		return result;
 	}
-	const TypeRecord& value_type = program.types.Get(
-		program.types.RemoveTopCv(argument.type));
-	if (value_type.kind == TYPE_FUNDAMENTAL &&
-		value_type.fundamental == FUND_BOOL)
-		return argument.value == 0 ? "false" : "true";
-	return std::to_string(argument.value);
+	if (result.empty())
+	{
+		const TypeRecord& value_type = program.types.Get(
+			program.types.RemoveTopCv(argument.type));
+		if (value_type.kind == TYPE_FUNDAMENTAL &&
+			value_type.fundamental == FUND_BOOL)
+			result = argument.value == 0 ? "false" : "true";
+		else result = std::to_string(argument.value);
+	}
+	if (identity && identity->render_pack_expansions &&
+		argument.pack_expansion) result += "...";
+	return result;
 }
 
 std::string RenderEntityAt(const Program& program, EntityId entity,
-	std::size_t depth, bool show_anonymous_namespace = false)
+	std::size_t depth, bool show_anonymous_namespace,
+	const TemplateParameterIdentity* identity)
 {
 	if (entity == kNoEntity || entity >= program.entities.size())
 		ThrowInternalCompilerError("source identity entity is invalid");
@@ -105,15 +120,28 @@ std::string RenderEntityAt(const Program& program, EntityId entity,
 		return semantic::presentation::RenderLambdaSourceIdentityName(
 			program, entity);
 	std::string result;
-	if (IsLocalEntity(program, record))
+	if (identity &&
+		record.template_parameter_ordinal != kNoTemplateParameter)
+	{
+		const bool template_parameter =
+			record.flavor == NAMED_TEMPLATE_PARAMETER ||
+			record.template_argument_begin != kNoBinding;
+		result = template_parameter ? "template-parameter-" : "type-parameter-";
+		result += std::to_string(identity->depth) + '-' +
+			std::to_string(record.template_parameter_ordinal);
+	}
+	else if (IsLocalEntity(program, record))
 		result.clear();
 	else if (record.enclosing_class != kNoEntity)
 		result = RenderEntityAt(program, record.enclosing_class, depth + 1,
-			show_anonymous_namespace);
+			show_anonymous_namespace, identity);
 	else result = ScopePrefix(program, record.owner, show_anonymous_namespace);
-	if (!result.empty()) result += "::";
-	result += program.names.Get(
-		record.identity_name == 0 ? record.emission_name : record.identity_name);
+	if (!identity || record.template_parameter_ordinal == kNoTemplateParameter)
+	{
+		if (!result.empty()) result += "::";
+		result += program.names.Get(record.identity_name == 0 ?
+			record.emission_name : record.identity_name);
+	}
 	if (record.template_argument_begin != kNoBinding)
 	{
 		const std::size_t first = record.template_argument_begin;
@@ -127,7 +155,8 @@ std::string RenderEntityAt(const Program& program, EntityId entity,
 		{
 			if (i != 0) result += ", ";
 			result += RenderTemplateArgumentAt(program,
-				program.canonical_template_arguments[first + i], depth + 1);
+				program.canonical_template_arguments[first + i], depth + 1,
+				identity);
 		}
 		result += '>';
 	}
@@ -167,7 +196,8 @@ std::string StripTypePrefix(std::string spelling)
 }
 
 std::string RenderDeclaratorType(const Program& program, TypeId type,
-	std::string declarator, std::size_t depth, std::uint8_t pointer_cv)
+	std::string declarator, std::size_t depth, std::uint8_t pointer_cv,
+	const TemplateParameterIdentity* identity)
 {
 	if (type == kNoType || type >= program.types.Size())
 		ThrowInternalCompilerError("source identity type is invalid");
@@ -182,10 +212,11 @@ std::string RenderDeclaratorType(const Program& program, TypeId type,
 		if (child.kind == TYPE_POINTER || child.kind == TYPE_BLOCK_POINTER ||
 			child.kind == TYPE_MEMBER_POINTER)
 			return RenderDeclaratorType(program, record.child, declarator,
-				depth + 1, static_cast<std::uint8_t>(pointer_cv | record.cv));
+				depth + 1, static_cast<std::uint8_t>(pointer_cv | record.cv),
+				identity);
 		std::string prefix = CvSuffix(record.cv);
 		std::string result = RenderDeclaratorType(program, record.child,
-			declarator, depth + 1, pointer_cv);
+			declarator, depth + 1, pointer_cv, identity);
 		return prefix.empty() ? result : prefix + ' ' + result;
 	}
 	case TYPE_POINTER:
@@ -203,14 +234,14 @@ std::string RenderDeclaratorType(const Program& program, TypeId type,
 			operation += ' ';
 		declarator = operation + declarator;
 		return RenderDeclaratorType(program, record.child, declarator,
-			depth + 1, 0);
+			depth + 1, 0, identity);
 	}
 	case TYPE_ARRAY:
 		declarator += '[' + (record.dependent_bound_parameter ==
 			kNoTemplateParameter ? std::to_string(record.bound) :
 			std::string("dependent")) + ']';
 		return RenderDeclaratorType(program, record.child, declarator,
-			depth + 1, 0);
+			depth + 1, 0, identity);
 	case TYPE_FUNCTION:
 	{
 		if (!declarator.empty()) declarator = '(' + declarator + ')';
@@ -220,7 +251,7 @@ std::string RenderDeclaratorType(const Program& program, TypeId type,
 		{
 			if (i != 0) declarator += ", ";
 			declarator += RenderDeclaratorType(program, parameters[i],
-				std::string(), depth + 1, 0);
+				std::string(), depth + 1, 0, identity);
 		}
 		if (record.variadic)
 		{
@@ -229,20 +260,22 @@ std::string RenderDeclaratorType(const Program& program, TypeId type,
 		}
 		declarator += ')';
 		return RenderDeclaratorType(program, record.child, declarator,
-			depth + 1, 0);
+			depth + 1, 0, identity);
 	}
 	case TYPE_MEMBER_POINTER:
 	{
 		std::string operation = RenderDeclaratorType(program,
-			static_cast<TypeId>(record.bound), std::string(), depth + 1, 0) +
+			static_cast<TypeId>(record.bound), std::string(), depth + 1, 0,
+			identity) +
 			"::*" + CvSuffix(pointer_cv);
 		declarator = operation + declarator;
 		return RenderDeclaratorType(program, record.child, declarator,
-			depth + 1, 0);
+			depth + 1, 0, identity);
 	}
 	case TYPE_NAMED:
 	{
-		const std::string base = RenderEntityAt(program, record.entity, depth + 1);
+		const std::string base = RenderEntityAt(
+			program, record.entity, depth + 1, false, identity);
 		return declarator.empty() ? base : base +
 			(declarator[0] == '[' ? std::string() : std::string(" ")) +
 			declarator;
@@ -258,16 +291,17 @@ std::string RenderDeclaratorType(const Program& program, TypeId type,
 }
 
 std::string RenderTypeAt(const Program& program, TypeId type,
-	std::size_t depth)
+	std::size_t depth, const TemplateParameterIdentity* identity)
 {
-	return RenderDeclaratorType(program, type, std::string(), depth, 0);
+	return RenderDeclaratorType(
+		program, type, std::string(), depth, 0, identity);
 }
 
 }
 
 std::string RenderType(const Program& program, TypeId type)
 {
-	return RenderTypeAt(program, type, 0);
+	return RenderTypeAt(program, type, 0, 0);
 }
 
 std::string RenderName(const Program& program, ScopeId owner, NameId name,
@@ -282,13 +316,27 @@ std::string RenderName(const Program& program, ScopeId owner, NameId name,
 std::string RenderTemplateArgument(const Program& program,
 	const TemplateArgument& argument)
 {
-	return RenderTemplateArgumentAt(program, argument, 0);
+	return RenderTemplateArgumentAt(program, argument, 0, 0);
+}
+
+std::string RenderTemplateArgument(const Program& program,
+	const TemplateArgument& argument,
+	const TemplateParameterIdentity& identity)
+{
+	return RenderTemplateArgumentAt(program, argument, 0, &identity);
 }
 
 std::string RenderEntity(const Program& program, EntityId entity,
 	bool show_anonymous_namespace)
 {
-	return RenderEntityAt(program, entity, 0, show_anonymous_namespace);
+	return RenderEntityAt(program, entity, 0, show_anonymous_namespace, 0);
+}
+
+std::string RenderEntity(const Program& program, EntityId entity,
+	const TemplateParameterIdentity& identity, bool show_anonymous_namespace)
+{
+	return RenderEntityAt(
+		program, entity, 0, show_anonymous_namespace, &identity);
 }
 
 std::string RenderFunction(const Program& program, BindingId binding,
@@ -329,7 +377,7 @@ std::string RenderFunction(const Program& program, BindingId binding,
 		{
 			if (i != 0) result += "; ";
 			result += program.names.Get(substitutions[i].name) + " = " +
-				RenderTemplateArgumentAt(program, substitutions[i].argument, 0);
+				RenderTemplateArgumentAt(program, substitutions[i].argument, 0, 0);
 		}
 		result += ']';
 	}

@@ -2256,6 +2256,9 @@ void RetainedTemplateValidator::Run()
 		const EntityId entity = analyzer_.program_->NewEntity(name,
 			NAMED_TYPENAME_PARAMETER, false, kNoType,
 			analyzer_.program_->GlobalScope(), name);
+		analyzer_.program_->entities[entity].template_parameter_ordinal =
+			static_cast<std::uint32_t>(
+				analyzer_.function_template_shape_parameters_.size());
 		analyzer_.function_template_shape_parameters_.push_back(
 			analyzer_.program_->types.Named(entity));
 	}

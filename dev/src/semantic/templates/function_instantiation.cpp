@@ -910,6 +910,9 @@ void Analyzer::EnsureFunctionTemplateShapeParameters(std::size_t count)
 		const EntityId entity = program_->NewEntity(name,
 			NAMED_TYPENAME_PARAMETER, false, kNoType,
 			program_->GlobalScope(), name);
+		program_->entities[entity].template_parameter_ordinal =
+			static_cast<std::uint32_t>(
+				function_template_shape_parameters_.size());
 		function_template_shape_parameters_.push_back(
 			program_->types.Named(entity));
 	}
