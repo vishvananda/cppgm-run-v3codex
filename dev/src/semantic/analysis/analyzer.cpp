@@ -2134,6 +2134,7 @@ void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (spec.storage_class != STORAGE_CLASS_EXTERN ||
 			initializer_node != kNoNode)
 		{
+			RecordDeducedClassObjectUse(node, specifiers, parsed.type);
 			EnsureClassDefinition(parsed.type);
 			DemandClassTemplateMemberDefinitions(
 				DestructedEntity(parsed.type));
@@ -2702,7 +2703,9 @@ void Analyzer::Consume(const SyntaxArena& arena, NodeId root)
 {
 	arena_ = &arena;
 	if (template_witness_)
-		template_witness_->BeginTranslationUnit(arena.SourceFile(root));
+		template_witness_->BeginTranslationUnit(
+			template_witness_primary_source_file_.empty() ?
+			arena.SourceFile(root) : template_witness_primary_source_file_);
 	if (&arena.SharedStrings() != &strings_)
 		ThrowInternalCompilerError("semantic analyzer does not own syntax strings");
 	Program& program = *program_;
@@ -2919,6 +2922,11 @@ void Analyzer::Consume(const SyntaxArena& arena, NodeId root)
 	}
 #endif
 	arena_ = 0;
+}
+
+void Analyzer::SetTemplateWitnessPrimarySourceFile(const std::string& path)
+{
+	template_witness_primary_source_file_ = path;
 }
 }
 }

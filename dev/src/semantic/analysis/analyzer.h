@@ -203,6 +203,7 @@ public:
 	}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
+	void SetTemplateWitnessPrimarySourceFile(const std::string& path);
 	InternedStringTable& SharedStrings() { return strings_; }
 
 private:
@@ -229,6 +230,8 @@ private:
 	void RecordFunctionTemplateSourceCall(NodeId syntax,
 		BindingId selected, std::size_t explicit_count);
 	bool TemplateWitnessSourceUseEnabled() const;
+	void RecordDeducedClassObjectUse(
+		NodeId source, NodeId specifiers, TypeId type);
 	NamePath StructuredNamePath(NodeId syntax);
 	NamePath SyntaxNamePath(NodeId syntax);
 	LookupResult LookupSyntaxName(NodeId syntax, ScopeId scope,
@@ -836,7 +839,8 @@ private:
 	bool DeduceInitializerListElementType(
 		NodeId list, ScopeId scope, TypeId* element_type);
 	BindingId ReuseClassTemplateSpecialization(
-		std::size_t pattern, BindingId specialization);
+		std::size_t pattern, BindingId specialization,
+		std::size_t explicit_count);
 	std::size_t SelectClassTemplatePartial(ClassTemplatePattern& pattern,
 		const std::vector<TemplateArgument>& arguments,
 		FunctionTemplateDeduction* bindings);
@@ -1976,6 +1980,7 @@ private:
 	bool host_object_emission_;
 	bool source_type_view_;
 	TemplateWitnessObserver* template_witness_;
+	std::string template_witness_primary_source_file_;
 	std::vector<BindingId> source_type_override_bindings_;
 	std::vector<TypeId> source_type_override_types_;
 	DumpArena& dump_;

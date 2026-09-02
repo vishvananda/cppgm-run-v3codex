@@ -2165,7 +2165,8 @@ BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	CompleteFunctionTemplatePlaceholderResult(index, binding, member_owner);
 	if (template_witness_)
 		template_witness_->RecordFunctionSpecialization(
-			program_->bindings[binding].canonical, completed, arguments);
+			program_->bindings[binding].canonical,
+			static_cast<std::uint32_t>(index), completed, arguments);
 	return binding;
 }
 

@@ -58,6 +58,20 @@ std::string RenderWitnessArgument(const Program& program,
 		presentation::RenderTemplateArgument(program, argument));
 }
 
+std::size_t FinalTemplateOpening(const std::string& spelling)
+{
+	if (spelling.empty() || spelling[spelling.size() - 1] != '>')
+		return std::string::npos;
+	std::size_t depth = 0;
+	for (std::size_t at = spelling.size(); at != 0; )
+	{
+		const char c = spelling[--at];
+		if (c == '>') ++depth;
+		else if (c == '<' && --depth == 0) return at;
+	}
+	return std::string::npos;
+}
+
 std::size_t FindTemplateNameToken(const SyntaxArena& arena,
 	const std::string& primary_source_file, const std::string& name,
 	const std::vector<std::uint8_t>& used)
@@ -73,29 +87,95 @@ std::size_t FindTemplateNameToken(const SyntaxArena& arena,
 	return std::numeric_limits<std::size_t>::max();
 }
 
+std::size_t FindFunctionNameToken(const SyntaxArena& arena,
+	const std::string& primary_source_file, std::string name,
+	const std::vector<std::uint8_t>& used)
+{
+	if (name.compare(0, 8, "operator") == 0)
+	{
+		name.erase(0, 8);
+		while (!name.empty() && name[0] == ' ') name.erase(0, 1);
+	}
+	for (std::size_t token = 0; token < arena.TokenCount(); ++token)
+		if (!used[token] &&
+			arena.TokenSourceFile(token) == primary_source_file &&
+			arena.TokenSpelling(token) == name)
+		{
+			std::size_t first = token;
+			while (first >= 2 && arena.TokenSpelling(first - 1) == "::" &&
+				arena.TokenSourceFile(first - 2) == primary_source_file)
+				first -= 2;
+			return first;
+		}
+	return std::numeric_limits<std::size_t>::max();
+}
+
+std::size_t FindTypeUseNameToken(const SyntaxArena& arena,
+	const std::string& primary_source_file, const std::string& name,
+	const std::vector<std::uint8_t>& used)
+{
+	for (std::size_t token = 0; token < arena.TokenCount(); ++token)
+	{
+		if (used[token] || arena.TokenSourceFile(token) != primary_source_file ||
+			arena.TokenSpelling(token) != name) continue;
+		bool declaration_name = false;
+		for (std::size_t prior = token; prior != 0; )
+		{
+			--prior;
+			const std::string& spelling = arena.TokenSpelling(prior);
+			if (spelling == ";" || spelling == "{" || spelling == "}") break;
+			if (spelling == "typedef" || spelling == "using")
+			{
+				declaration_name = true;
+				break;
+			}
+		}
+		if (declaration_name) continue;
+		std::size_t first = token;
+		while (first >= 2 && arena.TokenSpelling(first - 1) == "::" &&
+			arena.TokenSourceFile(first - 2) == primary_source_file)
+			first -= 2;
+		return first;
+	}
+	return std::numeric_limits<std::size_t>::max();
+}
+
 std::size_t FindNameTokenInRange(const SyntaxArena& arena,
-	syntax::NodeId syntax, const std::string& name)
+	syntax::NodeId syntax, const std::string& name,
+	const std::vector<std::uint8_t>& used)
 {
 	if (syntax == syntax::kNoNode) return std::numeric_limits<std::size_t>::max();
 	const std::size_t first = arena.TokenFirst(syntax);
 	const std::size_t last = arena.TokenLast(syntax);
 	if (first >= last || last > arena.TokenCount())
 		return std::numeric_limits<std::size_t>::max();
+	std::size_t repeated = std::numeric_limits<std::size_t>::max();
 	for (std::size_t token = last; token != first; )
 	{
 		--token;
-		if (arena.TokenSpelling(token) == name) return token;
+		if (arena.TokenSpelling(token) != name) continue;
+		if (!used[token]) return token;
+		if (repeated == std::numeric_limits<std::size_t>::max())
+			repeated = token;
 	}
-	return std::numeric_limits<std::size_t>::max();
+	return repeated;
 }
 
 bool IsInsideTemplateDeclaration(const SyntaxArena& arena,
 	std::size_t token)
 {
 	for (syntax::NodeId node = 0; node < arena.Nodes(); ++node)
-		if (arena.IsTag(node, ::cppgm::syntax::STAG_TEMPLATE_DECLARATION) &&
-			arena.TokenFirst(node) <= token && token < arena.TokenLast(node))
-			return true;
+	{
+		if (!arena.IsTag(node, ::cppgm::syntax::STAG_TEMPLATE_DECLARATION))
+			continue;
+		const std::size_t first = arena.TokenFirst(node);
+		const std::size_t last = arena.TokenLast(node);
+		if (first >= last || last > arena.TokenCount() ||
+			arena.TokenSourceFile(first) != arena.TokenSourceFile(token) ||
+			arena.TokenSourceFile(last - 1) != arena.TokenSourceFile(token))
+			continue;
+		if (first <= token && token < last) return true;
+	}
 	return false;
 }
 
@@ -123,6 +203,20 @@ bool NodeUsesAnyName(const SyntaxArena& arena, syntax::NodeId node,
 		edge = arena.NextEdge(edge))
 		if (NodeUsesAnyName(arena, arena.EdgeChild(edge), names)) return true;
 	return false;
+}
+
+syntax::NodeId FindDescendantTag(const SyntaxArena& arena,
+	syntax::NodeId node, syntax::SyntaxTagCode tag)
+{
+	if (arena.IsTag(node, tag)) return node;
+	for (std::uint32_t edge = arena.FirstEdge(node); edge != syntax::kNoEdge;
+		edge = arena.NextEdge(edge))
+	{
+		const syntax::NodeId found = FindDescendantTag(
+			arena, arena.EdgeChild(edge), tag);
+		if (found != syntax::kNoNode) return found;
+	}
+	return syntax::kNoNode;
 }
 
 bool SourceUseDependsOnEnclosingTemplateParameter(const SyntaxArena& arena,
@@ -154,7 +248,7 @@ TemplateWitnessObserver::SourceEvent::SourceEvent(
 	: kind(kind_value), syntax(syntax_value), pattern(pattern_value),
 	  binding(binding_value), arguments(argument_values),
 	  provenance(argument_values.size(), 2),
-	  source_column_offset(column_offset),
+	  source_column_offset(column_offset), source_name(0),
 	  source_token(std::numeric_limits<std::size_t>::max()),
 	  insertion_ordinal(ordinal), suppressed(false),
 	  allow_substituted_source(false)
@@ -165,9 +259,10 @@ TemplateWitnessObserver::SourceEvent::SourceEvent(
 
 TemplateWitnessObserver::FunctionSpecializationFact::
 	FunctionSpecializationFact(BindingId binding_value,
+		std::uint32_t pattern_value,
 		const std::vector<TemplateArgument>& argument_values,
 		const std::vector<TemplateArgument>& requested_values)
-	: binding(binding_value), arguments(argument_values),
+	: binding(binding_value), pattern(pattern_value), arguments(argument_values),
 	  provenance(argument_values.size(), 1)
 {
 	for (std::size_t i = 0; i < provenance.size() &&
@@ -175,9 +270,10 @@ TemplateWitnessObserver::FunctionSpecializationFact::
 		if (requested_values[i].type == kNoType) provenance[i] = 2;
 }
 
-TemplateWitnessObserver::TemplateWitnessObserver()
-	: text_(), primary_source_file_(), source_events_(),
-	  function_specializations_(), dependent_class_uses_(),
+TemplateWitnessObserver::TemplateWitnessObserver(bool debug)
+	: text_(), debug_text_(), primary_source_file_(), debug_(debug), source_events_(),
+	  function_specializations_(), class_specializations_(),
+	  dependent_class_uses_(),
 	  dependent_alias_uses_(), function_instantiations_(),
 	  required_definitions_(), class_finalizations_(),
 	  variable_instantiations_(), next_insertion_ordinal_(0) {}
@@ -185,6 +281,11 @@ TemplateWitnessObserver::TemplateWitnessObserver()
 const std::string& TemplateWitnessObserver::Text() const
 {
 	return text_;
+}
+
+const std::string& TemplateWitnessObserver::DebugText() const
+{
+	return debug_text_;
 }
 
 bool Analyzer::TemplateWitnessSourceUseEnabled() const
@@ -201,6 +302,76 @@ bool Analyzer::TemplateWitnessSourceUseEnabled() const
 		program_->entities[owner].template_argument_begin == kNoBinding;
 }
 
+void Analyzer::RecordDeducedClassObjectUse(
+	NodeId source, NodeId specifiers, TypeId type)
+{
+	if (!template_witness_) return;
+	if (template_witness_->debug_)
+		template_witness_->debug_text_ += "object-use syntax=" +
+			std::to_string(specifiers) + " type=" + std::to_string(type) +
+			" enabled=" + std::to_string(TemplateWitnessSourceUseEnabled()) +
+			" class=" + std::to_string(IsClassObjectType(type)) + "\n";
+	if (!TemplateWitnessSourceUseEnabled() || specifiers == kNoNode ||
+		!IsClassObjectType(type)) return;
+	NodeId structure = FindDescendantTag(
+		*arena_, specifiers, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
+	if (structure == kNoNode)
+	{
+		if (template_witness_->debug_)
+			template_witness_->debug_text_ +=
+				"  unqualified-type-spelling\n";
+		structure = FindDescendantTag(
+			*arena_, specifiers, ::cppgm::syntax::STAG_TYPE_NAME);
+		if (structure == kNoNode)
+			for (std::uint32_t edge = arena_->FirstEdge(specifiers);
+				edge != kNoEdge; edge = arena_->NextEdge(edge))
+			{
+				const NodeId child = arena_->EdgeChild(edge);
+				if (arena_->Payload(child).compare(
+						0, 14, "TT_IDENTIFIER:") == 0)
+					structure = child;
+			}
+		if (structure == kNoNode) structure = specifiers;
+	}
+	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId component = arena_->EdgeChild(edge);
+		if (arena_->IsTag(component, ::cppgm::syntax::STAG_NAME_COMPONENT) &&
+			FindChild(component,
+				::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) != kNoNode)
+			return;
+	}
+	const EntityId entity = EntityOf(type);
+	if (template_witness_->debug_)
+		template_witness_->debug_text_ += "  structure=" +
+			std::to_string(structure) + " entity=" + std::to_string(entity) +
+			" patterns=" +
+			std::to_string(class_template_pattern_by_entity_.size()) + "\n";
+	if (entity == kNoEntity ||
+		entity >= class_template_pattern_by_entity_.size()) return;
+	const std::uint32_t pattern = class_template_pattern_by_entity_[entity];
+	const EntityRecord& record = program_->entities[entity];
+	if (pattern == kNoDumpEdge || pattern >= class_templates_.size() ||
+		record.template_argument_begin == kNoBinding ||
+		record.declaration == kNoBinding) return;
+	NameId source_name = arena_->SemanticPayloadId(structure);
+	if (source_name == 0) source_name = arena_->PayloadId(structure);
+	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId component = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(component, ::cppgm::syntax::STAG_NAME_COMPONENT))
+			continue;
+		source_name = arena_->SemanticPayloadId(component);
+		if (source_name == 0) source_name = arena_->PayloadId(component);
+	}
+	template_witness_->RecordDeducedClassUse(source, pattern,
+		record.declaration, StoredTemplateArguments(
+			record.template_argument_begin, record.template_argument_count),
+		source_name);
+}
+
 void Analyzer::RecordFunctionTemplateSourceCall(NodeId syntax,
 	BindingId selected, std::size_t explicit_count)
 {
@@ -208,14 +379,22 @@ void Analyzer::RecordFunctionTemplateSourceCall(NodeId syntax,
 		selected == kNoBinding) return;
 	selected = program_->bindings[selected].canonical;
 	const FunctionInfo& function = GetFunction(selected);
-	if (!function.template_specialization ||
-		function.template_pattern == kNoDumpEdge ||
-		function.template_pattern >= function_templates_.size()) return;
+	if (!function.template_specialization) return;
+	std::uint32_t pattern = function.template_pattern;
+	if (pattern == kNoDumpEdge || pattern >= function_templates_.size())
+		for (std::size_t i = 0;
+			i < template_witness_->function_specializations_.size(); ++i)
+			if (template_witness_->function_specializations_[i].binding == selected)
+			{
+				pattern = template_witness_->function_specializations_[i].pattern;
+				break;
+			}
+	if (pattern == kNoDumpEdge || pattern >= function_templates_.size()) return;
 	const BindingRecord& record = program_->bindings[selected];
 	if (record.template_argument_begin == kNoBinding) return;
 	const std::vector<TemplateArgument> arguments = StoredTemplateArguments(
 		record.template_argument_begin, record.template_argument_count);
-	template_witness_->RecordFunctionCall(syntax, function.template_pattern,
+	template_witness_->RecordFunctionCall(syntax, pattern,
 		selected, arguments, explicit_count);
 }
 
@@ -225,6 +404,7 @@ void TemplateWitnessObserver::BeginTranslationUnit(
 	primary_source_file_ = primary_source_file;
 	source_events_.clear();
 	function_specializations_.clear();
+	class_specializations_.clear();
 	dependent_class_uses_.clear();
 	dependent_alias_uses_.clear();
 	function_instantiations_.clear();
@@ -244,6 +424,19 @@ void TemplateWitnessObserver::RecordClassUse(syntax::NodeId syntax,
 	source_events_.push_back(SourceEvent(SOURCE_CLASS_USE, syntax, pattern,
 		binding, arguments, explicit_count, source_column_offset,
 		next_insertion_ordinal_++));
+}
+
+void TemplateWitnessObserver::RecordDeducedClassUse(syntax::NodeId syntax,
+	std::uint32_t pattern, BindingId binding,
+	const std::vector<TemplateArgument>& arguments, NameId source_name)
+{
+	if (std::find(dependent_class_uses_.begin(), dependent_class_uses_.end(),
+		std::make_pair(syntax, pattern)) != dependent_class_uses_.end()) return;
+	source_events_.push_back(SourceEvent(SOURCE_CLASS_USE, syntax, pattern,
+		binding, arguments, 0, 0, next_insertion_ordinal_++));
+	source_events_.back().source_name = source_name;
+	std::fill(source_events_.back().provenance.begin(),
+		source_events_.back().provenance.end(), 1);
 }
 
 void TemplateWitnessObserver::NoteDependentClassUse(
@@ -295,13 +488,29 @@ void TemplateWitnessObserver::NoteDependentAliasUse(
 }
 
 void TemplateWitnessObserver::RecordFunctionSpecialization(BindingId binding,
+	std::uint32_t pattern,
 	const std::vector<TemplateArgument>& arguments,
 	const std::vector<TemplateArgument>& requested_arguments)
 {
 	for (std::size_t i = 0; i < function_specializations_.size(); ++i)
 		if (function_specializations_[i].binding == binding) return;
 	function_specializations_.push_back(FunctionSpecializationFact(
-		binding, arguments, requested_arguments));
+		binding, pattern, arguments, requested_arguments));
+}
+
+void TemplateWitnessObserver::RecordClassSpecialization(BindingId binding,
+	const std::vector<TemplateArgument>& arguments, std::size_t explicit_count)
+{
+	for (std::size_t i = 0; i < class_specializations_.size(); ++i)
+		if (class_specializations_[i].binding == binding &&
+			class_specializations_[i].arguments == arguments)
+		{
+			class_specializations_[i].explicit_count = std::min(
+				class_specializations_[i].explicit_count, explicit_count);
+			return;
+		}
+	class_specializations_.push_back(ClassSpecializationFact(
+		binding, arguments, explicit_count));
 }
 
 void TemplateWitnessObserver::RecordFunctionCall(syntax::NodeId syntax,
@@ -379,10 +588,104 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 {
 	text_ += "translation-unit\n";
 	const SyntaxArena& arena = *analyzer.arena_;
+	std::vector<std::pair<std::string, std::string> > entity_replacements;
+	for (std::size_t i = 0; i < class_specializations_.size(); ++i)
+	{
+		const ClassSpecializationFact& fact = class_specializations_[i];
+		if (fact.binding >= analyzer.program_->bindings.size() ||
+			fact.explicit_count >= fact.arguments.size()) continue;
+		const EntityId entity = analyzer.EntityOf(
+			analyzer.program_->bindings[fact.binding].type);
+		if (entity == kNoEntity) continue;
+		const std::string full = NormalizeWitnessTypeSpelling(
+			presentation::RenderEntity(*analyzer.program_, entity, true));
+		const std::size_t opening = FinalTemplateOpening(full);
+		if (opening == std::string::npos) continue;
+		std::string elided = full.substr(0, opening + 1);
+		for (std::size_t argument = 0;
+			argument < fact.explicit_count; ++argument)
+		{
+			if (argument != 0) elided += ", ";
+			elided += RenderWitnessArgument(
+				*analyzer.program_, fact.arguments[argument]);
+		}
+		elided += '>';
+		if (full != elided)
+			entity_replacements.push_back(
+				std::make_pair(full, elided));
+	}
+	std::sort(entity_replacements.begin(), entity_replacements.end(),
+		[](const std::pair<std::string, std::string>& left,
+			const std::pair<std::string, std::string>& right) {
+			return left.first.size() > right.first.size();
+		});
+	const auto elide_entities = [&entity_replacements](std::string spelling) {
+		spelling = NormalizeWitnessTypeSpelling(spelling);
+		for (std::size_t pass = 0; pass <= entity_replacements.size(); ++pass)
+		{
+			const std::string before = spelling;
+			for (std::size_t i = 0; i < entity_replacements.size(); ++i)
+				ReplaceAll(&spelling, entity_replacements[i].first,
+					entity_replacements[i].second);
+			if (before == spelling) break;
+		}
+		return spelling;
+	};
+	const auto normalize_entity = [&elide_entities](std::string spelling) {
+		spelling = elide_entities(spelling);
+		ReplaceAll(&spelling, "unsigned int", "unsigned");
+		ReplaceAll(&spelling, "signed int", "int");
+		return spelling;
+	};
+	for (std::size_t event = 0; event < source_events_.size(); ++event)
+		if (source_events_[event].kind == SOURCE_CLASS_USE &&
+			source_events_[event].binding != kNoBinding &&
+			source_events_[event].binding <
+				analyzer.program_->bindings.size())
+			for (std::size_t fact = 0; fact < class_specializations_.size(); ++fact)
+				if (analyzer.program_->bindings[
+						source_events_[event].binding].canonical ==
+					class_specializations_[fact].binding &&
+					source_events_[event].arguments ==
+					class_specializations_[fact].arguments)
+					for (std::size_t argument =
+						class_specializations_[fact].explicit_count;
+						argument < source_events_[event].provenance.size();
+						++argument)
+						source_events_[event].provenance[argument] = 2;
+	// Default provenance belongs to the canonical specialization.  If one use
+	// omits a trailing default, an explicitly spelled equivalent use denotes
+	// the same default-origin argument rather than a distinct binding.
+	for (std::size_t i = 0; i < source_events_.size(); ++i)
+		for (std::size_t j = i + 1; j < source_events_.size(); ++j)
+			if (source_events_[i].kind == source_events_[j].kind &&
+				source_events_[i].pattern == source_events_[j].pattern &&
+				source_events_[i].arguments == source_events_[j].arguments)
+				for (std::size_t argument = 0;
+					argument < source_events_[i].provenance.size() &&
+					argument < source_events_[j].provenance.size(); ++argument)
+					if (source_events_[i].provenance[argument] == 2 ||
+						source_events_[j].provenance[argument] == 2)
+					{
+						source_events_[i].provenance[argument] = 2;
+						source_events_[j].provenance[argument] = 2;
+					}
 	std::vector<std::uint8_t> used_tokens(arena.TokenCount(), 0);
 	for (std::size_t i = 0; i < source_events_.size(); ++i)
 	{
 		const SourceEvent& event = source_events_[i];
+		if (event.source_name != 0)
+		{
+			const std::size_t source_token = FindTypeUseNameToken(arena,
+				primary_source_file_,
+				analyzer.program_->names.Get(event.source_name), used_tokens);
+			if (source_token != std::numeric_limits<std::size_t>::max())
+			{
+				source_events_[i].source_token = source_token;
+				used_tokens[source_token] = 1;
+				continue;
+			}
+		}
 		NameId name = 0;
 		if (event.kind == SOURCE_CLASS_USE &&
 			event.pattern < analyzer.class_templates_.size())
@@ -390,11 +693,17 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 		else if (event.kind == SOURCE_ALIAS_USE &&
 			event.pattern < analyzer.alias_templates_.size())
 			name = analyzer.alias_templates_[event.pattern].name;
-		if (name != 0 && event.syntax != syntax::kNoNode)
+		else if (event.kind == SOURCE_FUNCTION_CALL &&
+			event.pattern < analyzer.function_templates_.size())
+			name = analyzer.function_templates_[event.pattern].name;
+		if (name != 0 && event.syntax != syntax::kNoNode &&
+			event.kind != SOURCE_FUNCTION_CALL)
 		{
 			const std::size_t name_token = FindNameTokenInRange(arena,
-				event.syntax, analyzer.program_->names.Get(name));
-			if (name_token != std::numeric_limits<std::size_t>::max())
+				event.syntax, analyzer.program_->names.Get(name), used_tokens);
+			if (name_token != std::numeric_limits<std::size_t>::max() &&
+				arena.TokenSourceFile(name_token) == primary_source_file_ &&
+				arena.TokenSourceLine(name_token) != 0)
 			{
 				if (!event.allow_substituted_source &&
 					SourceUseDependsOnEnclosingTemplateParameter(
@@ -428,8 +737,17 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 			continue;
 		}
 		if (name == 0) continue;
-		source_events_[i].source_token = FindTemplateNameToken(arena,
-			primary_source_file_, analyzer.program_->names.Get(name), used_tokens);
+		source_events_[i].source_token = event.kind == SOURCE_FUNCTION_CALL ?
+			FindFunctionNameToken(arena, primary_source_file_,
+				analyzer.program_->names.Get(name), used_tokens) :
+			FindTemplateNameToken(arena, primary_source_file_,
+				analyzer.program_->names.Get(name), used_tokens);
+		if (event.kind == SOURCE_FUNCTION_CALL &&
+			source_events_[i].source_token !=
+				std::numeric_limits<std::size_t>::max() &&
+			IsInsideTemplateDeclaration(
+				arena, source_events_[i].source_token))
+			source_events_[i].suppressed = true;
 		if (source_events_[i].source_token !=
 			std::numeric_limits<std::size_t>::max())
 			used_tokens[source_events_[i].source_token] = 1;
@@ -445,6 +763,30 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 			return left_token != right_token ? left_token < right_token :
 				left.insertion_ordinal < right.insertion_ordinal;
 		});
+	if (debug_)
+	{
+		std::ostringstream trace;
+		trace << text_ << "witness-debug-source-events\n";
+		for (std::size_t i = 0; i < source_events_.size(); ++i)
+		{
+			const SourceEvent& event = source_events_[i];
+			const std::size_t token = event.source_token ==
+				std::numeric_limits<std::size_t>::max() ?
+				arena.TokenFirst(event.syntax) : event.source_token;
+			trace << "  event kind=" << static_cast<unsigned>(event.kind)
+				<< " syntax=" << event.syntax << " pattern=" << event.pattern
+				<< " suppressed=" << event.suppressed << " token=" << token;
+			if (token < arena.TokenCount())
+				trace << " file=" << arena.TokenSourceFile(token)
+					<< " line=" << arena.TokenSourceLine(token)
+					<< " column=" << arena.TokenSourceColumn(token)
+					<< " spelling=" << arena.TokenSpelling(token);
+			trace << '\n';
+		}
+		trace << "  dependent-class-uses=" << dependent_class_uses_.size()
+			<< " dependent-alias-uses=" << dependent_alias_uses_.size() << '\n';
+		debug_text_ += trace.str();
+	}
 	std::size_t prior_rendered = std::numeric_limits<std::size_t>::max();
 	for (std::size_t event_index = 0;
 		event_index < source_events_.size(); ++event_index)
@@ -529,8 +871,8 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 		for (std::size_t argument = 0; argument < event.arguments.size();
 			++argument)
 			output << "    bind #" << argument + 1 << " = "
-				<< RenderWitnessArgument(
-					*analyzer.program_, event.arguments[argument])
+				<< elide_entities(RenderWitnessArgument(
+					*analyzer.program_, event.arguments[argument]))
 				<< " source=" << BindingProvenance(
 					event.provenance[argument]) << '\n';
 		if (class_use && event.binding != kNoBinding)
@@ -543,9 +885,9 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 				for (std::size_t parameter = 0;
 					parameter < bindings.fixed_arguments.size(); ++parameter)
 					output << "    specialize #" << parameter + 1 << " = "
-						<< RenderWitnessArgument(
+						<< elide_entities(RenderWitnessArgument(
 							*analyzer.program_,
-							bindings.fixed_arguments[parameter]) << '\n';
+							bindings.fixed_arguments[parameter])) << '\n';
 			}
 		}
 		text_ += output.str();
@@ -597,8 +939,9 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 	std::vector<std::string> rendered_class_instantiations;
 	for (std::size_t i = 0; i < class_finalizations_.size(); ++i)
 	{
-		const std::string entity = presentation::RenderEntity(
-			*analyzer.program_, class_finalizations_[i], true);
+		const std::string entity = normalize_entity(
+			presentation::RenderEntity(
+				*analyzer.program_, class_finalizations_[i], true));
 		if (std::find(rendered_class_finalizations.begin(),
 			rendered_class_finalizations.end(), entity) ==
 			rendered_class_finalizations.end())
@@ -606,8 +949,9 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 	}
 	for (std::size_t i = 0; i < class_instantiations.size(); ++i)
 	{
-		const std::string entity = presentation::RenderEntity(
-			*analyzer.program_, class_instantiations[i], true);
+		const std::string entity = normalize_entity(
+			presentation::RenderEntity(
+				*analyzer.program_, class_instantiations[i], true));
 		if (std::find(rendered_class_instantiations.begin(),
 			rendered_class_instantiations.end(), entity) ==
 			rendered_class_instantiations.end())
@@ -639,6 +983,7 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 		const FunctionInfo& function = analyzer.GetFunction(binding);
 		const BindingRecord& record = analyzer.program_->bindings[binding];
 		if (record.compiler_generated) return false;
+		if (function.inherited_constructor_source != kNoBinding) return false;
 		if (function.template_specialization) return true;
 		for (EntityId owner = record.member_owner; owner != kNoEntity; )
 		{
@@ -701,27 +1046,30 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 			result += "::";
 			if (function.conversion_function)
 			{
-				const TypeRecord& function_type =
-					analyzer.program_->types.Get(function.type);
-				if ((function_type.cv & CV_CONST) != 0) result += "const ";
-				result += "operator ";
-				result += NormalizeWitnessTypeSpelling(
+				std::string target = NormalizeWitnessTypeSpelling(
 					presentation::RenderType(*analyzer.program_,
 						function.conversion_target));
+				std::string prefix;
+				if (target.compare(0, 6, "const ") == 0)
+				{
+					prefix = "const ";
+					target.erase(0, 6);
+				}
+				result += prefix + "operator " + target;
 			}
 			else result += analyzer.program_->names.Get(terminal);
 		}
 		else result = presentation::RenderName(
 			*analyzer.program_, record.owner, terminal);
-		return result;
+		return NormalizeWitnessTypeSpelling(result);
 	};
 	std::vector<std::string> rendered_instantiations;
 	std::vector<std::string> required_entities;
 	for (std::size_t i = 0; i < function_instantiations_.size(); ++i)
 		if (is_template_function(function_instantiations_[i]))
 		{
-			const std::string entity =
-				function_entity_name(function_instantiations_[i]);
+			const std::string entity = normalize_entity(
+				function_entity_name(function_instantiations_[i]));
 			if (std::find(rendered_instantiations.begin(),
 				rendered_instantiations.end(), entity) ==
 				rendered_instantiations.end())
@@ -730,8 +1078,8 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 	for (std::size_t i = 0; i < required_definitions_.size(); ++i)
 		if (is_required_template_function(required_definitions_[i]))
 		{
-			const std::string entity =
-				function_entity_name(required_definitions_[i]);
+			const std::string entity = normalize_entity(
+				function_entity_name(required_definitions_[i]));
 			if (std::find(required_entities.begin(), required_entities.end(),
 				entity) == required_entities.end())
 				required_entities.push_back(entity);
@@ -745,6 +1093,12 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 		if (std::find(rendered_requirements.begin(), rendered_requirements.end(),
 			required_entities[i]) == rendered_requirements.end())
 			rendered_requirements.push_back(required_entities[i]);
+	std::sort(rendered_class_finalizations.begin(),
+		rendered_class_finalizations.end());
+	std::sort(rendered_class_instantiations.begin(),
+		rendered_class_instantiations.end());
+	std::sort(rendered_instantiations.begin(), rendered_instantiations.end());
+	std::sort(rendered_requirements.begin(), rendered_requirements.end());
 	std::vector<std::string> rendered_variables;
 	for (std::size_t i = 0; i < variable_instantiations_.size(); ++i)
 	{
@@ -761,10 +1115,12 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 			*analyzer.program_, record.owner,
 			record.presentation_name_override != 0 ?
 				record.presentation_name_override : record.name);
+		entity = normalize_entity(entity);
 		if (std::find(rendered_variables.begin(), rendered_variables.end(),
 			entity) == rendered_variables.end())
 			rendered_variables.push_back(entity);
 	}
+	std::sort(rendered_variables.begin(), rendered_variables.end());
 	if (!rendered_class_finalizations.empty() ||
 		!rendered_class_instantiations.empty() ||
 		!rendered_instantiations.empty() || !rendered_requirements.empty() ||
@@ -787,6 +1143,7 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 			rendered_variables[i] + '\n';
 	source_events_.clear();
 	function_specializations_.clear();
+	class_specializations_.clear();
 	dependent_class_uses_.clear();
 	dependent_alias_uses_.clear();
 	function_instantiations_.clear();

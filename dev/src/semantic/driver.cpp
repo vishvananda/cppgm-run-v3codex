@@ -83,6 +83,8 @@ void ConsumeTranslationUnit(const std::string& path,
 		Analyzer analyzer(graph, sink, stats,
 			true, false, complete_constructor_unwind, host_object_emission,
 			source_type_view, template_witness);
+		if (template_witness)
+			analyzer.SetTemplateWitnessPrimarySourceFile(path);
 		syntax::RunTranslationUnit(path, source, options,
 			0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
 	}

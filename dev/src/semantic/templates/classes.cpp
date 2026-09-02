@@ -443,10 +443,16 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 					if (dependent_arguments)
 						template_witness_->NoteDependentClassUse(structure,
 							static_cast<std::uint32_t>(pattern));
-					else if (TemplateWitnessSourceUseEnabled())
-						template_witness_->RecordClassUse(structure,
-							static_cast<std::uint32_t>(pattern), specialization,
+					else
+					{
+						template_witness_->RecordClassSpecialization(
+							program_->bindings[specialization].canonical,
 							arguments, argument_syntax.size());
+						if (TemplateWitnessSourceUseEnabled())
+							template_witness_->RecordClassUse(structure,
+								static_cast<std::uint32_t>(pattern), specialization,
+								arguments, argument_syntax.size());
+					}
 				}
 				found = LookupResult();
 				found.type = program_->bindings[specialization].type;
@@ -2447,7 +2453,7 @@ std::size_t Analyzer::SelectClassTemplatePartial(
 }
 
 BindingId Analyzer::ReuseClassTemplateSpecialization(
-	std::size_t index, BindingId binding)
+	std::size_t index, BindingId binding, std::size_t explicit_count)
 {
 	if (index >= class_templates_.size() || binding == kNoBinding)
 		ThrowInternalCompilerError("invalid cached class specialization");
@@ -2487,6 +2493,9 @@ BindingId Analyzer::ReuseClassTemplateSpecialization(
 	if (pattern.initializer_list_template)
 		ConfigureInitializerListSpecialization(
 			program_->bindings[binding].type);
+	if (template_witness_)
+		template_witness_->RecordClassSpecialization(
+			program_->bindings[binding].canonical, arguments, explicit_count);
 	return binding;
 }
 
@@ -2509,7 +2518,8 @@ BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 	if (request_state == TEMPLATE_REQUEST_SUCCEEDED)
 	{
 		++template_specialization_cache_hits_;
-		return ReuseClassTemplateSpecialization(index, old);
+		return ReuseClassTemplateSpecialization(
+			index, old, supplied_arguments.size());
 	}
 	if (request_state != TEMPLATE_REQUEST_NOT_STARTED)
 	{
@@ -2577,7 +2587,8 @@ BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 	{
 		++template_specialization_cache_hits_;
 		request_guard.Complete(old);
-		return ReuseClassTemplateSpecialization(index, old);
+		return ReuseClassTemplateSpecialization(
+			index, old, supplied_arguments.size());
 	}
 	if (!(key == request_key))
 	{
@@ -2625,6 +2636,10 @@ BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 		}
 		pattern.specialization_bindings.push_back(binding);
 		PublishClassTemplateFriendGrants(pattern, entity);
+		if (template_witness_)
+			template_witness_->RecordClassSpecialization(
+				program_->bindings[binding].canonical, arguments,
+				supplied_arguments.size());
 		return binding;
 	}
 	FunctionTemplateDeduction partial_bindings(pattern.parameters);
@@ -2723,6 +2738,10 @@ BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 		CompleteClassTemplateSpecialization(index, binding, arguments);
 	if (pattern.initializer_list_template)
 		ConfigureInitializerListSpecialization(shell);
+	if (template_witness_)
+		template_witness_->RecordClassSpecialization(
+			program_->bindings[binding].canonical, arguments,
+			supplied_arguments.size());
 	return binding;
 }
 

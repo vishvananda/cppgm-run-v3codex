@@ -2204,7 +2204,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 	if(!invocation.witness_output.empty() ||
 	   !invocation.witness_debug_output.empty())
 		template_witness.reset(
-			new cppgm::semantic::TemplateWitnessObserver());
+			new cppgm::semantic::TemplateWitnessObserver(
+				!invocation.witness_debug_output.empty()));
 	const bool object_capable_output = invocation.has_debug_info ||
 		invocation.has_optimization_level;
 	if(!object_capable_output) {
@@ -2249,7 +2250,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 		write_template_witness_output(invocation.witness_output,
 			template_witness->Text());
 		write_template_witness_output(invocation.witness_debug_output,
-			template_witness->Text());
+			template_witness->DebugText());
 	}
 	if(invocation.collect_stats) {
 		report_lowir_semantic_stats(stats);
