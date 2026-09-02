@@ -908,7 +908,12 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 				{
 					conversion = CallConversion(arguments[a], parameter,
 						&conversion_cache, a);
-					if (ChainsUserConversion(constructor, conversion))
+					// N3485 13.3.3.1/4 excludes this second user
+					// conversion only for the copy/move step of class
+					// copy-initialization.  A direct-initialization candidate
+					// remains viable and participates in ranking.
+					if (copy_initialization &&
+						ChainsUserConversion(constructor, conversion))
 						conversion = CallConversionFact();
 					if (list_initialization && source_list != kNoNode &&
 						IsBracedNarrowing(

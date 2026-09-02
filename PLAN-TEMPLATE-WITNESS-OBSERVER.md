@@ -336,6 +336,14 @@ Commit and push exact renderer convergence separately from event discovery.
    report so witness hooks cannot conceal a semantic regression.
 5. Search the implementation and tests for fixture basenames, test paths,
    hashes, and exact production-source matching.  The audit must be clean.
+6. When convergence reveals a semantic distinction observable only through a
+   candidate-drop reason, add a relationship-based witness check as well as
+   retaining the exact artifact oracle.  In particular, direct initialization
+   must keep a copy/move candidate that needs a valid user conversion viable
+   for ranking, while a genuinely invalid conversion and the restricted
+   copy-initialization step remain non-viable.  Describe viability versus rank
+   in the student-facing witness contract without prescribing implementation
+   names or data structures.
 
 PA24 strict is the unique-fixture closure gate; root `make test-strict` is the
 cumulative final gate.
@@ -923,6 +931,23 @@ objects and all audits are exact.  Four ABBA blocks measure -1.340% paired
 user, -0.929% wall, and +0.041% RSS; the report is
 `/tmp/v3codex-w5m-conversion-target-consumer-ab.json`.
 
+The next repeated drop-reason class exposed an ordinary overload-resolution
+overreach rather than missing witness machinery.  N3485 13.3.3.1/4 excludes a
+second user-defined conversion when considering the copy/move constructor used
+for the temporary's second copy-initialization step; the implementation had
+applied that exclusion to every direct constructor selection.  Gate the
+existing typed `ChainsUserConversion` fact by the already-carried
+`copy_initialization` context.  This changes 34 witness files and no other
+generated artifact: PA22 gains 6 exact files (245 -> 251), PA23 gains 7
+(231 -> 238), and PA24 gains 8 (270 -> 278); the remaining 13 all move locally
+toward the oracle and no previously exact file regresses.  PA19/20 remain
+exact, the ordinary report through PA24 is 3,565/3,565, frozen no-witness
+O0/O1/O3 objects and all audits are exact, and the clean-baseline four-block
+timing is +0.001% paired user, +0.057% wall, and -0.182% RSS.  The report is
+`/tmp/v3codex-w5m-copy-init-clean-ab.json`.  Retain this as a semantic
+correctness fix, not as witness-only classification policy, and add the
+relationship check required above before closing the plan.
+
 The first consumer uses the retained owner pattern/partial ordinal only after
 their bounds and completed canonical-argument state are validated.  It renders
 the primary name and typed partial arguments through the opt-in identity
@@ -1107,6 +1132,7 @@ byte-identical objects.  The report is
 | W5M-O canonical default identity | Added structurally proven source arities to the typed entity-elision sidecar | only the same three PA22--PA24 files change; one PA24 file becomes exact and PA22/PA23 closure identities improve; no regression; LowIR/frozen/audits exact; four-block paired user -1.566% | retain; conversion-target primary identity remains a separate typed role |
 | W5M-O conversion target identity | Rendered a conversion closure's typed class-template target from its primary pattern's terminal name | 9 files change only in closure lines; PA22 +1, PA23 +2, PA24 +1 exact; no source-event movement or regression; LowIR/frozen/audits exact; four-block paired user -1.340% | retain; existing typed `conversion_target` is sufficient after provenance/presentation separation |
 | W5M verification repair | Finished the semantic initialization unit's earlier typed-exception migration by routing its two direct typed throws through the lightweight semantic helpers | exception-taxonomy fanout returns from 33 to the audited ceiling of 32; PA22 311/311; frozen O0/O1/O3 objects exact; four-block paired user -0.001%, wall -0.163%, RSS -0.684% | retain as an independent audit repair before measuring further witness convergence; do not raise the architecture ceiling |
+| W5M semantic candidate viability | Restricted chained-user-conversion rejection to the N3485 class copy-initialization context already represented by `copy_initialization` | 34 witness-only deltas; PA22 +6, PA23 +7, PA24 +8 exact, 13 additional local improvements, no regression; through-PA24 3,565/3,565; frozen outputs/audits exact; clean four-block paired user +0.001% | retain as ordinary semantic correctness; back it with a relationship-based viability/rank check before plan exit |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
