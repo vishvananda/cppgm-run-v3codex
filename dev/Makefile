@@ -39,6 +39,8 @@ quiet = @if [ "$(V)" != "1" ]; then printf '  %-7s %s\n' '$(1)' '$(2)'; fi
 CPPGM_TEST_RUNNER ?= 1
 CPPGM_STDLIB_FLAGS ?=
 CC_FLAGS ?= -std=gnu++11 -Wall -O3 $(CPPGM_STDLIB_FLAGS)
+TELEMETRY_OFF_OBJ ?= ../obj/dev-telemetry-off
+TELEMETRY_OFF_CC_FLAGS ?= $(CC_FLAGS) -DCPPGM_TELEMETRY_ENABLED=0
 # Hosted compiler workloads create and release many translation-unit-lifetime
 # objects. Use the lower-overhead allocator when the Linux runtime package is
 # available, while keeping the handout build portable to hosts without it.
@@ -67,6 +69,18 @@ COMPILE_CONFIG_STAMP = $(OBJDIR)/.compile_config
 RUNNER_STATE_STAMP = $(OBJDIR)/.test_runner_mode
 
 all: $(TARGETS)
+
+cppgm++-telemetry-off:
+	$(Q)$(MAKE) OBJ='$(TELEMETRY_OFF_OBJ)' CPPGM_TEST_RUNNER=0 \
+		CC_FLAGS='$(TELEMETRY_OFF_CC_FLAGS)' cppgm++-telemetry-off-build
+
+cppgm++-telemetry-off-build: $(call link_objs,cppgm++) $(RUNNER_STATE_STAMP) | $(OBJDIR)
+	$(call quiet,LINK,cppgm++-telemetry-off)
+	$(Q)$(CXX) $(CC_FLAGS) $(INC) -o cppgm++-telemetry-off.tmp \
+		$(call link_objs,cppgm++) $(HOST_ALLOC_LIBS)
+	@if ! cmp -s cppgm++-telemetry-off.tmp cppgm++-telemetry-off 2>/dev/null; then \
+		mv -f cppgm++-telemetry-off.tmp cppgm++-telemetry-off; \
+	else rm -f cppgm++-telemetry-off.tmp; fi
 
 define FRONTEND_RULES
 $(1): $(call link_objs,$(1)) $(RUNNER_STATE_STAMP) | $(OBJDIR)
@@ -120,7 +134,7 @@ $(OBJDIR)/%.o: $(SRC)/%.cpp $(COMPILE_CONFIG_STAMP)
 	@mv -f $(DEPDIR)/$*.Td $(DEPDIR)/$*.d
 
 clean:
-	-rm -f $(TARGETS)
+	-rm -f $(TARGETS) cppgm++-telemetry-off
 	-rm -rf $(OBJDIR)
 
 $(DEPDIR)/%.d: ;
@@ -130,4 +144,4 @@ $(DEPDIR)/%.d: ;
 -include $(addprefix $(DEPDIR)/entry/,$(addsuffix .d,$(TARGETS)))
 -include $(DEPDIR)/test_runner_enabled.d
 
-.PHONY: all clean FORCE
+.PHONY: all clean FORCE cppgm++-telemetry-off cppgm++-telemetry-off-build

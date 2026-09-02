@@ -2,6 +2,7 @@
 
 #include "support/exception_types.h"
 #include "support/driver_errors.h"
+#include "support/telemetry.h"
 #include "syntax/syntax.h"
 #include "semantic/type_view.h"
 #include "semantic/semantic.h"
@@ -2603,6 +2604,13 @@ int run_driver_mode(const vector<string> & args)
 
 int run_cppgm(const vector<string> & raw_args)
 {
+#if !CPPGM_TELEMETRY_ENABLED
+  if(has_arg(raw_args, "--stats") || has_arg(raw_args, "--stats-functions")) {
+    cppgm::driver_errors::ThrowInvocation(
+      "statistics are unavailable in the telemetry-off build");
+  }
+#endif
+
   if(has_arg(raw_args, "--batch-stdin")) {
     return run_not_implemented_batch_mode();
   }

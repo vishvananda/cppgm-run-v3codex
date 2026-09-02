@@ -15,6 +15,7 @@ cppeh
 cpplink
 tmplsolve
 cppgm++
+cppgm++-telemetry-off
 cpptoolchain
 cpphostinterop
 cpphostcompat

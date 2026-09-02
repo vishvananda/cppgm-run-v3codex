@@ -65,7 +65,7 @@ SUBMAKE_OBJ_ARG = $(if $(strip $(OBJ)),OBJ=$(OBJ))
 SUBMAKE_GENERATED_ARG = $(if $(strip $(GENERATED)),GENERATED=$(GENERATED))
 SUBMAKE_CC_FLAGS_ARG = $(if $(strip $(CC_FLAGS)),CC_FLAGS="$(CC_FLAGS)")
 
-.PHONY: all build test audit-lowir-contract audit-compiler-layout audit-compiler-rename-manifest audit-compiler-exceptions audit-frontend-source-sets audit-semantic-owners audit-lowering-owners audit-native-owners ref-test ref-test-strict ref-test-debuginfo \
+.PHONY: all build build-telemetry-off test test-telemetry-off audit-lowir-contract audit-compiler-layout audit-compiler-rename-manifest audit-compiler-exceptions audit-frontend-source-sets audit-semantic-owners audit-lowering-owners audit-native-owners ref-test ref-test-strict ref-test-debuginfo \
 	test-strict test-strict-nobuild test-debuginfo test-debuginfo-nobuild \
 	test-report inception clean run-cppgm run-cppgm-nobuild \
 	test-report-nobuild test-report-through-% test-report-through-%-nobuild \
@@ -106,6 +106,17 @@ build:
 	while ! mkdir $$lockdir 2>/dev/null; do sleep 1; done; \
 	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT HUP INT TERM; \
 	$(MAKE) -s -C dev all
+
+build-telemetry-off:
+	@mkdir -p obj
+	@lockdir=$(DEV_BUILD_LOCK); \
+	while ! mkdir $$lockdir 2>/dev/null; do sleep 1; done; \
+	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT HUP INT TERM; \
+	$(MAKE) -s -C dev cppgm++-telemetry-off
+
+test-telemetry-off: build build-telemetry-off
+	@python3 scripts/tests/test_telemetry_off_build.py \
+		dev/cppgm++ dev/cppgm++-telemetry-off
 
 test: build
 	@for dir in $(SORTED_PAS); do \
