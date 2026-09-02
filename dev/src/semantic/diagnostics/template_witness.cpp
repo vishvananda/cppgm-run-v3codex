@@ -2071,8 +2071,8 @@ std::string TemplateWitnessObserver::RenderSourceSelection(
 		const BindingRecord& binding = analyzer.program_->bindings[event.binding];
 		output << "    callee ";
 		if (binding.member_owner != kNoEntity)
-			output << presentation::RenderEntity(
-				*analyzer.program_, binding.member_owner) << "::"
+			output << NormalizeWitnessTypeSpelling(presentation::RenderEntity(
+				*analyzer.program_, binding.member_owner)) << "::"
 				<< analyzer.program_->names.Get(pattern.name) << '\n';
 		else output << presentation::RenderName(
 			*analyzer.program_, pattern.owner, pattern.name) << '\n';

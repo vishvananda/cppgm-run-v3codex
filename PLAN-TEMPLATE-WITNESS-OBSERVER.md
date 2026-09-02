@@ -745,6 +745,16 @@ six-block repeat measures -0.122% paired user, -0.000% wall, and +0.154% RSS.
 The retained report is
 `/tmp/v3codex-w5m-cv-presentation-compact-ab-extended.json`.
 
+Apply the existing canonical primitive-type spelling normalization to the
+member-owner portion of selected call names as well as their bindings.  This
+single final-render boundary makes two PA22 files exact (`unsigned long int`
+and `long int` disappear), moving PA22 58 -> 56 while PA19/20 remain exact.
+It also improves five later manifests and makes one PA23 plus two PA24 files
+exact, with no PA23/24 regression.  Frozen O0/O1/O3 objects and all three
+audits are exact; four ABBA blocks measure +0.000% paired user, -0.054% wall,
+and -0.094% RSS.  The report is
+`/tmp/v3codex-w5m-callee-normalization-ab.json`.
+
 The first W5M-F expression-range implementation called `Make` and then
 `SetTokenRange` for every parenthesized call and subscript node.  Although its
 output was exact, four ABBA blocks measured +0.77% paired user time, so that
@@ -877,6 +887,7 @@ byte-identical objects.  The report is
 | W5M-S dependent identity | Completed existing template-parameter entity ordinals at every shared-shape/proxy creation path and added an opt-in typed source-identity rendering policy | temporary probe exactly renders the dependent partial owner including template/type parameter kinds and pack role; old renderer output unchanged; PA19/20 exact, PA22 stays 59; objects/audits exact; final eight-block paired user -0.119%, wall +0.109%, RSS +0.271% | retain as general presentation machinery; reject name/string replacement and keep the policy off the ordinary renderer path |
 | W5M-O dependent alias owner | Rendered a retained partial owner from its typed primary-pattern and partial-argument identities | exactly one PA22 witness changes, only its owner line; PA19/20 exact; frozen objects/audits exact; four-block paired user +0.178% | retain the bounded consumer; resolve the remaining cv presentation difference independently |
 | W5M-O alias cv presentation | Canonicalized cv placement only when token structure otherwise preserves the explicit source identity | broad canonical rendering worsened PA22 59 -> 72 and was rejected; narrow policy makes the owner fixture exact and PA22 59 -> 58, with PA19/20 exact and no PA23/24 manifest changes; objects/audits exact; final extended six-block paired user -0.122%, wall -0.000%, RSS +0.154% | retain the structural normalization; source-preserved identities remain authoritative |
+| W5M-O call-owner normalization | Applied the existing primitive spelling normalization at selected member-call owner presentation | PA22 58 -> 56; one PA23 and two PA24 files also become exact with no later-manifest regressions; PA19/20 and objects/audits exact; four-block paired user +0.000% | retain the shared final-render normalization |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
