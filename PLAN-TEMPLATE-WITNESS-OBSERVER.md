@@ -911,6 +911,18 @@ all witness LowIR and frozen O0/O1/O3 objects are exact, and all audits pass.
 Four ABBA blocks measure -1.566% paired user, -1.562% wall, and +0.275% RSS;
 the report is `/tmp/v3codex-w5m-canonical-default-consumer-ab.json`.
 
+After those separations, the conversion-target consumer is display-only in an
+isolated manifest run.  `FunctionInfo::conversion_target` already retains the
+typed target `TypeId`; when its unqualified type entity maps to a class-template
+pattern, closure presentation uses that pattern's terminal `NameId` rather
+than the specialization or qualified source spelling.  Nine files change, all
+only on conversion-operator closure lines.  One PA22, two PA23, and one PA24
+file become exact; five others improve locally; no source event moves and no
+file regresses.  PA19/20 and all witness LowIR remain exact.  Frozen O0/O1/O3
+objects and all audits are exact.  Four ABBA blocks measure -1.340% paired
+user, -0.929% wall, and +0.041% RSS; the report is
+`/tmp/v3codex-w5m-conversion-target-consumer-ab.json`.
+
 The first consumer uses the retained owner pattern/partial ordinal only after
 their bounds and completed canonical-argument state are validated.  It renders
 the primary name and typed partial arguments through the opt-in identity
@@ -1093,6 +1105,7 @@ byte-identical objects.  The report is
 | W5M-S structural default identity | Added stable arena token identities and computed dependent-default structure by substituting parameter tokens from the same source occurrence, gated by typed equality | four focused positive/negative arities correct; 7,660 PA19--PA24 artifacts exact; frozen O0/O1/O3 and audits exact; four-block paired user +0.061% | retain output-inert identity; consume it separately for source provenance and canonical entity abbreviation |
 | W5M-O source default origin | Joined structural default provenance to only the exact source node, typed pattern, and canonical binding | exactly four intended origin labels change across PA22--PA24; dependent-result control stays explicit; no manifest regression; LowIR/frozen/audits exact; four-block paired user +0.063% | retain the occurrence-local consumer; canonical entity abbreviation remains separate |
 | W5M-O canonical default identity | Added structurally proven source arities to the typed entity-elision sidecar | only the same three PA22--PA24 files change; one PA24 file becomes exact and PA22/PA23 closure identities improve; no regression; LowIR/frozen/audits exact; four-block paired user -1.566% | retain; conversion-target primary identity remains a separate typed role |
+| W5M-O conversion target identity | Rendered a conversion closure's typed class-template target from its primary pattern's terminal name | 9 files change only in closure lines; PA22 +1, PA23 +2, PA24 +1 exact; no source-event movement or regression; LowIR/frozen/audits exact; four-block paired user -1.340% | retain; existing typed `conversion_target` is sufficient after provenance/presentation separation |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

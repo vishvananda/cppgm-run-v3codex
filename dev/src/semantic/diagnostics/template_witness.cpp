@@ -1734,6 +1734,20 @@ std::string TemplateWitnessObserver::FunctionEntityName(
 				prefix = "const ";
 				target.erase(0, 6);
 			}
+			const TypeId target_type = analyzer.program_->types.RemoveTopCv(
+				function.conversion_target);
+			const TypeRecord& target_record =
+				analyzer.program_->types.Get(target_type);
+			if (target_record.kind == TYPE_NAMED &&
+				target_record.entity <
+					analyzer.class_template_pattern_by_entity_.size())
+			{
+				const std::uint32_t target_pattern =
+					analyzer.class_template_pattern_by_entity_[target_record.entity];
+				if (target_pattern < analyzer.class_templates_.size())
+					target = analyzer.program_->names.Get(
+						analyzer.class_templates_[target_pattern].name);
+			}
 			result += prefix + "operator " + target;
 		}
 		else result += analyzer.program_->names.Get(terminal);
