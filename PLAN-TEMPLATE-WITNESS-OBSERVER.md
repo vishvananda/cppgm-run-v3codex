@@ -570,12 +570,11 @@ foundation.  Four O0 ABBA blocks measure -0.66% paired user, -0.43% wall, and
 Before changing member-alias witness rendering, retain the semantic qualifier
 that `LookupStructuredName` already has at the successful alias-template
 decision.  For a qualified source use this is the concrete entity represented
-by the carrier scope immediately before the alias component; for an
-unqualified class-member use it is the lookup result's naming class.  This is
-the cppgm analogue of the declaration context attached to Clang's resolved
-`TypeAliasTemplateDecl`.  An unqualified member alias deliberately has no
-source qualifier; its typed declaration owner remains authoritative.  Today
-cppgm discards the written qualifier identity and the renderer
+by the carrier scope immediately before the alias component.  An unqualified
+member alias deliberately has no source qualifier; its typed declaration owner
+remains authoritative.  Together these are the cppgm analogue of the source
+and declaration context attached to Clang's resolved `TypeAliasTemplateDecl`.
+Today cppgm discards the written qualifier identity and the renderer
 tries to recover it by searching for an earlier class-use event with the same
 syntax node and token order, then falls back to the primary class-template
 name.  That event-order join is neither authoritative nor complete.
@@ -625,6 +624,46 @@ O0/O1/O3 objects and all three audits remain exact.  Four ABBA blocks against
 `80c93fe2` measure +0.178% paired user, +0.263% wall, and +0.438% RSS; the CPU
 gate passes.  The report is
 `/tmp/v3codex-w5m-alias-owner-consumer-ab.json`.
+
+The remaining dependent member-alias mismatch requires a second, distinct
+foundation.  A later replay knows a concrete class, but an unqualified source
+use such as `f<T>` names an alias whose declaration belongs to the current
+partial specialization.  Using the replay class would make output depend on
+which specialization replayed first.  While the retained validator already
+classifies the current partial's exact owner template-id, also retain its
+relationship to unresolved template-id components in that declaration.  A
+later real alias lookup confirms whether the component's alias declaration is
+owned by the same class pattern, so unrelated namespace aliases are not
+captured.  The compact observer-only fact is keyed by exact alias component and
+carries the owner class-pattern index, selected partial-pattern ordinal, and
+source-resolution class.  Populate it in the existing structured-name walk;
+do not resolve the alias, build arguments, or instantiate anything for the
+observer.
+
+Resolve the fact's partial ordinal immediately after class-partial registration
+selects or appends that partial, then join it into the optional alias source-use
+record when the later real alias lookup supplies alias-pattern identity.  This
+follows the compiler's authoritative validation -> registration -> replay
+lifecycle and avoids a second event backpatching mechanism.  The join remains
+output-inert initially.  Measure its record sizes, PA19/20/22 output, frozen
+objects, audits, and no-witness timing as another independent W5M-S boundary.
+Only afterward may a consumer render a current-partial owner from the retained
+class partial's canonical semantic arguments.  Declaration-complete qualifiers
+continue to use their concrete entity; replay-required owners remain deferred.
+
+The retained-alias foundation uses a 20-byte observer fact.  Its ordered join
+keeps the alias declaration's primary class-pattern identity in the source
+event, raising that optional record from 232 to 240 bytes; ordinary semantic
+records and allocations are unchanged.  A temporary debug probe showed the
+dependent `f<T>` event joined to class pattern 8, partial 0, while the unrelated
+global aliases in the same declaration had no matching owner; the probe was
+removed.  PA19 remains 295/295 ordinary, 279/279 strict, and 10/10 course;
+PA20 remains 164/164 ordinary, 158/158 strict, and 11/11 course; PA22 remains
+at 59 mismatches.  Frozen O0/O1/O3 objects and all three audits are exact.  An
+initial larger-record run was rejected after a noisy external outlier.  The
+compact ordered join then measures -0.705% paired user, -0.835% wall, and
+-0.106% RSS across four clean ABBA blocks.  The retained report is
+`/tmp/v3codex-w5m-retained-alias-source-ab-compact.json`.
 
 The first W5M-F expression-range implementation called `Make` and then
 `SetTokenRange` for every parenthesized call and subscript node.  Although its
@@ -754,6 +793,7 @@ byte-identical objects.  The report is
 | W5M-O object-type role | Published retained object-type facts through deduced provenance while preserving explicit counts on nested components | exactly one witness file changes and becomes exact; PA22 64 -> 63; PA19/20 exact; O0/O1/O3 objects exact; four-block paired user -0.66%, wall -0.43%, RSS -0.00% | retain; source role, not renderer inference, determines binding provenance |
 | W5M-S alias qualifier | Retained the concrete structured-name carrier for a written alias qualifier at the final lookup decision, leaving unqualified uses explicitly unqualified | `SourceEvent` remains 232 bytes; PA19/20 exact; PA22 remains 63; audits and frozen O0/O1/O3 objects exact; extended six-block paired user -0.299%, wall -0.267%, RSS -0.038% | retain before deleting alias owner reconstruction in the renderer |
 | W5M-O alias qualifier | Rendered declaration-complete written alias qualifiers directly and removed the neighboring class-use event scan | exactly four PA22 witnesses change and become exact; PA22 63 -> 59; retained-dependent controls and PA19/20 unchanged; objects/audits exact; four-block paired user +0.178% | retain; unresolved retained qualifiers require a declaration-owned fact, not a replay-derived owner |
+| W5M-S retained alias owner | Related unresolved retained template-id components to the current partial owner, then joined only when final alias lookup confirmed the same declaration-owner pattern | 20-byte observer fact; optional source event 240 bytes; probe distinguishes member `f<T>` from unrelated global aliases; PA19/20 exact, PA22 unchanged at 59; objects/audits exact; compact four-block paired user -0.705% | retain before rendering the partial's canonical owner arguments |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

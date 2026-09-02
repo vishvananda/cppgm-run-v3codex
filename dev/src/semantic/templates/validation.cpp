@@ -652,6 +652,12 @@ void RetainedTemplateValidator::PublishStructuredTemplateSourceFacts(
 	NamePath primary;
 	primary.global = analyzer_.FindChild(
 		node, ::cppgm::syntax::STAG_GLOBAL_QUALIFIER) != kNoNode;
+	NodeId preceding_class_component = kNoNode;
+	std::size_t preceding_class_pattern =
+		std::numeric_limits<std::size_t>::max();
+	TemplateWitnessObserver::SemanticSourceResolution
+		preceding_class_resolution =
+			TemplateWitnessObserver::SEMANTIC_SOURCE_REPLAY_REQUIRED;
 	std::size_t object_pattern = std::numeric_limits<std::size_t>::max();
 	TemplateWitnessObserver::SemanticSourceResolution object_resolution =
 		TemplateWitnessObserver::SEMANTIC_SOURCE_REPLAY_REQUIRED;
@@ -665,7 +671,13 @@ void RetainedTemplateValidator::PublishStructuredTemplateSourceFacts(
 			analyzer_.arena_->SemanticPayloadId(component)));
 		const NodeId list = analyzer_.FindChild(component,
 			::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
-		if (list == kNoNode || component == source_owner_component_) continue;
+		if (list == kNoNode || component == source_owner_component_)
+		{
+			preceding_class_component = kNoNode;
+			preceding_class_pattern =
+				std::numeric_limits<std::size_t>::max();
+			continue;
+		}
 		std::size_t pattern = analyzer_.FindClassTemplate(scope, primary);
 		if (pattern == std::numeric_limits<std::size_t>::max() &&
 			source_owner_is_partial_ &&
@@ -675,7 +687,29 @@ void RetainedTemplateValidator::PublishStructuredTemplateSourceFacts(
 				analyzer_.class_templates_[source_owner_pattern_].name)
 			pattern = source_owner_pattern_;
 		if (pattern == std::numeric_limits<std::size_t>::max() ||
-			pattern > std::numeric_limits<std::uint32_t>::max()) continue;
+			pattern > std::numeric_limits<std::uint32_t>::max())
+		{
+			if (preceding_class_component != kNoNode &&
+				preceding_class_resolution ==
+					TemplateWitnessObserver::SEMANTIC_SOURCE_CURRENT_PARTIAL &&
+				preceding_class_pattern <=
+					std::numeric_limits<std::uint32_t>::max())
+				analyzer_.template_witness_->NoteRetainedAliasQualifier(
+					target_, component, preceding_class_component,
+					static_cast<std::uint32_t>(preceding_class_pattern));
+			else if (!primary.global && primary.Size() == 1 &&
+				source_owner_is_partial_ &&
+				source_owner_component_ != kNoNode &&
+				source_owner_pattern_ <=
+					std::numeric_limits<std::uint32_t>::max())
+				analyzer_.template_witness_->NoteRetainedAliasQualifier(
+					target_, component, source_owner_component_,
+					static_cast<std::uint32_t>(source_owner_pattern_));
+			preceding_class_component = kNoNode;
+			preceding_class_pattern =
+				std::numeric_limits<std::size_t>::max();
+			continue;
+		}
 		std::size_t explicit_count = 0;
 		for (std::uint32_t argument = analyzer_.arena_->FirstEdge(list);
 			argument != kNoEdge;
@@ -693,6 +727,9 @@ void RetainedTemplateValidator::PublishStructuredTemplateSourceFacts(
 			target_, component, static_cast<std::uint32_t>(pattern),
 			TemplateWitnessObserver::SEMANTIC_SOURCE_CLASS_TEMPLATE,
 			resolution, explicit_count);
+		preceding_class_component = component;
+		preceding_class_pattern = pattern;
+		preceding_class_resolution = resolution;
 		object_pattern = pattern;
 		object_resolution = resolution;
 	}

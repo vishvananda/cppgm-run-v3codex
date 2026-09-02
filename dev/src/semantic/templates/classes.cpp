@@ -398,6 +398,12 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 				{
 					const EntityId qualifier_entity = carrier == kNoScope ?
 						kNoEntity : program_->EntityForScope(carrier);
+					std::uint32_t alias_owner_pattern = kNoDumpEdge;
+					const EntityId alias_owner =
+						program_->EntityForScope(alias_pattern.owner);
+					if (alias_owner < class_template_pattern_by_entity_.size())
+						alias_owner_pattern =
+							class_template_pattern_by_entity_[alias_owner];
 					bool dependent_arguments = false;
 					for (std::size_t argument = 0;
 						argument < arguments.size(); ++argument)
@@ -409,11 +415,13 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 					if (dependent_arguments)
 						template_witness_->NoteDependentAliasUse(component_node,
 							static_cast<std::uint32_t>(alias), arguments,
-							argument_syntax.size(), qualifier_entity);
+							argument_syntax.size(), qualifier_entity,
+							alias_owner_pattern);
 					else if (TemplateWitnessSourceUseEnabled())
 						template_witness_->RecordAliasUse(component_node,
 							static_cast<std::uint32_t>(alias), arguments,
-							argument_syntax.size(), qualifier_entity);
+							argument_syntax.size(), qualifier_entity,
+							alias_owner_pattern);
 				}
 				found = LookupResult();
 				found.type = type;
@@ -1199,10 +1207,19 @@ void Analyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 				partial.revision = prior.revision + 1;
 				prior = partial;
 			}
+			if (template_witness_)
+				template_witness_->ResolveRetainedAliasQualifierPartial(
+					partial.declaration, static_cast<std::uint32_t>(primary),
+					static_cast<std::uint32_t>(i));
 			UpgradeClassTemplateSpecializations(primary);
 			return;
 		}
 		owner.partial_specializations.push_back(partial);
+		if (template_witness_)
+			template_witness_->ResolveRetainedAliasQualifierPartial(
+				partial.declaration, static_cast<std::uint32_t>(primary),
+				static_cast<std::uint32_t>(
+					owner.partial_specializations.size() - 1));
 		UpgradeClassTemplateSpecializations(primary);
 		return;
 	}

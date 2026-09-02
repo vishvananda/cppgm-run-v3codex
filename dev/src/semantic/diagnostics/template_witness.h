@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -94,6 +95,24 @@ private:
 	};
 	static_assert(sizeof(RetainedMemberSourceFact) == 24,
 		"retained member source facts must stay compact");
+	struct RetainedAliasQualifierFact
+	{
+		syntax::NodeId owner;
+		syntax::NodeId alias_source;
+		syntax::NodeId qualifier_source;
+		std::uint32_t pattern;
+		std::uint32_t partial_pattern;
+
+		RetainedAliasQualifierFact(syntax::NodeId owner_value,
+			syntax::NodeId alias_source_value,
+			syntax::NodeId qualifier_source_value,
+			std::uint32_t pattern_value)
+			: owner(owner_value), alias_source(alias_source_value),
+			  qualifier_source(qualifier_source_value), pattern(pattern_value),
+			  partial_pattern(std::numeric_limits<std::uint32_t>::max()) {}
+	};
+	static_assert(sizeof(RetainedAliasQualifierFact) == 20,
+		"retained alias qualifier facts must stay compact");
 	enum OverloadDropReason
 	{
 		OVERLOAD_DROP_NONE,
@@ -125,6 +144,8 @@ private:
 		std::uint32_t pattern;
 		BindingId binding;
 		EntityId qualifier_entity;
+		std::uint32_t qualifier_pattern;
+		std::uint32_t qualifier_partial_pattern;
 		std::vector<TemplateArgument> arguments;
 		std::vector<std::uint8_t> provenance;
 		std::vector<std::uint32_t> parameter_offsets;
@@ -147,8 +168,8 @@ private:
 			std::size_t explicit_count, std::size_t column_offset,
 			std::size_t ordinal);
 	};
-	static_assert(sizeof(SourceEvent) == 232,
-		"source events must retain qualifier provenance in existing padding");
+	static_assert(sizeof(SourceEvent) == 240,
+		"source events must keep typed qualifier provenance compact");
 	struct DeductionDropFact
 	{
 		syntax::NodeId syntax;
@@ -282,6 +303,13 @@ private:
 	void NoteRetainedMemberSource(syntax::NodeId owner,
 		syntax::NodeId source, NameId member_name, std::uint32_t pattern,
 		std::uint32_t partial_pattern, BindingId concrete_owner);
+	void NoteRetainedAliasQualifier(syntax::NodeId owner,
+		syntax::NodeId alias_source, syntax::NodeId qualifier_source,
+		std::uint32_t pattern);
+	void ResolveRetainedAliasQualifierPartial(syntax::NodeId owner,
+		std::uint32_t pattern, std::uint32_t partial_pattern);
+	void ApplyRetainedAliasQualifier(SourceEvent* event,
+		std::uint32_t alias_owner_pattern) const;
 	void RecordRetainedMemberClassUses(NameId member_name,
 		std::uint32_t pattern, BindingId specialization,
 		std::uint32_t selected_partial,
@@ -312,10 +340,12 @@ private:
 		std::size_t explicit_count);
 	void RecordAliasUse(syntax::NodeId syntax, std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments,
-		std::size_t explicit_count, EntityId qualifier_entity);
+		std::size_t explicit_count, EntityId qualifier_entity,
+		std::uint32_t alias_owner_pattern);
 	void NoteDependentAliasUse(syntax::NodeId syntax, std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments,
-		std::size_t explicit_count, EntityId qualifier_entity);
+		std::size_t explicit_count, EntityId qualifier_entity,
+		std::uint32_t alias_owner_pattern);
 	void RecordFunctionSpecialization(BindingId binding, std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments,
 		const std::vector<TemplateArgument>& requested_arguments,
@@ -362,6 +392,7 @@ private:
 	bool debug_;
 	std::vector<SemanticSourceFact> semantic_source_facts_;
 	std::vector<RetainedMemberSourceFact> retained_member_source_facts_;
+	std::vector<RetainedAliasQualifierFact> retained_alias_qualifier_facts_;
 	std::vector<SourceEvent> source_events_;
 	std::vector<FunctionSpecializationFact> function_specializations_;
 	std::vector<ClassSpecializationFact> class_specializations_;
