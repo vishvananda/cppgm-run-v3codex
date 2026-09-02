@@ -220,6 +220,7 @@ public:
 		return edges_[edge].child;
 	}
 	void SetTokenRange(NodeId node, std::size_t first, std::size_t last);
+	bool HasTokenRange(NodeId node) const;
 	std::size_t TokenFirst(NodeId node) const;
 	std::size_t TokenLast(NodeId node) const;
 	std::size_t TokenCount() const;

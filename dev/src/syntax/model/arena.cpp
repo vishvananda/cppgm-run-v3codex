@@ -689,6 +689,11 @@ void SyntaxArena::SetTokenRange(NodeId node, std::size_t first,
 	nodes_[node].token_last = static_cast<std::uint32_t>(last);
 }
 
+bool SyntaxArena::HasTokenRange(NodeId node) const
+{
+	return nodes_[node].token_last > nodes_[node].token_first;
+}
+
 std::size_t SyntaxArena::TokenFirst(NodeId node) const
 {
 	return nodes_[node].token_first;

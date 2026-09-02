@@ -110,6 +110,61 @@ and the run took 45.66 seconds wall / 1,286.98 seconds aggregate CPU.  Because
 host noise makes one run insufficient, retention will use repeated
 same-source no-witness AB/BA workloads in addition to this anchor.
 
+## Provenance-first correction
+
+The PA22 convergence work is paused after comparing the implementation with
+`~/clang.diff`.  Clang's patch is 2,227 insertions across eight files.  Its
+source-use collector is mostly one finished-AST traversal: `TypeLoc`,
+`TemplateArgumentLoc`, specialization declarations, expression locations, and
+declaration contexts already keep source syntax attached to the final semantic
+decision.  Only overload drops and lifecycle transitions require distributed
+Sema hooks.
+
+The cppgm implementation since `bde8535d` is 4,026 insertions across 33 files,
+including a provisional 993-insertion PA22 increment across 14 files.  File
+count is partly explained by cppgm's smaller semantic modules, but the content
+shows a real design problem: the renderer searches token spelling, assigns
+unused matching tokens to events, reconstructs explicit argument spellings,
+propagates provenance between later events, and asks the retained-template
+validator to infer source uses.  This violates the governing rule that the
+observer records semantic decisions instead of reconstructing them.
+
+Before further strict convergence, build the missing analogue of Clang's
+source-location layer:
+
+1. Every parsed qualified-name component and template-id argument uses its
+   existing `SyntaxNode::token_first/token_last` fields as an authoritative
+   half-open source range.  Do not enlarge `SyntaxNode` or add a parallel range
+   vector.
+2. A resolved template use is anchored on the exact name-component node, not a
+   containing declaration, replay root, or whole qualified name.  The direct
+   children of that component's template-argument list are the authoritative
+   argument source nodes.
+3. Semantic publication carries one compact source-use value: exact source
+   node, typed selected pattern/binding, canonical arguments, argument source
+   nodes, provenance, selection, and selected-partial bindings.  The value is
+   allocated only by the optional observer.
+4. Retained replay reuses the original component node as its provenance.  It
+   must not recover a location by name search or by maintaining a global set of
+   already-used tokens.
+5. Constructor and overloaded-operator observations are published at the
+   source-aware caller after inspecting the selected binding already stored in
+   the resulting semantic dump node.  Do not thread a witness-only source
+   parameter through initialization and expression APIs.
+6. Default/deduced/explicit origin is captured when the argument list is
+   completed.  It is not inferred by comparing later events with the same
+   canonical specialization.
+7. The finished renderer is a pure stable sort and formatter over complete
+   records.  Token scans, source-event retargeting, deferred source guesses,
+   and semantic classification in `FinishTranslationUnit` are deletion
+   targets.
+
+The source-range portion is general syntax provenance and must be validated
+before witness behavior changes.  It uses fields already present in every
+syntax node, so it has no per-node storage cost.  Parser output, ordinary
+LowIR, object output, and no-witness timings must remain unchanged.  Observer
+side tables and vectors remain absent when `--witness` is absent.
+
 ## Contract and ownership
 
 PA19 is the earliest assignment that owns template instantiation and therefore
@@ -277,6 +332,55 @@ Commit and push exact renderer convergence separately from event discovery.
 PA24 strict is the unique-fixture closure gate; root `make test-strict` is the
 cumulative final gate.
 
+## Phase W5P: Source-provenance foundation
+
+This corrective phase precedes any further PA22 convergence.
+
+1. Add authoritative half-open ranges to structured name components,
+   template-argument lists, type-id arguments, and declarator/name wrappers by
+   filling existing `SyntaxNode` fields at parse time.
+2. Add small syntax queries for range validity, exact name-component
+   selection, and direct template-argument source nodes.  Queries inspect the
+   syntax graph; they never scan token spelling across the translation unit.
+3. Exercise repeated identical names on one line, multi-component template-ids,
+   member template-ids, and nested template arguments in W5R's relationship-
+   based witness tests.  Range metadata deliberately has no new PA10 dump
+   surface; the first public consumer, not exact internal fields, owns the
+   student-facing test.
+4. Run parser/PA10 gates, PA19/20 ordinary gates, output hashes, file audits,
+   and a repeated no-witness AB/BA timing before retaining the foundation.
+5. Commit and push the provenance foundation independently.  No PA22
+   witness-parity workaround belongs in this commit.
+
+## Phase W5R: Rebase the observer on complete source-use records
+
+1. Change class, alias, variable, function, constructor, and operator
+   publication sites to pass the exact component node and explicit argument
+   source nodes available at the final semantic decision.
+2. Capture provenance and selected-partial bindings in that publication call.
+   Cache reuse publishes a new source use but does not create a new lifecycle
+   transition.
+3. Replace constructor/operator source-parameter tunnelling with publication
+   at source-aware callers using the selected binding in the returned dump
+   node.
+4. Remove global token searches, `used_tokens`, event retargeting, pairwise
+   default-provenance propagation, and witness-only dependent-name shadow
+   modeling from the validator.  A remaining recovery heuristic blocks this
+   phase from being committed.
+5. Re-run PA19 and PA20 strict/ordinary/cumulative gates before resuming PA22.
+   Then classify PA22 differences against complete records rather than adding
+   renderer inference.
+
+Commit and push the observer reduction before continuing with PA23/PA24.
+
+The retained W5P representation packs each parsed component's name, optional
+argument-list node, and half-open range into one temporary record.  A first
+implementation added two parallel range vectors and reproducibly regressed the
+frozen no-witness compile by 1.35% wall / 1.51% user; it was rejected.  Four
+ABBA blocks for the packed representation measured +0.22% wall / +0.31% user
+with byte-identical output and +0.21% RSS, all inside the 0.5% noise allowance.
+The report is `/tmp/v3codex-provenance-packed-ab.json`.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -303,6 +407,8 @@ cumulative final gate.
 | W2 | Published canonical source uses and binding provenance at class, alias, variable, and selected-call owners | `3eea8156`; PA19 strict exact matches rose from 0 to 261 of 279 without changing ordinary output | retain typed IDs through analysis and render only at translation-unit completion |
 | W2/W3 | Added final overload-drop facts, semantic completeness-demand events, retained-template dependency marks, and source-backed anonymous/local type presentation | PA19 strict passes all 279 witness comparisons, all 295 ordinary fixtures, and all 10 course tests; `make test-report-through-pa19` passes 2,092/2,092; layout, semantic-owner, source-set, and exception audits pass | retain the centralized final-decision hooks; suppress replayed dependent uses from the retained lexical type model rather than source-text matching |
 | W5 PA20 | Added pack-aware class/function/variable provenance, variable-template selection, user-defined-literal calls, source-aware non-type argument presentation, constexpr-function closure, and actual-use tracking for retained static-member definitions | PA19 remains exact at 279/279 witness, 295/295 ordinary, and 10/10 course; PA20 passes 158/158 witness, 164/164 ordinary, and 11/11 course; `make test-report-through-pa20` passes 2,267/2,267 | retain typed final-decision events; a demanded definition alone does not create a source use, while an observed nested static member maps through its enclosing template owner |
+| W5 PA22 audit | Compared `~/clang.diff` with the full cppgm witness delta | Clang: +2,227/-11 in 8 files, with finished-AST source-use traversal; cppgm: +4,026/-135 in 33 files, including provisional +993/-112 in 14 dirty files; cppgm's renderer searches token spelling and reconstructs lost provenance | pause parity patches; do not commit the provisional PA22 increment; add authoritative source provenance first, then delete recovery logic |
+| W5P | Filled existing syntax ranges for exact name components, template-argument lists, type-id arguments, declarator names, and dependent `typename` uses; consolidated the name parser's parallel vectors into one component record | PA10 165/165, PA19 469/469, PA20 11/11, through-PA20 2,267/2,267; frozen output exact; packed-record A/B +0.22% wall / +0.31% user versus the pre-foundation binary | retain packed representation; reject the parallel-vector prototype; test provenance through W5R's public witness behavior |
 
 ## Exit criteria
 
