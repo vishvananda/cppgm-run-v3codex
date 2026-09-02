@@ -1179,6 +1179,55 @@ deduction, and overload selection remain unchanged.  The observer still owns
 allocation, and a failed candidate is visible only when its source-aware caller
 requests witness output.
 
+## Phase W5N: Normalize provenance before adding more witness cases
+
+Pause PA22 event-by-event convergence again.  The retained-call and typed-drop
+experiments show that the remaining fanout is caused by two semantic identities
+that the compiler currently compresses away and later tries to recover from
+syntax or presentation.  Add these identities as small, output-inert machinery
+before another witness event is added:
+
+1. Define a typed source-occurrence role for a resolved use: evaluated source
+   use, unevaluated/declaration-only use, deferred template definition, and
+   specialization replay.  Publish it only where the existing semantic walk
+   already decides that role.  Store it in the optional observer's node-indexed
+   facts; do not add a field to every syntax, expression, binding, or LowIR
+   record.  This role replaces the retained-call boolean and must distinguish
+   an explicit template-id that is genuinely evaluated from identical syntax
+   visited during retained validation or replay.
+2. Define a typed function-candidate declaration origin.  A function-template
+   specialization maps to its retained `FunctionTemplatePattern`; an ordinary
+   function maps to its canonical declaration binding.  Candidate instances
+   created during substitution therefore share one origin, while distinct
+   copy/move/constructor declarations remain distinct even when their public
+   names render identically.  Compute the origin from existing typed fields and
+   retain it only in observer drop facts; do not grow `BindingRecord` or
+   `FunctionInfo`.
+3. Keep occurrence identity separate from declaration origin.  Drops from
+   different source calls cannot consume each other, while repeated internal
+   candidates for one call and one declaration collapse before rendering.
+   Rendering remains a pure formatter and never compares names to infer either
+   property.
+4. Expose the already-final lifecycle policy through narrow typed queries
+   before repairing remaining variable/function closure cases.  A query may
+   inspect explicit-instantiation state, owning template state, and final
+   demand state; the observer must not reimplement those policies or infer them
+   from entity spelling.
+5. Land each foundation without changing witness output.  Require focused
+   semantic controls, exact PA19/20 strict and ordinary output, exact frozen
+   O0/O1/O3 output, architecture audits, and repeated no-witness A/B timing
+   within the 0.2% paired-CPU threshold.  Only a following W5N-O commit may
+   consume one foundation, and its manifest must be confined to the semantic
+   category that foundation owns.
+
+The first public test for this machinery is the PA19 observer property test,
+not a dump of private fields.  It checks that source positions follow the
+written template-id, argument-origin labels follow typed completion, only the
+selected evaluated call is published, and repeated demand produces one closure
+transition.  PA22 adds the candidate-origin control: two distinct declarations
+with the same displayed constructor name remain distinguishable, while two
+instantiated candidates from one declaration do not become duplicate drops.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1243,6 +1292,8 @@ requests witness output.
 | W5M-S recursive entity presentation | Propagated the existing anonymous-namespace policy through typed template arguments, declarator types, member-pointer owners, value bindings, and closure replacement identities | 2 witnesses change: PA22 gains 1 exact file, and every affected function/require/variable closure identity in one PA24 file gains its missing anonymous scopes; no regression, all 1,532 LowIR artifacts exact; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; cumulative paired user -0.547%, wall -0.650%, RSS +0.704% | retain as shared typed presentation machinery; keep ordinary source-event rendering's default policy unchanged |
 | W5M-O call-operator deduction source | Passed `TryAnalyzeOverloadedOperator`'s exact call node to the shared typed function-template deduction result | exactly 1 PA22 witness changes and becomes exact (missing `too_few_arguments`); every other PA19--PA24 witness and all 1,532 LowIR artifacts are identical; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; paired user -0.301%, wall -0.212%, RSS -0.202% | retain; source-aware callers own drop publication and the deduction engine remains source-optional |
 | W5M-F/O ADL deduction source | Carried the exact callee component through ADL namespace and hidden-friend candidate formation into typed function-template deduction | exactly 1 PA22 witness changes and becomes exact (missing hidden-friend `non_deduced_mismatch`); every other PA19--PA24 witness and all 1,532 LowIR artifacts are identical; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; paired user +0.062%, wall -0.218%, RSS -0.140% | retain the nullable provenance parameter; synthesized source-free ADL remains non-publishing |
+| W5M rejected typed-drop display dedup | Deduplicated rendered drops by raw, then canonical, candidate binding/pattern/reason instead of displayed declaration and reason | made the intended duplicate-constructor-drop file exact, but changed 17 PA22, 42 PA23, and 25 PA24 files and regressed 15/20/14 previously exact files; canonical binding did not reduce the fanout; LowIR remained exact | reject; instantiated binding identity is still finer than public candidate-declaration identity, so retain display dedup until declaration-origin and source-occurrence provenance are available |
+| W5N public provenance contract | Documented the optional PA19 semantic diagnostic and added a strict relationship test for computed source anchors/order, typed explicit/defaulted/deduced bindings, selected-template calls, closure deduplication, witness-off LowIR identity, and output failure | property test passes without exact witness matching; PA19 strict 279/279 plus 10/10 course, ordinary 305/305, and through-PA19 2,092/2,092 | retain as the public test boundary for the machinery-first tranche; later provenance foundations must satisfy this test without exposing private representation |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

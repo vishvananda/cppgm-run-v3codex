@@ -73,6 +73,32 @@ Behaviour is undefined unless the command-line arguments match that shape, with
 the same source-file ordering and `-o` relaxations as PA18. Other `--emit-*`
 modes, driver mode, and optimized LowIR output are not part of PA19.
 
+### Optional Template Witness
+
+PA19 also defines an optional semantic diagnostic for inspecting template
+decisions:
+
+    $ cppgm++ --emit-lowir -O0 -o <outfile> --witness <logfile> <srcfile>...
+
+The diagnostic does not change whether a program is accepted or the LowIR it
+produces.  For template uses written in the primary source file, it identifies
+the source location, the selected template form, and the completed typed
+argument bindings.  Each binding says whether its value was written explicitly,
+deduced from a use, or supplied by a default.  Selected function-template calls
+are reported; a non-template overload selected instead is not a template use.
+
+The diagnostic also reports template closure transitions that actually occur,
+such as instantiating an entity or requiring its definition.  Repeated internal
+requests for the same transition are reported once, while distinct source uses
+remain distinct.  Source events are ordered by source location.  The strict
+fixtures show the compact text presentation; tests additionally check these
+semantic relationships without requiring a particular internal observer,
+container, or source-provenance representation.
+
+If `<logfile>` cannot be written, compilation fails through the ordinary output
+error path.  Without `--witness`, no witness file is created and the compiler's
+ordinary output is unchanged.
+
 ### Output Format
 
 On success, `cppgm++` shall write LowIR text to `<outfile>` and exit
