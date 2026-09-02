@@ -423,6 +423,24 @@ std::size_t FinalTemplateOpening(const std::string& spelling)
 	return std::string::npos;
 }
 
+std::string RenderDependentPartialOwnerIdentity(const Program& program,
+	const ClassTemplatePattern& owner,
+	const ClassTemplatePartialPattern& partial)
+{
+	if (partial.canonical_argument_state != 1) return std::string();
+	std::string result = presentation::RenderName(
+		program, owner.owner, owner.name, true) + '<';
+	const presentation::TemplateParameterIdentity identity(0);
+	for (std::size_t argument = 0;
+		argument < partial.canonical_arguments.size(); ++argument)
+	{
+		if (argument != 0) result += ", ";
+		result += presentation::RenderTemplateArgument(
+			program, partial.canonical_arguments[argument], identity);
+	}
+	return result + '>';
+}
+
 std::size_t FirstLocatedDescendantToken(const SyntaxArena& arena,
 	syntax::NodeId syntax, const std::string& primary_source_file)
 {
@@ -1926,6 +1944,21 @@ std::string TemplateWitnessObserver::RenderSourceSelection(
 		*parameters = &pattern.parameters;
 		std::string template_name = presentation::RenderName(
 			*analyzer.program_, pattern.owner, pattern.name, true);
+		if (event.qualifier_pattern < analyzer.class_templates_.size())
+		{
+			const ClassTemplatePattern& owner =
+				analyzer.class_templates_[event.qualifier_pattern];
+			if (event.qualifier_partial_pattern <
+				owner.partial_specializations.size())
+			{
+				const std::string owner_name =
+					RenderDependentPartialOwnerIdentity(*analyzer.program_, owner,
+						owner.partial_specializations[
+							event.qualifier_partial_pattern]);
+				if (!owner_name.empty()) template_name = owner_name + "::" +
+					analyzer.program_->names.Get(pattern.name);
+			}
+		}
 		if (event.qualifier_entity != kNoEntity &&
 			!event.allow_substituted_source)
 			template_name = NormalizeEntity(presentation::RenderEntity(
