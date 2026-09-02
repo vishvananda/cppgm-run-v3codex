@@ -1701,12 +1701,14 @@ bool Analyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		*result = ExpressionInfo();
 		return true;
 	}
+	std::size_t explicit_template_argument_count = 0;
 	if (!template_patterns.empty())
 	{
 		NamePath syntax_base;
 		std::vector<NodeId> explicit_syntax;
 		const bool has_explicit_syntax = CollectExplicitTemplateArguments(
 			identifier, &syntax_base, &explicit_syntax);
+		explicit_template_argument_count = explicit_syntax.size();
 		if (has_explicit_syntax)
 			candidates.clear();
 		std::vector<BindingId> specializations;
@@ -1766,6 +1768,8 @@ bool Analyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	}
 	if (!program_->bindings[selected].static_member_function)
 		DemandRetainedRuntimeCalls(object.node);
+	RecordFunctionTemplateSourceCall(
+		identifier, selected, explicit_template_argument_count);
 	*result = BuildResolvedCall(selected, scope, expanded_argument_syntax,
 		arguments, &object_pointer, target, effective_naming_class,
 		&object_conversion, &argument_conversions,

@@ -1,4 +1,6 @@
 #include "semantic/analysis/analyzer.h"
+
+#include "semantic/diagnostics/template_witness.h"
 #include "semantic/analysis/switch.h"
 #include "semantic/extensions/hosted_extensions.h"
 #include "support/exception_types.h"
@@ -1381,6 +1383,8 @@ ExpressionInfo Analyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId target)
 				analyzed_arguments, candidates, object,
 				object ? &object_conversion : 0, &argument_conversions);
 			if (selected == kNoBinding) return ExpressionInfo();
+			RecordFunctionTemplateSourceCall(direct_callee_syntax, selected,
+				explicit_template_syntax.size());
 			return BuildResolvedCall(selected, scope, argument_syntax,
 				analyzed_arguments, object, target, function_naming_class,
 				object ? &object_conversion : 0, &argument_conversions,
@@ -1463,7 +1467,8 @@ ExpressionInfo Analyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId target)
 		TryAnalyzeCallSurrogate(scope, callee, analyzed_arguments,
 			target, &call_operator)) return call_operator;
 	if (TryAnalyzeCallOperator(scope, callee, argument_syntax,
-		&analyzed_arguments, target, &call_operator)) return call_operator;
+		&analyzed_arguments, target, &call_operator, callee_syntax))
+		return call_operator;
 	if (TryAnalyzeCallSurrogate(scope, callee, analyzed_arguments,
 		target, &call_operator)) return call_operator;
 	TypeId function_type = program_->types.RemoveTopCv(EffectiveType(callee.type));
@@ -1539,7 +1544,7 @@ ExpressionInfo Analyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	overloaded_operands.push_back(right);
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
-		overloaded_operands, op == OP_ASS, kNoType, &overloaded))
+		overloaded_operands, op == OP_ASS, kNoType, &overloaded, 0, node))
 		return overloaded;
 	if (right.type == kNoType && braced_assignment)
 		right = AnalyzeBracedInit(right_syntax, scope, EffectiveType(left.type));
@@ -1656,7 +1661,8 @@ ExpressionInfo Analyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 	overloaded_operands.push_back(right);
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator("[]", scope, overloaded_syntax,
-		overloaded_operands, true, kNoType, &overloaded)) return overloaded;
+		overloaded_operands, true, kNoType, &overloaded, 0, node))
+		return overloaded;
 	(void)ApplyBuiltinBinaryConversions("[]", &left, &right);
 	if (!IsPointer(Decay(left.type)) && IsPointer(Decay(right.type)))
 		std::swap(left, right);
@@ -2695,6 +2701,8 @@ SemanticGraphView GraphStorage::View() const
 void Analyzer::Consume(const SyntaxArena& arena, NodeId root)
 {
 	arena_ = &arena;
+	if (template_witness_)
+		template_witness_->BeginTranslationUnit(arena.SourceFile(root));
 	if (&arena.SharedStrings() != &strings_)
 		ThrowInternalCompilerError("semantic analyzer does not own syntax strings");
 	Program& program = *program_;
@@ -2728,6 +2736,8 @@ void Analyzer::Consume(const SyntaxArena& arena, NodeId root)
 		edge = arena.NextEdge(edge))
 		AnalyzeDeclaration(arena.EdgeChild(edge), program.GlobalScope(), root_, false);
 	CompleteTranslationUnitDemand();
+	if (template_witness_)
+		template_witness_->FinishTranslationUnit(*this);
 	// The typed production path publishes linkage identity once, after all
 	// template-demand work has completed. Textual semantic output preserves
 	// the assignment's historical rendering contract and has no graph consumer.

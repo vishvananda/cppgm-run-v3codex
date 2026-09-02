@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "semantic/diagnostics/template_witness.h"
 
 namespace cppgm
 {
@@ -72,6 +73,8 @@ void Analyzer::DemandRuntimeFunction(BindingId binding,
 {
 	if (binding == kNoBinding) return;
 	binding = program_->bindings[binding].canonical;
+	if (template_witness_)
+		template_witness_->RecordRequireDefinition(binding);
 	RecordFunctionDemand(binding, reason);
 	EnsureFunctionExceptionSpecification(binding);
 	if (current_function_context_ != kNoBinding &&
@@ -162,6 +165,8 @@ void Analyzer::CompleteFunctionDefinition(BindingId binding)
 	binding = program_->bindings[binding].canonical;
 	GetMutableFunction(binding).definition_state =
 		FUNCTION_DEFINITION_COMPLETE;
+	if (template_witness_)
+		template_witness_->RecordFunctionInstantiation(binding);
 	++demanded_function_emissions_;
 	if (!stats_) return;
 	if (FunctionObjectDefinitionRequired(binding))

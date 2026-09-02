@@ -408,7 +408,8 @@ lowering::Stats::Stats()
 lowering::ir::Program lowering::BuildProgram(const std::vector<lowering::Source>& sources,
 	const PreprocessingOptions& options, lowering::Stats* stats,
 	bool complete_constructor_unwind, bool host_object_emission,
-	bool prune_unreachable_weak_functions, bool retain_local_names)
+	bool prune_unreachable_weak_functions, bool retain_local_names,
+	semantic::TemplateWitnessObserver* template_witness)
 {
 	if (sources.empty()) ThrowLoweringInvocation("no PA15 source inputs");
 	if (stats) *stats = lowering::Stats();
@@ -422,7 +423,7 @@ lowering::ir::Program lowering::BuildProgram(const std::vector<lowering::Source>
 		semantic::Stats semantic_stats;
 		ConsumeTranslationUnit(sources[i].path, sources[i].source, options,
 			consumer, stats ? &semantic_stats : 0, complete_constructor_unwind,
-			host_object_emission);
+			host_object_emission, false, template_witness);
 		if (stats)
 		{
 			semantic::Stats& semantic = stats->semantic;
@@ -641,9 +642,11 @@ lowering::ir::Program lowering::BuildProgram(const std::vector<lowering::Source>
 
 void lowering::WriteLowIR(const std::vector<lowering::Source>& sources,
 	const PreprocessingOptions& options, std::ostream& output,
-	lowering::Stats* stats)
+	lowering::Stats* stats,
+	semantic::TemplateWitnessObserver* template_witness)
 {
-	lowering::ir::Program program = lowering::BuildProgram(sources, options, stats);
+	lowering::ir::Program program = lowering::BuildProgram(sources, options, stats,
+		false, false, false, true, template_witness);
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
 	CountingStreamBuffer buffer(output.rdbuf());

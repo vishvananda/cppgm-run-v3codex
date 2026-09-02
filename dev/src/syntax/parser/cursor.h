@@ -161,6 +161,7 @@ protected:
 		const NodeId node = parser.arena_.Make(tag, TokenDescription(position));
 		parser.arena_.SetSemanticPayload(
 			node, parser.tokens_[position].spelling);
+		parser.arena_.SetTokenRange(node, position, position + 1);
 		return node;
 	}
 

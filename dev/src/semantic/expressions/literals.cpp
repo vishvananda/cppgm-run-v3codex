@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "preprocess/tokens/post_tokenizer.h"
 #include "support/exceptions.h"
 #include "support/scoped_state.h"
@@ -828,6 +829,19 @@ ExpressionInfo Analyzer::AnalyzeNamedValue(
 		}
 	}
 	const BindingRecord& binding = program_->bindings[found.ordinary];
+	if (template_witness_ && binding.kind == BIND_VARIABLE &&
+		binding.member_owner != kNoEntity && !binding.non_static_data_member)
+	{
+		for (EntityId owner = binding.member_owner; owner != kNoEntity;
+			owner = program_->entities[owner].enclosing_class)
+			if (owner < class_template_pattern_by_entity_.size() &&
+				class_template_pattern_by_entity_[owner] != kNoDumpEdge)
+			{
+				template_witness_->RecordVariableInstantiation(
+					program_->bindings[found.ordinary].canonical);
+				break;
+			}
+	}
 	if (found.ordinary < variable_template_bindings_.size() &&
 		variable_template_bindings_[found.ordinary] != 0 && binding.constant &&
 		(IsIntegral(binding.type, true) || IsFloating(binding.type)))

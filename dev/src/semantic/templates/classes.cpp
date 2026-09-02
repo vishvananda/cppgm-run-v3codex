@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "semantic/presentation/templates.h"
 #include "support/exceptions.h"
 #include "support/scoped_state.h"
@@ -393,6 +394,24 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 					&arguments)) return LookupResult();
 				const TypeId type = InstantiateAliasTemplate(alias, arguments);
 				if (type == kNoType) return LookupResult();
+				if (template_witness_)
+				{
+					bool dependent_arguments = false;
+					for (std::size_t argument = 0;
+						argument < arguments.size(); ++argument)
+						if (arguments[argument].IsDependent() ||
+							((arguments[argument].kind == TEMPLATE_ARGUMENT_TYPE ||
+							  arguments[argument].kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
+							 FunctionTemplateTypeIsDependent(arguments[argument].type)))
+							dependent_arguments = true;
+					if (dependent_arguments)
+						template_witness_->NoteDependentAliasUse(structure,
+							static_cast<std::uint32_t>(alias));
+					else if (TemplateWitnessSourceUseEnabled())
+						template_witness_->RecordAliasUse(structure,
+							static_cast<std::uint32_t>(alias), arguments,
+							argument_syntax.size());
+				}
 				found = LookupResult();
 				found.type = type;
 			}
@@ -411,6 +430,24 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 				if (specialization == kNoBinding)
 					specialization = InstantiateClassTemplate(pattern, arguments);
 				if (specialization == kNoBinding) return LookupResult();
+				if (template_witness_)
+				{
+					bool dependent_arguments = false;
+					for (std::size_t argument = 0;
+						argument < arguments.size(); ++argument)
+						if (arguments[argument].IsDependent() ||
+							((arguments[argument].kind == TEMPLATE_ARGUMENT_TYPE ||
+							  arguments[argument].kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
+							 FunctionTemplateTypeIsDependent(arguments[argument].type)))
+							dependent_arguments = true;
+					if (dependent_arguments)
+						template_witness_->NoteDependentClassUse(structure,
+							static_cast<std::uint32_t>(pattern));
+					else if (TemplateWitnessSourceUseEnabled())
+						template_witness_->RecordClassUse(structure,
+							static_cast<std::uint32_t>(pattern), specialization,
+							arguments, argument_syntax.size());
+				}
 				found = LookupResult();
 				found.type = program_->bindings[specialization].type;
 				found.type_declaration = specialization;
@@ -1407,7 +1444,44 @@ void Analyzer::ApplyClassTemplateMemberDefinitions(
 			AnalyzeOutOfClassSpecialMember(node, definition_scope,
 				definition_scope, true);
 		else if (arena_->IsTag(node, ::cppgm::syntax::STAG_SIMPLE_DECLARATION))
+		{
+			if (demanded && template_witness_)
+			{
+				const NodeId list = FindChild(
+					node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
+				const NodeId item = list == kNoNode ? kNoNode :
+					FirstSemanticChild(list);
+				const NodeId declarator = item == kNoNode ? kNoNode :
+					FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
+				const NodeId structure = declarator == kNoNode ? kNoNode :
+					DeclaratorNameStructure(declarator);
+				if (structure != kNoNode)
+					template_witness_->RecordInstantiatedClassUse(structure,
+						static_cast<std::uint32_t>(index), specialization,
+						arguments);
+			}
 			AnalyzeSimple(node, definition_scope, root_, false, true, demanded);
+			if (demanded && template_witness_)
+			{
+				const NodeId list = FindChild(
+					node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
+				const NodeId item = list == kNoNode ? kNoNode :
+					FirstSemanticChild(list);
+				const NodeId declarator = item == kNoNode ? kNoNode :
+					FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
+				const NameId name = declarator == kNoNode ? 0 :
+					DeclaratorName(declarator);
+				if (name != 0)
+				{
+					const LookupResult found = program_->LookupDirect(
+						actual_owner, name, LOOKUP_ORDINARY);
+					if (found.ordinary != kNoBinding &&
+						program_->bindings[found.ordinary].kind == BIND_VARIABLE)
+						template_witness_->RecordVariableInstantiation(
+							program_->bindings[found.ordinary].canonical);
+				}
+			}
+		}
 		else if (arena_->IsTag(node, ::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
 			arena_->IsTag(node, ::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION))
 		{
@@ -2691,6 +2765,10 @@ void Analyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 void Analyzer::AnalyzeExplicitInstantiation(NodeId node,
 	ScopeId scope, bool definition)
 {
+	const std::size_t witness_mark = template_witness_ ?
+		template_witness_->SourceEventMark() : 0;
+	const std::size_t witness_closure_mark = template_witness_ ?
+		template_witness_->ClosureEventMark() : 0;
 	const NodeId target = FirstSemanticChild(node);
 	if (target == kNoNode)
 		ThrowSemanticError("explicit instantiation has no target");
@@ -2698,9 +2776,17 @@ void Analyzer::AnalyzeExplicitInstantiation(NodeId node,
 		!arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_SPECIFIER))
 	{
 		if (AnalyzeExplicitFunctionInstantiation(target, scope, definition))
+		{
+			if (template_witness_)
+				template_witness_->DiscardSourceEvents(witness_mark);
 			return;
+		}
 		if (AnalyzeExplicitVariableInstantiation(target, scope, definition))
+		{
+			if (template_witness_)
+				template_witness_->DiscardSourceEvents(witness_mark);
 			return;
+		}
 		ThrowSemanticError(
 			"explicit instantiation target is not a supported template");
 	}
@@ -2760,6 +2846,8 @@ void Analyzer::AnalyzeExplicitInstantiation(NodeId node,
 		ThrowSemanticError(
 			"explicit class instantiation target is incomplete");
 	const BindingId specialization = program_->entities[entity].declaration;
+	if (definition && template_witness_)
+		template_witness_->RecordClassFinalization(pattern.marker_entity);
 	if (class_template_explicit_instantiation_states_.size() <= specialization)
 		class_template_explicit_instantiation_states_.resize(
 			static_cast<std::size_t>(specialization) + 1, 0);
@@ -2771,6 +2859,8 @@ void Analyzer::AnalyzeExplicitInstantiation(NodeId node,
 				"explicit instantiation declaration follows its definition");
 		state |= 1;
 		SetClassExplicitInstantiationSuppression(entity, true);
+		if (template_witness_)
+			template_witness_->DiscardSourceEvents(witness_mark);
 		return;
 	}
 	if ((state & 2) != 0)
@@ -2812,6 +2902,12 @@ void Analyzer::AnalyzeExplicitInstantiation(NodeId node,
 			demand_member(entity_constructors_[entity][i]);
 	if (entity < entity_destructor_by_entity_.size())
 		demand_member(entity_destructor_by_entity_[entity]);
+	if (template_witness_)
+	{
+		template_witness_->DiscardSourceEvents(witness_mark);
+		template_witness_->DiscardRequireDefinitionEvents(
+			witness_closure_mark);
+	}
 }
 }
 }

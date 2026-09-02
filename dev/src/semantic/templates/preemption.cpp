@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "support/exceptions.h"
 
 #include <limits>
@@ -223,6 +224,8 @@ void Analyzer::EnsureStaticMemberStorage(
 	dump_.nodes[declaration].declaration_only = true;
 	dump_.Add(root_, declaration);
 	static_member_storage_by_binding_[member] = declaration;
+	if (template_witness_)
+		template_witness_->RecordVariableInstantiation(member);
 }
 
 }

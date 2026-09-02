@@ -67,7 +67,8 @@ void ConsumeTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
 	SemanticGraphConsumer& consumer,
 	Stats* stats, bool complete_constructor_unwind,
-	bool host_object_emission, bool source_type_view)
+	bool host_object_emission, bool source_type_view,
+	TemplateWitnessObserver* template_witness)
 {
 #if CPPGM_TELEMETRY_ENABLED
 	const std::chrono::steady_clock::time_point started =
@@ -81,7 +82,7 @@ void ConsumeTranslationUnit(const std::string& path,
 	{
 		Analyzer analyzer(graph, sink, stats,
 			true, false, complete_constructor_unwind, host_object_emission,
-			source_type_view);
+			source_type_view, template_witness);
 		syntax::RunTranslationUnit(path, source, options,
 			0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
 	}

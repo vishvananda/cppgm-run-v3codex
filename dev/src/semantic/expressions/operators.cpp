@@ -248,7 +248,8 @@ ExpressionInfo Analyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
 	}
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
-		overloaded_operands, false, target, &overloaded)) return overloaded;
+		overloaded_operands, false, target, &overloaded, 0, node))
+		return overloaded;
 	const std::uint32_t operand_object = ExpressionObject(operand),
 		operand_complete_object = ExpressionCompleteObject(operand);
 	(void)ApplyBuiltinUnaryConversion(operation, &operand);
@@ -489,7 +490,7 @@ ExpressionInfo Analyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	}
 	if (CandidateSubstitutionFailed()) return right;
 	return BuildBinaryExpression(operation, arena_->Payload(node),
-		left_syntax, right_syntax, left, right, scope);
+		left_syntax, right_syntax, left, right, scope, node);
 }
 
 bool Analyzer::PrepareBuiltinComparison(const std::string& operation,
@@ -625,7 +626,7 @@ TypeId Analyzer::PrepareBuiltinArithmetic(
 ExpressionInfo Analyzer::BuildBinaryExpression(
 	const std::string& operation, std::string display_operation,
 	NodeId left_syntax, NodeId right_syntax, ExpressionInfo left,
-	ExpressionInfo right, ScopeId scope)
+	ExpressionInfo right, ScopeId scope, NodeId witness_source)
 {
 	const int op = ClassifyOperationSpelling(operation);
 	ExpressionInfo typeid_comparison; if (TryAnalyzeTypeidComparison(operation, display_operation, left_syntax, right_syntax, left, right, scope, &typeid_comparison)) return typeid_comparison;
@@ -642,7 +643,7 @@ ExpressionInfo Analyzer::BuildBinaryExpression(
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, kNoType, &overloaded,
-		builtin_competes ? &builtin_ranks : 0)) return overloaded;
+		builtin_competes ? &builtin_ranks : 0, witness_source)) return overloaded;
 	ExpressionInfo member_pointer;
 	if (TryAnalyzeMemberPointerApplication(operation, display_operation,
 		left, right, &member_pointer)) return member_pointer;

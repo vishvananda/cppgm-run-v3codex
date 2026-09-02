@@ -1802,7 +1802,8 @@ bool Analyzer::TryAnalyzeOverloadedOperator(
 	const std::vector<NodeId>& operand_syntax,
 	const std::vector<ExpressionInfo>& operands, bool member_only,
 	TypeId target, ExpressionInfo* result,
-	const std::vector<ConversionRank>* competing_builtin_ranks)
+	const std::vector<ConversionRank>* competing_builtin_ranks,
+	NodeId witness_source)
 {
 	bool overloadable_operand = false;
 	bool class_operand = false;
@@ -1942,6 +1943,7 @@ bool Analyzer::TryAnalyzeOverloadedOperator(
 		arguments_syntax.push_back(i < operand_syntax.size() ?
 			operand_syntax[i] : kNoNode);
 	}
+	RecordFunctionTemplateSourceCall(witness_source, selected, 0);
 	*result = BuildResolvedCall(selected, scope, arguments_syntax, arguments,
 		selected_nonstatic_member ? &selected_object : 0, target,
 		selected_member ? naming_class : kNoEntity,
@@ -1954,7 +1956,7 @@ bool Analyzer::TryAnalyzeCallOperator(ScopeId scope,
 	const ExpressionInfo& callee,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target,
-	ExpressionInfo* result)
+	ExpressionInfo* result, NodeId witness_source)
 {
 	std::vector<NodeId> operands_syntax(1, kNoNode);
 	std::vector<ExpressionInfo> operands(1, callee);
@@ -1965,7 +1967,7 @@ bool Analyzer::TryAnalyzeCallOperator(ScopeId scope,
 			AnalyzeExpression(argument_syntax[i], scope));
 	}
 	return TryAnalyzeOverloadedOperator("()", scope, operands_syntax,
-		operands, true, target, result);
+		operands, true, target, result, 0, witness_source);
 }
 
 bool Analyzer::TryAnalyzeCallSurrogate(ScopeId scope,

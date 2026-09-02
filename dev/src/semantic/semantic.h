@@ -15,6 +15,8 @@ namespace cppgm
 namespace semantic
 {
 
+class TemplateWitnessObserver;
+
 enum NamePathParseFamily
 {
 	NAME_PATH_PARSE_SYNTAX_FALLBACK,
@@ -287,7 +289,8 @@ void ConsumeTranslationUnit(const std::string& path,
 	Stats* stats = 0,
 	bool complete_constructor_unwind = false,
 	bool host_object_emission = false,
-	bool source_type_view = false);
+	bool source_type_view = false,
+	TemplateWitnessObserver* template_witness = 0);
 
 }
 

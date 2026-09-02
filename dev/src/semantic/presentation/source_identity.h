@@ -21,7 +21,13 @@ struct TemplateBinding
 };
 
 std::string RenderType(const semantic::Program& program, semantic::TypeId type);
-std::string RenderEntity(const semantic::Program& program, semantic::EntityId entity);
+std::string RenderName(const semantic::Program& program,
+	semantic::ScopeId owner, semantic::NameId name,
+	bool show_anonymous_namespace = false);
+std::string RenderTemplateArgument(const semantic::Program& program,
+	const semantic::TemplateArgument& argument);
+std::string RenderEntity(const semantic::Program& program,
+	semantic::EntityId entity, bool show_anonymous_namespace = false);
 std::string RenderFunction(const semantic::Program& program,
 	semantic::BindingId binding, semantic::TypeId type,
 	const std::vector<TemplateBinding>& substitutions);

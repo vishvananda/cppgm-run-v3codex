@@ -479,6 +479,7 @@ private:
 			component_names.size() > 1))
 		{
 			const NodeId name = arena_.Make("structured-type-name");
+			arena_.SetTokenRange(name, first, position_);
 			arena_.AddFlags(name, SYNTAX_FLAG_SEMANTIC_ONLY);
 			if (global) arena_.Add(name, arena_.Make("global-qualifier"));
 			for (std::size_t i = 0; i < component_names.size(); ++i)
@@ -780,6 +781,7 @@ NodeId SyntaxParser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_
 		}
 		if (!saw_type && Match(KW_TYPENAME))
 		{
+			const std::size_t first = token_position;
 			std::string name;
 			NodeId structure = kNoNode;
 			if (!ParseName(&name, true, true, true, &structure))
@@ -789,6 +791,7 @@ NodeId SyntaxParser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_
 			}
 			const NodeId dependent_type = MakeStructuredNode(for_type_id ?
 				"type-name" : "decl-specifier", name, structure);
+			arena_.SetTokenRange(dependent_type, first, position_);
 			arena_.AddFlags(dependent_type, SYNTAX_FLAG_TYPENAME);
 			arena_.Add(sequence, dependent_type);
 			if (first_type && first_type->empty()) *first_type = name;
@@ -833,6 +836,7 @@ NodeId SyntaxParser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_
 			const NodeId name_node = arena_.Make(for_type_id ? "type-name" :
 				"decl-specifier", for_type_id || decorated ? name :
 				"TT_IDENTIFIER:" + name);
+			arena_.SetTokenRange(name_node, name_mark.position, position_);
 			arena_.SetSemanticPayload(name_node, strings_.Intern(name));
 			if (structure != kNoNode) arena_.Add(name_node, structure);
 			arena_.Add(sequence, name_node);
@@ -1273,6 +1277,8 @@ NodeId SyntaxParser::ParseExpression(int minimum_precedence)
 				Spelling(operator_position);
 		const NodeId expression = arena_.Make(right_associative ?
 			"assignment-expression" : "binary-expression", description);
+		arena_.SetTokenRange(expression, operator_position,
+			operator_position + (kind == kRShiftFirstToken ? 2 : 1));
 		arena_.SetSemanticPayload(expression, strings_.Intern(
 			kind == kRShiftFirstToken ? ">>" : Spelling(operator_position)));
 		arena_.Add(expression, left);
@@ -1406,9 +1412,13 @@ NodeId SyntaxParser::ParsePrimaryExpression()
 		{
 			NodeId structure = kNoNode;
 			if (!ParseName(&name, true, true, true, &structure)) return kNoNode;
-			return MakeStructuredNode("id-expression", name, structure);
+			const NodeId expression =
+				MakeStructuredNode("id-expression", name, structure);
+			arena_.SetTokenRange(expression, first, position_);
+			return expression;
 		}
 		const NodeId expression = arena_.Make("id-expression", name);
+		arena_.SetTokenRange(expression, first, position_);
 		const TextId semantic_name = position_ == first + 1 ?
 			tokens_[first].spelling : strings_.Intern(name);
 		arena_.SetSemanticPayload(expression, semantic_name);
@@ -1481,6 +1491,7 @@ NodeId SyntaxParser::ParsePostfixSuffixes(NodeId value) {
 			const std::size_t operation = position_++;
 			const bool dependent_template = Match(KW_TEMPLATE);
 			const bool destructor_member = At(OP_COMPL);
+			const std::size_t member_first = position_;
 			std::string member;
 			NodeId structure = kNoNode;
 			const bool qualified_member = AtIdentifier() && AtOffset(1, OP_COLON2);
@@ -1492,8 +1503,10 @@ NodeId SyntaxParser::ParsePostfixSuffixes(NodeId value) {
 			if (dependent_template) member = "template " + member;
 			const NodeId expression = MakeTokenNode("member-expression", operation);
 			arena_.Add(expression, value);
-			arena_.Add(expression, MakeStructuredNode(
-				"identifier", member, structure));
+			const NodeId identifier = MakeStructuredNode(
+				"identifier", member, structure);
+			arena_.SetTokenRange(identifier, member_first, position_);
+			arena_.Add(expression, identifier);
 			value = expression;
 			continue;
 		}
@@ -2188,6 +2201,7 @@ NodeId SyntaxParser::ParseTemplateParameter()
 }
 NodeId SyntaxParser::ParseTemplate(bool in_class)
 {
+	const std::size_t first = position_;
 	if (!Match(KW_TEMPLATE)) return kNoNode;
 	const std::size_t parameter_mark = active_non_type_parameter_names_.size();
 	const NodeId declaration = arena_.Make("template-declaration");
@@ -2225,6 +2239,7 @@ NodeId SyntaxParser::ParseTemplate(bool in_class)
 		SetNameFact(last_declared_names_[i], kKnownTemplate);
 		SetNameFact(last_declared_names_[i], kKnownNonTemplate, false);
 	}
+	arena_.SetTokenRange(declaration, first, position_);
 	return declaration;
 }
 NodeId SyntaxParser::ParseCtorInitializer()

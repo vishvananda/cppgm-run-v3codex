@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "semantic/extensions/function_control_attributes.h"
 #include "support/exception_types.h"
 #include "support/scoped_state.h"
@@ -2162,6 +2163,9 @@ BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 			parameter_offsets.begin(), parameter_offsets.end());
 	}
 	CompleteFunctionTemplatePlaceholderResult(index, binding, member_owner);
+	if (template_witness_)
+		template_witness_->RecordFunctionSpecialization(
+			program_->bindings[binding].canonical, completed, arguments);
 	return binding;
 }
 

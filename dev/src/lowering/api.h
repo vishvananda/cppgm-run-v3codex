@@ -135,13 +135,15 @@ ir::Program BuildProgram(
 	bool complete_constructor_unwind = false,
 	bool host_object_emission = false,
 	bool prune_unreachable_weak_functions = false,
-	bool retain_local_names = true);
+	bool retain_local_names = true,
+	semantic::TemplateWitnessObserver* template_witness = 0);
 
 // Analyze all inputs through PA12, lower directly from the borrowed canonical
 // graph into one typed LowIR program, and serialize the PA15 assignment view.
 void WriteLowIR(const std::vector<Source>& sources,
 	const PreprocessingOptions& options, std::ostream& output,
-	Stats* stats = 0);
+	Stats* stats = 0,
+	semantic::TemplateWitnessObserver* template_witness = 0);
 
 }  // namespace lowering
 }

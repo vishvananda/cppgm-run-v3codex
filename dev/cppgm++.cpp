@@ -6,6 +6,7 @@
 #include "syntax/syntax.h"
 #include "semantic/type_view.h"
 #include "semantic/semantic.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "lowering/api.h"
 #include "lowir/io/frontend_adapter.h"
 #include "compiler_object/linker.h"
@@ -31,6 +32,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
@@ -266,6 +268,8 @@ struct SourceOutputInvocation
   bool has_debug_info = false;
   bool line_tables = false;
   bool collect_stats = false;
+	string witness_output;
+	string witness_debug_output;
   lowir_opt::InlinePolicyOverrides inline_limits;
 };
 
@@ -304,11 +308,19 @@ SourceOutputInvocation parse_source_output_invocation(
       invocation.line_tables = args[i] != "-g0";
       continue;
     }
-    if(allow_lowir_options &&
-       (args[i] == "--witness" || args[i] == "--witness-debug")) {
-      consume_required_option_argument(args, i, args[i], "output file");
-      continue;
-    }
+	if(allow_lowir_options &&
+	   (args[i] == "--witness" || args[i] == "--witness-debug")) {
+	  const bool debug = args[i] == "--witness-debug";
+	  const string option = args[i];
+	  consume_required_option_argument(args, i, option, "output file");
+	  string & destination = debug ? invocation.witness_debug_output :
+		invocation.witness_output;
+	  if(!destination.empty())
+		cppgm::driver_errors::ThrowInvocation(
+		  "multiple " + option + " outputs provided");
+	  destination = args[i];
+	  continue;
+	}
     if(allow_lowir_options && args[i] == "-I") {
       consume_required_option_argument(args, i, "-I", "include path");
       invocation.include_paths.push_back(args[i]);
@@ -2153,6 +2165,20 @@ int run_emit_semantics_mode(const vector<string> & args)
 void report_lowir_semantic_stats(const cppgm::lowering::Stats & stats);
 void report_lowir_lowering_stats(const cppgm::lowering::Stats & stats);
 
+void write_template_witness_output(const string & path,
+	const string & contents)
+{
+	if(path.empty()) return;
+	ofstream output(path.c_str(), ios::out | ios::trunc);
+	if(!output)
+		cppgm::driver_errors::ThrowInputOutput(
+			"unable to open witness output file: " + path);
+	output << contents;
+	if(!output)
+		cppgm::driver_errors::ThrowInputOutput(
+			"unable to write witness output file: " + path);
+}
+
 int run_emit_lowir_mode(const vector<string> & args)
 {
 	const SourceOutputInvocation invocation =
@@ -2174,6 +2200,11 @@ int run_emit_lowir_mode(const vector<string> & args)
 			string((istreambuf_iterator<char>(input)), istreambuf_iterator<char>())));
 	}
 	cppgm::lowering::Stats stats;
+	unique_ptr<cppgm::semantic::TemplateWitnessObserver> template_witness;
+	if(!invocation.witness_output.empty() ||
+	   !invocation.witness_debug_output.empty())
+		template_witness.reset(
+			new cppgm::semantic::TemplateWitnessObserver());
 	const bool object_capable_output = invocation.has_debug_info ||
 		invocation.has_optimization_level;
 	if(!object_capable_output) {
@@ -2183,7 +2214,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 					invocation.macro_actions[i].define,
 					invocation.macro_actions[i].argument));
 		cppgm::lowering::WriteLowIR(sources, options, output,
-			invocation.collect_stats ? &stats : 0);
+			invocation.collect_stats ? &stats : 0, template_witness.get());
 	} else {
 		options.include_search_paths = invocation.include_paths;
 		cppgm::ConfigureHostedPreprocessing(&options, true,
@@ -2198,7 +2229,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 		{
 			cppgm::lowering::ir::Program typed =
 				cppgm::lowering::BuildProgram(sources, options,
-					invocation.collect_stats ? &stats : 0, true, true, false);
+					invocation.collect_stats ? &stats : 0, true, true, false,
+					true, template_witness.get());
 			program = cppgm::lowir_io::AdaptTypedLowirForBackend(
 				std::move(typed));
 		}
@@ -2209,6 +2241,15 @@ int run_emit_lowir_mode(const vector<string> & args)
 			sources.size() == 1 ? sources[0].path : "<translation-unit>",
 			invocation.collect_stats, invocation.inline_limits);
 		output << lowir_model::serialize_lowir_program(program);
+	}
+	if(!output)
+		cppgm::driver_errors::ThrowInputOutput(
+			"unable to write output file: " + invocation.output);
+	if(template_witness.get()) {
+		write_template_witness_output(invocation.witness_output,
+			template_witness->Text());
+		write_template_witness_output(invocation.witness_debug_output,
+			template_witness->Text());
 	}
 	if(invocation.collect_stats) {
 		report_lowir_semantic_stats(stats);

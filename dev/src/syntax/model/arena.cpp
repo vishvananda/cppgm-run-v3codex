@@ -699,6 +699,32 @@ std::size_t SyntaxArena::TokenLast(NodeId node) const
 	return nodes_[node].token_last;
 }
 
+std::size_t SyntaxArena::TokenCount() const
+{
+	return tokens_.size();
+}
+
+const std::string& SyntaxArena::TokenSpelling(std::size_t token) const
+{
+	return strings_.Get(token < tokens_.size() ? tokens_[token].spelling : 0);
+}
+
+const std::string& SyntaxArena::TokenSourceFile(std::size_t token) const
+{
+	return strings_.Get(
+		token < tokens_.size() ? tokens_[token].source_file : 0);
+}
+
+std::size_t SyntaxArena::TokenSourceLine(std::size_t token) const
+{
+	return token < tokens_.size() ? tokens_[token].source_line : 0;
+}
+
+std::size_t SyntaxArena::TokenSourceColumn(std::size_t token) const
+{
+	return token < tokens_.size() ? tokens_[token].source_column : 0;
+}
+
 const std::string& SyntaxArena::SourceFile(NodeId node) const
 {
 	const std::size_t token = nodes_[node].token_first;

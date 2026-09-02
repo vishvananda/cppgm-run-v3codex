@@ -26,6 +26,7 @@ using namespace syntax;
 
 struct BracedInitializationContext;
 class RetainedTemplateValidator;
+class TemplateWitnessObserver;
 
 enum GeneratedLibraryName
 {
@@ -81,7 +82,8 @@ public:
 	Analyzer(GraphStorage& graph, std::ostream& output,
 		Stats* stats, bool retain_lowering_facts = false,
 		bool render_output = true, bool complete_constructor_unwind = false,
-		bool host_object_emission = false, bool source_type_view = false)
+		bool host_object_emission = false, bool source_type_view = false,
+		TemplateWitnessObserver* template_witness = 0)
 		: arena_(0), output_(output), stats_(stats), strings_(graph.strings),
 		  program_(&graph.program),
 		  retain_lowering_facts_(retain_lowering_facts),
@@ -89,6 +91,7 @@ public:
 		  complete_constructor_unwind_(complete_constructor_unwind),
 		  host_object_emission_(host_object_emission),
 		  source_type_view_(source_type_view),
+		  template_witness_(template_witness),
 		  dump_(graph.dump), root_(graph.root),
 		  class_polymorphism_(graph.class_polymorphism),
 		  function_template_dependent_result_shape_(kNoType),
@@ -204,6 +207,7 @@ public:
 
 private:
 	friend class RetainedTemplateValidator;
+	friend class TemplateWitnessObserver;
 	NodeId FindChild(NodeId node, const char* tag) const;
 	NodeId FindChild(NodeId node, SyntaxTagCode tag) const;
 	bool HasDeclSpecifier(NodeId specifiers, const char* spelling) const;
@@ -222,6 +226,9 @@ private:
 	TypeId DependentQualifiedTypeShape(NodeId syntax);
 	LookupResult LookupExplicitUnqualifiedTemplateName(
 		ScopeId scope, NameId name, LookupKind kind);
+	void RecordFunctionTemplateSourceCall(NodeId syntax,
+		BindingId selected, std::size_t explicit_count);
+	bool TemplateWitnessSourceUseEnabled() const;
 	NamePath StructuredNamePath(NodeId syntax);
 	NamePath SyntaxNamePath(NodeId syntax);
 	LookupResult LookupSyntaxName(NodeId syntax, ScopeId scope,
@@ -1294,11 +1301,12 @@ private:
 		ScopeId scope, const std::vector<NodeId>& operand_syntax,
 		const std::vector<ExpressionInfo>& operands, bool member_only,
 		TypeId target, ExpressionInfo* result,
-		const std::vector<ConversionRank>* competing_builtin_ranks = 0);
+		const std::vector<ConversionRank>* competing_builtin_ranks = 0,
+		NodeId witness_source = kNoNode);
 	bool TryAnalyzeCallOperator(ScopeId scope, const ExpressionInfo& callee,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target,
-		ExpressionInfo* result);
+		ExpressionInfo* result, NodeId witness_source = kNoNode);
 	bool TryAnalyzeCallSurrogate(ScopeId scope, const ExpressionInfo& callee,
 		const std::vector<ExpressionInfo>& arguments, TypeId target,
 		ExpressionInfo* result);
@@ -1369,7 +1377,8 @@ private:
 	// that the nested overload analysis can invalidate by reallocation.
 	ExpressionInfo BuildBinaryExpression(const std::string& operation,
 		std::string display_operation, NodeId left_syntax, NodeId right_syntax,
-		ExpressionInfo left, ExpressionInfo right, ScopeId scope);
+		ExpressionInfo left, ExpressionInfo right, ScopeId scope,
+		NodeId witness_source = kNoNode);
 	ExpressionInfo AnalyzeAssignment(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeAssignmentInBracedContext(
 		NodeId node, ScopeId scope);
@@ -1966,6 +1975,7 @@ private:
 	bool complete_constructor_unwind_;
 	bool host_object_emission_;
 	bool source_type_view_;
+	TemplateWitnessObserver* template_witness_;
 	std::vector<BindingId> source_type_override_bindings_;
 	std::vector<TypeId> source_type_override_types_;
 	DumpArena& dump_;
