@@ -1127,6 +1127,21 @@ retained dependent qualifier.  Retain only the exact-node join with W5D's
 dependent-source facts, and require the usual frozen O0/O1/O3, audit, ordinary
 test, and repeated no-witness timing gates before committing.
 
+### Phase W5M-S: Recursive entity-presentation policy
+
+Make source-identity presentation policies recursive rather than applying them
+only to the outer entity.  In particular, `show_anonymous_namespace` must flow
+through typed template arguments, declarator types, member-pointer owners, and
+value-binding scopes.  The public default remains false; witness closure paths
+that already request anonymous namespaces retain that request through the
+complete typed identity.  This is presentation machinery, not a textual
+replacement pass, and it does not change canonical entities or source events.
+
+The full PA19--PA24 manifest must prove that any changed nested identity moves
+toward the same policy already applied to its owner.  Preserve byte-identical
+witness LowIR and normal frozen output, and benchmark because the shared source
+identity renderer also serves non-witness diagnostics.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1187,6 +1202,8 @@ test, and repeated no-witness timing gates before committing.
 | W5M-O final function lifecycle | Filtered collected function instantiation/requirement facts by the binding's final explicit-instantiation suppression state | exactly 2 PA22 extern-function witnesses change and become exact, later manifests unchanged; inline/defaulted extern-class member control preserved; PA22 311/311; frozen outputs/audits exact; extended paired user +0.000% | retain; final typed state, not collection timing or source spelling, owns lifecycle publication |
 | W5M-O explicit class finalization | Published class finalization at the common completed-class boundary for explicit instantiation declarations and definitions | 3 witness deltas; PA22 +1 and PA24 +1 exact, no regression; PA22 311/311; frozen outputs/audits exact; extended paired user -0.488% | retain; class completion precedes the typed declaration/definition emission policy split |
 | W5M-O terminal object-type source | Used the authoritative terminal name component to distinguish explicit template-ids from alias/typedef/member results, while suppressing a retained dependent qualifier through W5D's exact-node provenance | terminal-only prototype improved 7 files but regressed one exact PA23 retained-body witness and was rejected; exact-node join changes 7 files, with PA22 +1 and PA24 +3 exact, no PA19/20/23 regression, all 1,532 LowIR artifacts exact; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; extended paired user +0.182%, wall +0.000%, RSS +0.020% | retain the source-role consumer; do not infer retained context from result type or source spelling |
+| W5M rejected retained-call shortcut | Allowed an explicit template-id call to bypass the retained-source suppression bit | one intended PA22 call became exact, but 6 PA19, 7 PA20, 6 PA22, 48 PA23, and 33 PA24 previously exact witnesses regressed; LowIR stayed exact | reject; explicit syntax does not prove that a call is a public evaluated use, so add typed evaluation/replay provenance before revisiting |
+| W5M-S recursive entity presentation | Propagated the existing anonymous-namespace policy through typed template arguments, declarator types, member-pointer owners, and value bindings | 2 witnesses change: PA22 gains 1 exact file, and a PA24 variable-instantiation identity gains its missing anonymous scopes; no regression, all 1,532 LowIR artifacts exact; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; paired user -0.608%, wall -0.326%, RSS -0.115% | retain as shared typed presentation machinery; keep ordinary rendering's default policy unchanged |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

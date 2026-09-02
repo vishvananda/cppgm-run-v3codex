@@ -17,7 +17,8 @@ namespace
 
 
 std::string RenderTypeAt(const Program& program, TypeId type,
-	std::size_t depth, const TemplateParameterIdentity* identity,
+	std::size_t depth, bool show_anonymous_namespace,
+	const TemplateParameterIdentity* identity,
 	const TemplateArgumentElision* elision);
 
 std::string ScopePrefix(const Program& program, ScopeId owner,
@@ -66,6 +67,7 @@ bool IsLocalEntity(const Program& program, const EntityRecord& entity)
 
 std::string RenderTemplateArgumentAt(const Program& program,
 	const TemplateArgument& argument, std::size_t depth,
+	bool show_anonymous_namespace,
 	const TemplateParameterIdentity* identity,
 	const TemplateArgumentElision* elision)
 {
@@ -73,7 +75,8 @@ std::string RenderTemplateArgumentAt(const Program& program,
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE ||
 		argument.kind == TEMPLATE_ARGUMENT_TEMPLATE)
 		result = RenderTypeAt(
-			program, argument.type, depth + 1, identity, elision);
+			program, argument.type, depth + 1, show_anonymous_namespace,
+			identity, elision);
 	if (argument.IsDependent())
 	{
 		if (identity && argument.kind == TEMPLATE_ARGUMENT_INTEGRAL)
@@ -89,7 +92,8 @@ std::string RenderTemplateArgumentAt(const Program& program,
 			ThrowInternalCompilerError("source identity argument binding is invalid");
 		const BindingRecord& binding =
 			program.bindings[argument.value_binding];
-		result = ScopePrefix(program, binding.owner);
+		result = ScopePrefix(
+			program, binding.owner, show_anonymous_namespace);
 		if (!result.empty()) result += "::";
 		result += program.names.Get(binding.name);
 		const TypeRecord& value_type = program.types.Get(
@@ -167,7 +171,7 @@ std::string RenderEntityAt(const Program& program, EntityId entity,
 			if (i != 0) result += ", ";
 			result += RenderTemplateArgumentAt(program,
 				program.canonical_template_arguments[first + i], depth + 1,
-				identity, elision);
+				show_anonymous_namespace, identity, elision);
 		}
 		result += '>';
 	}
@@ -208,6 +212,7 @@ std::string StripTypePrefix(std::string spelling)
 
 std::string RenderDeclaratorType(const Program& program, TypeId type,
 	std::string declarator, std::size_t depth, std::uint8_t pointer_cv,
+	bool show_anonymous_namespace,
 	const TemplateParameterIdentity* identity,
 	const TemplateArgumentElision* elision)
 {
@@ -225,10 +230,11 @@ std::string RenderDeclaratorType(const Program& program, TypeId type,
 			child.kind == TYPE_MEMBER_POINTER)
 			return RenderDeclaratorType(program, record.child, declarator,
 				depth + 1, static_cast<std::uint8_t>(pointer_cv | record.cv),
-				identity, elision);
+				show_anonymous_namespace, identity, elision);
 		std::string prefix = CvSuffix(record.cv);
 		std::string result = RenderDeclaratorType(program, record.child,
-			declarator, depth + 1, pointer_cv, identity, elision);
+			declarator, depth + 1, pointer_cv, show_anonymous_namespace,
+			identity, elision);
 		return prefix.empty() ? result : prefix + ' ' + result;
 	}
 	case TYPE_POINTER:
@@ -246,14 +252,14 @@ std::string RenderDeclaratorType(const Program& program, TypeId type,
 			operation += ' ';
 		declarator = operation + declarator;
 		return RenderDeclaratorType(program, record.child, declarator,
-			depth + 1, 0, identity, elision);
+			depth + 1, 0, show_anonymous_namespace, identity, elision);
 	}
 	case TYPE_ARRAY:
 		declarator += '[' + (record.dependent_bound_parameter ==
 			kNoTemplateParameter ? std::to_string(record.bound) :
 			std::string("dependent")) + ']';
 		return RenderDeclaratorType(program, record.child, declarator,
-			depth + 1, 0, identity, elision);
+			depth + 1, 0, show_anonymous_namespace, identity, elision);
 	case TYPE_FUNCTION:
 	{
 		if (!declarator.empty()) declarator = '(' + declarator + ')';
@@ -263,7 +269,8 @@ std::string RenderDeclaratorType(const Program& program, TypeId type,
 		{
 			if (i != 0) declarator += ", ";
 			declarator += RenderDeclaratorType(program, parameters[i],
-				std::string(), depth + 1, 0, identity, elision);
+				std::string(), depth + 1, 0, show_anonymous_namespace,
+				identity, elision);
 		}
 		if (record.variadic)
 		{
@@ -272,22 +279,23 @@ std::string RenderDeclaratorType(const Program& program, TypeId type,
 		}
 		declarator += ')';
 		return RenderDeclaratorType(program, record.child, declarator,
-			depth + 1, 0, identity, elision);
+			depth + 1, 0, show_anonymous_namespace, identity, elision);
 	}
 	case TYPE_MEMBER_POINTER:
 	{
 		std::string operation = RenderDeclaratorType(program,
 			static_cast<TypeId>(record.bound), std::string(), depth + 1, 0,
-			identity, elision) +
+			show_anonymous_namespace, identity, elision) +
 			"::*" + CvSuffix(pointer_cv);
 		declarator = operation + declarator;
 		return RenderDeclaratorType(program, record.child, declarator,
-			depth + 1, 0, identity, elision);
+			depth + 1, 0, show_anonymous_namespace, identity, elision);
 	}
 	case TYPE_NAMED:
 	{
 		const std::string base = RenderEntityAt(
-			program, record.entity, depth + 1, false, identity, elision);
+			program, record.entity, depth + 1, show_anonymous_namespace,
+			identity, elision);
 		return declarator.empty() ? base : base +
 			(declarator[0] == '[' ? std::string() : std::string(" ")) +
 			declarator;
@@ -303,18 +311,20 @@ std::string RenderDeclaratorType(const Program& program, TypeId type,
 }
 
 std::string RenderTypeAt(const Program& program, TypeId type,
-	std::size_t depth, const TemplateParameterIdentity* identity,
+	std::size_t depth, bool show_anonymous_namespace,
+	const TemplateParameterIdentity* identity,
 	const TemplateArgumentElision* elision)
 {
 	return RenderDeclaratorType(
-		program, type, std::string(), depth, 0, identity, elision);
+		program, type, std::string(), depth, 0, show_anonymous_namespace,
+		identity, elision);
 }
 
 }
 
 std::string RenderType(const Program& program, TypeId type)
 {
-	return RenderTypeAt(program, type, 0, 0, 0);
+	return RenderTypeAt(program, type, 0, false, 0, 0);
 }
 
 std::string RenderName(const Program& program, ScopeId owner, NameId name,
@@ -329,20 +339,22 @@ std::string RenderName(const Program& program, ScopeId owner, NameId name,
 std::string RenderTemplateArgument(const Program& program,
 	const TemplateArgument& argument)
 {
-	return RenderTemplateArgumentAt(program, argument, 0, 0, 0);
+	return RenderTemplateArgumentAt(program, argument, 0, false, 0, 0);
 }
 
 std::string RenderTemplateArgument(const Program& program,
 	const TemplateArgument& argument,
 	const TemplateParameterIdentity& identity)
 {
-	return RenderTemplateArgumentAt(program, argument, 0, &identity, 0);
+	return RenderTemplateArgumentAt(
+		program, argument, 0, false, &identity, 0);
 }
 
 std::string RenderTemplateArgument(const Program& program,
 	const TemplateArgument& argument, const TemplateArgumentElision& elision)
 {
-	return RenderTemplateArgumentAt(program, argument, 0, 0, &elision);
+	return RenderTemplateArgumentAt(
+		program, argument, 0, false, 0, &elision);
 }
 
 std::string RenderEntity(const Program& program, EntityId entity,
@@ -405,7 +417,7 @@ std::string RenderFunction(const Program& program, BindingId binding,
 			if (i != 0) result += "; ";
 			result += program.names.Get(substitutions[i].name) + " = " +
 				RenderTemplateArgumentAt(
-					program, substitutions[i].argument, 0, 0, 0);
+					program, substitutions[i].argument, 0, false, 0, 0);
 		}
 		result += ']';
 	}
