@@ -4,6 +4,7 @@
 #include "semantic/presentation/source_identity.h"
 
 #include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -275,8 +276,63 @@ std::string RenderSourceSyntax(const SyntaxArena& arena, syntax::NodeId node)
 		RenderSourceTokenRange(arena, arena.TokenFirst(node), arena.TokenLast(node));
 }
 
-std::string NormalizeSourceArgumentSpelling(std::string spelling,
-	const TemplateArgument& argument)
+struct CvSpellingShape
+{
+	std::vector<std::string> non_cv_tokens;
+	std::size_t postfix_qualifiers;
+
+	CvSpellingShape() : non_cv_tokens(), postfix_qualifiers(0) {}
+};
+
+CvSpellingShape ClassifyCvSpelling(const std::string& spelling)
+{
+	CvSpellingShape result;
+	std::string prior;
+	for (std::size_t at = 0; at < spelling.size(); )
+	{
+		const unsigned char c = static_cast<unsigned char>(spelling[at]);
+		if (std::isspace(c))
+		{
+			++at;
+			continue;
+		}
+		std::string token;
+		if (std::isalnum(c) || spelling[at] == '_')
+		{
+			std::size_t end = at + 1;
+			while (end < spelling.size())
+			{
+				const unsigned char next =
+					static_cast<unsigned char>(spelling[end]);
+				if (!std::isalnum(next) && spelling[end] != '_') break;
+				++end;
+			}
+			token = spelling.substr(at, end - at);
+			at = end;
+		}
+		else
+		{
+			token.assign(1, spelling[at]);
+			++at;
+		}
+		const bool cv = token == "const" || token == "volatile" ||
+			token == "_Atomic";
+		const bool prior_cv = prior == "const" || prior == "volatile" ||
+			prior == "_Atomic";
+		if (cv && !prior.empty() && !prior_cv)
+		{
+			const unsigned char first = static_cast<unsigned char>(prior[0]);
+			if (std::isalnum(first) || prior[0] == '_' || prior == ">" ||
+				prior == "]") ++result.postfix_qualifiers;
+		}
+		else if (!cv) result.non_cv_tokens.push_back(token);
+		prior = token;
+	}
+	return result;
+}
+
+std::string NormalizeSourceArgumentSpelling(const Program& program,
+	std::string spelling, const TemplateArgument& argument)
 {
 	if (argument.kind != TEMPLATE_ARGUMENT_TYPE &&
 		argument.kind != TEMPLATE_ARGUMENT_TEMPLATE) return spelling;
@@ -299,6 +355,12 @@ std::string NormalizeSourceArgumentSpelling(std::string spelling,
 			spelling = "const " + spelling;
 		}
 	}
+	const std::string canonical = RenderWitnessArgument(program, argument);
+	const CvSpellingShape source_shape = ClassifyCvSpelling(spelling);
+	const CvSpellingShape canonical_shape = ClassifyCvSpelling(canonical);
+	if (source_shape.non_cv_tokens == canonical_shape.non_cv_tokens &&
+		canonical_shape.postfix_qualifiers < source_shape.postfix_qualifiers)
+		return canonical;
 	return spelling;
 }
 
@@ -2047,7 +2109,8 @@ std::string TemplateWitnessObserver::RenderSourceBindings(
 		if (event.kind == SOURCE_ALIAS_USE &&
 			argument < explicit_argument_spellings.size())
 			return ElideEntities(NormalizeSourceArgumentSpelling(
-				explicit_argument_spellings[argument], event.arguments[argument]),
+				*analyzer.program_, explicit_argument_spellings[argument],
+				event.arguments[argument]),
 				replacements);
 		if (argument < explicit_argument_spellings.size())
 		{
