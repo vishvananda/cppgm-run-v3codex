@@ -593,11 +593,15 @@ position-balanced A/B blocks, then commit and push this qualifier-provenance
 foundation independently.
 
 Only after that gate may the alias renderer consume the retained qualifier
-entity.  Rendering becomes a direct `qualified owner + alias name` operation
-and deletes the scan of neighboring class-use events plus the internal-name
-fallback.  The consumer must improve the member-alias identity fixtures without
-changing unrelated PA22 witnesses or PA19/20 exactness, and receives its own
-object-equality and timing gate before retention.
+entity.  A declaration-complete written qualifier becomes a direct
+`qualified owner + alias name` operation.  Unqualified and retained-dependent
+uses keep the typed alias declaration owner until their own source-owner fact
+is available; they must not adopt a concrete replay owner.  Delete the scan of
+neighboring class-use events, while retaining the semantic mapping from an
+internal class-pattern owner to its public primary-template name.  The consumer
+must improve the member-alias identity fixtures without changing unrelated
+PA22 witnesses or PA19/20 exactness, and receives its own object-equality and
+timing gate before retention.
 
 The qualifier-provenance foundation stores one `EntityId` in existing
 `SourceEvent` padding, so the record remains 232 bytes and ordinary compiler
@@ -610,6 +614,17 @@ quantization boundary at +0.247% paired user; an extended six-block sample
 under lower load measures -0.299% paired user, -0.267% wall, and -0.038% RSS.
 The retained report is
 `/tmp/v3codex-w5m-alias-owner-source-ab-extended.json`.
+
+The contained consumer removes the neighboring-event scan and uses the
+qualifier only for declaration-complete source uses.  Exactly four PA22
+witness files change and become exact: member-alias default scope, partial-
+specialization rebind, allocator-traits owner rebind, and pack-expanded member
+alias source scope.  The retained-dependent and unqualified controls remain
+unchanged, PA22 mismatches fall 63 -> 59, and PA19/20 remain exact.  Frozen
+O0/O1/O3 objects and all three audits remain exact.  Four ABBA blocks against
+`80c93fe2` measure +0.178% paired user, +0.263% wall, and +0.438% RSS; the CPU
+gate passes.  The report is
+`/tmp/v3codex-w5m-alias-owner-consumer-ab.json`.
 
 The first W5M-F expression-range implementation called `Make` and then
 `SetTokenRange` for every parenthesized call and subscript node.  Although its
@@ -737,7 +752,8 @@ byte-identical objects.  The report is
 | W5M-O retained members | Selected retained definition provenance from the committed static-member binding and removed recursive declarator/template-name scanning | only two targeted witness files change; nested fixture exact; PA22 65 -> 64 mismatches; PA19/20 exact; O0/O1/O3 objects exact; four-block paired user -0.00%, wall +0.48%, RSS -0.27% | retain; publish same-pattern typed facts only, leaving deduced source identity as a separate category |
 | W5M-S object-type role | Retained the exact structured-type root separately from its explicit template-id component | output remains unchanged; temporary consumer probe finds the intended rooted location; PA19/20 exact; PA22 remains 64; O0/O1/O3 objects exact; four-block paired user -0.12%, wall -0.52%, RSS +0.24% | retain as output-inert source-role machinery before consumption |
 | W5M-O object-type role | Published retained object-type facts through deduced provenance while preserving explicit counts on nested components | exactly one witness file changes and becomes exact; PA22 64 -> 63; PA19/20 exact; O0/O1/O3 objects exact; four-block paired user -0.66%, wall -0.43%, RSS -0.00% | retain; source role, not renderer inference, determines binding provenance |
-| W5M-S alias qualifier | Retained the concrete structured-name carrier or unqualified naming class at the final alias-template lookup decision without changing output | `SourceEvent` remains 232 bytes; PA19/20 exact; PA22 remains 63; audits and frozen O0/O1/O3 objects exact; extended six-block paired user -0.299%, wall -0.267%, RSS -0.038% | retain before deleting alias owner reconstruction in the renderer |
+| W5M-S alias qualifier | Retained the concrete structured-name carrier for a written alias qualifier at the final lookup decision, leaving unqualified uses explicitly unqualified | `SourceEvent` remains 232 bytes; PA19/20 exact; PA22 remains 63; audits and frozen O0/O1/O3 objects exact; extended six-block paired user -0.299%, wall -0.267%, RSS -0.038% | retain before deleting alias owner reconstruction in the renderer |
+| W5M-O alias qualifier | Rendered declaration-complete written alias qualifiers directly and removed the neighboring class-use event scan | exactly four PA22 witnesses change and become exact; PA22 63 -> 59; retained-dependent controls and PA19/20 unchanged; objects/audits exact; four-block paired user +0.178% | retain; unresolved retained qualifiers require a declaration-owned fact, not a replay-derived owner |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

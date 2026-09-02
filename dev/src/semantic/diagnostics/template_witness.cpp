@@ -1865,52 +1865,29 @@ std::string TemplateWitnessObserver::RenderSourceSelection(
 		*parameters = &pattern.parameters;
 		std::string template_name = presentation::RenderName(
 			*analyzer.program_, pattern.owner, pattern.name, true);
+		if (event.qualifier_entity != kNoEntity &&
+			!event.allow_substituted_source)
+			template_name = NormalizeEntity(presentation::RenderEntity(
+				*analyzer.program_, event.qualifier_entity, true), replacements) +
+				"::" + analyzer.program_->names.Get(pattern.name);
 		if (template_name.find("__cppgm_class_template_") != std::string::npos)
 		{
-			const SourceEvent* concrete_owner = 0;
-			for (std::size_t candidate = 0;
-				candidate < source_events_.size(); ++candidate)
+			const EntityId owner =
+				analyzer.program_->EntityForScope(pattern.owner);
+			if (owner != kNoEntity && owner <
+				analyzer.class_template_pattern_by_entity_.size())
 			{
-				const SourceEvent& possible = source_events_[candidate];
-				if (possible.kind != SOURCE_CLASS_USE || possible.suppressed ||
-					possible.syntax != event.syntax ||
-					possible.binding == kNoBinding ||
-					possible.binding >= analyzer.program_->bindings.size() ||
-					possible.source_token ==
-						std::numeric_limits<std::size_t>::max() ||
-					possible.source_token >= event.source_token) continue;
-				if (!concrete_owner || possible.source_token >
-					concrete_owner->source_token) concrete_owner = &possible;
-			}
-			if (concrete_owner)
-			{
-				const EntityId owner = analyzer.EntityOf(
-					analyzer.program_->bindings[concrete_owner->binding].type);
-				if (owner != kNoEntity)
-					template_name = NormalizeEntity(presentation::RenderEntity(
-						*analyzer.program_, owner, true), replacements) + "::" +
-						analyzer.program_->names.Get(pattern.name);
-			}
-			if (template_name.find("__cppgm_class_template_") !=
-				std::string::npos)
-			{
-				const EntityId owner =
-					analyzer.program_->EntityForScope(pattern.owner);
-				if (owner != kNoEntity && owner <
-					analyzer.class_template_pattern_by_entity_.size())
+				const std::uint32_t owner_pattern =
+					analyzer.class_template_pattern_by_entity_[owner];
+				if (owner_pattern != kNoDumpEdge &&
+					owner_pattern < analyzer.class_templates_.size())
 				{
-					const std::uint32_t owner_pattern =
-						analyzer.class_template_pattern_by_entity_[owner];
-					if (owner_pattern != kNoDumpEdge &&
-						owner_pattern < analyzer.class_templates_.size())
-					{
-						const ClassTemplatePattern& owner_template =
-							analyzer.class_templates_[owner_pattern];
-						template_name = presentation::RenderName(
-							*analyzer.program_, owner_template.owner,
-							owner_template.name, true) + "::" +
-							analyzer.program_->names.Get(pattern.name);
-					}
+					const ClassTemplatePattern& owner_template =
+						analyzer.class_templates_[owner_pattern];
+					template_name = presentation::RenderName(
+						*analyzer.program_, owner_template.owner,
+						owner_template.name, true) + "::" +
+						analyzer.program_->names.Get(pattern.name);
 				}
 			}
 		}
