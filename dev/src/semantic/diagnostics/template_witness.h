@@ -299,7 +299,8 @@ private:
 	void NoteResolvedSourceUse(syntax::NodeId syntax);
 	void RecordInstantiatedClassUse(syntax::NodeId syntax,
 		std::uint32_t pattern, BindingId binding,
-		const std::vector<TemplateArgument>& arguments);
+		const std::vector<TemplateArgument>& arguments,
+		std::size_t explicit_count);
 	void RecordRetainedClassOwnerUse(syntax::NodeId syntax,
 		std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments);

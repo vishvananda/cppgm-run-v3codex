@@ -778,18 +778,22 @@ void TemplateWitnessObserver::RecordRetainedMemberClassUses(
 			 member.concrete_owner != specialization)) continue;
 		if (selected_partial == kNoDumpEdge)
 			RecordInstantiatedClassUse(member.source, pattern,
-				specialization, arguments);
+				specialization, arguments, arguments.size());
 		for (std::size_t fact_index = 0;
 			fact_index < semantic_source_facts_.size(); ++fact_index)
 		{
 			const SemanticSourceFact& fact =
 				semantic_source_facts_[fact_index];
 			if (fact.owner != member.owner ||
-				fact.kind != SEMANTIC_SOURCE_CLASS_TEMPLATE ||
+				(fact.kind != SEMANTIC_SOURCE_CLASS_TEMPLATE &&
+				 fact.kind != SEMANTIC_SOURCE_CLASS_OBJECT_TYPE) ||
 				fact.semantic_index != pattern ||
 				fact.resolution == SEMANTIC_SOURCE_CURRENT_PARTIAL) continue;
-			RecordInstantiatedClassUse(fact.syntax, pattern,
-				specialization, arguments);
+			if (fact.kind == SEMANTIC_SOURCE_CLASS_OBJECT_TYPE)
+				RecordDeducedClassUse(fact.syntax, pattern,
+					specialization, arguments);
+			else RecordInstantiatedClassUse(fact.syntax, pattern,
+				specialization, arguments, fact.explicit_count);
 		}
 	}
 }
@@ -909,10 +913,11 @@ void TemplateWitnessObserver::NoteDependentClassUse(
 
 void TemplateWitnessObserver::RecordInstantiatedClassUse(
 	syntax::NodeId syntax, std::uint32_t pattern, BindingId binding,
-	const std::vector<TemplateArgument>& arguments)
+	const std::vector<TemplateArgument>& arguments,
+	std::size_t explicit_count)
 {
 	source_events_.push_back(SourceEvent(SOURCE_CLASS_USE, syntax, pattern,
-		binding, arguments, arguments.size(), 0, next_insertion_ordinal_++));
+		binding, arguments, explicit_count, 0, next_insertion_ordinal_++));
 	source_events_.back().allow_substituted_source = true;
 }
 

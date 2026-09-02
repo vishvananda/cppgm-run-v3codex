@@ -558,6 +558,15 @@ mismatches.  Frozen O0/O1/O3 objects are byte-identical to `424c9a91`.
 Four O0 ABBA blocks measure -0.12% paired user, -0.52% wall, and +0.24% RSS;
 the report is `/tmp/v3codex-w5m-object-type-source-ab.json`.
 
+The contained consumer routes `class-object-type` facts through the existing
+deduced-class publication path while explicit component facts retain their
+written argument count.  Exactly one PA22 witness file changes, the rooted
+static-member fixture becomes exact, and PA22 mismatches fall 64 -> 63 with
+PA19/20 exact.  Frozen O0/O1/O3 objects remain byte-identical to the committed
+foundation.  Four O0 ABBA blocks measure -0.66% paired user, -0.43% wall, and
+-0.00% RSS; the report is
+`/tmp/v3codex-w5m-object-type-consumer-ab.json`.
+
 The first W5M-F expression-range implementation called `Make` and then
 `SetTokenRange` for every parenthesized call and subscript node.  Although its
 output was exact, four ABBA blocks measured +0.77% paired user time, so that
@@ -683,6 +692,7 @@ byte-identical objects.  The report is
 | W5M-O current partials | Consumed owner-scoped facts only when the written argument shape is equivalent to the selected partial owner | four focused current-owner/return fixtures and two negative controls exact; PA19 279/279 and PA20 158/158 strict remain exact; PA22 mismatches 68 -> 65; exact frozen objects; four-block paired user -0.06%, wall -0.54%, RSS -0.04% | retain; same primary-pattern identity alone is too broad |
 | W5M-O retained members | Selected retained definition provenance from the committed static-member binding and removed recursive declarator/template-name scanning | only two targeted witness files change; nested fixture exact; PA22 65 -> 64 mismatches; PA19/20 exact; O0/O1/O3 objects exact; four-block paired user -0.00%, wall +0.48%, RSS -0.27% | retain; publish same-pattern typed facts only, leaving deduced source identity as a separate category |
 | W5M-S object-type role | Retained the exact structured-type root separately from its explicit template-id component | output remains unchanged; temporary consumer probe finds the intended rooted location; PA19/20 exact; PA22 remains 64; O0/O1/O3 objects exact; four-block paired user -0.12%, wall -0.52%, RSS +0.24% | retain as output-inert source-role machinery before consumption |
+| W5M-O object-type role | Published retained object-type facts through deduced provenance while preserving explicit counts on nested components | exactly one witness file changes and becomes exact; PA22 64 -> 63; PA19/20 exact; O0/O1/O3 objects exact; four-block paired user -0.66%, wall -0.43%, RSS -0.00% | retain; source role, not renderer inference, determines binding provenance |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

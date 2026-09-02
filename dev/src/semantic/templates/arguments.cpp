@@ -374,7 +374,8 @@ bool Analyzer::AnalyzeExplicitTemplateSpecialization(
 				program_->bindings[owner].canonical, arguments,
 				argument_syntax.size());
 			template_witness_->RecordInstantiatedClassUse(components[component],
-				static_cast<std::uint32_t>(pattern_index), owner, arguments);
+				static_cast<std::uint32_t>(pattern_index), owner, arguments,
+				argument_syntax.size());
 		}
 		const EntityId entity = owner == kNoBinding ? kNoEntity :
 			EntityOf(program_->bindings[owner].type);
