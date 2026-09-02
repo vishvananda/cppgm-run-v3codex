@@ -1838,6 +1838,35 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 			presentation::TemplateEntityArgumentLimit(
 				entity, fact.explicit_count));
 	}
+	for (std::size_t i = 0; i < class_template_source_facts_.size(); ++i)
+	{
+		const ClassTemplateSourceFact& fact = class_template_source_facts_[i];
+		if (fact.binding >= analyzer.program_->bindings.size() ||
+			fact.pattern >= analyzer.class_templates_.size() ||
+			HasTrailingTemplateParameterPack(
+				analyzer.class_templates_[fact.pattern].parameters)) continue;
+		const EntityId entity = analyzer.EntityOf(
+			analyzer.program_->bindings[fact.binding].type);
+		if (entity == kNoEntity || entity >= analyzer.program_->entities.size())
+			continue;
+		const std::size_t argument_count =
+			analyzer.program_->entities[entity].template_argument_count;
+		if (fact.presentation_arity >= argument_count) continue;
+		bool found = false;
+		for (std::size_t limit = 0;
+			limit < entity_argument_limits_.size(); ++limit)
+			if (entity_argument_limits_[limit].entity == entity)
+			{
+				entity_argument_limits_[limit].count = std::min(
+					entity_argument_limits_[limit].count,
+					static_cast<std::size_t>(fact.presentation_arity));
+				found = true;
+				break;
+			}
+		if (!found) entity_argument_limits_.push_back(
+			presentation::TemplateEntityArgumentLimit(
+				entity, fact.presentation_arity));
+	}
 	for (std::size_t i = 0; i < class_specializations_.size(); ++i)
 	{
 		const ClassSpecializationFact& fact = class_specializations_[i];
