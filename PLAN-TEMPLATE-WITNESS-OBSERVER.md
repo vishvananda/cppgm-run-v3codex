@@ -694,9 +694,10 @@ parameter kind from text.  Test the public result through semantic
 relationships: rename template parameters and vary their pack roles while the
 canonical depth/ordinal identity remains stable.
 
-The retained identity layer fills only the existing entity ordinal at the
-retained type-shape, ordinary function type-shape, and template-template proxy
-marker creation points.  The shared renderer's old entry points retain their
+The retained identity layer fills only the existing entity ordinal at every
+retained/ordinary/partial-materialization type-shape creation point and at the
+template-template proxy marker creation point.  The shared renderer's old
+entry points retain their
 old behavior; a new explicit policy recursively renders typed parameter
 identities and pack expansions.  A temporary consumer probe rendered the
 dependent partial owner exactly as
@@ -707,7 +708,11 @@ mismatches.  Frozen O0/O1/O3 objects and all three file/ownership/layout audits
 are exact.  The first four-block timing was inconclusive at +0.724% paired
 user; a six-block repeat under lower host load measured +0.118% paired user,
 -0.219% wall, and -0.363% RSS, inside the 0.2% CPU gate.  The retained report
-is `/tmp/v3codex-w5m-canonical-identity-ab-extended.json`.
+is `/tmp/v3codex-w5m-canonical-identity-ab-extended.json`.  An audit then found
+and completed the otherwise order-dependent partial-materialization creator.
+Its final eight-block sample against the same pre-foundation compiler measured
+-0.119% paired user, +0.109% wall, and +0.271% RSS; the report is
+`/tmp/v3codex-w5m-canonical-identity-complete-ab-extended.json`.
 
 The first W5M-F expression-range implementation called `Make` and then
 `SetTokenRange` for every parenthesized call and subscript node.  Although its
@@ -838,7 +843,7 @@ byte-identical objects.  The report is
 | W5M-S alias qualifier | Retained the concrete structured-name carrier for a written alias qualifier at the final lookup decision, leaving unqualified uses explicitly unqualified | `SourceEvent` remains 232 bytes; PA19/20 exact; PA22 remains 63; audits and frozen O0/O1/O3 objects exact; extended six-block paired user -0.299%, wall -0.267%, RSS -0.038% | retain before deleting alias owner reconstruction in the renderer |
 | W5M-O alias qualifier | Rendered declaration-complete written alias qualifiers directly and removed the neighboring class-use event scan | exactly four PA22 witnesses change and become exact; PA22 63 -> 59; retained-dependent controls and PA19/20 unchanged; objects/audits exact; four-block paired user +0.178% | retain; unresolved retained qualifiers require a declaration-owned fact, not a replay-derived owner |
 | W5M-S retained alias owner | Related unresolved retained template-id components to the current partial owner, then joined only when final alias lookup confirmed the same declaration-owner pattern | 20-byte observer fact; optional source event 240 bytes; probe distinguishes member `f<T>` from unrelated global aliases; PA19/20 exact, PA22 unchanged at 59; objects/audits exact; compact four-block paired user -0.705% | retain before rendering the partial's canonical owner arguments |
-| W5M-S dependent identity | Completed existing template-parameter entity ordinals and added an opt-in typed source-identity rendering policy | temporary probe exactly renders the dependent partial owner including template/type parameter kinds and pack role; old renderer output unchanged; PA19/20 exact, PA22 stays 59; objects/audits exact; extended six-block paired user +0.118%, wall -0.219%, RSS -0.363% | retain as general presentation machinery; reject name/string replacement and keep the policy off the ordinary renderer path |
+| W5M-S dependent identity | Completed existing template-parameter entity ordinals at every shared-shape/proxy creation path and added an opt-in typed source-identity rendering policy | temporary probe exactly renders the dependent partial owner including template/type parameter kinds and pack role; old renderer output unchanged; PA19/20 exact, PA22 stays 59; objects/audits exact; final eight-block paired user -0.119%, wall +0.109%, RSS +0.271% | retain as general presentation machinery; reject name/string replacement and keep the policy off the ordinary renderer path |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
