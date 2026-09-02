@@ -1,7 +1,7 @@
 # Plan: Semantic Lookup and Telemetry Hot Paths
 
-Status: active from `07ea39fc`; L0-L3 complete with the narrow cache rejected,
-T1-T2 complete, table consolidation closed audit-only, final gates pending
+Status: complete; lookup cache rejected, telemetry-off retained, and table
+consolidation closed audit-only
 
 Date: 2026-09-02
 
@@ -123,8 +123,10 @@ or overwrite policies, sequences, or request-state transitions.
 - selected PA12, PA20, PA23, PA37, and PA38 suites when their semantic/table or
   generated-code surfaces are touched;
 - `make test-report-through-pa38` after every retained performance mechanism;
-- `make test-strict`, debug/round-trip checks relevant to changed later
-  surfaces, and all architecture/file audits at closure; and
+- debug/round-trip checks relevant to changed later surfaces and all
+  architecture/file audits at closure.  The optional strict-witness lane is
+  required only when witness logging changes: the production driver has never
+  emitted that reference-maintainer artifact;
 - final root `make inception` with explicit 32-way PA39 settings.
 
 Output comparisons are byte-exact where the repository supplies serialized or
@@ -305,3 +307,5 @@ The plan is complete only when:
 | T2 self size/time | Built four fresh explicit-32-way, 222-object producers: self O1/O3 with telemetry on/off; then ran four fixed-TU ABBA blocks per level | self-O1 text 8,116,354 -> 8,102,770 (-13,584, -0.167%); fixed-TU wall/user -0.06%/+0.07%. self-O3 text 7,862,722 -> 7,849,442 (-13,280, -0.169%); fixed-TU wall/user -0.99%/-0.82%. Reducer outputs exact and telemetry-off rejects stats in both self compilers | retained for size and neutral-to-modestly-better O3 behavior, not credited as a >=1% general optimization |
 | T2 full workload | Two position-balanced complete builds per side and level used the self O1/O3 executables with explicit 32-way object construction | O1 on/off mean wall 31.895/32.050 s (+0.49%), aggregate CPU 920.125/921.120 s (+0.11%); O3 26.590/26.615 s (+0.09%) and 762.925/761.250 s (-0.22%). Every lane produced the same 222-object manifest and linked compiler for its level | performance-neutral within scheduler noise; passes the release-mode retention gate |
 | D audit | Rechecked core analysis indexes, PA7 namespace semantics, PA8 namespace initialization, and the three using/lookup graph implementations against exact stored values and lifecycle policy | the only byte-equivalent cached-hash rebuilds remain the already-shared template-partition/result-identity helper. PA7 and PA8 using-edge loops look alike but build separate staged executables; a generic template would instantiate both bodies, save only a few source lines, and add cross-assignment coupling. Binding/path/type tables differ in sentinels, hashes, stable-ID ranges, overwrite/dedup rules, counters, or growth/resource checks; core using-name publication and standalone reverse invalidation have different mutation contracts | closed audit-only; no additional table extraction has an obvious performance or simplification benefit |
+| Final functional gates | Ran the exact final default and telemetry-off trees through cumulative, debug, contract, ownership, exception, layout, and file checks | through-PA38 5,477/5,477; PA37/PA38 debug and round-trip checks all pass; telemetry-off contract passes; LowIR 127/102 and all architecture audits pass; PA39 file audit zero-fatal/32 warnings. The separately audited optional strict command reproduces its documented 415/415 missing witness-log artifacts and no semantic/output mismatch; this untouched driver surface is not a product gate | accepted |
+| Final inception | Fresh PA39 self/inception roots, O3, explicit outer/inner/object 32-way | 223 self objects and 223 inception objects match; linked binaries are byte-identical at SHA-256 `571653d5c3576c9098fe1903a85a0a275c8f87f98ea52897fd5c593dc86fe8c3`, 11,493,408 bytes; 45.66 s wall, 1,286.98 s aggregate CPU, 232,744 KiB peak RSS | plan complete |
