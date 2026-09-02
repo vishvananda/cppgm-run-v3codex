@@ -1230,14 +1230,6 @@ void report_source_compile_stats(
 			 << " lookup_queries=" << semantic.lookup_queries
 			 << " lookup_scope_visits=" << semantic.lookup_scope_visits
 			 << " lookup_edge_visits=" << semantic.lookup_edge_visits
-			 << " lookup_cache_hits=" << semantic.lookup_cache_hits
-			 << " lookup_cache_misses=" << semantic.lookup_cache_misses
-			 << " lookup_cache_invalidations="
-			 << semantic.lookup_cache_invalidations
-			 << " lookup_cache_dependency_edges="
-			 << semantic.lookup_cache_dependency_edges
-			 << " lookup_cache_invalidation_pushes="
-			 << semantic.lookup_cache_invalidation_pushes
 			 << " overload_candidates=" << semantic.overload_candidates
 			 << " overload_order_comparisons="
 			 << semantic.overload_order_comparisons
@@ -2058,14 +2050,6 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " lookup_queries=" << stats.lookup_queries
            << " lookup_scope_visits=" << stats.lookup_scope_visits
            << " lookup_edge_visits=" << stats.lookup_edge_visits
-           << " lookup_cache_hits=" << stats.lookup_cache_hits
-           << " lookup_cache_misses=" << stats.lookup_cache_misses
-           << " lookup_cache_invalidations="
-           << stats.lookup_cache_invalidations
-           << " lookup_cache_dependency_edges="
-           << stats.lookup_cache_dependency_edges
-           << " lookup_cache_invalidation_pushes="
-           << stats.lookup_cache_invalidation_pushes
            << " base_path_queries=" << stats.base_path_queries
            << " base_path_cache_hits=" << stats.base_path_cache_hits
            << " base_path_cache_misses=" << stats.base_path_cache_misses
@@ -2309,14 +2293,6 @@ void report_lowir_semantic_stats(const cppgm::lowering::Stats & stats)
 			 << " lookup_queries=" << semantic.lookup_queries
 			 << " lookup_scope_visits=" << semantic.lookup_scope_visits
 			 << " lookup_edge_visits=" << semantic.lookup_edge_visits
-			 << " lookup_cache_hits=" << semantic.lookup_cache_hits
-			 << " lookup_cache_misses=" << semantic.lookup_cache_misses
-			 << " lookup_cache_invalidations="
-			 << semantic.lookup_cache_invalidations
-			 << " lookup_cache_dependency_edges="
-			 << semantic.lookup_cache_dependency_edges
-			 << " lookup_cache_invalidation_pushes="
-			 << semantic.lookup_cache_invalidation_pushes
 			 << " base_path_queries=" << semantic.base_path_queries
 			 << " base_path_cache_hits="
 			 << semantic.base_path_cache_hits

@@ -489,11 +489,6 @@ lowering::ir::Program lowering::BuildProgram(const std::vector<lowering::Source>
 			semantic.lookup_queries += semantic_stats.lookup_queries;
 			semantic.lookup_scope_visits += semantic_stats.lookup_scope_visits;
 			semantic.lookup_edge_visits += semantic_stats.lookup_edge_visits;
-			semantic.lookup_cache_hits += semantic_stats.lookup_cache_hits;
-			semantic.lookup_cache_misses += semantic_stats.lookup_cache_misses;
-			semantic.lookup_cache_invalidations += semantic_stats.lookup_cache_invalidations;
-			semantic.lookup_cache_dependency_edges += semantic_stats.lookup_cache_dependency_edges;
-			semantic.lookup_cache_invalidation_pushes += semantic_stats.lookup_cache_invalidation_pushes;
 			semantic.base_path_queries += semantic_stats.base_path_queries;
 			semantic.base_path_cache_hits += semantic_stats.base_path_cache_hits;
 			semantic.base_path_cache_misses += semantic_stats.base_path_cache_misses;

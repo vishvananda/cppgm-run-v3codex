@@ -856,9 +856,7 @@ struct Program::TemplateArgumentListRecord
 
 Program::Program(InternedStringTable& strings)
 	: names(strings), lookup_queries(0), lookup_scope_visits(0),
-	  lookup_edge_visits(0), lookup_cache_hits(0), lookup_cache_misses(0),
-	  lookup_cache_invalidations(0), lookup_cache_dependency_edges(0),
-	  lookup_cache_invalidation_pushes(0),
+	  lookup_edge_visits(0),
 	  base_path_queries(0), base_path_cache_hits(0),
 	  base_path_cache_misses(0), base_path_edge_visits(0),
 	  virtual_base_path_visits(0), virtual_base_layout_lookups(0),

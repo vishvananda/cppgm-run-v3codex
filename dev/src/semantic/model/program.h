@@ -925,9 +925,6 @@ public:
 		function_template_abi_function_parameter_types;
 	std::vector<FunctionTemplateAbiRecipe> function_template_abi_recipes;
 	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
-	std::size_t lookup_cache_hits, lookup_cache_misses;
-	std::size_t lookup_cache_invalidations, lookup_cache_dependency_edges;
-	std::size_t lookup_cache_invalidation_pushes;
 	mutable std::size_t base_path_queries, base_path_cache_hits,
 		base_path_cache_misses;
 	mutable std::size_t base_path_edge_visits;

@@ -2779,14 +2779,6 @@ void Analyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
 		stats_->lookup_edge_visits = program.lookup_edge_visits;
-		stats_->lookup_cache_hits = program.lookup_cache_hits;
-		stats_->lookup_cache_misses = program.lookup_cache_misses;
-		stats_->lookup_cache_invalidations =
-			program.lookup_cache_invalidations;
-		stats_->lookup_cache_dependency_edges =
-			program.lookup_cache_dependency_edges;
-		stats_->lookup_cache_invalidation_pushes =
-			program.lookup_cache_invalidation_pushes;
 		stats_->base_path_queries = program.base_path_queries;
 		stats_->base_path_cache_hits = program.base_path_cache_hits;
 		stats_->base_path_cache_misses = program.base_path_cache_misses;

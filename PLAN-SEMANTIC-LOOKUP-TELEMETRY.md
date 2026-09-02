@@ -1,7 +1,7 @@
 # Plan: Semantic Lookup and Telemetry Hot Paths
 
-Status: active from `07ea39fc`; L0 baseline complete, implementation and
-measurement pending
+Status: active from `07ea39fc`; L0-L1 complete, lookup measurement and
+telemetry implementation pending
 
 Date: 2026-09-02
 
@@ -293,3 +293,5 @@ The plan is complete only when:
 | Planning | Audited current lookup, rejected-cache history, telemetry shape, and prior compact-table work | Core counters have no producers; broad cache removal was +4.36% user/+4.78% wall; one-entry cache also regressed | broad lookup cache prohibited; proceed with narrow measurement |
 | L0 | Froze clean synchronized starting checkpoint and checked for stale profilers | 32 CPUs; no Cachegrind, Valgrind, perf, benchmark, self, or inception process; compiler SHA-256 `966dbf70...`; `.text` 6,440,742 bytes; total sections 7,234,653 bytes | baseline accepted |
 | L0 gates | Ran PA11 and all architecture/file audits | PA11 72/72; LowIR 127/102; source sets 14/52/233; owner and exception audits clean; layout 487 files; PA38 file audit zero-fatal/32 established warnings | proceed to L1 |
+| L1 | Removed five impossible core cache counters from `Program`, semantic stats, lowering aggregation, and all integrated reports | 51 source lines removed; current stats report only the real 213,269 queries, 694,418 scope visits, and 34,085 edge visits for `program.cpp`; repository search finds no core producer/report while PA7/PA8 counters and producers remain | retained |
+| L1 gates | Rebuilt `cppgm++`, ran semantic tests and audits | PA11 72/72; through PA11 659/659; layout/source-set/semantic-owner audits clean; PA38 file audit zero-fatal/32 | commit and push |
