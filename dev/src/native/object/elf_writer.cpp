@@ -1,4 +1,5 @@
 #include "native/object/elf_writer.h"
+#include "native/errors.h"
 #include "native/driver/session.h"
 #include "native/driver/stats.h"
 #include "native/encoding/address_folding.h"
@@ -28,7 +29,6 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
-#include <stdexcept>
 #include <sys/stat.h>
 #include <utility>
 #include <vector>
@@ -131,7 +131,7 @@ void require_operands(const mir_model::MirInstruction & instruction,
                       std::size_t count)
 {
   if(instruction.operands.size() != count)
-    throw std::logic_error("invalid MIR operand count for native encoding");
+    native_errors::ThrowInternal("invalid MIR operand count for native encoding");
 }
 
 unsigned xmm_index(XmmRegister xmm)
@@ -143,7 +143,7 @@ void emit_scalar_prefix(CodeBuffer & out, const lowir_model::LowType & type)
 {
   if(type.kind == lowir_model::LTK_F32) out.byte(0xf3);
   else if(type.kind == lowir_model::LTK_F64) out.byte(0xf2);
-  else throw std::logic_error("SSE scalar operation requires f32 or f64");
+  else native_errors::ThrowInternal("SSE scalar operation requires f32 or f64");
 }
 
 void float_address(CodeBuffer & out, const mir_model::MirOperand & address,
@@ -161,7 +161,7 @@ void float_address(CodeBuffer & out, const mir_model::MirOperand & address,
                      address.address_binding);
     base = XR_R11;
     displacement = 0;
-  } else throw std::logic_error("unsupported SSE memory operand");
+  } else native_errors::ThrowInternal("unsupported SSE memory operand");
 }
 
 void emit_xmm_load(CodeBuffer & out, XmmRegister destination,
@@ -269,7 +269,7 @@ void emit_x87_load_memory(CodeBuffer & out,
     emit_x87_memory(out, 0xdd, 0, operand, function);
   else if(type.kind == lowir_model::LTK_F80)
     emit_x87_memory(out, 0xdb, 5, operand, function);
-  else throw std::logic_error("x87 load requires a floating type");
+  else native_errors::ThrowInternal("x87 load requires a floating type");
 }
 
 void emit_x87_store_pop_memory(CodeBuffer & out,
@@ -283,7 +283,7 @@ void emit_x87_store_pop_memory(CodeBuffer & out,
     emit_x87_memory(out, 0xdd, 3, operand, function);
   else if(type.kind == lowir_model::LTK_F80)
     emit_x87_memory(out, 0xdb, 7, operand, function);
-  else throw std::logic_error("x87 store requires a floating type");
+  else native_errors::ThrowInternal("x87 store requires a floating type");
 }
 
 void emit_x87_load_bits(CodeBuffer & out, std::uint64_t low,
@@ -382,7 +382,7 @@ void emit_x87_binary(CodeBuffer & out,
   else if(instruction.opcode == mir_model::MirInstruction::MI_FMUL) out.byte(0xc9);
   else if(instruction.opcode == mir_model::MirInstruction::MI_FSUB) out.byte(0xe9);
   else if(instruction.opcode == mir_model::MirInstruction::MI_FDIV) out.byte(0xf9);
-  else throw std::logic_error("invalid x87 binary operation");
+  else native_errors::ThrowInternal("invalid x87 binary operation");
   emit_x87_store_pop(out, instruction.operands[0], instruction.type, function);
 }
 
@@ -552,7 +552,7 @@ X86Condition float_value_condition(mir_model::MirInstruction::Opcode opcode)
   if(opcode == mir_model::MirInstruction::MI_FGT) return XC_B;
   if(opcode == mir_model::MirInstruction::MI_FLE) return XC_AE;
   if(opcode == mir_model::MirInstruction::MI_FGE) return XC_BE;
-  throw std::logic_error("invalid scalar floating comparison opcode");
+  native_errors::ThrowInternal("invalid scalar floating comparison opcode");
 }
 
 void emit_float_compare_value(CodeBuffer & out,
@@ -608,7 +608,7 @@ void emit_float_negate(CodeBuffer & out,
 X64Register require_register(const mir_model::MirOperand & operand)
 {
   if(operand.kind != mir_model::MirOperand::OP_REG)
-    throw std::logic_error("native encoder expected a register operand");
+    native_errors::ThrowInternal("native encoder expected a register operand");
   return operand.reg;
 }
 
@@ -627,7 +627,7 @@ void emit_move(CodeBuffer & out, const mir_model::MirInstruction & instruction)
   else if(source.kind == mir_model::MirOperand::OP_GLOBAL)
     emit_symbol_move(out, destination, source.symbol,
                      source.address_binding);
-  else throw std::logic_error("unsupported native move operand");
+  else native_errors::ThrowInternal("unsupported native move operand");
 }
 
 void emit_atomic_memory(CodeBuffer & out,
@@ -1000,7 +1000,7 @@ void emit_bswap(CodeBuffer & out, const mir_model::MirInstruction & instruction)
   const X64Register destination = require_register(instruction.operands[0]);
   const unsigned width = type_width(instruction.type);
   if(width != 32 && width != 64)
-    throw std::logic_error("native bswap requires 32 or 64 bits");
+    native_errors::ThrowInternal("native bswap requires 32 or 64 bits");
   emit_rex(out, width == 64, XR_RAX, destination);
   out.byte(0x0f);
   out.byte(0xc8 + (static_cast<unsigned>(destination) & 7));
@@ -1033,7 +1033,7 @@ void emit_immediate_shift(
   require_operands(instruction, 2);
   const X64Register destination = require_register(instruction.operands[0]);
   if(instruction.operands[1].kind != mir_model::MirOperand::OP_IMM)
-    throw std::logic_error("native immediate shift count is not immediate");
+    native_errors::ThrowInternal("native immediate shift count is not immediate");
   const unsigned count =
     static_cast<unsigned>(instruction.operands[1].imm) & 63;
   if(count == 0) return;
@@ -1047,7 +1047,7 @@ lowir_model::LocalLabelId block_target(CodeBuffer & out,
                                        const mir_model::MirOperand & operand)
 {
   if(operand.kind != mir_model::MirOperand::OP_LABEL)
-    throw std::logic_error("native branch target is not a label");
+    native_errors::ThrowInternal("native branch target is not a label");
   return out.block_label(operand.block);
 }
 
@@ -1069,7 +1069,7 @@ bool prepare_explicit_operands(CodeBuffer & out,
     const X64Register left = require_register(instruction.operands[0]);
     const X64Register right = require_register(instruction.operands[1]);
     if(left != right)
-      throw std::logic_error("native zero test requires one repeated register");
+      native_errors::ThrowInternal("native zero test requires one repeated register");
     emit_test_register(out, left, type_width(instruction.type));
     return true;
   }
@@ -1103,7 +1103,7 @@ bool prepare_explicit_operands(CodeBuffer & out,
     return true;
   } else if(instruction.opcode == mir_model::MirInstruction::MI_RET) {
     if(instruction.operands.size() > 1)
-      throw std::logic_error("native return has too many operands");
+      native_errors::ThrowInternal("native return has too many operands");
     if(!instruction.operands.empty()) {
       const mir_model::MirOperand & result = instruction.operands[0];
       if(result.kind == mir_model::MirOperand::OP_REG) {
@@ -1112,12 +1112,12 @@ bool prepare_explicit_operands(CodeBuffer & out,
         if(!function ||
            (function->return_type.kind != lowir_model::LTK_F32 &&
             function->return_type.kind != lowir_model::LTK_F64))
-          throw std::logic_error("native xmm return lacks a scalar-float ABI");
+          native_errors::ThrowInternal("native xmm return lacks a scalar-float ABI");
         if(result.xmm != XMM_0)
           emit_xmm_register_move(out, XMM_0, result.xmm,
                                  function->return_type);
       } else {
-        throw std::logic_error("native return result is not a register");
+        native_errors::ThrowInternal("native return result is not a register");
       }
     }
   }
@@ -1133,7 +1133,7 @@ void emit_return_value_transfer(
     return;
   }
   if(instruction.opcode != mir_model::MirInstruction::MI_FRET)
-    throw std::logic_error("native epilogue received a non-return");
+    native_errors::ThrowInternal("native epilogue received a non-return");
   require_operands(instruction, 1);
   emit_x87_load(out, instruction.operands[0], instruction.type, function);
 }
@@ -1248,7 +1248,7 @@ void emit_eh_catch(CodeBuffer & out,
                    const mir_model::MirInstruction & instruction)
 {
   if(instruction.operands.size() != 1 && instruction.operands.size() != 2)
-    throw std::logic_error("invalid MIR EH catch operands");
+    native_errors::ThrowInternal("invalid MIR EH catch operands");
   emit_eh_enter_catch(out);
   const lowir_model::LocalLabelId done = out.internal_label("eh_catch_done");
   emit_symbol_move(out, XR_R11, kEhSelector);
@@ -1300,7 +1300,7 @@ bool emit_eh_instruction(CodeBuffer & out,
 {
   switch(instruction.opcode) {
   case mir_model::MirInstruction::MI_EH_PUSH:
-    if(!function) throw std::logic_error("EH push outside function");
+    if(!function) native_errors::ThrowInternal("EH push outside function");
     emit_eh_push(out, instruction, *function); return true;
   case mir_model::MirInstruction::MI_EH_POP:
     require_operands(instruction, 0); emit_eh_pop(out); return true;
@@ -1345,19 +1345,19 @@ bool emit_atomic_instruction(CodeBuffer & out,
     out.byte(0xf0);
     return true;
   case mir_model::MirInstruction::MI_XCHG:
-    if(!function) throw std::logic_error("atomic exchange outside function");
+    if(!function) native_errors::ThrowInternal("atomic exchange outside function");
     emit_atomic_memory(out, instruction, *function, false, false, 0x86, 0x87);
     return true;
   case mir_model::MirInstruction::MI_LOCK_XADD:
-    if(!function) throw std::logic_error("atomic fetch-add outside function");
+    if(!function) native_errors::ThrowInternal("atomic fetch-add outside function");
     emit_atomic_memory(out, instruction, *function, true, true, 0xc0, 0xc1);
     return true;
   case mir_model::MirInstruction::MI_LOCK_CMPXCHG:
-    if(!function) throw std::logic_error("atomic compare-exchange outside function");
+    if(!function) native_errors::ThrowInternal("atomic compare-exchange outside function");
     emit_atomic_memory(out, instruction, *function, true, true, 0xb0, 0xb1);
     return true;
   case mir_model::MirInstruction::MI_LOCK_CMPXCHG16B: {
-    if(!function) throw std::logic_error("atomic i128 compare-exchange outside function");
+    if(!function) native_errors::ThrowInternal("atomic i128 compare-exchange outside function");
     require_operands(instruction, 1);
     X64Register base = XR_RBP;
     long long displacement = 0;
@@ -1402,7 +1402,7 @@ void emit_tls_address_instruction(
   require_operands(instruction, 2);
   if(instruction.operands[1].kind != mir_model::MirOperand::OP_SYMBOL ||
      !instruction.tls_storage_symbol.valid())
-    throw std::logic_error("TLS address source has invalid symbol facts");
+    native_errors::ThrowInternal("TLS address source has invalid symbol facts");
   if(out.relocatable_addresses())
     emit_tls_address(out, require_register(instruction.operands[0]),
                      instruction.tls_storage_symbol);
@@ -1422,14 +1422,14 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     emit_move(out, instruction);
     return;
   case mir_model::MirInstruction::MI_LOAD:
-    if(!function) throw std::logic_error("load outside function");
+    if(!function) native_errors::ThrowInternal("load outside function");
     require_operands(instruction, 2);
     emit_address_normalized_load(out,
       require_register(instruction.operands[0]), instruction.operands[1],
       instruction.type, *function);
     return;
   case mir_model::MirInstruction::MI_STORE:
-    if(!function) throw std::logic_error("store outside function");
+    if(!function) native_errors::ThrowInternal("store outside function");
     require_operands(instruction, 2);
     if(instruction.operands[1].kind == mir_model::MirOperand::OP_IMM)
       emit_address_immediate_store(out, instruction.operands[0],
@@ -1440,7 +1440,7 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
       type_width(instruction.type), *function);
     return;
   case mir_model::MirInstruction::MI_LEA:
-    if(!function) throw std::logic_error("lea outside function");
+    if(!function) native_errors::ThrowInternal("lea outside function");
     require_operands(instruction, 2);
     if(instruction.operands[1].kind == mir_model::MirOperand::OP_FRAME) {
       emit_lea(out, require_register(instruction.operands[0]), XR_RBP,
@@ -1448,7 +1448,7 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
       return;
     }
     if(instruction.operands[1].kind != mir_model::MirOperand::OP_DEREF)
-      throw std::logic_error("native lea source is not memory-shaped");
+      native_errors::ThrowInternal("native lea source is not memory-shaped");
     if(instruction.operands[1].has_index)
       emit_indexed_lea(out, require_register(instruction.operands[0]),
                        instruction.operands[1].reg,
@@ -1460,31 +1460,31 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
                   instruction.operands[1].offset);
     return;
   case mir_model::MirInstruction::MI_FMOV:
-    if(!function) throw std::logic_error("floating move outside function");
+    if(!function) native_errors::ThrowInternal("floating move outside function");
     emit_float_move(out, instruction, *function);
     return;
   case mir_model::MirInstruction::MI_FNEG:
-    if(!function) throw std::logic_error("floating negate outside function");
+    if(!function) native_errors::ThrowInternal("floating negate outside function");
     emit_float_negate(out, instruction, *function);
     return;
   case mir_model::MirInstruction::MI_FADD:
-    if(!function) throw std::logic_error("floating add outside function");
+    if(!function) native_errors::ThrowInternal("floating add outside function");
     emit_float_binary(out, instruction, *function, 0x58);
     return;
   case mir_model::MirInstruction::MI_FSUB:
-    if(!function) throw std::logic_error("floating subtract outside function");
+    if(!function) native_errors::ThrowInternal("floating subtract outside function");
     emit_float_binary(out, instruction, *function, 0x5c);
     return;
   case mir_model::MirInstruction::MI_FMUL:
-    if(!function) throw std::logic_error("floating multiply outside function");
+    if(!function) native_errors::ThrowInternal("floating multiply outside function");
     emit_float_binary(out, instruction, *function, 0x59);
     return;
   case mir_model::MirInstruction::MI_FDIV:
-    if(!function) throw std::logic_error("floating divide outside function");
+    if(!function) native_errors::ThrowInternal("floating divide outside function");
     emit_float_binary(out, instruction, *function, 0x5e);
     return;
   case mir_model::MirInstruction::MI_FCMP:
-    if(!function) throw std::logic_error("floating compare outside function");
+    if(!function) native_errors::ThrowInternal("floating compare outside function");
     require_operands(instruction, 2);
     emit_float_compare_flags(out, instruction.operands[0], instruction.operands[1],
                              instruction.type, *function);
@@ -1495,26 +1495,26 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
   case mir_model::MirInstruction::MI_FGT:
   case mir_model::MirInstruction::MI_FLE:
   case mir_model::MirInstruction::MI_FGE:
-    if(!function) throw std::logic_error("floating comparison outside function");
+    if(!function) native_errors::ThrowInternal("floating comparison outside function");
     emit_float_compare_value(out, instruction, *function);
     return;
   case mir_model::MirInstruction::MI_SITOFP:
   case mir_model::MirInstruction::MI_UITOFP:
-    if(!function) throw std::logic_error("integer-to-float conversion outside function");
+    if(!function) native_errors::ThrowInternal("integer-to-float conversion outside function");
     emit_integer_to_float(out, instruction, *function);
     return;
   case mir_model::MirInstruction::MI_FPTOSI:
   case mir_model::MirInstruction::MI_FPTOUI:
-    if(!function) throw std::logic_error("float-to-integer conversion outside function");
+    if(!function) native_errors::ThrowInternal("float-to-integer conversion outside function");
     emit_float_to_integer(out, instruction, *function);
     return;
   case mir_model::MirInstruction::MI_FPEXT:
   case mir_model::MirInstruction::MI_FPTRUNC:
-    if(!function) throw std::logic_error("floating width conversion outside function");
+    if(!function) native_errors::ThrowInternal("floating width conversion outside function");
     emit_float_width_conversion(out, instruction, *function);
     return;
   case mir_model::MirInstruction::MI_FSTP:
-    if(!function) throw std::logic_error("x87 store outside function");
+    if(!function) native_errors::ThrowInternal("x87 store outside function");
     require_operands(instruction, 1);
     emit_x87_store_pop(out, instruction.operands[0], instruction.type, *function);
     return;
@@ -1556,13 +1556,13 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
        (instruction.operands[0].kind == mir_model::MirOperand::OP_FRAME ||
         instruction.operands[0].kind == mir_model::MirOperand::OP_DEREF ||
         instruction.operands[0].kind == mir_model::MirOperand::OP_GLOBAL)) {
-      if(!function) throw std::logic_error("memory compare outside function");
+      if(!function) native_errors::ThrowInternal("memory compare outside function");
       emit_integer_memory_compare(out, instruction, *function);
     } else if(instruction.operands.size() == 2 &&
               (instruction.operands[1].kind == mir_model::MirOperand::OP_FRAME ||
                instruction.operands[1].kind == mir_model::MirOperand::OP_DEREF ||
                instruction.operands[1].kind == mir_model::MirOperand::OP_GLOBAL)) {
-      if(!function) throw std::logic_error("memory compare outside function");
+      if(!function) native_errors::ThrowInternal("memory compare outside function");
       emit_integer_register_memory_compare(out, instruction, *function);
     } else {
       emit_integer_alu(out, instruction, 0x39, 7, function,
@@ -1626,13 +1626,13 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     emit_tls_address_instruction(out, instruction);
     return;
   case mir_model::MirInstruction::MI_JCC:
-    if(!function) throw std::logic_error("conditional branch outside function");
+    if(!function) native_errors::ThrowInternal("conditional branch outside function");
     require_operands(instruction, 1);
     emit_condition_jump(out, instruction.condition,
       block_target(out, instruction.operands[0]));
     return;
   case mir_model::MirInstruction::MI_JMP:
-    if(!function) throw std::logic_error("jump outside function");
+    if(!function) native_errors::ThrowInternal("jump outside function");
     require_operands(instruction, 1);
     emit_unconditional_jump(out,
       block_target(out, instruction.operands[0]));
@@ -1640,16 +1640,16 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
   case mir_model::MirInstruction::MI_CALL:
     require_operands(instruction, 1);
     if(instruction.operands[0].kind != mir_model::MirOperand::OP_SYMBOL)
-      throw std::logic_error("direct call target is not a symbol");
+      native_errors::ThrowInternal("direct call target is not a symbol");
     if(strlen_detail::emit_prefix16_call(out, instruction)) return;
     out.byte(0xe8);
     out.relative32(instruction.operands[0].symbol);
     return;
   case mir_model::MirInstruction::MI_SIBLING_CALL:
-    if(!function) throw std::logic_error("sibling call outside function");
+    if(!function) native_errors::ThrowInternal("sibling call outside function");
     require_operands(instruction, 1);
     if(instruction.operands[0].kind != mir_model::MirOperand::OP_SYMBOL)
-      throw std::logic_error("sibling call target is not a symbol");
+      native_errors::ThrowInternal("sibling call target is not a symbol");
     emit_function_teardown(out, *function);
     out.byte(0xe9);
     out.relative32(instruction.operands[0].symbol);
@@ -1666,11 +1666,11 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     out.byte(0xa4);
     return;
   case mir_model::MirInstruction::MI_RET:
-    if(!function) throw std::logic_error("return outside function");
+    if(!function) native_errors::ThrowInternal("return outside function");
     emit_function_return(out, *function);
     return;
   case mir_model::MirInstruction::MI_FRET:
-    if(!function) throw std::logic_error("x87 return outside function");
+    if(!function) native_errors::ThrowInternal("x87 return outside function");
     require_operands(instruction, 1);
     emit_x87_load(out, instruction.operands[0], instruction.type, *function);
     emit_function_return(out, *function);
@@ -1678,7 +1678,8 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
   case mir_model::MirInstruction::MI_EXIT:
     emit_immediate_move(out, XR_RAX, 60); out.byte(0x0f); out.byte(0x05); return;
   default:
-    throw std::logic_error("MIR opcode is not implemented by foundation encoder");
+    native_errors::ThrowSource(
+      "MIR opcode is not implemented by foundation encoder");
   }
 }
 
@@ -2295,7 +2296,7 @@ HostFunctionLayout emit_host_tls_wrapper(
     const lowir_model::SymbolMetadata & metadata)
 {
   if(!metadata.tls_for_symbol_id.valid())
-    throw std::logic_error("TLS wrapper has no storage target");
+    native_errors::ThrowInternal("TLS wrapper has no storage target");
   out.align(2);
   HostFunctionLayout layout;
   layout.program_symbol = symbol;
@@ -2337,7 +2338,7 @@ void emit_relocatable_objects(
 void put_little(std::vector<unsigned char> & out, std::size_t offset,
                 std::uint64_t value, unsigned count)
 {
-  if(offset + count > out.size()) throw std::logic_error("invalid ELF header field");
+  if(offset + count > out.size()) native_errors::ThrowInternal("invalid ELF header field");
   for(unsigned i = 0; i < count; ++i)
     out[offset + i] = static_cast<unsigned char>(value >> (i * 8));
 }
@@ -2402,16 +2403,18 @@ void finish_native_executable(
   std::chrono::steady_clock::time_point write_started;
   if(stats) write_started = std::chrono::steady_clock::now();
   std::ofstream out(path.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
-  if(!out) throw std::runtime_error("unable to open native output: " + path);
+  if(!out) native_errors::ThrowInputOutput(
+    "unable to open native output: " + path);
   out.write(reinterpret_cast<const char *>(&header[0]),
             static_cast<std::streamsize>(header.size()));
   if(!content.bytes().empty())
     out.write(reinterpret_cast<const char *>(&content.bytes()[0]),
               static_cast<std::streamsize>(content.bytes().size()));
-  if(!out) throw std::runtime_error("unable to write native output: " + path);
+  if(!out) native_errors::ThrowInputOutput(
+    "unable to write native output: " + path);
   out.close();
   if(::chmod(path.c_str(), 0755) != 0)
-    throw std::runtime_error("unable to mark native output executable: " + path +
+    native_errors::ThrowInputOutput("unable to mark native output executable: " + path +
                              ": " + std::strerror(errno));
   if(stats) {
     stats->fixups = content.fixup_count();
@@ -2534,7 +2537,7 @@ HostFunctionLayout emit_prepared_host_function(
   for(std::size_t block = 0; block < function.host_eh_clauses.size(); ++block)
     if(!function.host_eh_clauses[block].empty()) {
       if(block >= function.block_labels.size())
-        throw std::logic_error("invalid MIR block identity");
+        native_errors::ThrowInternal("invalid MIR block identity");
       layout.clause_order.push_back(lowir_model::BlockId(
         static_cast<std::uint32_t>(block)));
     }
@@ -2780,7 +2783,7 @@ std::size_t intern_data_section(
   } else {
     const std::uint32_t identity = name;
     if(!name.valid() || identity >= indexes.custom.size())
-      throw std::logic_error("invalid custom section identity");
+      native_errors::ThrowInternal("invalid custom section identity");
     slot = &indexes.custom[identity];
   }
   if(*slot != static_cast<std::size_t>(-1)) {
@@ -2819,8 +2822,9 @@ void write_linux_executable(const std::string & path,
                             Stats * stats)
 {
   if(program.target != mir_model::MirProgram::TARGET_LINUX)
-    throw std::runtime_error("ELF writer requires linux target");
-  if(program.startup.empty()) throw std::runtime_error("native executable has no startup entry");
+    native_errors::ThrowInvocation("ELF writer requires linux target");
+  if(program.startup.empty())
+    native_errors::ThrowSource("native executable has no startup entry");
   std::chrono::steady_clock::time_point encode_start;
   if(stats) encode_start = std::chrono::steady_clock::now();
   CodeBuffer content;
@@ -2846,7 +2850,7 @@ void write_linux_executable(const std::string & path,
   ProgramLoweringSession lowering(source, target, optimization_level, stats);
   mir_model::MirProgram program = lowering.take_program_shell();
   if(program.startup.empty())
-    throw std::runtime_error("native executable has no startup entry");
+    native_errors::ThrowSource("native executable has no startup entry");
   CodeBuffer content;
   content.bind_symbol_names(program.symbol_names);
   content.bind_strings(program.strings);
@@ -2882,7 +2886,7 @@ void write_linux_relocatable(
     Stats * stats)
 {
   if(target != "linux")
-    throw std::runtime_error("ELF object writer requires linux target");
+    native_errors::ThrowInvocation("ELF object writer requires linux target");
   ProgramLoweringSession lowering(source, target, optimization_level, stats);
   const lowir_model::LowirProgram & prepared_source =
     lowering.prepared_program();
@@ -2903,7 +2907,7 @@ void write_linux_relocatable(
     const std::uint32_t symbol = wrapper.symbol;
     if(!wrapper.metadata.tls_for_symbol_id.valid()) continue;
     if(!wrapper.symbol.valid() || symbol >= emitted_tls_wrappers.size())
-      throw std::logic_error("invalid TLS wrapper symbol identity");
+      native_errors::ThrowInternal("invalid TLS wrapper symbol identity");
     if(emitted_tls_wrappers[symbol]) continue;
     emitted_tls_wrappers[symbol] = 1;
     functions.push_back(emit_host_tls_wrapper(
@@ -2982,11 +2986,13 @@ void write_linux_relocatable(
             std::chrono::steady_clock::time_point();
   std::ofstream output(path.c_str(),
     std::ios::out | std::ios::binary | std::ios::trunc);
-  if(!output) throw std::runtime_error("unable to open object output: " + path);
+  if(!output) native_errors::ThrowInputOutput(
+    "unable to open object output: " + path);
   if(!image.empty()) output.write(
     reinterpret_cast<const char *>(&image[0]),
     static_cast<std::streamsize>(image.size()));
-  if(!output) throw std::runtime_error("unable to write object output: " + path);
+  if(!output) native_errors::ThrowInputOutput(
+    "unable to write object output: " + path);
   if(stats) {
     stats->fixups = relocations;
     stats->output_bytes = image.size();

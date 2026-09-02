@@ -736,7 +736,8 @@ Append one row for each retained or rejected increment:
 | E7l | native instruction, operand, ABI, intrinsic, phi, and wide-value lowering | malformed LowIR combinations, unsupported target forms, allocation limits, and lowering invariants shared generic bases in hot selectors | native LowIR-input/source/resource/internal types through the cold boundary; selection and allocation alternatives remain ordinary flow | PA38 native structural and generated-behavior surface | successful frozen remains 0; generic logic/runtime sites -15/-40 | -320 text, +192 rodata, neutral EH header, -320 unwind, -1,096 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `aac2b352` | retained |
 | E7m | native host-EH analysis/LSDA and x86 encoding | MIR/region/encoding contradictions and one EH range ceiling shared generic logic base in hot backend owners | centralized native internal/resource/source cold boundary; encoder availability and EH traversal remain ordinary flow | PA38 native EH, encoding, structural, and generated behavior | successful frozen remains 0; generic logic sites -62 | -768 text, -64 rodata, -8 EH header, -360 unwind, -988 exception table | cumulative frozen user 0.440/0.445 s; paired +0.56% (neutral) | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `c87b815a` | retained |
 | E7n | native code buffer, relocations, fixups, labels, and ELF string table | symbol/label/relocation invariants, unresolved source symbols, and finite offset/identity ranges shared generic bases | native internal/source/resource types through the centralized cold boundary; fixup resolution and branch relaxation remain ordinary flow | PA38 native object, relocation, encoding, and generated behavior | successful frozen remains 0; generic logic/runtime sites -50/-19 | -2,368 text, neutral rodata, -24 EH header, -672 unwind, -1,064 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `afcdcde4` | retained |
-| E7o | ELF section, symbol, relocation, COMDAT, and host-object layout | object-layout identities/invariants, undefined alias input, and 16-bit section ceiling shared generic bases | native internal/source/resource types through the centralized cold boundary; section/symbol lookup remains ordinary flow | PA38 native object, EH relocation, COMDAT, and generated behavior | successful frozen remains 0; generic logic/runtime sites -43/-2 | -256 text, neutral rodata, -16 EH header, -192 unwind, -456 exception table | cumulative frozen user 0.450/0.455 s; paired +1.67% (noise) | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | pending | retained |
+| E7o | ELF section, symbol, relocation, COMDAT, and host-object layout | object-layout identities/invariants, undefined alias input, and 16-bit section ceiling shared generic bases | native internal/source/resource types through the centralized cold boundary; section/symbol lookup remains ordinary flow | PA38 native object, EH relocation, COMDAT, and generated behavior | successful frozen remains 0; generic logic/runtime sites -43/-2 | -256 text, neutral rodata, -16 EH header, -192 unwind, -456 exception table | cumulative frozen user 0.450/0.455 s; paired +1.67% (noise) | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `41736c1d` | retained |
+| E7p | final MIR-to-x86 and executable/object writer | encoder/MIR contradictions, unsupported opcode/source entry, target invocation, and output I/O shared generic bases | native internal/source/invocation/I/O types through the centralized cold boundary; opcode dispatch remains ordinary flow | PA38 native executable/object, encoding, and generated behavior | successful frozen remains 0; generic logic/runtime sites -55/-9; native generic census reaches zero | -6,272 text, neutral rodata, -96 EH header, -632 unwind, -1,172 exception table | frozen paired +0.56%; isolated full O1 +0.08%, O3 +0.01% CPU | PA38 45/45; through-PA38 5,477/5,477; 223 O1/O3 objects and final binaries exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1961,6 +1962,43 @@ A/B/B/A blocks reproduce object hash `8545fec6...`; baseline/candidate user
 medians are 0.450/0.455 seconds and paired candidate time is +1.67%, one timer
 tick at this sample size.  Exact output plus lower code/EH footprint and the
 surrounding neutral native slices classify that result as noise.
+
+### E7p execution record
+
+The final MIR-to-x86 and executable/object writer has no recovery catch around
+its generic failures.  Opcode dispatch, function-context selection, and output
+construction retain their ordinary switch and branch flow.  Contradictory MIR
+operands, function context, TLS facts, and object identities now use native
+internal failure; an unsupported MIR opcode or missing startup entry uses
+native source failure; target mismatch uses invocation failure; and native
+executable/object creation, writing, and permission updates use native I/O
+failure.
+
+The successful frozen compile records zero throws.  Generic logic/runtime
+sites fall by 55/9 and the final native owner leaves the inventory, bringing
+the audit to 116/216/28 and the native generic census to zero.  Against E7o,
+`.text` changes 6,458,534 -> 6,452,262; `.rodata` remains 214,720;
+`.eh_frame_hdr` 51,580 -> 51,484; `.eh_frame` 320,040 -> 319,408; and
+`.gcc_except_table` 125,404 -> 124,232.
+
+PA38 passes 45/45 and through-PA38 passes 5,477/5,477.  Four cumulative frozen
+A/B/B/A blocks reproduce object hash `8545fec6...`; baseline/candidate user
+medians are 0.445/0.450 seconds and paired candidate time is +0.56%, below
+timer resolution.
+
+The first cumulative E6c/current 32-way O1 windows reported +1.59% while O3
+reported +0.38%, so the O1 result was investigated rather than retained at
+face value.  Per-translation-unit 32-way accounting localizes no native
+regression: lowering-complete E7j/current aggregate CPU is 478.48/478.37
+seconds, and native-owner CPU is 84.30/83.79 seconds.  Direct full A/B/B/A
+comparison against E7j reproduces all 223 objects and final binaries and
+measures 506.67/507.06 seconds at O1 (+0.08%) and 511.56/511.59 seconds at O3
+(+0.01%).  An E6c/E7j per-unit control measures 476.16/478.48 seconds (+0.49%),
+consistent with the earlier lowering milestone, while contemporaneous full
+windows show isolated multi-second scheduler outliers under elevated host
+load.  The native phase is therefore retained as neutral; expected backend
+alternatives remain non-exception flow and no hot status conversion is
+justified.
 
 ## Initial code map
 
