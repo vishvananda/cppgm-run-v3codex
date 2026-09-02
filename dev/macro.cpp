@@ -6,7 +6,7 @@
 
 #include "preprocess/macros/macro_processor.h"
 #include "support/driver_errors.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 namespace
 {

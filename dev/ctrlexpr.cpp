@@ -10,7 +10,7 @@ using namespace std;
 
 #include "preprocess/expressions/control_expression.h"
 #include "support/driver_errors.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 // Mock identifier-definition policy for the standalone expression adapter.
 // return true iff first code point is odd

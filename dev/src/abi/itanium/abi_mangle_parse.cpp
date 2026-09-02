@@ -1,5 +1,5 @@
 #include "abi/itanium/abi_mangle.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 #include <algorithm>
 #include <cctype>

@@ -1,5 +1,6 @@
 #include "compiler_object/serialization.h"
 #include "compiler_object/errors.h"
+#include "support/exception_types.h"
 #include "lowir/io/prepare.h"
 
 #include <algorithm>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <string>
+#include <iosfwd>
 
 namespace cppgm
 {

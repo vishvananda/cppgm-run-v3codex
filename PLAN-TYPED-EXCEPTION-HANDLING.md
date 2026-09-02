@@ -1,8 +1,7 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E6 and the E7 optimizer, integrated-driver, and
-foundational-lowering slices are complete; E7 compiler-core and tool migration
-continues
+Status: in progress; E0-E8 are complete and E9 final performance,
+correctness, and inception closure is underway
 
 Date: 2026-09-01
 
@@ -635,10 +634,22 @@ catch-all/standard catches are reviewed terminal or cleanup boundaries.
    including GCC-O3 and Clang-O3 best-case frozen lanes.
 4. Re-run the native exception census without profiler distortion and confirm
    that no dynamically expected parser/constexpr/substitution alternative
-   unwinds.
-5. Run fresh PA39 inception with all three job counts set to 32 and require
+   unwinds.  Correlate the census with per-stage/per-translation-unit timing
+   so a zero-throw result does not conceal exception checks, cleanup regions,
+   or typed helper code in hot ordinary control flow.
+5. For every dynamically repeated exception, or any hot owner whose ordinary
+   path regresses after its error-policy change, prototype an owner-local
+   status/result alternative.  Retain non-exception flow when it is faster
+   without weakening the typed terminal failure; otherwise record the A/B
+   rejection and keep the cold exception boundary.  In particular, re-audit
+   tokenizer, parser, constexpr/substitution, optimizer eligibility, and
+   native selector/allocation paths rather than inferring cost from throw
+   counts alone.  Inspect the successful side of each proposed result API as
+   well: an out-parameter, default construction, move assignment, or repeated
+   status branch is not an improvement merely because it avoids unwinding.
+6. Run fresh PA39 inception with all three job counts set to 32 and require
    every object and final compiler to match.
-6. Remove temporary profiling/build roots, confirm no stale process, complete
+7. Remove temporary profiling/build roots, confirm no stale process, complete
    the execution ledger, commit, and push.
 
 Exit: all acceptance criteria below are satisfied at one pushed commit.
@@ -744,7 +755,7 @@ Append one row for each retained or rejected increment:
 | E7t | ABI model, vocabulary, presentation, and mangler | ABI fact/model/encoding/resource/I/O failures shared generic bases; two catch-alls restored active graph cases | centralized ABI fact-input/internal/resource/I/O exits; scoped graph-case cleanup; ordinary cache/substitution lookup remains status flow | PA14 valid, malformed, numeric, model, and mangling behavior | successful frozen remains 0; generic logic/runtime -37/-1; catch-all -2 | +2,176 text, neutral rodata, +40 EH header, -288 unwind, -924 exception table | 16-run frozen mean exactly neutral at 0.45125/0.45125 s | PA14 117/117; through-PA14 1,082/1,082; frozen objects exact; audits pass | `b4433caf` | retained |
 | E7u | PA9 CY86 frontend, backend, model, and ELF writer | CY86 source rejection, capacities, output I/O, and backend/model invariants shared generic bases | centralized CY86 source/resource/I/O/internal exits; parsing/opcode lookup stays status flow; one transactional cleanup/rethrow retained for E8 review | PA9 valid/invalid CY86 and generated native behavior | no recovery catch or valid-input unwind; generic logic/runtime -25/-13 | cy86: +3,328 text, neutral rodata, +72 EH header, +384 unwind, -1,265 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA9 20/20; through-PA9 422/422; audits pass; integrated compiler binary exact | `9b2da99f` | retained |
 | E7v | remaining staged executable adapters | invocation, output I/O, and one invalid phase-7 token used generic terminal throws | driver/optimizer/native invocation, driver I/O, and lexical source dispositions; terminal presentation unchanged | PA3-PA9, PA13/14, PA37/38 staged behavior | generic logic/runtime -29/-10; repository generic census reaches zero | eleven staged binaries aggregate: +5,152 text, -52 rodata, +208 EH header, +1,016 unwind, +140 exception table; integrated exact | adapters not on integrated hot path; no timing exposure | through-PA38 5,477/5,477; all 11 invalid invocations fail; audits pass; integrated compiler exact | `a78bb76a` | retained |
-| E8 | semantic and allocator rollback; architecture enforcement | twelve catch-alls duplicated cleanup or assigned failure/cache states around unknown exceptions | scoped cleanup/commit owns scratch, contexts, cache state, optimizer storage, and CY86 table rollback; typed semantic exception-specification policy remains explicit | PA9, PA12, PA21, PA23, PA26, PA37 and cumulative behavior | successful frozen remains 0; catch-all sites 12->0 | -256 text, neutral rodata/EH header, -16 unwind, -292 exception table; exception RTTI remains 20 symbols | frozen baseline/candidate user means 0.4525/0.4550 s across semantic slice and 0.4525/0.4500 s across allocator slice (timer noise) | through-PA38 5,477/5,477; focused suites and audits pass; file audit zero-fatal/32 warnings; frozen object exact | pending | retained |
+| E8 | semantic and allocator rollback; architecture enforcement | twelve catch-alls duplicated cleanup or assigned failure/cache states around unknown exceptions | scoped cleanup/commit owns scratch, contexts, cache state, optimizer storage, and CY86 table rollback; typed semantic exception-specification policy remains explicit | PA9, PA12, PA21, PA23, PA26, PA37 and cumulative behavior | successful frozen remains 0; catch-all sites 12->0 | -256 text, neutral rodata/EH header, -16 unwind, -292 exception table; exception RTTI remains 20 symbols | frozen baseline/candidate user means 0.4525/0.4550 s across semantic slice and 0.4525/0.4500 s across allocator slice (timer noise) | through-PA38 5,477/5,477; focused suites and audits pass; file audit zero-fatal/32 warnings; frozen object exact | `282c12e9` | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an

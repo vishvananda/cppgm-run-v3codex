@@ -3,7 +3,7 @@
 #include "abi/itanium/abi_mangle.h"
 #include "abi/itanium/abi_mangle_errors.h"
 #include "support/driver_errors.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 #include <cstdlib>
 #include <fstream>

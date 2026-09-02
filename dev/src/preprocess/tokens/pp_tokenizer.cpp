@@ -1,5 +1,5 @@
 #include "preprocess/tokens/pp_tokenizer.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 #include <algorithm>
 #include <chrono>
@@ -12,6 +12,12 @@
 #define CPPGM_STABLE_PREFIX_QUERY __attribute__((cppgm_stable_prefix))
 #else
 #define CPPGM_STABLE_PREFIX_QUERY
+#endif
+
+#ifdef __CPPGM__
+#define CPPGM_HOST_CURSOR_NOINLINE
+#else
+#define CPPGM_HOST_CURSOR_NOINLINE __attribute__((noinline))
 #endif
 
 namespace cppgm
@@ -235,7 +241,7 @@ public:
 			source_[source_.size() - 1] != '\n';
 	}
 
-	__attribute__((noinline)) int Next()
+	CPPGM_HOST_CURSOR_NOINLINE int Next()
 	{
 		if (position_ < source_.size())
 		{
@@ -892,7 +898,7 @@ private:
 				AppendTake(spelling);
 			return;
 		}
-		ThrowLexicalSourceError("invalid escape sequence");
+	ThrowLexicalSourceError("invalid escape sequence");
 	}
 
 	bool ScanIdentifierSuffix(std::string* spelling)
@@ -1071,7 +1077,7 @@ private:
 }
 
 #undef CPPGM_STABLE_PREFIX_QUERY
-
+#undef CPPGM_HOST_CURSOR_NOINLINE
 PPTokenizationStats::PPTokenizationStats()
 	: source_bytes(0), decoded_code_points(0), translated_code_points(0),
 	  emitted_tokens(0), emitted_token_bytes(0), peak_token_buffer_bytes(0),

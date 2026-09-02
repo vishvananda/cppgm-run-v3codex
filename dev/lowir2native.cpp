@@ -1,6 +1,6 @@
 // Student-facing scaffold for the PA29 `lowir2native` binary.
 
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 #include "native/errors.h"
 #include "lowir/model/program.h"
 #include "native/driver/session.h"

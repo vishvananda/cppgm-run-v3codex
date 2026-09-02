@@ -6,7 +6,7 @@
 
 #include "preprocess/tokens/DebugPPTokenStream.h"
 #include "preprocess/tokens/pp_tokenizer.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 int main(int argc, char** argv)
 {

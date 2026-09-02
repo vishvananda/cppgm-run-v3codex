@@ -1,6 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/constants/wide_integer.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 #include "support/scoped_state.h"
 
 #include <algorithm>

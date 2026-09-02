@@ -1,5 +1,5 @@
 #include "preprocess/tokens/post_tokenizer.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 #include <algorithm>
 #include <chrono>

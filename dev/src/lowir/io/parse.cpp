@@ -1,4 +1,5 @@
 #include "lowir/model/program.h"
+#include "support/exception_types.h"
 #include "lowir/io/prepare.h"
 
 #include <algorithm>

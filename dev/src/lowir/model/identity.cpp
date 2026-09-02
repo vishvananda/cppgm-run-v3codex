@@ -1,5 +1,7 @@
 #include "lowir/model/program.h"
 
+#include "support/exception_types.h"
+
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
@@ -12,6 +14,26 @@
 #include <utility>
 
 namespace lowir_model {
+
+void ThrowLowirInputError(const std::string& message)
+{
+  throw SerializedInputError(SerializedInputFormat::LOWIR, message);
+}
+
+void ThrowLowirInternalError(const char* message)
+{
+  throw InternalCompilerError(message, CompilerErrorDomain::LOWIR);
+}
+
+void ThrowLowirInternalError(const std::string& message)
+{
+  throw InternalCompilerError(message, CompilerErrorDomain::LOWIR);
+}
+
+void ThrowLowirResourceLimit(const char* message)
+{
+  throw ResourceLimitError(message, CompilerErrorDomain::LOWIR);
+}
 
 struct StringPoolStorage
 {

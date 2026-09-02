@@ -66,6 +66,22 @@ my %translation_allowlist = (
 	'dev/src/abi/itanium/abi_mangle_parse.cpp' => 4,
 );
 
+# Cold throw-helper interfaces deliberately expose declarations without the
+# exception taxonomy.  Pulling the full hierarchy back through one of these
+# broadly included headers recreates per-translation-unit RTTI/EH work even
+# though successful compilation does not throw.
+my %lightweight_error_header = map { $_ => 1 } qw(
+	dev/src/abi/itanium/abi_mangle_errors.h
+	dev/src/compiler_object/errors.h
+	dev/src/cy86/errors.h
+	dev/src/lowering/support/errors.h
+	dev/src/lowir/optimize/errors.h
+	dev/src/native/errors.h
+	dev/src/support/driver_errors.h
+	dev/src/support/exceptions.h
+);
+my $taxonomy_include_ceiling = 32;
+
 sub read_text
 {
 	my ($path) = @_;
@@ -141,12 +157,24 @@ my %translation_seen;
 my @foreign_explicit_throw;
 my $explicit_throw_sites = 0;
 my @bad_alloc_throw;
+my @heavy_error_header;
+my @taxonomy_include;
 
 for my $path (@files)
 {
 	my $relative = relative_path($path);
 	my $text = read_text($path);
 	my $code = mask_comments_and_literals($text);
+	if ($text =~ /^\s*#\s*include\s*[<"]support\/exception_types\.h[>"]/m)
+	{
+		push @taxonomy_include, $relative;
+	}
+	if ($lightweight_error_header{$relative} &&
+		($text =~ /^\s*#\s*include\s*[<"]support\/exception_types\.h[>"]/m ||
+		 $code =~ /\bthrow\b/))
+	{
+		push @heavy_error_header, $relative;
+	}
 	my ($file_logic, $file_runtime) = (0, 0);
 	my ($file_terminal_standard, $file_terminal_compiler) = (0, 0);
 	$count{legacy_not_implemented} += () =
@@ -260,6 +288,12 @@ push @error, "allocator-protocol bad_alloc inventory is " .
 	if @bad_alloc_throw != 2 ||
 		grep { $_ !~ m{\Adev/src/lowir/optimize/pipeline\.cpp:} }
 			@bad_alloc_throw;
+push @error, "lightweight throw-helper header owns taxonomy or throw code: $_"
+	for @heavy_error_header;
+push @error, "full exception taxonomy include fanout is " .
+	scalar(@taxonomy_include) . ", architecture ceiling is " .
+	$taxonomy_include_ceiling
+	if @taxonomy_include > $taxonomy_include_ceiling;
 for my $path (sort keys %terminal_seen)
 {
 	push @error, "unreviewed terminal standard catch in $path"
@@ -307,4 +341,5 @@ print "Reviewed presentation/cleanup inventory: " . scalar(@terminal_catch) .
 	" terminal standard catches, " . scalar(@cleanup_catch) .
 	" catch-all sites, and " . scalar(@standard_translation) .
 	" narrow standard translations; $explicit_throw_sites explicit typed " .
-	"throw sites.\n";
+	"throw sites.  Full taxonomy fanout is " . scalar(@taxonomy_include) .
+	" source files; throw-helper interfaces remain lightweight.\n";

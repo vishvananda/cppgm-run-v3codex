@@ -1,6 +1,6 @@
 // Student-facing scaffold for the PA10+ `cppgm++` binary.
 
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 #include "support/driver_errors.h"
 #include "syntax/syntax.h"
 #include "semantic/type_view.h"

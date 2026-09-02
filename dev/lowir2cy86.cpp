@@ -1,7 +1,7 @@
 #include "lowir/cy86/converter.h"
 #include "lowir/model/program.h"
 #include "support/driver_errors.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 #include "support/tool_help_text.h"
 
 #include <chrono>

@@ -1,5 +1,5 @@
 #include "recognition/recognizer.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 #include <algorithm>
 #include <chrono>

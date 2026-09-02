@@ -1,21 +1,13 @@
 #pragma once
 
-#include "support/exceptions.h"
-
-#include <string>
+#include <iosfwd>
 
 namespace lowir_opt {
 
-__attribute__((cold, noinline, noreturn)) inline
-void ThrowOptimizerInvocationError(const std::string & message)
-{
-  throw InvocationError(message);
-}
+__attribute__((cold, noinline, noreturn))
+void ThrowOptimizerInvocationError(const std::string & message);
 
-__attribute__((cold, noinline, noreturn)) inline
-void ThrowOptimizerInternalError(const char * message)
-{
-  throw InternalCompilerError(message, CompilerErrorDomain::OPTIMIZER);
-}
+__attribute__((cold, noinline, noreturn))
+void ThrowOptimizerInternalError(const char * message);
 
 }  // namespace lowir_opt

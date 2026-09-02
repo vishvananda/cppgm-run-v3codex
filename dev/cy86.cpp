@@ -9,7 +9,7 @@
 #include "cy86/cy86_program.h"
 #include "preprocess/tool_support.h"
 #include "support/driver_errors.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 namespace
 {

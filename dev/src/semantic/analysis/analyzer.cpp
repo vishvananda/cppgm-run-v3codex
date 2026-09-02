@@ -1,7 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/analysis/switch.h"
 #include "semantic/extensions/hosted_extensions.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 #include "support/scoped_state.h"
 #include <algorithm>
 #include <chrono>

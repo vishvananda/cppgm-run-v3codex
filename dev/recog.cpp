@@ -8,7 +8,7 @@
 #include "preprocess/tool_support.h"
 #include "recognition/recognizer.h"
 #include "support/driver_errors.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 namespace
 {

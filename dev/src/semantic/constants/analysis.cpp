@@ -1,5 +1,5 @@
 #include "semantic/analysis/analyzer.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 #include "support/scoped_state.h"
 
 #include <algorithm>

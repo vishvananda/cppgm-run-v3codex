@@ -6,7 +6,7 @@
 #include <fstream>
 #include <iterator>
 
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 namespace cppgm
 {

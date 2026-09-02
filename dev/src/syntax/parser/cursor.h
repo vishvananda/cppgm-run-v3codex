@@ -1,7 +1,7 @@
 #pragma once
 
 #include "syntax/model/arena.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 #include <cstddef>
 #include <cstdint>

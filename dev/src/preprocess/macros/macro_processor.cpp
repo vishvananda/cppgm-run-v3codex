@@ -24,7 +24,7 @@
 #include "preprocess/tokens/IPPTokenStream.h"
 #include "preprocess/macros/macro_operator_code.h"
 #include "preprocess/tokens/pp_tokenizer.h"
-#include "support/exceptions.h"
+#include "support/exception_types.h"
 
 namespace cppgm
 {
