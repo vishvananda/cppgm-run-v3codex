@@ -1922,6 +1922,27 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 						argument < source_events_[event].provenance.size();
 						++argument)
 						source_events_[event].provenance[argument] = 2;
+	for (std::size_t event = 0; event < source_events_.size(); ++event)
+	{
+		SourceEvent& source_event = source_events_[event];
+		if (source_event.kind != SOURCE_CLASS_USE ||
+			source_event.binding == kNoBinding ||
+			source_event.binding >= analyzer.program_->bindings.size()) continue;
+		const BindingId canonical =
+			analyzer.program_->bindings[source_event.binding].canonical;
+		for (std::size_t fact = 0;
+			fact < class_template_source_facts_.size(); ++fact)
+		{
+			const ClassTemplateSourceFact& source_fact =
+				class_template_source_facts_[fact];
+			if (source_fact.syntax != source_event.syntax ||
+				source_fact.pattern != source_event.pattern ||
+				source_fact.binding != canonical) continue;
+			for (std::size_t argument = source_fact.presentation_arity;
+				argument < source_event.provenance.size(); ++argument)
+				source_event.provenance[argument] = 2;
+		}
+	}
 	for (std::size_t i = 0; i < source_events_.size(); ++i)
 	{
 		SourceEvent& event = source_events_[i];

@@ -890,6 +890,17 @@ frozen O0/O1/O3 objects and all audits are exact.  Four ABBA blocks measure
 +0.061% paired user, -0.544% wall, and -0.284% RSS.  The report is
 `/tmp/v3codex-w5m-structural-default-foundation-ab.json`.
 
+The occurrence consumer joins that identity only to a class source event with
+the same exact source node, primary pattern, and canonical binding.  It changes
+four origin labels and no other witness text: `traits<char>` in the PA22 view,
+the two written graph defaults in PA23, and `const int &` in the PA24 named
+parameter become `source=defaulted`.  The dependent qualified-result negative
+control remains explicit.  PA19/20 stay exact; no PA22/23/24 file regresses,
+and every before/after witness LowIR is exact.  Frozen O0/O1/O3 objects and all
+audits are exact.  Four ABBA blocks measure +0.063% paired user, +0.384% wall,
+and -0.007% RSS; the report is
+`/tmp/v3codex-w5m-source-origin-consumer-ab.json`.
+
 The first consumer uses the retained owner pattern/partial ordinal only after
 their bounds and completed canonical-argument state are validated.  It renders
 the primary name and typed partial arguments through the opt-in identity
@@ -1070,6 +1081,7 @@ byte-identical objects.  The report is
 | W5M provenance re-audit | Probed dependent-default equality and typed conversion-target presentation against PA22/23/24 | dependent-default probe made one PA24 file exact but regressed explicit `deduce<proxy<result>, int>` provenance; conversion-target probe changed 8 PA23 and 4 PA24 files and was not display-contained | reject both consumers; first separate per-occurrence source provenance, structural default identity, and canonical entity presentation in output-inert foundations |
 | W5M-S class source provenance | Retained successful class-template source identity separately from canonical specialization presentation | 48-byte observer-only fact; 731 PA19/20/22 witness and LowIR manifests exact; PA19/20 strict and ordinary clean; frozen O0/O1/O3 and audits exact; four-block paired user -0.971% | retain as output-inert foundation; consumers must join exact source node, typed pattern, and canonical binding |
 | W5M-S structural default identity | Added stable arena token identities and computed dependent-default structure by substituting parameter tokens from the same source occurrence, gated by typed equality | four focused positive/negative arities correct; 7,660 PA19--PA24 artifacts exact; frozen O0/O1/O3 and audits exact; four-block paired user +0.061% | retain output-inert identity; consume it separately for source provenance and canonical entity abbreviation |
+| W5M-O source default origin | Joined structural default provenance to only the exact source node, typed pattern, and canonical binding | exactly four intended origin labels change across PA22--PA24; dependent-result control stays explicit; no manifest regression; LowIR/frozen/audits exact; four-block paired user +0.063% | retain the occurrence-local consumer; canonical entity abbreviation remains separate |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
