@@ -39,6 +39,36 @@ private:
 		SOURCE_VARIABLE_USE,
 		SOURCE_FUNCTION_CALL
 	};
+	enum SemanticSourceKind
+	{
+		SEMANTIC_SOURCE_CLASS_TEMPLATE,
+		SEMANTIC_SOURCE_ALIAS_TEMPLATE,
+		SEMANTIC_SOURCE_VARIABLE_TEMPLATE,
+		SEMANTIC_SOURCE_FUNCTION_TEMPLATE
+	};
+	enum SemanticSourceResolution
+	{
+		SEMANTIC_SOURCE_REPLAY_REQUIRED,
+		SEMANTIC_SOURCE_CURRENT_PARTIAL,
+		SEMANTIC_SOURCE_DECLARATION_COMPLETE
+	};
+	struct SemanticSourceFact
+	{
+		syntax::NodeId owner;
+		syntax::NodeId syntax;
+		std::uint32_t semantic_index;
+		std::uint8_t kind;
+		std::uint8_t resolution;
+
+		SemanticSourceFact(syntax::NodeId owner_value,
+			syntax::NodeId syntax_value, std::uint32_t semantic_index_value,
+			SemanticSourceKind kind_value,
+			SemanticSourceResolution resolution_value)
+			: owner(owner_value), syntax(syntax_value),
+			  semantic_index(semantic_index_value),
+			  kind(static_cast<std::uint8_t>(kind_value)),
+			  resolution(static_cast<std::uint8_t>(resolution_value)) {}
+	};
 	enum OverloadDropReason
 	{
 		OVERLOAD_DROP_NONE,
@@ -216,6 +246,9 @@ private:
 		const EntityReplacements& replacements);
 
 	void BeginTranslationUnit(const std::string& primary_source_file);
+	void NoteSemanticSourceFact(syntax::NodeId owner,
+		syntax::NodeId syntax, std::uint32_t semantic_index,
+		SemanticSourceKind kind, SemanticSourceResolution resolution);
 	void RecordClassUse(syntax::NodeId syntax, std::uint32_t pattern,
 		BindingId binding, const std::vector<TemplateArgument>& arguments,
 		std::size_t explicit_count, std::size_t source_column_offset = 0,
@@ -279,6 +312,7 @@ private:
 	std::string debug_text_;
 	std::string primary_source_file_;
 	bool debug_;
+	std::vector<SemanticSourceFact> semantic_source_facts_;
 	std::vector<SourceEvent> source_events_;
 	std::vector<FunctionSpecializationFact> function_specializations_;
 	std::vector<ClassSpecializationFact> class_specializations_;

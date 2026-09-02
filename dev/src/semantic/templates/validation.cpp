@@ -91,7 +91,9 @@ public:
 		ScopeId lexical_scope, const std::vector<TemplateParameter>& parameters,
 		NodeId class_declaration)
 		: analyzer_(analyzer), target_(target), lexical_scope_(lexical_scope),
-		  parameters_(parameters), class_declaration_(class_declaration) {}
+		  parameters_(parameters), class_declaration_(class_declaration),
+		  source_owner_pattern_(std::numeric_limits<std::size_t>::max()),
+		  source_owner_is_partial_(false) {}
 
 	void Run();
 
@@ -151,6 +153,7 @@ private:
 	void VisitIdExpression(NodeId node, std::size_t scope,
 		bool unknown_callee);
 	void ValidateKnownTemplateArgumentKinds(NodeId node, ScopeId scope);
+	void InitializeSemanticSourceOwner();
 	const TemplateParameter* TemplateParameterUsedBy(NodeId node) const;
 	void ValidateSpecialMemberExceptionSpecification();
 	RetainedSpecialMemberKind SpecialMemberKind(NodeId node) const;
@@ -171,6 +174,8 @@ private:
 	ScopeId lexical_scope_;
 	const std::vector<TemplateParameter>& parameters_;
 	NodeId class_declaration_;
+	std::size_t source_owner_pattern_;
+	bool source_owner_is_partial_;
 	std::unordered_set<NameId> parameter_names_;
 	std::unordered_set<NodeId> template_argument_validation_visited_;
 	std::vector<RetainedScope> scopes_;
@@ -526,6 +531,31 @@ const TemplateParameter* RetainedTemplateValidator::TemplateParameterUsedBy(
 	return 0;
 }
 
+void RetainedTemplateValidator::InitializeSemanticSourceOwner()
+{
+	if (!analyzer_.template_witness_ || class_declaration_ == kNoNode) return;
+	for (std::size_t pattern = 0;
+		pattern < analyzer_.class_templates_.size(); ++pattern)
+	{
+		const ClassTemplatePattern& owner =
+			analyzer_.class_templates_[pattern];
+		if (owner.declaration == class_declaration_)
+		{
+			source_owner_pattern_ = pattern;
+			return;
+		}
+		for (std::size_t partial = 0;
+			partial < owner.partial_specializations.size(); ++partial)
+			if (owner.partial_specializations[partial].declaration ==
+				class_declaration_)
+			{
+				source_owner_pattern_ = pattern;
+				source_owner_is_partial_ = true;
+				return;
+			}
+	}
+}
+
 void RetainedTemplateValidator::ValidateKnownTemplateArgumentKinds(
 	NodeId node, ScopeId scope)
 {
@@ -539,6 +569,34 @@ void RetainedTemplateValidator::ValidateKnownTemplateArgumentKinds(
 			analyzer_.FindClassTemplate(scope, primary);
 		if (pattern_index != std::numeric_limits<std::size_t>::max())
 		{
+			if (node == target_ && class_declaration_ == kNoNode &&
+				!parameters_.empty() &&
+				(analyzer_.arena_->IsTag(target_,
+					::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
+				 analyzer_.arena_->IsTag(target_,
+					::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION)))
+			{
+				source_owner_pattern_ = pattern_index;
+				source_owner_is_partial_ = true;
+			}
+			if (analyzer_.template_witness_ &&
+				pattern_index <= std::numeric_limits<std::uint32_t>::max())
+			{
+				const NodeId source =
+					analyzer_.arena_->TerminalNameComponent(node);
+				const bool dependent = SyntaxUsesTemplateParameter(node);
+				const TemplateWitnessObserver::SemanticSourceResolution resolution =
+					!dependent ?
+						TemplateWitnessObserver::SEMANTIC_SOURCE_DECLARATION_COMPLETE :
+					(source_owner_is_partial_ &&
+					 pattern_index == source_owner_pattern_) ?
+						TemplateWitnessObserver::SEMANTIC_SOURCE_CURRENT_PARTIAL :
+						TemplateWitnessObserver::SEMANTIC_SOURCE_REPLAY_REQUIRED;
+				analyzer_.template_witness_->NoteSemanticSourceFact(
+					target_, source, static_cast<std::uint32_t>(pattern_index),
+					TemplateWitnessObserver::SEMANTIC_SOURCE_CLASS_TEMPLATE,
+					resolution);
+			}
 			const ClassTemplatePattern& pattern =
 				analyzer_.class_templates_[pattern_index];
 			for (std::size_t argument = 0;
@@ -2026,6 +2084,7 @@ void RetainedTemplateValidator::Run()
 	}
 	if (analyzer_.template_witness_)
 	{
+		InitializeSemanticSourceOwner();
 		PublishRetainedSourceProvenance(target_, true);
 		for (std::size_t i = 0; i < parameters_.size(); ++i)
 			PublishTemplateParameterSourceProvenance(parameters_[i]);

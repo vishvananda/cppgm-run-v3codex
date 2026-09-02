@@ -563,7 +563,8 @@ TemplateWitnessObserver::FunctionSpecializationFact::
 }
 
 TemplateWitnessObserver::TemplateWitnessObserver(bool debug)
-	: text_(), debug_text_(), primary_source_file_(), debug_(debug), source_events_(),
+	: text_(), debug_text_(), primary_source_file_(), debug_(debug),
+	  semantic_source_facts_(), source_events_(),
 	  function_specializations_(), class_specializations_(),
 	  variable_specializations_(),
 	  overload_selections_(), deduction_drops_(), dependent_class_uses_(),
@@ -735,6 +736,7 @@ void TemplateWitnessObserver::BeginTranslationUnit(
 	const std::string& primary_source_file)
 {
 	primary_source_file_ = primary_source_file;
+	semantic_source_facts_.clear();
 	source_events_.clear();
 	function_specializations_.clear();
 	class_specializations_.clear();
@@ -752,6 +754,24 @@ void TemplateWitnessObserver::BeginTranslationUnit(
 	class_finalizations_.clear();
 	variable_instantiations_.clear();
 	next_insertion_ordinal_ = 0;
+}
+
+void TemplateWitnessObserver::NoteSemanticSourceFact(
+	syntax::NodeId owner, syntax::NodeId syntax, std::uint32_t semantic_index,
+	SemanticSourceKind kind, SemanticSourceResolution resolution)
+{
+	if (owner == syntax::kNoNode || syntax == syntax::kNoNode) return;
+	for (std::size_t i = 0; i < semantic_source_facts_.size(); ++i)
+	{
+		SemanticSourceFact& prior = semantic_source_facts_[i];
+		if (prior.owner != owner || prior.syntax != syntax ||
+			prior.semantic_index != semantic_index || prior.kind != kind)
+			continue;
+		if (prior.resolution < resolution) prior.resolution = resolution;
+		return;
+	}
+	semantic_source_facts_.push_back(SemanticSourceFact(
+		owner, syntax, semantic_index, kind, resolution));
 }
 
 void TemplateWitnessObserver::RecordClassUse(syntax::NodeId syntax,
@@ -2291,6 +2311,7 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 	PrepareSourceEvents(analyzer, &replacements);
 	RenderSourceEvents(analyzer, replacements);
 	RenderClosureEvents(analyzer, replacements);
+	semantic_source_facts_.clear();
 	source_events_.clear();
 	function_specializations_.clear();
 	class_specializations_.clear();
