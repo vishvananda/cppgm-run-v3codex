@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "support/exceptions.h"
 
 #include <algorithm>
@@ -1575,6 +1576,65 @@ ExpressionInfo Analyzer::MakeImplicitObjectPointer(
 	return result;
 }
 
+bool Analyzer::SelectedOverloadHasBetterConversion(std::size_t left,
+	std::size_t right, const std::vector<ConversionRank>& ranks,
+	const std::vector<std::size_t>& base_distances,
+	const std::vector<CallConversionFact>& conversions,
+	const std::vector<BindingId>& candidates,
+	const std::vector<ExpressionInfo>& arguments,
+	const ExpressionInfo* object, bool operator_call) const
+{
+	const std::size_t arity = arguments.size() +
+		(!operator_call && object ? 1 : 0);
+	const std::size_t object_offset = !operator_call && object ? 1 : 0;
+	for (std::size_t a = 0; a < arity; ++a)
+	{
+		const ConversionRank left_rank = ranks[left * arity + a];
+		const ConversionRank right_rank = ranks[right * arity + a];
+		if (left_rank < right_rank ||
+			(left_rank == right_rank &&
+			 left_rank == CONVERSION_DERIVED_TO_BASE &&
+			 base_distances[left * arity + a] <
+				base_distances[right * arity + a])) return true;
+		if (left_rank == right_rank && (operator_call || a >= object_offset))
+		{
+			const std::size_t argument = operator_call ? a : a - object_offset;
+			const std::size_t stride = operator_call ? arity : arguments.size();
+			if (CompareCallConversions(conversions[left * stride + argument],
+				conversions[right * stride + argument]) > 0) return true;
+		}
+	}
+	const FunctionInfo& left_function = GetFunction(candidates[left]);
+	const FunctionInfo& right_function = GetFunction(candidates[right]);
+	const TypeRecord& left_type = program_->types.Get(left_function.type);
+	const TypeRecord& right_type = program_->types.Get(right_function.type);
+	const bool left_member = operator_call &&
+		program_->bindings[candidates[left]].member_owner != kNoEntity;
+	const bool right_member = operator_call &&
+		program_->bindings[candidates[right]].member_owner != kNoEntity;
+	const TypeId* left_parameters =
+		program_->types.Parameters(left_function.type);
+	const TypeId* right_parameters =
+		program_->types.Parameters(right_function.type);
+	for (std::size_t a = 0; a < arguments.size(); ++a)
+	{
+		if ((left_member && a == 0) || (right_member && a == 0)) continue;
+		const std::size_t left_parameter = a - (left_member ? 1 : 0);
+		const std::size_t right_parameter = a - (right_member ? 1 : 0);
+		if (left_parameter >= left_type.parameter_count ||
+			right_parameter >= right_type.parameter_count) continue;
+		const int preference = CompareReferenceBindings(arguments[a],
+			left_parameters[left_parameter], right_parameters[right_parameter]);
+		if (preference != 0) return preference > 0;
+	}
+	if (object && left_function.member_owner != kNoType &&
+		right_function.member_owner != kNoType)
+		return CompareImplicitObjectBindings(object->category,
+			program_->types.Get(left_function.type),
+			program_->types.Get(right_function.type)) > 0;
+	return false;
+}
+
 BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 	const std::vector<NodeId>& operand_syntax,
 	const std::vector<ExpressionInfo>& operands,
@@ -1598,6 +1658,10 @@ BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 	std::vector<CallConversionFact> conversions(candidates.size() * arity);
 	CallConversionTable conversion_cache;
 	std::vector<bool> viable(candidates.size(), true);
+	std::vector<std::uint8_t> witness_drop_reasons;
+	if (template_witness_ && !quiet)
+		witness_drop_reasons.assign(candidates.size(),
+			TemplateWitnessObserver::OVERLOAD_DROP_NONE);
 	for (std::size_t c = 0; c < candidates.size(); ++c)
 	{
 		++overload_candidates_;
@@ -1612,6 +1676,9 @@ BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 			if (!RefQualifierViable(object, function_type))
 			{
 				viable[c] = false;
+				if (template_witness_ && !quiet)
+					witness_drop_reasons[c] =
+						TemplateWitnessObserver::OVERLOAD_DROP_BAD_CONVERSION;
 				continue;
 			}
 			TypeId object_type = function.member_owner;
@@ -1636,6 +1703,9 @@ BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 			if (actual_rank == CONVERSION_INVALID)
 			{
 				viable[c] = false;
+				if (template_witness_ && !quiet)
+					witness_drop_reasons[c] =
+						TemplateWitnessObserver::OVERLOAD_DROP_BAD_CONVERSION;
 				continue;
 			}
 		}
@@ -1649,6 +1719,10 @@ BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 			 explicit_arity > function_type.parameter_count))
 		{
 			viable[c] = false;
+			if (template_witness_ && !quiet)
+				witness_drop_reasons[c] = explicit_arity < required ?
+					TemplateWitnessObserver::OVERLOAD_DROP_TOO_FEW_ARGUMENTS :
+					TemplateWitnessObserver::OVERLOAD_DROP_TOO_MANY_ARGUMENTS;
 			continue;
 		}
 		const TypeId* parameters = program_->types.Parameters(function.type);
@@ -1681,7 +1755,13 @@ BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 			if (rank == CONVERSION_DERIVED_TO_BASE)
 				base_distances[c * arity + a] = BaseConversionDistance(
 					operands[a].type, parameters[parameter]);
-			if (rank == CONVERSION_INVALID) viable[c] = false;
+			if (rank == CONVERSION_INVALID)
+			{
+				viable[c] = false;
+				if (template_witness_ && !quiet)
+					witness_drop_reasons[c] =
+						TemplateWitnessObserver::OVERLOAD_DROP_BAD_CONVERSION;
+			}
 		}
 	}
 
@@ -1769,6 +1849,22 @@ BindingId Analyzer::SelectOperatorOverload(ScopeId scope,
 			if (quiet) return kNoBinding;
 			ThrowSemanticError("ambiguous overloaded operator");
 		}
+	if (template_witness_ && !quiet &&
+		GetFunction(candidates[champion]).template_specialization)
+	{
+		for (std::size_t c = 0; c < candidates.size(); ++c)
+			if (c != champion && viable[c])
+				witness_drop_reasons[c] =
+					SelectedOverloadHasBetterConversion(champion, c, ranks,
+						base_distances, conversions, candidates, operands,
+						&object, true) ?
+					TemplateWitnessObserver::OVERLOAD_DROP_WORSE_CONVERSION :
+					TemplateWitnessObserver::
+						OVERLOAD_DROP_BETTER_CANDIDATE_SELECTED;
+		template_witness_->RecordOverloadSelection(
+			program_->bindings[candidates[champion]].canonical,
+			candidates, witness_drop_reasons);
+	}
 	*selected_member =
 		program_->bindings[candidates[champion]].member_owner != kNoEntity;
 	if (GetFunction(candidates[champion]).member_owner != kNoType &&
@@ -1916,7 +2012,14 @@ bool Analyzer::TryAnalyzeOverloadedOperator(
 			if (builtin_rank > overloaded_rank) no_worse = false;
 			if (builtin_rank < overloaded_rank) strictly_better = true;
 		}
-		if (no_worse && strictly_better) return false;
+		if (no_worse && strictly_better)
+		{
+			if (template_witness_ &&
+				GetFunction(selected).template_specialization)
+				template_witness_->DiscardOverloadSelection(
+					program_->bindings[selected].canonical);
+			return false;
+		}
 	}
 	if (GetFunction(selected).deleted_special_member)
 		ThrowSemanticError("selected special member is deleted");

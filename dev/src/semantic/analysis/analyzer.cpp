@@ -805,6 +805,10 @@ BindingId Analyzer::SelectOverload(ScopeId scope,
 		candidates.size() * explicit_arity);
 	CallConversionTable conversion_cache;
 	std::vector<bool> viable(candidates.size(), true);
+	std::vector<std::uint8_t> witness_drop_reasons;
+	if (template_witness_)
+		witness_drop_reasons.assign(candidates.size(),
+			TemplateWitnessObserver::OVERLOAD_DROP_NONE);
 	for (std::size_t c = 0; c < candidates.size(); ++c)
 	{
 		++overload_candidates_;
@@ -816,11 +820,17 @@ BindingId Analyzer::SelectOverload(ScopeId scope,
 			if (!object)
 			{
 				viable[c] = false;
+				if (template_witness_)
+					witness_drop_reasons[c] =
+						TemplateWitnessObserver::OVERLOAD_DROP_BAD_CONVERSION;
 				continue;
 			}
 			if (!RefQualifierViable(*object, function_type))
 			{
 				viable[c] = false;
+				if (template_witness_)
+					witness_drop_reasons[c] =
+						TemplateWitnessObserver::OVERLOAD_DROP_BAD_CONVERSION;
 				continue;
 			}
 			TypeId object_type = function.member_owner;
@@ -844,6 +854,9 @@ BindingId Analyzer::SelectOverload(ScopeId scope,
 			if (object_rank == CONVERSION_INVALID)
 			{
 				viable[c] = false;
+				if (template_witness_)
+					witness_drop_reasons[c] =
+						TemplateWitnessObserver::OVERLOAD_DROP_BAD_CONVERSION;
 				continue;
 			}
 		}
@@ -859,6 +872,10 @@ BindingId Analyzer::SelectOverload(ScopeId scope,
 			 explicit_arity > function_type.parameter_count))
 		{
 			viable[c] = false;
+			if (template_witness_)
+				witness_drop_reasons[c] = explicit_arity < required_parameters ?
+					TemplateWitnessObserver::OVERLOAD_DROP_TOO_FEW_ARGUMENTS :
+					TemplateWitnessObserver::OVERLOAD_DROP_TOO_MANY_ARGUMENTS;
 			continue;
 		}
 		const TypeId* parameter_data = program_->types.Parameters(function.type);
@@ -891,7 +908,13 @@ BindingId Analyzer::SelectOverload(ScopeId scope,
 			if (rank == CONVERSION_DERIVED_TO_BASE)
 				base_distances[c * arity + explicit_offset + a] =
 					BaseConversionDistance(arguments[a].type, parameters[a]);
-			if (rank == CONVERSION_INVALID) viable[c] = false;
+			if (rank == CONVERSION_INVALID)
+			{
+				viable[c] = false;
+				if (template_witness_)
+					witness_drop_reasons[c] =
+						TemplateWitnessObserver::OVERLOAD_DROP_BAD_CONVERSION;
+			}
 		}
 	}
 	const auto better = [this, &ranks, &base_distances, &conversions,
@@ -1003,6 +1026,22 @@ BindingId Analyzer::SelectOverload(ScopeId scope,
 			if (!better(champion, other))
 				return CandidateOverloadFailure("ambiguous overload");
 		}
+	if (template_witness_ &&
+		GetFunction(candidates[champion]).template_specialization)
+	{
+		for (std::size_t c = 0; c < candidates.size(); ++c)
+			if (c != champion && viable[c])
+				witness_drop_reasons[c] =
+					SelectedOverloadHasBetterConversion(champion, c, ranks,
+						base_distances, conversions, candidates, arguments,
+						object, false) ?
+					TemplateWitnessObserver::OVERLOAD_DROP_WORSE_CONVERSION :
+					TemplateWitnessObserver::
+						OVERLOAD_DROP_BETTER_CANDIDATE_SELECTED;
+		template_witness_->RecordOverloadSelection(
+			program_->bindings[candidates[champion]].canonical,
+			candidates, witness_drop_reasons);
+	}
 	if (object_conversion && object)
 	{
 		object_conversion->rank = actual_object_ranks[champion];
@@ -2134,7 +2173,7 @@ void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (spec.storage_class != STORAGE_CLASS_EXTERN ||
 			initializer_node != kNoNode)
 		{
-			RecordDeducedClassObjectUse(node, specifiers, parsed.type);
+			RecordDeducedClassObjectUse(specifiers, parsed.type);
 			EnsureClassDefinition(parsed.type);
 			DemandClassTemplateMemberDefinitions(
 				DestructedEntity(parsed.type));

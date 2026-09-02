@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "support/exceptions.h"
 
 #include <algorithm>
@@ -112,6 +113,7 @@ private:
 		std::vector<BindingId>* functions,
 		std::vector<std::size_t>* templates, EntityId* naming_class) const;
 	bool IsDependentValue(std::size_t scope, NameId name) const;
+	bool IsDependentType(std::size_t scope, NameId name) const;
 	bool DefersUnknownMembers(std::size_t scope) const;
 	bool HasUnmodeledFixedBase(std::size_t scope) const;
 	bool HasUnmodeledCurrentClass(std::size_t scope) const;
@@ -120,7 +122,10 @@ private:
 	bool HasBaseClass(NodeId node) const;
 	bool SyntaxUsesTemplateParameter(NodeId node) const;
 	bool SyntaxUsesRetainedType(NodeId node, std::size_t scope) const;
+	bool SyntaxUsesDependentType(NodeId node, std::size_t scope) const;
 	bool SyntaxUsesRetainedValue(NodeId node, std::size_t scope) const;
+	void NoteDependentSourceUse(NodeId node, std::size_t scope);
+	void ScanDependentSourceUses(NodeId node, std::size_t scope);
 	void Visit(NodeId node, std::size_t scope, bool unknown_callee = false);
 	void VisitChildren(NodeId node, std::size_t scope);
 	bool VisitSwitchLabel(NodeId node, std::size_t scope);
@@ -164,6 +169,7 @@ private:
 	std::unordered_set<NameId> parameter_names_;
 	std::unordered_set<NodeId> template_argument_validation_visited_;
 	std::vector<RetainedScope> scopes_;
+	std::vector<std::unordered_set<NameId> > dependent_types_;
 	std::vector<std::size_t> switch_entry_scopes_;
 };
 
@@ -175,6 +181,8 @@ std::size_t RetainedTemplateValidator::AddScope(ScopeId semantic_scope,
 	scopes_.push_back(RetainedScope(semantic_scope, parent,
 		defer_unknown_members, unmodeled_fixed_base,
 		unmodeled_current_class));
+	if (analyzer_.template_witness_)
+		dependent_types_.resize(scopes_.size());
 	return index;
 }
 
@@ -287,6 +295,19 @@ bool RetainedTemplateValidator::IsDependentValue(
 	return false;
 }
 
+bool RetainedTemplateValidator::IsDependentType(
+	std::size_t scope, NameId name) const
+{
+	while (scope != std::numeric_limits<std::size_t>::max())
+	{
+		if (scopes_[scope].names.find(name) != scopes_[scope].names.end())
+			return !dependent_types_.empty() &&
+				dependent_types_[scope].count(name) != 0;
+		scope = scopes_[scope].parent;
+	}
+	return false;
+}
+
 bool RetainedTemplateValidator::DefersUnknownMembers(std::size_t scope) const
 {
 	while (scope != std::numeric_limits<std::size_t>::max())
@@ -389,6 +410,31 @@ bool RetainedTemplateValidator::SyntaxUsesRetainedType(
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		if (SyntaxUsesRetainedType(
+			analyzer_.arena_->EdgeChild(edge), scope)) return true;
+	return false;
+}
+
+bool RetainedTemplateValidator::SyntaxUsesDependentType(
+	NodeId node, std::size_t scope) const
+{
+	if (node == kNoNode) return false;
+	const bool structured = analyzer_.FindChild(
+		node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) != kNoNode;
+	if (analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_NAME_COMPONENT) ||
+		(!structured &&
+		 (analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_BASE_NAME) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_ID_EXPRESSION) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_TARGET) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_TYPE_NAME) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_DECL_SPECIFIER))))
+	{
+		const NameId name = analyzer_.program_->names.UseInterned(
+			analyzer_.arena_->SemanticPayloadId(node));
+		if (IsDependentType(scope, name)) return true;
+	}
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		if (SyntaxUsesDependentType(
 			analyzer_.arena_->EdgeChild(edge), scope)) return true;
 	return false;
 }
@@ -566,6 +612,16 @@ void RetainedTemplateValidator::VisitFunction(NodeId node, std::size_t scope)
 	if (declarator != kNoNode)
 		BindFunctionParameters(declarator, function_scope);
 	const NodeId initializer = analyzer_.FindChild(node, ::cppgm::syntax::STAG_CTOR_INITIALIZER);
+	if (analyzer_.template_witness_)
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId child = analyzer_.arena_->EdgeChild(edge);
+			if (child != initializer &&
+				!analyzer_.arena_->IsTag(
+					child, ::cppgm::syntax::STAG_COMPOUND_STATEMENT))
+				ScanDependentSourceUses(child, function_scope);
+		}
 	if (initializer != kNoNode) Visit(initializer, function_scope);
 	const NodeId body = analyzer_.FindChild(node, ::cppgm::syntax::STAG_COMPOUND_STATEMENT);
 	if (body != kNoNode) Visit(body, function_scope);
@@ -662,9 +718,16 @@ void RetainedTemplateValidator::PredeclareClassMembers(NodeId node,
 		{
 			if (analyzer_.arena_->Payload(member).empty())
 				PredeclareClassMembers(member, scope);
-			else DeclareClassType(scope, analyzer_.program_->names.Intern(
-				analyzer_.arena_->Payload(member)),
-				analyzer_.arena_->IsTag(member, ::cppgm::syntax::STAG_CLASS_SPECIFIER));
+			else
+			{
+				const NameId name = analyzer_.program_->names.Intern(
+					analyzer_.arena_->Payload(member));
+				DeclareClassType(scope, name,
+					analyzer_.arena_->IsTag(member,
+						::cppgm::syntax::STAG_CLASS_SPECIFIER));
+				if (analyzer_.template_witness_)
+					dependent_types_[scope].insert(name);
+			}
 		}
 		else if (analyzer_.arena_->IsTag(member, ::cppgm::syntax::STAG_BIT_FIELD_DECLARATION))
 		{
@@ -740,10 +803,24 @@ void RetainedTemplateValidator::VisitClass(NodeId node, std::size_t scope)
 	PredeclareClassMembers(node, class_scope);
 	// Retained class scopes have no concrete EntityId, but still own the
 	// injected class name as a dependent type.
-	const std::string injected_spelling = analyzer_.arena_->Payload(node);
-	if (!injected_spelling.empty())
-		Declare(class_scope, analyzer_.program_->names.Intern(injected_spelling),
-			RETAINED_TYPE_NAME, true);
+	NameId injected = 0;
+	const NodeId injected_structure = analyzer_.FindChild(
+		node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
+	if (injected_structure != kNoNode)
+	{
+		const NamePath path =
+			analyzer_.StructuredNamePath(injected_structure);
+		if (!path.Empty()) injected = path.Last();
+	}
+	else if (!analyzer_.arena_->Payload(node).empty())
+		injected = analyzer_.program_->names.Intern(
+			analyzer_.arena_->Payload(node));
+	if (injected != 0)
+	{
+		Declare(class_scope, injected, RETAINED_TYPE_NAME, true);
+		if (analyzer_.template_witness_)
+			dependent_types_[class_scope].insert(injected);
+	}
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
@@ -751,7 +828,15 @@ void RetainedTemplateValidator::VisitClass(NodeId node, std::size_t scope)
 		if (analyzer_.arena_->IsTag(member, ::cppgm::syntax::STAG_SIMPLE_DECLARATION))
 			VisitSimple(member, class_scope, true);
 		else if (analyzer_.arena_->IsTag(member, ::cppgm::syntax::STAG_ALIAS_DECLARATION))
+		{
+			const NameId name = analyzer_.program_->names.Intern(
+				analyzer_.arena_->Payload(member));
+			if (analyzer_.template_witness_ &&
+				(SyntaxUsesTemplateParameter(member) ||
+				 SyntaxUsesDependentType(member, class_scope)))
+				dependent_types_[class_scope].insert(name);
 			VisitChildren(member, class_scope);
+		}
 		else Visit(member, class_scope);
 	}
 }
@@ -816,6 +901,10 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 		return;
 	}
 	const NodeId specifiers = analyzer_.FindChild(node, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
+	const bool dependent_type_declaration = analyzer_.template_witness_ &&
+		IsTypedef(specifiers) &&
+		(SyntaxUsesTemplateParameter(specifiers) ||
+		 SyntaxUsesDependentType(specifiers, scope));
 	if (!predeclared)
 	{
 		if (specifiers != kNoNode)
@@ -858,6 +947,17 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 			}
 	}
 	const NodeId list = analyzer_.FindChild(node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
+	if (dependent_type_declaration && list != kNoNode)
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(list);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId declarator = analyzer_.FindChild(
+				analyzer_.arena_->EdgeChild(edge),
+				::cppgm::syntax::STAG_DECLARATOR);
+			if (declarator != kNoNode)
+				dependent_types_[scope].insert(
+					analyzer_.DeclaratorName(declarator));
+		}
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
@@ -904,8 +1004,13 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 {
 	if (analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_ALIAS_DECLARATION))
 	{
-		Declare(scope, analyzer_.program_->names.Intern(
-			analyzer_.arena_->Payload(node)), RETAINED_TYPE_NAME);
+		const NameId name = analyzer_.program_->names.Intern(
+			analyzer_.arena_->Payload(node));
+		const bool dependent = analyzer_.template_witness_ &&
+			(SyntaxUsesTemplateParameter(node) ||
+			 SyntaxUsesDependentType(node, scope));
+		Declare(scope, name, RETAINED_TYPE_NAME);
+		if (dependent) dependent_types_[scope].insert(name);
 		VisitChildren(node, scope);
 		return;
 	}
@@ -1122,10 +1227,59 @@ void RetainedTemplateValidator::VisitSizeof(NodeId node, std::size_t scope)
 	Visit(operand, scope);
 }
 
+void RetainedTemplateValidator::NoteDependentSourceUse(
+	NodeId node, std::size_t scope)
+{
+	if (!analyzer_.template_witness_) return;
+	if (analyzer_.arena_->IsTag(
+		node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME))
+	{
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId component = analyzer_.arena_->EdgeChild(edge);
+			if (!analyzer_.arena_->IsTag(
+				component, ::cppgm::syntax::STAG_NAME_COMPONENT)) continue;
+			const NodeId arguments = analyzer_.FindChild(component,
+				::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
+			if (arguments != kNoNode &&
+				(SyntaxUsesTemplateParameter(arguments) ||
+				 SyntaxUsesDependentType(arguments, scope)))
+			{
+				analyzer_.template_witness_->NoteDependentSourceUse(node);
+				return;
+			}
+		}
+		return;
+	}
+	const bool plain_type_name =
+		analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_TYPE_NAME) ||
+		analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_DECL_SPECIFIER);
+	if (!plain_type_name ||
+		analyzer_.FindChild(
+			node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) != kNoNode)
+		return;
+	const NameId name = analyzer_.program_->names.UseInterned(
+		analyzer_.arena_->SemanticPayloadId(node));
+	if (name != 0 && IsDependentType(scope, name))
+		analyzer_.template_witness_->NoteDependentSourceUse(node);
+}
+
+void RetainedTemplateValidator::ScanDependentSourceUses(
+	NodeId node, std::size_t scope)
+{
+	if (analyzer_.template_witness_)
+		NoteDependentSourceUse(node, scope);
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		ScanDependentSourceUses(analyzer_.arena_->EdgeChild(edge), scope);
+}
+
 void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 	bool unknown_callee)
 {
 	if (node == kNoNode) return;
+	NoteDependentSourceUse(node, scope);
 	if (VisitSwitchLabel(node, scope)) return;
 	// The parser and specialization demand own type syntax within this boundary.
 	if (analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_BUILTIN_TYPE_OPERAND)) return;
@@ -1680,7 +1834,11 @@ void RetainedTemplateValidator::Run()
 			analyzer_.FindClassTemplate(lexical_scope_, owner);
 		if (pattern < analyzer_.class_templates_.size())
 		{
-			DeclareClassType(root, analyzer_.class_templates_[pattern].name, false);
+			const NameId class_name =
+				analyzer_.class_templates_[pattern].name;
+			DeclareClassType(root, class_name, false);
+			if (analyzer_.template_witness_)
+				dependent_types_[root].insert(class_name);
 			const ClassTemplatePattern& class_pattern =
 				analyzer_.class_templates_[pattern];
 			for (std::size_t i = 0; i < class_pattern.parameters.size(); ++i)
@@ -1956,9 +2114,9 @@ void Analyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 		if (has_explicit_syntax)
 			DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
 				arguments, explicit_syntax, scope, &specializations,
-				&argument_syntax);
+				&argument_syntax, callee);
 		else DeduceFunctionTemplatePatterns(patterns, arguments,
-			&specializations, 0, 0, scope, &argument_syntax);
+			&specializations, 0, 0, scope, &argument_syntax, callee);
 		DeduceFunctionTemplates(scope, spelling, arguments, callee);
 		for (std::size_t i = 0; i < specializations.size(); ++i)
 		{
@@ -2120,10 +2278,10 @@ void Analyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 	if (has_explicit_syntax)
 		DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
 			arguments, explicit_syntax, scope, &specializations,
-			&argument_syntax);
+			&argument_syntax, callee);
 	else
 		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
-			0, 0, scope, &argument_syntax);
+			0, 0, scope, &argument_syntax, callee);
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const BindingId canonical =

@@ -299,6 +299,9 @@ cumulative final gate.
 | Phase | Change or experiment | Evidence | Decision |
 | --- | --- | --- | --- |
 | Planning | Audited driver, strict harness, witness corpus, Analyzer lifetime, extended implementation, and Clang metrics visitor | driver discards both witness paths; 415 unique refs; all semantic pattern tables and syntax locations coexist through demand completion; extended session machinery is far larger than the four-source-use visitor shape | use one optional in-analyzer observer and end-of-analysis renderer; no LowIR state or copied session framework |
+| W1 | Added the driver-owned nullable observer, successful-analysis flush, typed output errors, and compact typed event storage | `3c00abac`; absent/present/error checks and through-PA19 ordinary output remained clean | retain the observer boundary; the no-witness path owns no collector |
+| W2 | Published canonical source uses and binding provenance at class, alias, variable, and selected-call owners | `3eea8156`; PA19 strict exact matches rose from 0 to 261 of 279 without changing ordinary output | retain typed IDs through analysis and render only at translation-unit completion |
+| W2/W3 | Added final overload-drop facts, semantic completeness-demand events, retained-template dependency marks, and source-backed anonymous/local type presentation | PA19 strict passes all 279 witness comparisons, all 295 ordinary fixtures, and all 10 course tests; `make test-report-through-pa19` passes 2,092/2,092; layout, semantic-owner, source-set, and exception audits pass | retain the centralized final-decision hooks; suppress replayed dependent uses from the retained lexical type model rather than source-text matching |
 
 ## Exit criteria
 

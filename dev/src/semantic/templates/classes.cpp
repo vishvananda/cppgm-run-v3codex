@@ -1776,7 +1776,12 @@ void Analyzer::EnsureClassDefinition(TypeId type)
 		 class_template_specialization_states_[declaration] == 0 ||
 		 class_template_specialization_states_[declaration] ==
 		 kClassTemplateCompletionPendingDefinition);
-	if (program_->entities[entity].complete && !initializer_list_replay) return;
+	if (program_->entities[entity].complete && !initializer_list_replay)
+	{
+		if (template_witness_)
+			template_witness_->RecordClassInstantiation(entity);
+		return;
+	}
 	if (entity < class_template_pattern_by_entity_.size() &&
 		class_template_pattern_by_entity_[entity] != kNoDumpEdge)
 	{
@@ -1808,6 +1813,8 @@ void Analyzer::EnsureClassDefinition(TypeId type)
 		const ScopeId scope = deferred_class_scope_by_entity_[entity];
 		deferred_class_definition_by_entity_[entity] = kNoNode;
 		(void)AnalyzeClass(definition, scope, std::string(), false);
+		if (template_witness_ && program_->entities[entity].complete)
+			template_witness_->RecordClassInstantiation(entity);
 	}
 }
 

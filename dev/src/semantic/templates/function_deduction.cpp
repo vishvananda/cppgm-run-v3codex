@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "support/exceptions.h"
 
 #include <algorithm>
@@ -1332,7 +1333,7 @@ void Analyzer::DeduceFunctionTemplatePatterns(
 	const std::vector<TypeId>* explicit_arguments,
 	const std::vector<TemplateArgument>* canonical_explicit_arguments,
 	ScopeId argument_scope,
-	const std::vector<NodeId>* argument_syntax)
+	const std::vector<NodeId>* argument_syntax, NodeId witness_syntax)
 {
 	for (std::size_t p = 0; p < patterns.size(); ++p)
 	{
@@ -1345,10 +1346,20 @@ void Analyzer::DeduceFunctionTemplatePatterns(
 		const std::size_t fixed_function_parameters =
 			pattern.function_parameter_pack ?
 			function_type.parameter_count - 1 : function_type.parameter_count;
-		if (function_type.kind != TYPE_FUNCTION ||
-			arguments.size() < pattern.required_parameter_count ||
+		if (function_type.kind != TYPE_FUNCTION) continue;
+		if (arguments.size() < pattern.required_parameter_count ||
 			(!pattern.function_parameter_pack && !function_type.variadic &&
-			 arguments.size() > function_type.parameter_count)) continue;
+			 arguments.size() > function_type.parameter_count))
+		{
+			if (template_witness_ && witness_syntax != kNoNode &&
+				TemplateWitnessSourceUseEnabled())
+				template_witness_->RecordDeductionDrop(witness_syntax,
+					static_cast<std::uint32_t>(patterns[p]),
+					arguments.size() < pattern.required_parameter_count ?
+						TemplateWitnessObserver::OVERLOAD_DROP_TOO_FEW_ARGUMENTS :
+						TemplateWitnessObserver::OVERLOAD_DROP_TOO_MANY_ARGUMENTS);
+			continue;
+		}
 		const TypeId* parameters =
 			program_->types.Parameters(pattern.shape_type);
 		FunctionTemplateDeduction deduced(pattern.parameters);
@@ -1637,7 +1648,7 @@ void Analyzer::DeduceFunctionTemplatePatternsWithExplicitSyntax(
 	const std::vector<ExpressionInfo>& arguments,
 	const std::vector<NodeId>& explicit_syntax, ScopeId use_scope,
 	std::vector<BindingId>* specializations,
-	const std::vector<NodeId>* argument_syntax)
+	const std::vector<NodeId>* argument_syntax, NodeId witness_syntax)
 {
 	for (std::size_t i = 0; i < patterns.size(); ++i)
 	{
@@ -1663,7 +1674,8 @@ void Analyzer::DeduceFunctionTemplatePatternsWithExplicitSyntax(
 		if (!built || substitution_failed) continue;
 		const std::vector<std::size_t> one_pattern(1, patterns[i]);
 		DeduceFunctionTemplatePatterns(one_pattern, arguments,
-			specializations, 0, &canonical, use_scope, argument_syntax);
+			specializations, 0, &canonical, use_scope, argument_syntax,
+			witness_syntax);
 	}
 }
 

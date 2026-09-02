@@ -230,8 +230,7 @@ private:
 	void RecordFunctionTemplateSourceCall(NodeId syntax,
 		BindingId selected, std::size_t explicit_count);
 	bool TemplateWitnessSourceUseEnabled() const;
-	void RecordDeducedClassObjectUse(
-		NodeId source, NodeId specifiers, TypeId type);
+	void RecordDeducedClassObjectUse(NodeId specifiers, TypeId type);
 	NamePath StructuredNamePath(NodeId syntax);
 	NamePath SyntaxNamePath(NodeId syntax);
 	LookupResult LookupSyntaxName(NodeId syntax, ScopeId scope,
@@ -1005,13 +1004,15 @@ private:
 		const std::vector<TypeId>* explicit_arguments = 0,
 		const std::vector<TemplateArgument>* canonical_explicit_arguments = 0,
 		ScopeId argument_scope = kNoScope,
-		const std::vector<NodeId>* argument_syntax = 0);
+		const std::vector<NodeId>* argument_syntax = 0,
+		NodeId witness_syntax = kNoNode);
 	void DeduceFunctionTemplatePatternsWithExplicitSyntax(
 		const std::vector<std::size_t>& patterns,
 		const std::vector<ExpressionInfo>& arguments,
 		const std::vector<NodeId>& explicit_syntax, ScopeId use_scope,
 		std::vector<BindingId>* specializations,
-		const std::vector<NodeId>* argument_syntax = 0);
+		const std::vector<NodeId>* argument_syntax = 0,
+		NodeId witness_syntax = kNoNode);
 	void DeduceFunctionTemplates(ScopeId scope, const std::string& spelling,
 		const std::vector<ExpressionInfo>& arguments,
 		NodeId syntax = kNoNode);
@@ -1322,6 +1323,13 @@ private:
 		ObjectConversionFact* object_conversion,
 		std::vector<CallConversionFact>* argument_conversions,
 		bool quiet = false);
+	bool SelectedOverloadHasBetterConversion(std::size_t left,
+		std::size_t right, const std::vector<ConversionRank>& ranks,
+		const std::vector<std::size_t>& base_distances,
+		const std::vector<CallConversionFact>& conversions,
+		const std::vector<BindingId>& candidates,
+		const std::vector<ExpressionInfo>& arguments,
+		const ExpressionInfo* object, bool operator_call) const;
 	ExpressionInfo MakeImplicitObjectPointer(const ExpressionInfo& object);
 	void BeginAssociatedLookup();
 	void AddAssociatedType(TypeId type);

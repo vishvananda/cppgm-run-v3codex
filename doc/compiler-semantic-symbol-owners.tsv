@@ -41,6 +41,7 @@ dev/src/semantic/analysis/analyzer.cpp	QualificationConversion	1	dev/src/semanti
 dev/src/semantic/analysis/analyzer.cpp	Render	1	dev/src/semantic/analysis/analyzer.cpp	keep
 dev/src/semantic/analysis/analyzer.cpp	RenderNode	1	dev/src/semantic/analysis/analyzer.cpp	keep
 dev/src/semantic/analysis/analyzer.cpp	SelectOverload	1	dev/src/semantic/analysis/analyzer.cpp	keep
+dev/src/semantic/analysis/analyzer.cpp	SetTemplateWitnessPrimarySourceFile	1	dev/src/semantic/analysis/analyzer.cpp	keep
 dev/src/semantic/analysis/analyzer.cpp	SimilarUnqualified	1	dev/src/semantic/analysis/analyzer.cpp	keep
 dev/src/semantic/analysis/capacity.cpp	PublishBindingPopulationStats	1	dev/src/semantic/analysis/capacity.cpp	keep
 dev/src/semantic/analysis/capacity.cpp	PublishPresentationPopulationStats	1	dev/src/semantic/analysis/capacity.cpp	keep
@@ -337,6 +338,7 @@ dev/src/semantic/expressions/overload_resolution.cpp	IndexEnumOperatorCandidate	
 dev/src/semantic/expressions/overload_resolution.cpp	MakeImplicitObjectPointer	1	dev/src/semantic/expressions/overload_resolution.cpp	keep
 dev/src/semantic/expressions/overload_resolution.cpp	MatchesEnumOnlyOperatorCandidate	1	dev/src/semantic/expressions/overload_resolution.cpp	keep
 dev/src/semantic/expressions/overload_resolution.cpp	PrepareConversionFunctionObject	1	dev/src/semantic/expressions/overload_resolution.cpp	keep
+dev/src/semantic/expressions/overload_resolution.cpp	SelectedOverloadHasBetterConversion	1	dev/src/semantic/expressions/overload_resolution.cpp	keep
 dev/src/semantic/expressions/overload_resolution.cpp	SelectOperatorOverload	1	dev/src/semantic/expressions/overload_resolution.cpp	keep
 dev/src/semantic/expressions/overload_resolution.cpp	TryAnalyzeCallOperator	1	dev/src/semantic/expressions/overload_resolution.cpp	keep
 dev/src/semantic/expressions/overload_resolution.cpp	TryAnalyzeCallSurrogate	1	dev/src/semantic/expressions/overload_resolution.cpp	keep
@@ -849,3 +851,6 @@ dev/src/semantic/templates/validation.cpp	RecordRetainedCallLookup	1	dev/src/sem
 dev/src/semantic/templates/validation.cpp	RetainedCallAllowsArgumentDependentLookup	1	dev/src/semantic/templates/validation.cpp	keep
 dev/src/semantic/templates/validation.cpp	RetainedFunctionCallCandidates	1	dev/src/semantic/templates/validation.cpp	keep
 dev/src/semantic/templates/validation.cpp	ValidateRetainedTemplateDefinition	1	dev/src/semantic/templates/validation.cpp	keep
+dev/src/semantic/diagnostics/template_witness.cpp	RecordDeducedClassObjectUse	1	dev/src/semantic/diagnostics/template_witness.cpp	keep
+dev/src/semantic/diagnostics/template_witness.cpp	RecordFunctionTemplateSourceCall	1	dev/src/semantic/diagnostics/template_witness.cpp	keep
+dev/src/semantic/diagnostics/template_witness.cpp	TemplateWitnessSourceUseEnabled	1	dev/src/semantic/diagnostics/template_witness.cpp	keep
