@@ -425,6 +425,55 @@ and owner publication likewise happen only after their existing semantic
 selection is final.  W5M-O receives its own PA19/20/22 strict and no-witness
 gate before it can be committed.
 
+### Phase W5M-S: Declaration-owned semantic source facts
+
+Pause W5M-O before adding further PA22 witness cases and establish the missing
+semantic/source join as an independently measured foundation.  A retained
+template declaration currently keeps either syntax or semantic identity at
+different stages, but not a compact record that deliberately keeps both.  As
+a result, late replay can identify a concrete class specialization but cannot
+reliably distinguish a class-id resolved when the declaration was registered,
+a dependent current-partial class-id, and an arbitrary dependent primary
+class-id that became concrete only through replay.
+
+1. Define a small typed source-fact record whose minimum payload is the exact
+   canonical name-component node, the semantic pattern kind and stable pattern
+   index, and a source-resolution class.  The initial resolution classes are
+   declaration-complete, current-partial, and replay-required; do not encode
+   witness grammar, rendered names, token spelling, or fixture identity.
+2. Populate facts only at existing semantic registration/selection boundaries
+   that already possess the necessary information.  Class partial
+   registration owns its canonical partial arguments and parameter
+   environment; out-of-class member registration owns its selected primary or
+   partial owner and exact declarator components.  Do not call `BuildType`,
+   instantiate a template, or perform a new lookup merely to create a fact.
+3. Store facts on the retained declaration/pattern that owns their parameter
+   environment.  Deduplicate only within that owner by typed node identity.
+   A translation-unit-wide claimed-node set is invalid because the same syntax
+   may first be visited under an incomplete outer environment and later under
+   the complete retained-declaration environment.
+4. Keep the ordinary compiler path inert.  Prefer existing tail padding and
+   already-retained vectors; if a new side vector is required, allocate it only
+   when the nullable observer is present.  This foundation must not add,
+   suppress, reorder, or render any witness event.
+5. Validate record sizes, byte-exact no-witness O0/O1/O3 output, PA19/20
+   ordinary and strict suites, file audits, and four position-balanced frozen
+   no-witness A/B blocks.  Reject or redesign any result above the plan's
+   0.2% matched CPU threshold.  Commit and push W5M-S separately.
+6. Only after W5M-S passes may W5M-O consume the typed facts to publish class
+   uses.  Add one semantic category at a time—current partials, retained member
+   owner/type occurrences, then static-member definitions—and require a lower
+   PA22 mismatch count without changing PA19/20 after each increment.
+
+Two prototypes establish the negative boundary.  Building complete class
+arguments during the observer's retained-source prepass changed witness-mode
+semantic behavior and produced unknown dependent type names.  Moving that
+work into the retained walk still conflated declaration-time resolution with
+later replay, while a translation-unit-wide claimed-node set suppressed facts
+when a nested declaration was revisited under its authoritative environment.
+Both designs are rejected.  Semantic source facts must be produced by the
+declaration owner, not reconstructed by the observer.
+
 The first W5M-F expression-range implementation called `Make` and then
 `SetTokenRange` for every parenthesized call and subscript node.  Although its
 output was exact, four ABBA blocks measured +0.77% paired user time, so that
@@ -545,7 +594,8 @@ byte-identical objects.  The report is
 | W5R | Anchored explicit uses on terminal name components, kept deduced alias-backed class uses on the written type-id start, added literal provenance, and reduced final rendering to preparation/selection/binding/specialization/drop/closure routines | PA19 295/295 ordinary + 279/279 strict + 10/10 course; PA20 164/164 ordinary + 158/158 strict + 11/11 course; witness module file audit passes; final frozen A/B -0.41% wall / -0.41% combined CPU with exact objects | retain direct provenance and decomposed renderer; delete global token searches, event retargeting, pairwise provenance repair, constructor source tunnelling, and provisional deferred-alias inference |
 | W5M-F | Retained exact owner components, initialized existing call/subscript/parenthesized ranges at node creation, and centralized overload/declarator source anchors | retained-member record remains 120 bytes; PA10 165/165, PA19 295 ordinary + 279 witness + 10 course, and PA20 164 ordinary + 158 witness + 11 course; exact frozen objects; four-block paired user +0.12%, wall +0.21%, RSS -0.18% | retain and commit independently; rejected the two-call range initializer at +0.77% paired user |
 | W5M-F source identity | Canonicalized terminal name-component selection across call/member wrappers without descending into argument syntax | isolated PA19 and PA20 strict/ordinary/course suites exact; frozen objects exact; four-block paired user +0.00%, wall +0.11%, RSS -0.35% | retain as provenance-only machinery before the observer consumes it |
-| W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F provenance | PA22 convergence in progress; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer semantic-record provenance over any observer-side syntax recovery |
+| W5M-S | Add declaration-owned typed semantic source facts before expanding PA22 publication | observer-side complete-type construction caused witness-mode semantic failures; a scoped variant worsened PA22 from 68 to 74, and a TU-wide claimed-node set still worsened it to 70 because nested declarations acquire their authoritative environment later | reject observer reconstruction and global node ownership; build an output-inert, independently timed provenance foundation at existing semantic registration boundaries |
+| W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
 
