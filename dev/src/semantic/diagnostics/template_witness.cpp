@@ -1651,6 +1651,7 @@ bool TemplateWitnessObserver::IsTemplateFunction(
 	const FunctionInfo& function = analyzer.GetFunction(binding);
 	const BindingRecord& record = analyzer.program_->bindings[binding];
 	const EntityId owner = record.member_owner;
+	if (record.explicit_instantiation_suppressed) return false;
 	if (function.explicit_specialization ||
 		(OwnerIsExplicitSpecialization(analyzer, owner) &&
 		 !function.template_specialization)) return false;
@@ -1674,6 +1675,7 @@ bool TemplateWitnessObserver::IsRequiredTemplateFunction(
 	binding = analyzer.program_->bindings[binding].canonical;
 	const FunctionInfo& function = analyzer.GetFunction(binding);
 	const BindingRecord& record = analyzer.program_->bindings[binding];
+	if (record.explicit_instantiation_suppressed) return false;
 	if (function.explicit_specialization ||
 		(OwnerIsExplicitSpecialization(analyzer, record.member_owner) &&
 		 !function.template_specialization) || record.compiler_generated ||

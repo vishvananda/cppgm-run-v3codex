@@ -948,6 +948,20 @@ timing is +0.001% paired user, +0.057% wall, and -0.182% RSS.  The report is
 correctness fix, not as witness-only classification policy, and add the
 relationship check required above before closing the plan.
 
+Function lifecycle rendering now also consults the binding's final typed
+explicit-instantiation suppression state.  Collection may observe a demand
+before a later `extern template` declaration is processed, but a suppressed
+binding did not ultimately instantiate or require a definition and must not be
+published as though it did.  The isolated PA19--PA24 manifest changes exactly
+the two PA22 extern-function witnesses, both become exact (251 -> 253), and no
+later witness changes.  The locally used inline/defaulted member of an
+extern-instantiated class remains present, proving the filter is per binding
+rather than a blanket syntactic suppression.  PA22 ordinary is 311/311,
+frozen no-witness O0/O1/O3 objects and all audits are exact.  A noisy initial
+four-block sample measured +0.495% paired user; the extended eight-block run
+measures +0.000% user, -0.055% wall, and -0.099% RSS.  The retained report is
+`/tmp/v3codex-w5m-extern-final-state-ab8.json`.
+
 The first consumer uses the retained owner pattern/partial ordinal only after
 their bounds and completed canonical-argument state are validated.  It renders
 the primary name and typed partial arguments through the opt-in identity
@@ -1133,6 +1147,8 @@ byte-identical objects.  The report is
 | W5M-O conversion target identity | Rendered a conversion closure's typed class-template target from its primary pattern's terminal name | 9 files change only in closure lines; PA22 +1, PA23 +2, PA24 +1 exact; no source-event movement or regression; LowIR/frozen/audits exact; four-block paired user -1.340% | retain; existing typed `conversion_target` is sufficient after provenance/presentation separation |
 | W5M verification repair | Finished the semantic initialization unit's earlier typed-exception migration by routing its two direct typed throws through the lightweight semantic helpers | exception-taxonomy fanout returns from 33 to the audited ceiling of 32; PA22 311/311; frozen O0/O1/O3 objects exact; four-block paired user -0.001%, wall -0.163%, RSS -0.684% | retain as an independent audit repair before measuring further witness convergence; do not raise the architecture ceiling |
 | W5M semantic candidate viability | Restricted chained-user-conversion rejection to the N3485 class copy-initialization context already represented by `copy_initialization` | 34 witness-only deltas; PA22 +6, PA23 +7, PA24 +8 exact, 13 additional local improvements, no regression; through-PA24 3,565/3,565; frozen outputs/audits exact; clean four-block paired user +0.001% | retain as ordinary semantic correctness; back it with a relationship-based viability/rank check before plan exit |
+| W5M rejected source-range ordering | Ordered same-start source events by widest syntax range before semantic insertion order | made 4 witnesses exact but regressed 19 previously exact files; PA22 -4, PA23 -4, PA24 -7 exact | reject; source containment is not semantic evaluation/dependency order, so retain the authoritative ranges but add no geometric tie-breaker |
+| W5M-O final function lifecycle | Filtered collected function instantiation/requirement facts by the binding's final explicit-instantiation suppression state | exactly 2 PA22 extern-function witnesses change and become exact, later manifests unchanged; inline/defaulted extern-class member control preserved; PA22 311/311; frozen outputs/audits exact; extended paired user +0.000% | retain; final typed state, not collection timing or source spelling, owns lifecycle publication |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
