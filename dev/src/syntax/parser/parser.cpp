@@ -1369,7 +1369,7 @@ NodeId SyntaxParser::ParsePrimaryExpression()
 		if (nested_template_argument) ++angle_stop_depth_;
 		if (expression == kNoNode) throw Error("expected parenthesized expression");
 		Expect(OP_RPAREN);
-		const NodeId parenthesized = arena_.Make("parenthesized-expression");
+		const NodeId parenthesized = arena_.MakeRanged("parenthesized-expression", cast_mark.position, position_);
 		arena_.Add(parenthesized, expression);
 		return parenthesized;
 	}
@@ -1428,11 +1428,11 @@ NodeId SyntaxParser::ParsePostfixSuffixes(NodeId value) {
 			 arena_.FirstEdge(value) != kNoEdge ||
 			 (arena_.Flags(value) & SYNTAX_FLAG_TYPENAME) != 0)) {
 			const NodeId call = arena_.Make("call-expression");
-			arena_.Add(call, value); arena_.Add(call, ParseBracedInitList());
+			arena_.Add(call, value); arena_.Add(call, ParseBracedInitList()); if (arena_.HasTokenRange(value)) arena_.SetTokenRange(call, arena_.TokenFirst(value), position_);
 			value = call; continue;
 		}
 		if (Match(OP_LPAREN)) {
-			const NodeId call = arena_.Make("call-expression");
+			const NodeId call = arena_.HasTokenRange(value) ? arena_.MakeRanged("call-expression", arena_.TokenFirst(value), position_) : arena_.Make("call-expression");
 			arena_.Add(call, value);
 			const std::string callee = arena_.IsTag(value, ::cppgm::syntax::STAG_ID_EXPRESSION) ?
 				arena_.Payload(value) : std::string();
@@ -1469,7 +1469,7 @@ NodeId SyntaxParser::ParsePostfixSuffixes(NodeId value) {
 			const NodeId index = ParseExpression();
 			if (index == kNoNode) throw Error("expected subscript");
 			Expect(OP_RSQUARE);
-			const NodeId subscript = arena_.Make("subscript-expression");
+			const NodeId subscript = arena_.HasTokenRange(value) ? arena_.MakeRanged("subscript-expression", arena_.TokenFirst(value), position_) : arena_.Make("subscript-expression");
 			arena_.Add(subscript, value);
 			arena_.Add(subscript, index);
 			value = subscript;

@@ -1292,15 +1292,19 @@ struct ClassTemplateMemberPattern
 	std::vector<TemplateParameter> parameters;
 	std::vector<TemplateArgument> canonical_owner_arguments;
 	std::vector<NameId> nested_owner_path;
-	std::vector<NodeId> nested_owner_argument_lists;
+	// Exact written components are retained with the canonical owner shape so
+	// later semantic replay never has to rediscover source provenance.
+	std::vector<NodeId> nested_owner_components;
 	// Captured when the retained definition is first classified.  Value-use
 	// demand must not reopen retained syntax to distinguish const from constexpr.
+	NodeId owner_source;
 	bool value_use_requires_storage;
 
 	ClassTemplateMemberPattern()
 		: lexical_scope(kNoScope), declaration(kNoNode),
 		  concrete_owner(kNoBinding),
 		  owner_partial_pattern(kNoDumpEdge),
+		  owner_source(kNoNode),
 		  value_use_requires_storage(false) {}
 };
 

@@ -406,6 +406,82 @@ reduction.
 
 Commit and push the observer reduction before continuing with PA23/PA24.
 
+## Phase W5M: Retained semantic-decision provenance
+
+Split this phase at a hard foundation boundary.  W5M-F may only retain syntax
+and semantic provenance that is useful independently of witness formatting:
+half-open ranges on existing expression nodes, exact overload-use anchoring,
+nested-declarator identity, and the exact owner component already represented
+by a retained class-member definition.  It must not add or suppress a witness
+event.  Verify unchanged retained-record sizes, ordinary output, file audits,
+and repeated no-witness A/B timing, then commit and push W5M-F by itself.
+
+W5M-O may consume those facts from the nullable observer.  Its retained-call
+classification must run at the validator's semantic replay walk, where the
+compiler already knows which expressions are deferred, rather than in a
+second whole-target syntax scan.  This keeps concrete declaration-time calls
+public while suppressing specialization-specific replay events.  Constructor
+and owner publication likewise happen only after their existing semantic
+selection is final.  W5M-O receives its own PA19/20/22 strict and no-witness
+gate before it can be committed.
+
+The first W5M-F expression-range implementation called `Make` and then
+`SetTokenRange` for every parenthesized call and subscript node.  Although its
+output was exact, four ABBA blocks measured +0.77% paired user time, so that
+shape was rejected.  `MakeRanged` now initializes the already-present range
+fields while constructing the node.  Four replacement blocks are exact and
+measure +0.12% paired user time, +0.21% wall, and -0.18% RSS; the CPU gate is
+met.  The report is `/tmp/v3codex-w5mf-packed-ab.json`.
+
+PA22 exposes one additional provenance boundary: an out-of-class member
+definition retains canonical owner arguments but historically discards the
+exact owner template-id node.  Preserve that component when the definition is
+classified, alongside its canonical owner shape.  Store nested owner
+components in place of their argument-list children so routing can carry the
+same provenance forward without adding a parallel allocation; derive the
+argument list structurally when it is needed.
+
+Publish the written owner use only after replay has selected that retained
+partial-owner definition.  The publication receives the exact component,
+typed pattern, and canonical written arguments directly.  It must not search
+the retained declaration, match a name spelling, or infer the source from a
+later concrete event.  Keep the node ID in existing tail padding of
+`ClassTemplateMemberPattern`, verify its size is unchanged, and benchmark the
+no-witness path before retention.
+
+Use the same two-stage provenance join for dependent alias template-ids.  The
+retained validator marks the exact written component; a later successful
+lookup supplies the typed alias-pattern identity.  The observer records that
+identity against the original component while keeping its direct argument
+syntax, rather than substituting the values from whichever concrete replay
+happened first.  This join is observer-owned and performs no additional
+lookup, instantiation, or ordinary-analysis work.
+
+Complete the existing syntax-range foundation for parenthesized, call, and
+subscript expressions.  These nodes are themselves source-aware semantic
+boundaries: nested call operators and overloaded subscripts legitimately use
+the expression node as their witness source.  Populate the existing half-open
+range from the already-ranged operand through the closing delimiter; do not
+recover an inner callee token in the renderer.
+
+Add one syntax query for the exact identifier owned by a declarator, including
+nested declarators, and use it in place of validator-local recursion.  Add one
+observer-gated semantic query that extracts a selected template constructor
+from an already-built constructor action (through only transparent
+single-child materialization/transfer wrappers).  Variable declarations and
+class functional casts can then publish at their source-aware boundary after
+analysis returns; initialization APIs remain free of witness-only parameters.
+Constructor selection must publish the same typed final candidate/drop record
+as ordinary calls and overloaded operators.  Keep that record source-free;
+the later action/source join owns location.  Allocate and classify drops only
+when the observer exists, and do not publish quiet speculative selections.
+
+Use PA22 strict mismatches to find any remaining decision sites that discard
+source identity.  Extend the retained semantic records first, using existing
+storage where possible, and only then add the observer publication.  Do not
+restore constructor parameter tunnelling, deferred alias guesses, or renderer
+recovery removed by W5R.
+
 The retained W5P representation packs each parsed component's name, optional
 argument-list node, and half-open range into one temporary record.  A first
 implementation added two parallel range vectors and reproducibly regressed the
@@ -455,6 +531,8 @@ byte-identical objects.  The report is
 | W5P | Filled existing syntax ranges for exact name components, template-argument lists, type-id arguments, declarator names, and dependent `typename` uses; consolidated the name parser's parallel vectors into one component record | PA10 165/165, PA19 469/469, PA20 11/11, through-PA20 2,267/2,267; frozen output exact; packed-record A/B +0.22% wall / +0.31% user versus the pre-foundation binary | retain packed representation; reject the parallel-vector prototype; test provenance through W5R's public witness behavior |
 | W5D | Added observer-gated declaration-context provenance over retained definitions and all template-parameter syntax, with distinct facts for dependent class/alias uses and retained calls | dependent function-body casts, dependent defaults, and dependent non-type parameter declarators are suppressed; replayed variable-template uses remain public; PA19 279/279 and PA20 158/158 strict remain exact | retain typed context facts; reject a single generic `inside template` suppression bit |
 | W5R | Anchored explicit uses on terminal name components, kept deduced alias-backed class uses on the written type-id start, added literal provenance, and reduced final rendering to preparation/selection/binding/specialization/drop/closure routines | PA19 295/295 ordinary + 279/279 strict + 10/10 course; PA20 164/164 ordinary + 158/158 strict + 11/11 course; witness module file audit passes; final frozen A/B -0.41% wall / -0.41% combined CPU with exact objects | retain direct provenance and decomposed renderer; delete global token searches, event retargeting, pairwise provenance repair, constructor source tunnelling, and provisional deferred-alias inference |
+| W5M-F | Retained exact owner components, initialized existing call/subscript/parenthesized ranges at node creation, and centralized overload/declarator source anchors | retained-member record remains 120 bytes; PA10 165/165, PA19 295 ordinary + 279 witness + 10 course, and PA20 164 ordinary + 158 witness + 11 course; exact frozen objects; four-block paired user +0.12%, wall +0.21%, RSS -0.18% | retain and commit independently; rejected the two-call range initializer at +0.77% paired user |
+| W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F provenance | PA22 convergence in progress; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer semantic-record provenance over any observer-side syntax recovery |
 
 ## Exit criteria
 

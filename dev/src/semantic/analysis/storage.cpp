@@ -355,7 +355,7 @@ std::size_t Analyzer::SideStorageBytes() const
 					definition.canonical_owner_arguments.capacity() *
 						sizeof(TemplateArgument) +
 					definition.nested_owner_path.capacity() * sizeof(NameId) +
-					definition.nested_owner_argument_lists.capacity() *
+					definition.nested_owner_components.capacity() *
 						sizeof(NodeId);
 			}
 		}

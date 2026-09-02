@@ -156,6 +156,7 @@ public:
 		InterningStats* stats);
 	NodeId Make(const char* tag);
 	NodeId Make(const char* tag, const std::string& payload);
+	NodeId MakeRanged(const char* tag, std::size_t first, std::size_t last);
 	void Add(NodeId parent, NodeId child);
 	void Prepend(NodeId parent, NodeId child);
 	std::size_t NodeMark() const;
@@ -205,6 +206,8 @@ public:
 		return kNoNode;
 	}
 	NodeId TerminalNameComponent(NodeId node) const;
+	NodeId OverloadSourceAnchor(NodeId node) const;
+	NodeId DeclaratorIdentifier(NodeId node) const;
 	bool HasDirectChildTag(NodeId node, const char* tag) const;
 	bool HasDirectChildTag(NodeId node, SyntaxTagCode tag) const;
 	bool HasDescendantTag(NodeId node, const char* tag) const;

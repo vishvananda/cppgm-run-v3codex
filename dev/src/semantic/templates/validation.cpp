@@ -154,7 +154,6 @@ private:
 	const TemplateParameter* TemplateParameterUsedBy(NodeId node) const;
 	void ValidateSpecialMemberExceptionSpecification();
 	RetainedSpecialMemberKind SpecialMemberKind(NodeId node) const;
-	NodeId DeclaratorIdentifier(NodeId declarator) const;
 	TemplateOrdinalMap TemplateOrdinals(
 		const std::vector<TemplateParameter>& parameters) const;
 	bool RetainedTypeSyntaxEquivalent(NodeId left, NodeId right,
@@ -1709,15 +1708,6 @@ RetainedSpecialMemberKind RetainedTemplateValidator::SpecialMemberKind(
 		RETAINED_DESTRUCTOR : RETAINED_CONSTRUCTOR;
 }
 
-NodeId RetainedTemplateValidator::DeclaratorIdentifier(NodeId declarator) const
-{
-	const NodeId identifier = analyzer_.FindChild(declarator, ::cppgm::syntax::STAG_IDENTIFIER);
-	if (identifier != kNoNode) return identifier;
-	const NodeId nested = analyzer_.FindChild(declarator, ::cppgm::syntax::STAG_NESTED_DECLARATOR);
-	return nested == kNoNode ? kNoNode :
-		DeclaratorIdentifier(analyzer_.FirstSemanticChild(nested));
-}
-
 RetainedTemplateValidator::TemplateOrdinalMap
 RetainedTemplateValidator::TemplateOrdinals(
 	const std::vector<TemplateParameter>& parameters) const
@@ -1814,9 +1804,9 @@ bool RetainedTemplateValidator::ParameterTypesEquivalent(NodeId left,
 			right_syntax[i], ::cppgm::syntax::STAG_DECLARATOR);
 		if (!RetainedTypeSyntaxEquivalent(left_syntax[i], right_syntax[i],
 			left_declarator == kNoNode ? kNoNode :
-				DeclaratorIdentifier(left_declarator),
+				analyzer_.arena_->DeclaratorIdentifier(left_declarator),
 			right_declarator == kNoNode ? kNoNode :
-				DeclaratorIdentifier(right_declarator),
+				analyzer_.arena_->DeclaratorIdentifier(right_declarator),
 			left_ordinals, right_ordinals))
 			return false;
 	}

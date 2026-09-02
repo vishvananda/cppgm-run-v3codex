@@ -1070,9 +1070,12 @@ bool Analyzer::RouteClassTemplateMemberDefinition(
 	ScopeId owner_scope, ScopeId lexical_scope, bool demanded)
 {
 	if (component >= definition.nested_owner_path.size() ||
-		component >= definition.nested_owner_argument_lists.size() ||
-		definition.nested_owner_argument_lists[component] == kNoNode)
+		component >= definition.nested_owner_components.size())
 		return false;
+	const NodeId owner_component = definition.nested_owner_components[component];
+	const NodeId argument_list = FindChild(owner_component,
+		::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
+	if (argument_list == kNoNode) return false;
 	const NameId name = definition.nested_owner_path[component];
 	const LookupResult found = program_->LookupDirect(
 		owner_scope, name, LOOKUP_SCOPE_CARRIER);
@@ -1101,27 +1104,27 @@ bool Analyzer::RouteClassTemplateMemberDefinition(
 	if (target == kNoNode) return false;
 
 	std::vector<NodeId> owner_arguments;
-	const NodeId argument_list =
-		definition.nested_owner_argument_lists[component];
 	for (std::uint32_t edge = arena_->FirstEdge(argument_list);
 		edge != kNoEdge; edge = arena_->NextEdge(edge))
 		owner_arguments.push_back(arena_->EdgeChild(edge));
 	ClassTemplateMemberPattern routed;
 	routed.lexical_scope = lexical_scope;
 	routed.declaration = target;
+	routed.owner_source = owner_component;
 	routed.value_use_requires_storage =
 		definition.value_use_requires_storage;
 	routed.parameters.swap(parameters);
 	routed.nested_owner_path.assign(
 		definition.nested_owner_path.begin() + component + 1,
 		definition.nested_owner_path.end());
-	routed.nested_owner_argument_lists.assign(
-		definition.nested_owner_argument_lists.begin() + component + 1,
-		definition.nested_owner_argument_lists.end());
+	routed.nested_owner_components.assign(
+		definition.nested_owner_components.begin() + component + 1,
+		definition.nested_owner_components.end());
 	std::vector<NameId> declared_owner_path = routed.nested_owner_path;
 	for (std::size_t nested = 0;
-		nested < routed.nested_owner_argument_lists.size(); ++nested)
-		if (routed.nested_owner_argument_lists[nested] != kNoNode)
+		nested < routed.nested_owner_components.size(); ++nested)
+		if (FindChild(routed.nested_owner_components[nested],
+			::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) != kNoNode)
 		{
 			declared_owner_path.resize(nested + 1);
 			break;

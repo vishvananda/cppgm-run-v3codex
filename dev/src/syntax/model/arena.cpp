@@ -366,6 +366,24 @@ NodeId SyntaxArena::Make(const char* tag, const std::string& payload)
 	return id;
 }
 
+NodeId SyntaxArena::MakeRanged(const char* tag, std::size_t first,
+	std::size_t last)
+{
+	if (nodes_.size() >= kNoNode ||
+		first > std::numeric_limits<std::uint32_t>::max() ||
+		last > std::numeric_limits<std::uint32_t>::max())
+		ThrowSyntaxResourceLimit("syntax node or token range is too large");
+	const NodeId id = static_cast<NodeId>(nodes_.size());
+	if (stats_) ++stats_->syntax_tag_calls;
+	SyntaxTagCode tag_code = STAG_NONE;
+	const TextId tag_id = InternTag(tag, &tag_code);
+	SyntaxNode node(tag_id, 0, tag_code);
+	node.token_first = static_cast<std::uint32_t>(first);
+	node.token_last = static_cast<std::uint32_t>(last);
+	nodes_.push_back(node);
+	return id;
+}
+
 void SyntaxArena::Add(NodeId parent, NodeId child)
 {
 	if (parent == kNoNode || child == kNoNode) return;
@@ -645,6 +663,33 @@ NodeId SyntaxArena::TerminalNameComponent(NodeId node) const
 		if (IsTag(child, STAG_NAME_COMPONENT)) terminal = child;
 	}
 	return terminal == kNoNode ? node : terminal;
+}
+
+NodeId SyntaxArena::OverloadSourceAnchor(NodeId node) const
+{
+	if (node == kNoNode) return kNoNode;
+	if (IsTag(node, STAG_CALL_EXPRESSION))
+	{
+		const std::uint32_t edge = FirstEdge(node);
+		return edge == kNoEdge ? kNoNode :
+			TerminalNameComponent(EdgeChild(edge));
+	}
+	return IsTag(node, STAG_SUBSCRIPT_EXPRESSION) ||
+		IsTag(node, STAG_UNARY_EXPRESSION) ||
+		IsTag(node, STAG_POSTFIX_EXPRESSION) ||
+		IsTag(node, STAG_BINARY_EXPRESSION) ||
+		IsTag(node, STAG_ASSIGNMENT_EXPRESSION) ? node : kNoNode;
+}
+
+NodeId SyntaxArena::DeclaratorIdentifier(NodeId node) const
+{
+	if (node == kNoNode) return kNoNode;
+	const NodeId identifier = FindDirectChildTag(node, STAG_IDENTIFIER);
+	if (identifier != kNoNode) return identifier;
+	const NodeId nested = FindDirectChildTag(node, STAG_NESTED_DECLARATOR);
+	const std::uint32_t edge = nested == kNoNode ? kNoEdge : FirstEdge(nested);
+	return edge == kNoEdge ? kNoNode :
+		DeclaratorIdentifier(EdgeChild(edge));
 }
 
 bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const

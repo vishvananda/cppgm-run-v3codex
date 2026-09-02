@@ -734,19 +734,20 @@ bool Analyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	ClassTemplateMemberPattern member;
 	member.lexical_scope = scope;
 	member.declaration = declaration;
+	member.owner_source = components[owner_component];
 	member.parameters = parameters;
 	for (std::size_t component = owner_component + 1;
 		component + 1 < path.Size(); ++component)
 		if (path[component] != path[owner_component])
 		{
 			member.nested_owner_path.push_back(path[component]);
-			member.nested_owner_argument_lists.push_back(FindChild(
-				components[component], ::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST));
+			member.nested_owner_components.push_back(components[component]);
 		}
 	std::vector<NameId> declared_owner_path = member.nested_owner_path;
 	for (std::size_t component = 0;
-		component < member.nested_owner_argument_lists.size(); ++component)
-		if (member.nested_owner_argument_lists[component] != kNoNode)
+		component < member.nested_owner_components.size(); ++component)
+		if (FindChild(member.nested_owner_components[component],
+			::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) != kNoNode)
 		{
 			declared_owner_path.resize(component + 1);
 			break;
@@ -1405,10 +1406,11 @@ void Analyzer::ApplyClassTemplateMemberDefinitions(
 		for (std::size_t part = 0;
 			part < definition.nested_owner_path.size(); ++part)
 		{
-			if (part >= definition.nested_owner_argument_lists.size())
+			if (part >= definition.nested_owner_components.size())
 				ThrowInternalCompilerError(
 					"class template member owner path shape is invalid");
-			if (definition.nested_owner_argument_lists[part] != kNoNode)
+			if (FindChild(definition.nested_owner_components[part],
+				::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) != kNoNode)
 			{
 				const ScopeId routing_scope =
 					make_definition_scope(actual_owner);
