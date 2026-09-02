@@ -1,7 +1,8 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: complete through E9 at `44fc67de`; final correctness, exception-census,
-performance, and 32-way inception gates are recorded below
+Status: complete through E10 at `377775bb`; E9's cumulative self-build
+regression has been corrected, and final correctness, performance, and 32-way
+inception gates are recorded below
 
 Date: 2026-09-01
 
@@ -757,6 +758,7 @@ Append one row for each retained or rejected increment:
 | E7v | remaining staged executable adapters | invocation, output I/O, and one invalid phase-7 token used generic terminal throws | driver/optimizer/native invocation, driver I/O, and lexical source dispositions; terminal presentation unchanged | PA3-PA9, PA13/14, PA37/38 staged behavior | generic logic/runtime -29/-10; repository generic census reaches zero | eleven staged binaries aggregate: +5,152 text, -52 rodata, +208 EH header, +1,016 unwind, +140 exception table; integrated exact | adapters not on integrated hot path; no timing exposure | through-PA38 5,477/5,477; all 11 invalid invocations fail; audits pass; integrated compiler exact | `a78bb76a` | retained |
 | E8 | semantic and allocator rollback; architecture enforcement | twelve catch-alls duplicated cleanup or assigned failure/cache states around unknown exceptions | scoped cleanup/commit owns scratch, contexts, cache state, optimizer storage, and CY86 table rollback; typed semantic exception-specification policy remains explicit | PA9, PA12, PA21, PA23, PA26, PA37 and cumulative behavior | successful frozen remains 0; catch-all sites 12->0 | -256 text, neutral rodata/EH header, -16 unwind, -292 exception table; exception RTTI remains 20 symbols | frozen baseline/candidate user means 0.4525/0.4550 s across semantic slice and 0.4525/0.4500 s across allocator slice (timer noise) | through-PA38 5,477/5,477; focused suites and audits pass; file audit zero-fatal/32 warnings; frozen object exact | `282c12e9` | retained |
 | E9 | exception declaration/linkage consolidation and final hot-flow audit | the complete taxonomy and inline constructors crossed most throw-helper headers; zero dynamic throws did not explain a preprocessing code-shape regression | lightweight throw declarations, explicit full-type includes, one out-of-line taxonomy owner, centralized domain helpers, and a host-neutral cursor boundary; expected alternatives remain status flow and cold failures remain typed exceptions | PA1/PA4 lexical and paste behavior; PA13/14/30/37/38 serialized, optimizer, object, and native behavior; cumulative PA1-PA38 | frozen 0->0; final 221-source census 0; 226 typed throws and zero generic/catch-all/message-policy sites | host compiler -10,048 text, -64 rodata, -400 EH header, -3,392 unwind, -604 exception table; 20 RTTI symbols unchanged | E8/current frozen user 0.784/0.766 s; E8/current full-O3 compile CPU 736.12/736.25 s (neutral); final self/GCC/Clang controls below | 5,477/5,477; zero-fatal/32-warning file audit; frozen hash `8545fec6...`; 223-object inception and final hash `4398825a...` exact | `44fc67de` | retained |
+| E10 | fixed lexical lookahead invariant failures | the string-only internal-error constructor forced either an opaque noinline helper call or expanded string/EH setup; the helper form prevented ordinary loop and terminal-query simplification even though it was never called | a compact `const char*` internal-error constructor keeps the failure typed while three fixed-queue invariants throw it directly; other lexical failures retain the shared cold helper | PA1/PA4 tokenizer and paste behavior plus the exception audit; cumulative PA1-PA38 | successful full remains 0; typed direct throws +3 and helper calls -3 | self O3 -688 text, +144 unwind, -384 exception table; no taxonomy or LowIR contract change | same-source full O1 -2.75% CPU and O3 -2.24%; normalized controls below | 5,477/5,477; 223 O1/O3 objects exact in baseline/candidate runs; O3 32-way inception hash `ed507c8e...` exact | `377775bb` | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -2290,6 +2292,77 @@ the established 32 warnings.  The final native census is empty.  Fresh
 comparison finds zero mismatches and both final compilers have SHA-256
 `4398825aed4f...`.  No Cachegrind, Valgrind, or owned `perf record` process was
 left running at closure.
+
+### E10 regression correction
+
+The E9 comparison established that its final consolidation was neutral against
+E8, but it did not answer whether the complete typed-exception program was
+neutral against the pre-conversion compiler.  A later identical-current-source
+replay against E0 found a real cumulative regression: E9 was 1.30% slower at
+O1 and 1.87% slower at O3.  Phase isolation assigned almost all of it to E5b's
+lexical conversion.  A frozen tokenizer profile then showed the concrete
+failure: the formerly small cached `Lexer::Peek(0)` path remained combined
+with its fill path, and the O1 loop retained two cold invariant-helper arms.
+
+The typed helper itself never executes on the successful workload.  Its call
+shape nevertheless hid the fixed queue's non-returning failure from the
+ordinary inliner and cleanup passes.  At O1 this kept redundant queue-size
+loads and branches in the loop.  At O3 it prevented the stable-prefix query
+pass from extracting the slow fill suffix.  The earlier E9 direct-throw
+prototype was not a counterexample: `InternalCompilerError` then accepted only
+`std::string`, so every template instantiation expanded string construction
+and six additional EH blocks.  That version made the queue operation too large
+to inline and was correctly rejected.
+
+E10 gives `InternalCompilerError` a declaration-only `const char*` overload
+whose implementation remains in the existing exception owner.  The three
+fixed-queue invariant arms can therefore throw the required lexical-domain
+typed exception directly without constructing a temporary string in the
+tokenizer translation unit.  The queue operation stays four blocks, the O1
+`Lexer::Peek` loop returns from eleven blocks to nine, and O3 again produces a
+three-block cached query plus a separate noinline fill function.  All other
+lexical error sites continue to use the shared cold helper.
+
+A proposed generic loop-body reload forwarder also recovered the O1 shape, but
+it was not retained.  It required a new optimizer rule and public PA37
+coverage, while it still could not recover the O3 split from the opaque helper
+shape.  The compact typed interface fixes the actual regression without a
+LowIR contract or optimizer-policy addition.
+
+Two serially ordered, all-32 runs per side on the same current 223-source tree
+give:
+
+| Requested level | E9 user seconds | E10 user seconds | Change | E0 replay | E10 versus E0 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| O1 | 887.455 | 863.035 | -2.75% | 872.945 | -1.14% |
+| O3 | 733.805 | 717.400 | -2.24% | 722.705 | -0.73% |
+
+Every baseline/candidate run produced the same 223 object files and final
+compiler at its requested level.  The O3 tokenizer microbenchmark moves by
+-2.59% user time; O1 is below that short lane's 10 ms resolution.  Current
+host-produced controls and normalized aggregate-CPU ratios are:
+
+| Requested level | E10 self | GCC control | Clang control | self/GCC | self/Clang |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| O1 | 863.035 s | 550.94 s | 523.21 s | 1.566x | 1.650x |
+| O3 | 717.400 s | 456.71 s | 469.68 s | 1.571x | 1.527x |
+
+The three-way control also reproduced an existing host-producer presentation
+difference in six objects: the Clang-built compiler selects different internal
+string-record ordinals while self and GCC are exact.  Recompiling the untouched
+E9 tokenizer reproduces the same difference, so E10 did not introduce it and
+retention is based on each producer's deterministic output plus exact
+self/inception output, not a false claim of new cross-producer identity.
+
+The exception audit accepts 229 typed throw sites and remains at zero generic
+throws, catch-alls, internal standard catches, message policy, and untyped
+terminal fallback.  A direct constructor probe verifies disposition, lexical
+domain, code, and message preservation.  No course fixture inspects this source
+shape: it is an internal performance repair, not a new student-visible
+language or IR contract.  Existing PA1/PA4 behavior, the architecture audit,
+and cumulative `make -j32 test-report-through-pa38` pass 5,477/5,477.  Fresh
+O3 inception uses 32 workers at every level, builds 223 objects, and matches
+the restored self compiler exactly at SHA-256 `ed507c8ede83...`.
 
 ## Initial code map
 
