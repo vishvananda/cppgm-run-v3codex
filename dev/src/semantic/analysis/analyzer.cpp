@@ -666,14 +666,14 @@ ExpressionInfo Analyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		if (StringLiteralTokenEnd(spelling, &string_literal_end))
 		{
 			if (TryAnalyzeUserDefinedStringLiteral(
-					spelling, scope, target, &result)) return result;
+					node, spelling, scope, target, &result)) return result;
 			result = MakeStringLiteral(spelling);
 		}
 		else
 		{
 			if (spelling.find('\'') == std::string::npos &&
 				TryAnalyzeUserDefinedNumericLiteral(
-					spelling, scope, target, &result)) return result;
+					node, spelling, scope, target, &result)) return result;
 			result = MakeBuiltinScalarLiteral(spelling, node);
 		}
 		return ApplyTarget(result, target);

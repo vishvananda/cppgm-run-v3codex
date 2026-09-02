@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/constants/wide_integer.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "support/exception_types.h"
 #include "support/scoped_state.h"
 
@@ -2662,6 +2663,11 @@ bool Analyzer::TryEvaluateConstexprFunction(BindingId function,
 			++constexpr_call_cache_hits_;
 			if (cached->second.state == 2)
 			{
+				if (template_witness_)
+				{
+					template_witness_->RecordFunctionInstantiation(function);
+					template_witness_->RecordRequireDefinition(function);
+				}
 				*address = cached->second.address;
 				*object = cached->second.object;
 				*complete_object = cached->second.complete_object;
@@ -2769,6 +2775,11 @@ bool Analyzer::TryEvaluateConstexprFunction(BindingId function,
 		*complete_object = evaluated_complete_object;
 		if (evaluated_has_scalar) *value = evaluated;
 		*has_scalar = evaluated_has_scalar;
+		if (template_witness_)
+		{
+			template_witness_->RecordFunctionInstantiation(function);
+			template_witness_->RecordRequireDefinition(function);
+		}
 		return true;
 	}
 	if (object_result)
@@ -2788,6 +2799,11 @@ bool Analyzer::TryEvaluateConstexprFunction(BindingId function,
 		*object = evaluated_object;
 		*complete_object = evaluated_complete_object;
 		*has_scalar = false;
+		if (template_witness_)
+		{
+			template_witness_->RecordFunctionInstantiation(function);
+			template_witness_->RecordRequireDefinition(function);
+		}
 		return true;
 	}
 	const ConstexprScalarValue normalized =
@@ -2799,6 +2815,11 @@ bool Analyzer::TryEvaluateConstexprFunction(BindingId function,
 	*value = normalized;
 	*has_scalar = true;
 	*complete_object = kNoConstexprObject;
+	if (template_witness_)
+	{
+		template_witness_->RecordFunctionInstantiation(function);
+		template_witness_->RecordRequireDefinition(function);
+	}
 	return true;
 }
 

@@ -501,7 +501,7 @@ ExpressionInfo Analyzer::MakeBuiltinScalarLiteral(
 	return result;
 }
 
-bool Analyzer::TryAnalyzeUserDefinedStringLiteral(
+bool Analyzer::TryAnalyzeUserDefinedStringLiteral(NodeId syntax,
 	const std::string& spelling, ScopeId scope, TypeId target,
 	ExpressionInfo* result)
 {
@@ -548,12 +548,13 @@ bool Analyzer::TryAnalyzeUserDefinedStringLiteral(
 		argument_conversions[1].rank = CONVERSION_EXACT;
 		++expression_count_;
 	}
+	RecordFunctionTemplateSourceCall(syntax, selected, 0);
 	*result = BuildResolvedCall(selected, scope, argument_syntax, arguments,
 		0, target, kNoEntity, 0, &argument_conversions);
 	return true;
 }
 
-bool Analyzer::TryAnalyzeUserDefinedNumericLiteral(
+bool Analyzer::TryAnalyzeUserDefinedNumericLiteral(NodeId syntax,
 	const std::string& spelling, ScopeId scope, TypeId target,
 	ExpressionInfo* result)
 {
@@ -583,11 +584,12 @@ bool Analyzer::TryAnalyzeUserDefinedNumericLiteral(
 	{
 		std::vector<ExpressionInfo> arguments(1,
 			MakeBuiltinScalarLiteral(source));
-		const std::vector<NodeId> syntax(1, kNoNode);
+		const std::vector<NodeId> call_syntax(1, kNoNode);
 		std::vector<CallConversionFact> conversions;
-		const BindingId selected = SelectOverload(scope, syntax, arguments,
+		const BindingId selected = SelectOverload(scope, call_syntax, arguments,
 			cooked, 0, 0, &conversions);
-		*result = BuildResolvedCall(selected, scope, syntax, arguments, 0,
+		RecordFunctionTemplateSourceCall(syntax, selected, 0);
+		*result = BuildResolvedCall(selected, scope, call_syntax, arguments, 0,
 			target, kNoEntity, 0, &conversions);
 		return true;
 	}
@@ -626,6 +628,7 @@ bool Analyzer::TryAnalyzeUserDefinedNumericLiteral(
 	const std::vector<ExpressionInfo> no_arguments;
 	const BindingId selected = SelectOverload(scope, no_syntax, no_arguments,
 		candidates, 0, 0, 0);
+	RecordFunctionTemplateSourceCall(syntax, selected, 0);
 	*result = BuildResolvedCall(selected, scope, no_syntax, no_arguments, 0,
 		target, kNoEntity, 0, 0);
 	return true;
@@ -832,13 +835,16 @@ ExpressionInfo Analyzer::AnalyzeNamedValue(
 	if (template_witness_ && binding.kind == BIND_VARIABLE &&
 		binding.member_owner != kNoEntity && !binding.non_static_data_member)
 	{
+		RecordStaticMemberTemplateWitness(found.ordinary);
 		for (EntityId owner = binding.member_owner; owner != kNoEntity;
 			owner = program_->entities[owner].enclosing_class)
 			if (owner < class_template_pattern_by_entity_.size() &&
 				class_template_pattern_by_entity_[owner] != kNoDumpEdge)
 			{
-				template_witness_->RecordVariableInstantiation(
-					program_->bindings[found.ordinary].canonical);
+				template_witness_->RecordSourceVariableInstantiation(
+					*arena_, syntax,
+					program_->bindings[found.ordinary].canonical,
+					binding.member_owner == current_class_context_);
 				break;
 			}
 	}

@@ -231,6 +231,7 @@ private:
 		BindingId selected, std::size_t explicit_count);
 	bool TemplateWitnessSourceUseEnabled() const;
 	void RecordDeducedClassObjectUse(NodeId specifiers, TypeId type);
+	void RecordStaticMemberTemplateWitness(BindingId binding);
 	NamePath StructuredNamePath(NodeId syntax);
 	NamePath SyntaxNamePath(NodeId syntax);
 	LookupResult LookupSyntaxName(NodeId syntax, ScopeId scope,
@@ -1796,10 +1797,12 @@ private:
 		std::size_t* character_count = 0);
 	ExpressionInfo MakeBuiltinScalarLiteral(const std::string& spelling,
 		NodeId syntax = kNoNode);
-	bool TryAnalyzeUserDefinedStringLiteral(const std::string& spelling,
-		ScopeId scope, TypeId target, ExpressionInfo* result);
-	bool TryAnalyzeUserDefinedNumericLiteral(const std::string& spelling,
-		ScopeId scope, TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeUserDefinedStringLiteral(NodeId syntax,
+		const std::string& spelling, ScopeId scope, TypeId target,
+		ExpressionInfo* result);
+	bool TryAnalyzeUserDefinedNumericLiteral(NodeId syntax,
+		const std::string& spelling, ScopeId scope, TypeId target,
+		ExpressionInfo* result);
 	ExpressionInfo AnalyzeThisExpression(ScopeId scope);
 	bool ShouldDeferClassTemplateMemberExceptionSpecification(
 		NodeId declarator) const;

@@ -224,7 +224,8 @@ void Analyzer::EnsureStaticMemberStorage(
 	dump_.nodes[declaration].declaration_only = true;
 	dump_.Add(root_, declaration);
 	static_member_storage_by_binding_[member] = declaration;
-	if (template_witness_)
+	if (template_witness_ && !constant_storage &&
+		class_template_member_replay_depth_ == 0)
 		template_witness_->RecordVariableInstantiation(member);
 }
 

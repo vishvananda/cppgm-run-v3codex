@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "support/exceptions.h"
 #include "support/scoped_state.h"
 
@@ -367,6 +368,14 @@ bool Analyzer::AnalyzeExplicitTemplateSpecialization(
 				"invalid explicit member specialization arguments");
 		const BindingId owner = InstantiateClassTemplate(
 			pattern_index, arguments);
+		if (template_witness_ && owner != kNoBinding)
+		{
+			template_witness_->RecordClassSpecialization(
+				program_->bindings[owner].canonical, arguments,
+				argument_syntax.size());
+			template_witness_->RecordInstantiatedClassUse(components[component],
+				static_cast<std::uint32_t>(pattern_index), owner, arguments);
+		}
 		const EntityId entity = owner == kNoBinding ? kNoEntity :
 			EntityOf(program_->bindings[owner].type);
 		if (entity == kNoEntity || !program_->entities[entity].complete ||
@@ -949,6 +958,12 @@ BindingId Analyzer::InstantiateVariableTemplate(
 	if (request_state == TEMPLATE_REQUEST_SUCCEEDED)
 	{
 		++template_specialization_cache_hits_;
+		if (template_witness_)
+		{
+			template_witness_->RecordVariableUse(
+				syntax, cached, argument_syntax.size());
+			template_witness_->RecordVariableInstantiation(cached);
+		}
 		return cached;
 	}
 	if (request_state != TEMPLATE_REQUEST_NOT_STARTED)
@@ -1156,6 +1171,34 @@ BindingId Analyzer::InstantiateVariableTemplate(
 		}
 	}
 	request.Complete(binding);
+	if (template_witness_)
+	{
+		std::vector<TemplateArgument> specialization_arguments;
+		std::vector<std::uint32_t> specialization_offsets;
+		for (std::size_t parameter = 0;
+			parameter < selected.parameters.size(); ++parameter)
+		{
+			specialization_offsets.push_back(static_cast<std::uint32_t>(
+				specialization_arguments.size()));
+			if (selected.parameters[parameter].pack)
+				specialization_arguments.insert(
+					specialization_arguments.end(),
+					selected_bindings.pack_arguments[parameter].begin(),
+					selected_bindings.pack_arguments[parameter].end());
+			else specialization_arguments.push_back(
+				selected_bindings.fixed_arguments[parameter]);
+		}
+		specialization_offsets.push_back(static_cast<std::uint32_t>(
+			specialization_arguments.size()));
+		const std::uint8_t selection_kind = selected_index == primary_index ?
+			0 : selected.parameters.empty() ? 2 : 1;
+		template_witness_->RecordVariableSpecialization(binding,
+			static_cast<std::uint32_t>(primary_index), arguments,
+			specialization_arguments, specialization_offsets, selection_kind);
+		template_witness_->RecordVariableUse(
+			syntax, binding, argument_syntax.size());
+		template_witness_->RecordVariableInstantiation(binding);
+	}
 	return binding;
 }
 

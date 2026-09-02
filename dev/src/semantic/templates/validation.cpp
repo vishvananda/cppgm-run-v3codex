@@ -124,6 +124,9 @@ private:
 	bool SyntaxUsesRetainedType(NodeId node, std::size_t scope) const;
 	bool SyntaxUsesDependentType(NodeId node, std::size_t scope) const;
 	bool SyntaxUsesRetainedValue(NodeId node, std::size_t scope) const;
+	bool SyntaxUsesDependentValue(NodeId node, std::size_t scope) const;
+	bool TemplateArgumentResolvesLocalValue(
+		NodeId node, std::size_t scope) const;
 	void NoteDependentSourceUse(NodeId node, std::size_t scope);
 	void ScanDependentSourceUses(NodeId node, std::size_t scope);
 	void Visit(NodeId node, std::size_t scope, bool unknown_callee = false);
@@ -204,6 +207,12 @@ void RetainedTemplateValidator::DeclareParameter(std::size_t scope,
 		ThrowSemanticError("duplicate template parameter");
 	scopes_[scope].names[name] |= parameter.kind == TEMPLATE_ARGUMENT_INTEGRAL ?
 		RETAINED_VALUE_NAME : RETAINED_TYPE_NAME;
+	if (analyzer_.template_witness_)
+	{
+		if (parameter.kind == TEMPLATE_ARGUMENT_INTEGRAL)
+			scopes_[scope].dependent_values.insert(name);
+		else dependent_types_[scope].insert(name);
+	}
 }
 
 void RetainedTemplateValidator::Declare(std::size_t scope, NameId name,
@@ -454,6 +463,44 @@ bool RetainedTemplateValidator::SyntaxUsesRetainedValue(
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		if (SyntaxUsesRetainedValue(
+			analyzer_.arena_->EdgeChild(edge), scope)) return true;
+	return false;
+}
+
+bool RetainedTemplateValidator::SyntaxUsesDependentValue(
+	NodeId node, std::size_t scope) const
+{
+	if (node == kNoNode) return false;
+	if (analyzer_.arena_->IsTag(node, ::cppgm::syntax::STAG_ID_EXPRESSION) &&
+		analyzer_.FindChild(node,
+			::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME) == kNoNode)
+	{
+		const NamePath path = analyzer_.SyntaxNamePath(node);
+		if (!path.global && path.Size() == 1 &&
+			IsDependentValue(scope, path.Last())) return true;
+	}
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		if (SyntaxUsesDependentValue(
+			analyzer_.arena_->EdgeChild(edge), scope)) return true;
+	return false;
+}
+
+bool RetainedTemplateValidator::TemplateArgumentResolvesLocalValue(
+	NodeId node, std::size_t scope) const
+{
+	if (node == kNoNode) return false;
+	if (analyzer_.arena_->IsTag(
+		node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME))
+	{
+		const NamePath path = analyzer_.StructuredNamePath(node);
+		if (!path.Empty() &&
+			(LookupLocal(scope, path.Last()) & RETAINED_VALUE_NAME) != 0 &&
+			!IsDependentValue(scope, path.Last())) return true;
+	}
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		if (TemplateArgumentResolvesLocalValue(
 			analyzer_.arena_->EdgeChild(edge), scope)) return true;
 	return false;
 }
@@ -958,6 +1005,24 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 				dependent_types_[scope].insert(
 					analyzer_.DeclaratorName(declarator));
 		}
+	if (analyzer_.template_witness_ && !IsTypedef(specifiers) &&
+		list != kNoNode)
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(list);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId item = analyzer_.arena_->EdgeChild(edge);
+			const NodeId declarator = analyzer_.FindChild(
+				item, ::cppgm::syntax::STAG_DECLARATOR);
+			if (declarator == kNoNode ||
+				FindParameterClause(declarator) != kNoNode) continue;
+			if (SyntaxUsesTemplateParameter(specifiers) ||
+				SyntaxUsesDependentType(specifiers, scope) ||
+				SyntaxUsesTemplateParameter(item) ||
+				SyntaxUsesDependentType(item, scope) ||
+				SyntaxUsesDependentValue(item, scope))
+				scopes_[scope].dependent_values.insert(
+					analyzer_.DeclaratorName(declarator));
+		}
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
@@ -1242,9 +1307,28 @@ void RetainedTemplateValidator::NoteDependentSourceUse(
 				component, ::cppgm::syntax::STAG_NAME_COMPONENT)) continue;
 			const NodeId arguments = analyzer_.FindChild(component,
 				::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
-			if (arguments != kNoNode &&
-				(SyntaxUsesTemplateParameter(arguments) ||
-				 SyntaxUsesDependentType(arguments, scope)))
+			bool dependent_arguments = false;
+			bool resolved_local_value = false;
+			for (std::uint32_t argument = arguments == kNoNode ? kNoEdge :
+				analyzer_.arena_->FirstEdge(arguments);
+				argument != kNoEdge;
+				argument = analyzer_.arena_->NextEdge(argument))
+			{
+				const NodeId value = analyzer_.arena_->EdgeChild(argument);
+				if (TemplateArgumentResolvesLocalValue(value, scope))
+				{
+					resolved_local_value = true;
+					continue;
+				}
+				if (
+					(SyntaxUsesTemplateParameter(value) ||
+					 SyntaxUsesDependentType(value, scope) ||
+					 SyntaxUsesDependentValue(value, scope)))
+					dependent_arguments = true;
+			}
+			if (resolved_local_value && !dependent_arguments)
+				analyzer_.template_witness_->NoteResolvedSourceUse(node);
+			if (dependent_arguments)
 			{
 				analyzer_.template_witness_->NoteDependentSourceUse(node);
 				return;

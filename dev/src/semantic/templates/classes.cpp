@@ -451,7 +451,8 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 						if (TemplateWitnessSourceUseEnabled())
 							template_witness_->RecordClassUse(structure,
 								static_cast<std::uint32_t>(pattern), specialization,
-								arguments, argument_syntax.size());
+								arguments, argument_syntax.size(), 0,
+								class_template_member_replay_depth_ != 0);
 					}
 				}
 				found = LookupResult();
@@ -1451,42 +1452,7 @@ void Analyzer::ApplyClassTemplateMemberDefinitions(
 				definition_scope, true);
 		else if (arena_->IsTag(node, ::cppgm::syntax::STAG_SIMPLE_DECLARATION))
 		{
-			if (demanded && template_witness_)
-			{
-				const NodeId list = FindChild(
-					node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
-				const NodeId item = list == kNoNode ? kNoNode :
-					FirstSemanticChild(list);
-				const NodeId declarator = item == kNoNode ? kNoNode :
-					FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
-				const NodeId structure = declarator == kNoNode ? kNoNode :
-					DeclaratorNameStructure(declarator);
-				if (structure != kNoNode)
-					template_witness_->RecordInstantiatedClassUse(structure,
-						static_cast<std::uint32_t>(index), specialization,
-						arguments);
-			}
 			AnalyzeSimple(node, definition_scope, root_, false, true, demanded);
-			if (demanded && template_witness_)
-			{
-				const NodeId list = FindChild(
-					node, ::cppgm::syntax::STAG_INIT_DECLARATOR_LIST);
-				const NodeId item = list == kNoNode ? kNoNode :
-					FirstSemanticChild(list);
-				const NodeId declarator = item == kNoNode ? kNoNode :
-					FindChild(item, ::cppgm::syntax::STAG_DECLARATOR);
-				const NameId name = declarator == kNoNode ? 0 :
-					DeclaratorName(declarator);
-				if (name != 0)
-				{
-					const LookupResult found = program_->LookupDirect(
-						actual_owner, name, LOOKUP_ORDINARY);
-					if (found.ordinary != kNoBinding &&
-						program_->bindings[found.ordinary].kind == BIND_VARIABLE)
-						template_witness_->RecordVariableInstantiation(
-							program_->bindings[found.ordinary].canonical);
-				}
-			}
 		}
 		else if (arena_->IsTag(node, ::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
 			arena_->IsTag(node, ::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION))

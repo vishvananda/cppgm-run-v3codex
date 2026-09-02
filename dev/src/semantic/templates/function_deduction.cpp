@@ -1366,6 +1366,8 @@ void Analyzer::DeduceFunctionTemplatePatterns(
 		std::vector<std::uint8_t> explicitly_specified(
 			pattern.parameters.size(), 0);
 		bool valid = true;
+		std::uint8_t witness_deduction_reason =
+			TemplateWitnessObserver::OVERLOAD_DROP_NONE;
 		if (explicit_arguments && canonical_explicit_arguments)
 			ThrowInternalCompilerError(
 				"function template deduction has two explicit argument forms");
@@ -1511,8 +1513,20 @@ void Analyzer::DeduceFunctionTemplatePatterns(
 				parameter = program_->types.RemoveTopCv(parameter);
 				argument = program_->types.RemoveTopCv(Decay(argument));
 			}
+			bool had_prior_deduction = false;
+			for (std::size_t deduction = 0;
+				deduction < deduced.fixed_arguments.size(); ++deduction)
+				if (deduced.fixed_arguments[deduction].type != kNoType ||
+					!deduced.pack_arguments[deduction].empty())
+					had_prior_deduction = true;
 			valid = DeduceFunctionTemplatePackType(
 				parameter, argument, pattern.parameters, &deduced);
+			if (!valid)
+				witness_deduction_reason =
+					had_prior_deduction ?
+						TemplateWitnessObserver::OVERLOAD_DROP_INCONSISTENT :
+						TemplateWitnessObserver::
+							OVERLOAD_DROP_NON_DEDUCED_MISMATCH;
 		}
 		if (valid && pattern.function_parameter_pack &&
 			outer_pack_parameter < pattern.parameters.size())
@@ -1579,6 +1593,12 @@ void Analyzer::DeduceFunctionTemplatePatterns(
 				!substitution_failed)
 				specializations->push_back(specialization);
 		}
+		else if (template_witness_ && witness_syntax != kNoNode &&
+			witness_deduction_reason !=
+				TemplateWitnessObserver::OVERLOAD_DROP_NONE)
+			template_witness_->RecordDeductionDrop(witness_syntax,
+				static_cast<std::uint32_t>(patterns[p]),
+				witness_deduction_reason);
 	}
 }
 
