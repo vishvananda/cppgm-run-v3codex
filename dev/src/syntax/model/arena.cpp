@@ -800,6 +800,16 @@ std::size_t SyntaxArena::TokenCount() const
 	return tokens_.size();
 }
 
+std::uint16_t SyntaxArena::TokenKind(std::size_t token) const
+{
+	return token < tokens_.size() ? tokens_[token].Kind() : kEofToken;
+}
+
+TextId SyntaxArena::TokenSpellingId(std::size_t token) const
+{
+	return token < tokens_.size() ? tokens_[token].spelling : 0;
+}
+
 const std::string& SyntaxArena::TokenSpelling(std::size_t token) const
 {
 	return strings_.Get(token < tokens_.size() ? tokens_[token].spelling : 0);

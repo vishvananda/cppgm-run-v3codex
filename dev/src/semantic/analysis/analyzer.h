@@ -918,10 +918,14 @@ private:
 		TemplateArgument* argument);
 	bool ClassTemplateDefaultDependsOnParameter(
 		const ClassTemplatePattern& pattern, NodeId syntax) const;
+	bool ClassTemplateDefaultHasSourceShape(
+		const ClassTemplatePattern& pattern, std::size_t parameter,
+		const std::vector<NodeId>& supplied_syntax) const;
 	std::size_t ClassTemplatePresentationArity(
 		const ClassTemplatePattern& pattern,
 		const std::vector<TemplateArgument>& arguments,
-		std::size_t supplied_count);
+		std::size_t supplied_count,
+		const std::vector<NodeId>* supplied_syntax = 0);
 	void UpgradeClassTemplateSpecializations(std::size_t pattern);
 	void ResetClassTemplateSpecializationDefinition(BindingId specialization);
 	void ApplyClassTemplateMemberDefinitions(std::size_t pattern,

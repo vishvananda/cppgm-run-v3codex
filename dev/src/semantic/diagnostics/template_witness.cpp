@@ -1198,6 +1198,7 @@ void TemplateWitnessObserver::RecordClassSpecialization(BindingId binding,
 void TemplateWitnessObserver::NoteClassTemplateSource(
 	syntax::NodeId syntax, std::uint32_t pattern, BindingId binding,
 	std::uint32_t selected_partial,
+	std::size_t presentation_arity,
 	const std::vector<syntax::NodeId>& argument_syntax, bool replayed)
 {
 	if (syntax == syntax::kNoNode || binding == kNoBinding) return;
@@ -1206,11 +1207,13 @@ void TemplateWitnessObserver::NoteClassTemplateSource(
 		const ClassTemplateSourceFact& fact = class_template_source_facts_[i];
 		if (fact.syntax == syntax && fact.pattern == pattern &&
 			fact.binding == binding && fact.selected_partial == selected_partial &&
+			fact.presentation_arity == presentation_arity &&
 			fact.argument_syntax == argument_syntax && fact.replayed == replayed)
 			return;
 	}
 	class_template_source_facts_.push_back(ClassTemplateSourceFact(
-		syntax, pattern, binding, selected_partial, argument_syntax, replayed));
+		syntax, pattern, binding, selected_partial, presentation_arity,
+		argument_syntax, replayed));
 }
 
 void TemplateWitnessObserver::RecordVariableSpecialization(BindingId binding,
@@ -1991,6 +1994,19 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 					<< " column=" << arena.TokenSourceColumn(token)
 					<< " spelling=" << arena.TokenSpelling(token);
 			trace << '\n';
+		}
+		for (std::size_t i = 0; i < class_template_source_facts_.size(); ++i)
+		{
+			const ClassTemplateSourceFact& fact =
+				class_template_source_facts_[i];
+			trace << "  class-template-source syntax=" << fact.syntax
+				<< " pattern=" << fact.pattern << " binding=" << fact.binding
+				<< " partial=" << fact.selected_partial
+				<< " arguments=" << fact.argument_syntax.size()
+				<< " presentation-arity=" << fact.presentation_arity
+				<< " replayed=" << fact.replayed
+				<< " line=" << arena.SourceLine(fact.syntax)
+				<< " column=" << arena.SourceColumn(fact.syntax) << '\n';
 		}
 		trace << "  dependent-class-uses=" << dependent_class_uses_.size()
 			<< " dependent-alias-uses=" << dependent_alias_uses_.size()

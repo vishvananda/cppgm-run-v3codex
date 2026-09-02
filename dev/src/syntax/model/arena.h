@@ -229,6 +229,8 @@ public:
 	std::size_t TokenFirst(NodeId node) const;
 	std::size_t TokenLast(NodeId node) const;
 	std::size_t TokenCount() const;
+	std::uint16_t TokenKind(std::size_t token) const;
+	TextId TokenSpellingId(std::size_t token) const;
 	const std::string& TokenSpelling(std::size_t token) const;
 	const std::string& TokenSourceFile(std::size_t token) const;
 	std::size_t TokenSourceLine(std::size_t token) const;

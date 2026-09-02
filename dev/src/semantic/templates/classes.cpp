@@ -25,6 +25,22 @@ std::size_t NoTemplatePattern()
 }
 const std::uint8_t kClassTemplateCompletionPendingDefinition = 4;
 
+std::uint64_t SourceTokenIdentity(
+	const syntax::SyntaxArena& arena, std::size_t token)
+{
+	return (static_cast<std::uint64_t>(arena.TokenKind(token)) << 32) |
+		arena.TokenSpellingId(token);
+}
+
+void AppendSourceTokenIdentity(const syntax::SyntaxArena& arena,
+	syntax::NodeId syntax, std::vector<std::uint64_t>* identity)
+{
+	if (!identity || !arena.HasTokenRange(syntax)) return;
+	for (std::size_t token = arena.TokenFirst(syntax);
+		token < arena.TokenLast(syntax); ++token)
+		identity->push_back(SourceTokenIdentity(arena, token));
+}
+
 class ScopedTemplateRequest
 {
 public:
@@ -488,6 +504,9 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 							static_cast<std::uint32_t>(pattern),
 							program_->bindings[specialization].canonical,
 							source_selection ? source_selection->pattern : kNoDumpEdge,
+							ClassTemplatePresentationArity(class_pattern,
+								complete_arguments, argument_syntax.size(),
+								&argument_syntax),
 							argument_syntax,
 							class_template_member_replay_depth_ != 0);
 						if (TemplateWitnessSourceUseEnabled())
@@ -1454,10 +1473,49 @@ bool Analyzer::ClassTemplateDefaultDependsOnParameter(
 	return false;
 }
 
+bool Analyzer::ClassTemplateDefaultHasSourceShape(
+	const ClassTemplatePattern& pattern, std::size_t parameter,
+	const std::vector<NodeId>& supplied_syntax) const
+{
+	if (parameter >= pattern.parameters.size() ||
+		parameter >= supplied_syntax.size()) return false;
+	const NodeId declared = FirstSemanticChild(
+		pattern.parameters[parameter].default_argument);
+	const NodeId supplied = supplied_syntax[parameter];
+	if (declared == kNoNode || supplied == kNoNode ||
+		!arena_->HasTokenRange(declared) ||
+		!arena_->HasTokenRange(supplied)) return false;
+	std::vector<std::uint64_t> declared_identity;
+	for (std::size_t token = arena_->TokenFirst(declared);
+		token < arena_->TokenLast(declared); ++token)
+	{
+		bool substituted = false;
+		if (arena_->TokenKind(token) == syntax::kIdentifierToken)
+			for (std::size_t prior = 0;
+				prior < parameter && prior < supplied_syntax.size(); ++prior)
+				if (pattern.parameters[prior].name != 0 &&
+					arena_->TokenSpellingId(token) ==
+						pattern.parameters[prior].name &&
+					arena_->HasTokenRange(supplied_syntax[prior]))
+				{
+					AppendSourceTokenIdentity(*arena_, supplied_syntax[prior],
+						&declared_identity);
+					substituted = true;
+					break;
+				}
+		if (!substituted)
+			declared_identity.push_back(SourceTokenIdentity(*arena_, token));
+	}
+	std::vector<std::uint64_t> supplied_identity;
+	AppendSourceTokenIdentity(*arena_, supplied, &supplied_identity);
+	return declared_identity == supplied_identity;
+}
+
 std::size_t Analyzer::ClassTemplatePresentationArity(
 	const ClassTemplatePattern& pattern,
 	const std::vector<TemplateArgument>& arguments,
-	std::size_t supplied_count)
+	std::size_t supplied_count,
+	const std::vector<NodeId>* supplied_syntax)
 {
 	const std::size_t fixed = FixedTemplateParameterCount(pattern.parameters);
 	if (!template_witness_ || HasTrailingTemplateParameterPack(pattern.parameters) ||
@@ -1473,8 +1531,10 @@ std::size_t Analyzer::ClassTemplatePresentationArity(
 		bool equivalent_default = i >= supplied_count;
 		if (!equivalent_default &&
 			pattern.parameters[i].default_argument != kNoNode &&
-			!ClassTemplateDefaultDependsOnParameter(
-				pattern, pattern.parameters[i].default_argument))
+			(!ClassTemplateDefaultDependsOnParameter(
+				pattern, pattern.parameters[i].default_argument) ||
+			 (supplied_syntax && ClassTemplateDefaultHasSourceShape(
+				pattern, i, *supplied_syntax))))
 		{
 			TemplateArgument materialized;
 			bool valid = false;

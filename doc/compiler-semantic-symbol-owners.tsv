@@ -707,6 +707,7 @@ dev/src/semantic/templates/classes.cpp	ApplyClassTemplateMemberDefinitions	1	dev
 dev/src/semantic/templates/classes.cpp	ApplyDemandedClassTemplateMemberDefinitions	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	BindClassTemplateArguments	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	ClassTemplateDefaultDependsOnParameter	1	dev/src/semantic/templates/classes.cpp	keep
+dev/src/semantic/templates/classes.cpp	ClassTemplateDefaultHasSourceShape	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	ClassTemplateMemberNamesPrimaryParameters	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	ClassTemplatePresentationArity	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	CompareTemplatePartialPatterns	1	dev/src/semantic/templates/classes.cpp	keep

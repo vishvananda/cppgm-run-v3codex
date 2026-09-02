@@ -874,6 +874,22 @@ and witness-mode LowIR files are byte-identical to the prior compiler; PA19 is
 ABBA blocks measure -0.971% paired user, -1.033% wall, and +0.354% RSS; the
 report is `/tmp/v3codex-w5m-class-source-fact-ab.json`.
 
+The second revised foundation adds stable token-kind and interned-spelling
+queries over existing arena storage, then computes an observer-only structural
+default identity.  It substitutes prior template-parameter tokens with the
+exact argument nodes from the same source fact; the result is considered only
+after the ordinary typed default materialization equals the canonical
+`TemplateArgument`.  This is generic syntax structure, not fixture text or a
+rendered-name key.  Focused debug facts give presentation arities 1 for
+`V<char, traits<char>>`, 2 for the negative
+`deduce<proxy<result>, int>`, 4 for the graph's two written default-equivalent
+arguments, and 2 for `named_parameter<const int, outer::max, const int &>`.
+The value remains unconsumed.  All 7,660 generated PA19--PA24 status, output,
+witness, and witness-LowIR artifacts are byte-identical to the prior compiler;
+frozen O0/O1/O3 objects and all audits are exact.  Four ABBA blocks measure
++0.061% paired user, -0.544% wall, and -0.284% RSS.  The report is
+`/tmp/v3codex-w5m-structural-default-foundation-ab.json`.
+
 The first consumer uses the retained owner pattern/partial ordinal only after
 their bounds and completed canonical-argument state are validated.  It renders
 the primary name and typed partial arguments through the opt-in identity
@@ -1053,6 +1069,7 @@ byte-identical objects.  The report is
 | W5M-S/O declared default provenance | Factored typed class-default materialization and published complete canonical source facts with an observer-only arity; excluded defaults that refer to template parameters | PA22 55 -> 50 with five newly exact fixtures; dependent-default negative control exact; PA19/20 exact; PA23/24 unchanged; focused witness LowIR and frozen O0/O1/O3 LowIR exact; four-block paired user -0.717% | retain; reject post-substitution equality for dependent defaults |
 | W5M provenance re-audit | Probed dependent-default equality and typed conversion-target presentation against PA22/23/24 | dependent-default probe made one PA24 file exact but regressed explicit `deduce<proxy<result>, int>` provenance; conversion-target probe changed 8 PA23 and 4 PA24 files and was not display-contained | reject both consumers; first separate per-occurrence source provenance, structural default identity, and canonical entity presentation in output-inert foundations |
 | W5M-S class source provenance | Retained successful class-template source identity separately from canonical specialization presentation | 48-byte observer-only fact; 731 PA19/20/22 witness and LowIR manifests exact; PA19/20 strict and ordinary clean; frozen O0/O1/O3 and audits exact; four-block paired user -0.971% | retain as output-inert foundation; consumers must join exact source node, typed pattern, and canonical binding |
+| W5M-S structural default identity | Added stable arena token identities and computed dependent-default structure by substituting parameter tokens from the same source occurrence, gated by typed equality | four focused positive/negative arities correct; 7,660 PA19--PA24 artifacts exact; frozen O0/O1/O3 and audits exact; four-block paired user +0.061% | retain output-inert identity; consume it separately for source provenance and canonical entity abbreviation |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

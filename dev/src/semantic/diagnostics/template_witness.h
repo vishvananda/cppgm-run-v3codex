@@ -223,17 +223,22 @@ private:
 		std::uint32_t pattern;
 		BindingId binding;
 		std::uint32_t selected_partial;
-		std::vector<syntax::NodeId> argument_syntax;
+		std::uint16_t presentation_arity;
 		bool replayed;
+		std::vector<syntax::NodeId> argument_syntax;
 
 		ClassTemplateSourceFact(syntax::NodeId syntax_value,
 			std::uint32_t pattern_value, BindingId binding_value,
 			std::uint32_t selected_partial_value,
+			std::size_t presentation_arity_value,
 			const std::vector<syntax::NodeId>& argument_syntax_value,
 			bool replayed_value)
 			: syntax(syntax_value), pattern(pattern_value), binding(binding_value),
 			  selected_partial(selected_partial_value),
-			  argument_syntax(argument_syntax_value), replayed(replayed_value) {}
+			  presentation_arity(static_cast<std::uint16_t>(
+				presentation_arity_value > 65535 ? 65535 :
+				presentation_arity_value)), replayed(replayed_value),
+			  argument_syntax(argument_syntax_value) {}
 	};
 	static_assert(sizeof(ClassTemplateSourceFact) == 48,
 		"class template source facts must stay compact");
@@ -377,6 +382,7 @@ private:
 	void NoteClassTemplateSource(syntax::NodeId syntax,
 		std::uint32_t pattern, BindingId binding,
 		std::uint32_t selected_partial,
+		std::size_t presentation_arity,
 		const std::vector<syntax::NodeId>& argument_syntax, bool replayed);
 	void RecordVariableSpecialization(BindingId binding,
 		std::uint32_t primary_pattern,
