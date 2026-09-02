@@ -740,7 +740,8 @@ Append one row for each retained or rejected increment:
 | E7p | final MIR-to-x86 and executable/object writer | encoder/MIR contradictions, unsupported opcode/source entry, target invocation, and output I/O shared generic bases | native internal/source/invocation/I/O types through the centralized cold boundary; opcode dispatch remains ordinary flow | PA38 native executable/object, encoding, and generated behavior | successful frozen remains 0; generic logic/runtime sites -55/-9; native generic census reaches zero | -6,272 text, neutral rodata, -96 EH header, -632 unwind, -1,172 exception table | frozen paired +0.56%; isolated full O1 +0.08%, O3 +0.01% CPU | PA38 45/45; through-PA38 5,477/5,477; 223 O1/O3 objects and final binaries exact | `c1c2e8ca` | retained |
 | E7q | PA7 namespace semantics/parser | source, syntax, semantic, resource, and namespace-model invariant failures shared generic bases | typed lexical/syntax/semantic/resource/internal exits; speculative declarator and declaration probes remain Boolean | PA7 namespace declaration, lookup, declarator, and invalid-input exit behavior | no recovery catch or valid-input unwind; generic logic/runtime sites -3/-43 | nsdecl: -1,408 text, +32 rodata, +64 EH header, +264 unwind, -535 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA7 43/43; through-PA7 335/335; audits pass; integrated compiler binary exact | `a9f4b15a` | retained |
 | E7r | PA8 namespace initialization/parser/image model | syntax and semantic rejection, image I/O, capacity limits, and model/image invariants shared generic bases | typed lexical/syntax/semantic/I/O/resource/internal exits; parser probes remain Boolean | PA8 namespace initialization, semantic rejection, linking, and mock-image behavior | no recovery catch or valid-input unwind; generic logic/runtime sites -14/-136 | nsinit: -13,888 text, +32 rodata, +112 EH header, -48 unwind, -2,030 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA8 67/67; through-PA8 402/402; audits pass; integrated compiler binary exact | `091d3579` | retained |
-| E7s | integrated syntax arena, attributes, name facts, brace matches, and spelling interning | syntax/resource/invariant failures shared generic bases in hot parser support | typed lexical/syntax/resource/internal cold exits; attribute and name/declarator probes remain status flow | PA10 syntax structure, attributes, templates, ambiguity, and malformed-input behavior | successful frozen remains 0; generic logic/runtime sites -8/-13 | -704 text, neutral rodata, +64 EH header, +152 unwind, -296 exception table | frozen user medians 0.460/0.455 s; mean +0.83%, one-tick noise | PA10 165/165; through-PA10 587/587; frozen object exact; audits pass | pending | retained |
+| E7s | integrated syntax arena, attributes, name facts, brace matches, and spelling interning | syntax/resource/invariant failures shared generic bases in hot parser support | typed lexical/syntax/resource/internal cold exits; attribute and name/declarator probes remain status flow | PA10 syntax structure, attributes, templates, ambiguity, and malformed-input behavior | successful frozen remains 0; generic logic/runtime sites -8/-13 | -704 text, neutral rodata, +64 EH header, +152 unwind, -296 exception table | frozen user medians 0.460/0.455 s; mean +0.83%, one-tick noise | PA10 165/165; through-PA10 587/587; frozen object exact; audits pass | `f8ae46f1` | retained |
+| E7t | ABI model, vocabulary, presentation, and mangler | ABI fact/model/encoding/resource/I/O failures shared generic bases; two catch-alls restored active graph cases | centralized ABI fact-input/internal/resource/I/O exits; scoped graph-case cleanup; ordinary cache/substitution lookup remains status flow | PA14 valid, malformed, numeric, model, and mangling behavior | successful frozen remains 0; generic logic/runtime -37/-1; catch-all -2 | +2,176 text, neutral rodata, +40 EH header, -288 unwind, -924 exception table | 16-run frozen mean exactly neutral at 0.45125/0.45125 s | PA14 117/117; through-PA14 1,082/1,082; frozen objects exact; audits pass | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -2063,6 +2064,32 @@ passes 165/165 and through-PA10 passes 587/587.  Against E7r, integrated
 runs all reproduce object hash `8545fec6...`; baseline/candidate user medians
 are 0.460/0.455 seconds and means 0.451/0.455 seconds (+0.83%), a one-timer-
 tick distribution recorded as neutral.
+
+### E7t execution record
+
+The remaining ABI model, vocabulary, presentation, and encoder failures are
+terminal fact/model validation, finite-cache limits, output I/O, or internal
+encoding contradictions.  They now use centralized ABI-domain fact-input,
+resource, I/O, and internal cold exits.  Successful substitution lookup,
+resolved-type caching, and encoding dispatch retain their existing Boolean,
+lookup, and switch flow; no exception is used as an ordinary miss.
+
+The only EH regions in this family were two catch-all cleanup/rethrow blocks
+around each context mangle.  A `FactGraphCaseScope` now restores the exact
+definition/type/argument/expression/context scratch state on every exit.  It
+removes both catch-all sites and avoids placing generic cleanup policy around
+the hot mangle body.  The first typed form measured +2,304 bytes of text; the
+scoped cleanup recovers 128 bytes of text and 68 bytes of exception data.
+
+The generic audit falls by 37 logic and one runtime site, to 54/23/14, and the
+catch-all inventory falls from 14 to 12.  PA14 passes 117/117 and through-PA14
+passes 1,082/1,082.  Against E7s, `.text` changes 6,451,558 -> 6,453,734;
+`.rodata` remains 214,720; `.eh_frame_hdr` 51,548 -> 51,588; `.eh_frame`
+319,560 -> 319,272; and `.gcc_except_table` 123,936 -> 123,012.  Sixteen
+pinned interleaved frozen runs reproduce object hash `8545fec6...` and give
+identical baseline/candidate mean user time of 0.45125 seconds.  The small text
+cost is therefore retained for the required typed separation and lower EH
+footprint, with no measured hot-path regression.
 
 ## Initial code map
 

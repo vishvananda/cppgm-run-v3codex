@@ -1,8 +1,8 @@
 #include "abi/itanium/abi_mangle.h"
+#include "abi/itanium/abi_mangle_errors.h"
 
 #include <limits>
 #include <new>
-#include <stdexcept>
 #include <utility>
 
 namespace abi_mangle {
@@ -63,14 +63,14 @@ std::size_t AbiReferenceList::size() const
 
 void AbiReferenceList::push_name(const std::string & name)
 {
-  if(mode_ != NAMES) throw std::logic_error("mixed ABI reference list");
+  if(mode_ != NAMES) ThrowAbiInternal("mixed ABI reference list");
   storage_.names.push_back(name);
 }
 
 void AbiReferenceList::push_resolved(std::size_t id)
 {
   if(mode_ == NAMES) {
-    if(!storage_.names.empty()) throw std::logic_error("mixed ABI reference list");
+    if(!storage_.names.empty()) ThrowAbiInternal("mixed ABI reference list");
     storage_.names.~vector<std::string>();
     new(&storage_.resolved) std::vector<std::size_t>();
     mode_ = RESOLVED;
@@ -80,13 +80,13 @@ void AbiReferenceList::push_resolved(std::size_t id)
 
 const std::vector<std::string> & AbiReferenceList::names() const
 {
-  if(mode_ != NAMES) throw std::logic_error("resolved ABI reference has no name");
+  if(mode_ != NAMES) ThrowAbiInternal("resolved ABI reference has no name");
   return storage_.names;
 }
 
 const std::vector<std::size_t> & AbiReferenceList::resolved_ids() const
 {
-  if(mode_ != RESOLVED) throw std::logic_error("text ABI reference has no ID");
+  if(mode_ != RESOLVED) ThrowAbiInternal("text ABI reference has no ID");
   return storage_.resolved;
 }
 
@@ -186,9 +186,9 @@ std::size_t AbiTypePresentationNames::tag_size() const
 
 void AbiTypePresentationNames::push_namespace_name(const std::string & name)
 {
-  if(mode_ != NAMES) throw std::logic_error("mixed ABI presentation names");
+  if(mode_ != NAMES) ThrowAbiInternal("mixed ABI presentation names");
   if(namespace_count_ != storage_.names.size())
-    throw std::logic_error("ABI namespace name follows a tag");
+    ThrowAbiInternal("ABI namespace name follows a tag");
   require_namespace_capacity();
   storage_.names.push_back(name);
   ++namespace_count_;
@@ -196,7 +196,7 @@ void AbiTypePresentationNames::push_namespace_name(const std::string & name)
 
 void AbiTypePresentationNames::push_tag_name(const std::string & name)
 {
-  if(mode_ != NAMES) throw std::logic_error("mixed ABI presentation names");
+  if(mode_ != NAMES) ThrowAbiInternal("mixed ABI presentation names");
   storage_.names.push_back(name);
 }
 
@@ -204,7 +204,7 @@ void AbiTypePresentationNames::push_namespace_resolved(std::size_t id)
 {
   prepare_resolved();
   if(namespace_count_ != storage_.resolved.size())
-    throw std::logic_error("ABI namespace ID follows a tag");
+    ThrowAbiInternal("ABI namespace ID follows a tag");
   require_namespace_capacity();
   storage_.resolved.push_back(id);
   ++namespace_count_;
@@ -219,7 +219,7 @@ void AbiTypePresentationNames::push_tag_resolved(std::size_t id)
 const std::vector<std::string> & AbiTypePresentationNames::names() const
 {
   if(mode_ != NAMES)
-    throw std::logic_error("resolved ABI presentation has no name");
+    ThrowAbiInternal("resolved ABI presentation has no name");
   return storage_.names;
 }
 
@@ -227,7 +227,7 @@ const std::vector<std::size_t> &
 AbiTypePresentationNames::resolved_ids() const
 {
   if(mode_ != RESOLVED)
-    throw std::logic_error("text ABI presentation has no ID");
+    ThrowAbiInternal("text ABI presentation has no ID");
   return storage_.resolved;
 }
 
@@ -235,7 +235,7 @@ void AbiTypePresentationNames::prepare_resolved()
 {
   if(mode_ == RESOLVED) return;
   if(!storage_.names.empty())
-    throw std::logic_error("mixed ABI presentation names");
+    ThrowAbiInternal("mixed ABI presentation names");
   storage_.names.~vector<std::string>();
   new(&storage_.resolved) std::vector<std::size_t>();
   mode_ = RESOLVED;
@@ -244,7 +244,7 @@ void AbiTypePresentationNames::prepare_resolved()
 void AbiTypePresentationNames::require_namespace_capacity() const
 {
   if(namespace_count_ == std::numeric_limits<std::uint32_t>::max())
-    throw std::runtime_error("too many ABI namespace qualifiers");
+    ThrowAbiResourceLimit("too many ABI namespace qualifiers");
 }
 
 void AbiTypePresentationNames::destroy()

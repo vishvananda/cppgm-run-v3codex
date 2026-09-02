@@ -1,4 +1,5 @@
 #include "abi/itanium/abi_mangle.h"
+#include "abi/itanium/abi_mangle_errors.h"
 #include "abi/itanium/abi_mangle_graph_argument.h"
 #include "abi/itanium/abi_mangle_graph_type.h"
 #include "abi/itanium/abi_mangle_hash.h"
@@ -10,7 +11,6 @@
 #include <functional>
 #include <limits>
 #include <sstream>
-#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -49,7 +49,7 @@ const size_t NO_ID = std::numeric_limits<size_t>::max();
 
 void require(bool condition, const string & message)
 {
-  if(!condition) throw std::logic_error(message);
+  if(!condition) ThrowAbiInternal(message);
 }
 
 template<class T>
@@ -121,7 +121,7 @@ public:
       const size_t separator = qualified.find("::", begin);
       const string component = qualified.substr(begin, separator - begin);
       if(component.empty()) {
-        throw std::logic_error("empty component in ABI name '" + qualified + "'");
+        ThrowAbiInternal("empty component in ABI name '" + qualified + "'");
       }
       if(stats_) ++stats_->path_components;
       if(origin_components) ++*origin_components;
@@ -712,7 +712,7 @@ public:
   {
     if(identity >= active_contexts.size()
        || active_contexts[identity] == NO_ID)
-      throw std::logic_error("unbound resolved ABI context identity "
+      ThrowAbiInternal("unbound resolved ABI context identity "
                              + std::to_string(identity) + " of "
                              + std::to_string(active_contexts.size()));
     return active_contexts[identity];
@@ -1061,6 +1061,19 @@ private:
   std::unordered_map<size_t, vector<size_t> > expression_buckets;
 };
 
+class FactGraphCaseScope
+{
+public:
+  explicit FactGraphCaseScope(FactGraph & graph) : graph_(graph) {}
+  ~FactGraphCaseScope() { graph_.end_case(); }
+
+private:
+  FactGraphCaseScope(const FactGraphCaseScope &);
+  FactGraphCaseScope & operator=(const FactGraphCaseScope &);
+
+  FactGraph & graph_;
+};
+
 class Encoder
 {
 public:
@@ -1308,7 +1321,7 @@ private:
       encode_function(target.function, collect_function_facts(records));
       return output_;
     }
-    throw std::logic_error("unsupported ABI target kind");
+    ThrowAbiInternal("unsupported ABI target kind");
   }
 
   void encode_fixed_call_offset(long long offset)
@@ -1521,7 +1534,7 @@ private:
       }
       default: break;
     }
-    throw std::logic_error("unsupported canonical ABI type kind " + std::to_string(type.kind));
+    ThrowAbiInternal("unsupported canonical ABI type kind " + std::to_string(type.kind));
   }
 
   void encode_named_type(const TypeNode & type)
@@ -1778,7 +1791,7 @@ private:
         output_ += 'J'; encode_arguments(argument.arguments); output_ += 'E'; return;
       default: break;
     }
-    throw std::logic_error("unsupported ABI template argument kind");
+    ThrowAbiInternal("unsupported ABI template argument kind");
   }
 
   void encode_member_template_argument(const ArgumentNode & argument)
@@ -1918,7 +1931,7 @@ private:
         return;
       default: break;
     }
-    throw std::logic_error("unsupported ABI dependent expression kind");
+    ThrowAbiInternal("unsupported ABI dependent expression kind");
   }
 
   void encode_entity_reference(const string & id)
@@ -2333,7 +2346,7 @@ private:
         output_ += source_name(component_name(*final));
       else if(final->kind == ABI_FUNCTION_RECORD_NAME_TEMPLATE) {
         output_ += source_name(component_name(*final));
-      } else throw std::logic_error("invalid final structured ABI name component");
+      } else ThrowAbiInternal("invalid final structured ABI name component");
       emit_tags(component_tags(facts, final));
       emit_tags(facts.tags);
     } else {
@@ -2637,7 +2650,7 @@ private:
         terminal <= ABI_TERMINAL_DESTRUCTOR_BASE) ||
        terminal == ABI_TERMINAL_CALL)
       return abi_terminal_code(terminal, true, 0);
-    throw std::logic_error("invalid semantic ABI terminal");
+    ThrowAbiInternal("invalid semantic ABI terminal");
   }
 
   void emit_operator_terminal(const AbiFunctionRecord & terminal, bool member,
@@ -2658,7 +2671,7 @@ private:
     }
     if(kind >= ABI_TERMINAL_CONSTRUCTOR_COMPLETE &&
        kind <= ABI_TERMINAL_DESTRUCTOR_BASE)
-      throw std::logic_error("invalid operator ABI terminal");
+      ThrowAbiInternal("invalid operator ABI terminal");
     output_ += abi_terminal_code(kind, member, parameter_count);
   }
 
@@ -2794,15 +2807,10 @@ string AbiMangleContext::mangle_case(const AbiFactCase & fact_case)
     impl_->stats->records += fact_case.records.size();
   }
   impl_->graph.begin_case(fact_case);
-  try {
-    const string name = Encoder(impl_->graph, impl_->stats).mangle(fact_case);
-    impl_->graph.end_case();
-    if(impl_->stats) impl_->stats->output_bytes += name.size() + 1;
-    return name;
-  } catch(...) {
-    impl_->graph.end_case();
-    throw;
-  }
+  const FactGraphCaseScope case_scope(impl_->graph);
+  const string name = Encoder(impl_->graph, impl_->stats).mangle(fact_case);
+  if(impl_->stats) impl_->stats->output_bytes += name.size() + 1;
+  return name;
 }
 
 string AbiMangleContext::mangle_case(const AbiTypedCase & fact_case)
@@ -2813,15 +2821,10 @@ string AbiMangleContext::mangle_case(const AbiTypedCase & fact_case)
       + fact_case.functions.size() + (fact_case.has_target ? 1 : 0);
   }
   impl_->graph.begin_case(fact_case);
-  try {
-    const string name = Encoder(impl_->graph, impl_->stats).mangle(fact_case);
-    impl_->graph.end_case();
-    if(impl_->stats) impl_->stats->output_bytes += name.size() + 1;
-    return name;
-  } catch(...) {
-    impl_->graph.end_case();
-    throw;
-  }
+  const FactGraphCaseScope case_scope(impl_->graph);
+  const string name = Encoder(impl_->graph, impl_->stats).mangle(fact_case);
+  if(impl_->stats) impl_->stats->output_bytes += name.size() + 1;
+  return name;
 }
 
 size_t AbiMangleContext::resolve_type(const AbiType & type)
@@ -2912,9 +2915,9 @@ size_t AbiMangleContext::cache_resolved_type(size_t source, size_t function,
     impl_->rehash_resolved_types(impl_->resolved_type_slots.size() * 2);
   if(impl_->resolved_types.size() >=
      std::numeric_limits<std::uint32_t>::max())
-    throw std::logic_error("too many resolved ABI types");
+	ThrowAbiResourceLimit("too many resolved ABI types");
   if(impl_->graph.type_uses_case_facts(id))
-    throw std::logic_error("case-bound ABI type cannot enter the shared cache");
+    ThrowAbiInternal("case-bound ABI type cannot enter the shared cache");
   const size_t mask = impl_->resolved_type_slots.size() - 1;
   size_t slot = Impl::resolved_type_hash(key) & mask;
   while(impl_->resolved_type_slots[slot] != 0) slot = (slot + 1) & mask;
@@ -2948,7 +2951,7 @@ void mangle_fact_file_to_stream(const AbiFactFile & file, std::ostream & output,
     output.put('\n');
     if(stats) stats->output_bytes += name.size() + 1;
   }
-  if(!output) throw std::logic_error("unable to write mangled ABI output");
+  if(!output) ThrowAbiInputOutput("unable to write mangled ABI output");
 }
 
 }  // namespace abi_mangle

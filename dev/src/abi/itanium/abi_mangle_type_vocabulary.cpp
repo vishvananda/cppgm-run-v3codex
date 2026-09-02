@@ -1,7 +1,8 @@
 #include "abi/itanium/abi_mangle_type_vocabulary.h"
 
+#include "abi/itanium/abi_mangle_errors.h"
+
 #include <limits>
-#include <stdexcept>
 
 namespace abi_mangle {
 namespace {
@@ -88,7 +89,7 @@ const char * abi_builtin_type_code(AbiBuiltinTypeKind kind)
 {
   if(kind >= ABI_BUILTIN_TYPE_BITINT ||
      builtin_entries[kind].code == nullptr)
-    throw std::logic_error("ABI builtin type has no fixed encoding");
+    ThrowAbiInternal("ABI builtin type has no fixed encoding");
   return builtin_entries[kind].code;
 }
 
@@ -96,7 +97,7 @@ const char * abi_builtin_type_word(AbiBuiltinTypeKind kind)
 {
   if(kind >= ABI_BUILTIN_TYPE_BITINT ||
      builtin_entries[kind].word == nullptr)
-    throw std::logic_error("ABI builtin type has no fixed fact word");
+    ThrowAbiInternal("ABI builtin type has no fixed fact word");
   return builtin_entries[kind].word;
 }
 
@@ -110,7 +111,7 @@ std::string abi_builtin_type_text_code(const std::string & word)
   if(bitint_word(word, &first, &bitint))
     return std::string(bitint == ABI_BUILTIN_TYPE_UNSIGNED_BITINT ? "DU" : "DB")
       + word.substr(first) + '_';
-  throw std::logic_error("unknown ABI builtin type '" + word + "'");
+  ThrowAbiFactInput("unknown ABI builtin type '" + word + "'");
 }
 
 AbiStandardSubstitutionKind abi_standard_substitution_kind(
@@ -133,7 +134,7 @@ const char * abi_standard_substitution_code(
                   ABI_STANDARD_SUBSTITUTION_IOSTREAM + 1,
                 "ABI standard substitution table is incomplete");
   if(kind > ABI_STANDARD_SUBSTITUTION_IOSTREAM || codes[kind] == nullptr)
-    throw std::logic_error("ABI standard substitution has no fixed encoding");
+    ThrowAbiInternal("ABI standard substitution has no fixed encoding");
   return codes[kind];
 }
 
@@ -146,14 +147,14 @@ AbiVendorQualifierKind abi_vendor_qualifier_kind(const std::string & word)
 const char * abi_vendor_qualifier_word(AbiVendorQualifierKind kind)
 {
   if(kind != ABI_VENDOR_QUALIFIER_BLOCK_POINTER)
-    throw std::logic_error("ABI vendor qualifier has no fixed word");
+    ThrowAbiInternal("ABI vendor qualifier has no fixed word");
   return "block_pointer";
 }
 
 const char * abi_vendor_qualifier_code(AbiVendorQualifierKind kind)
 {
   if(kind != ABI_VENDOR_QUALIFIER_BLOCK_POINTER)
-    throw std::logic_error("ABI vendor qualifier has no fixed encoding");
+    ThrowAbiInternal("ABI vendor qualifier has no fixed encoding");
   return "U13block_pointer";
 }
 

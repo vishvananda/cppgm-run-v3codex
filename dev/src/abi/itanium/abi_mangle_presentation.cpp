@@ -1,8 +1,9 @@
 #include "abi/itanium/abi_mangle_presentation.h"
 
+#include "abi/itanium/abi_mangle_errors.h"
+
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace abi_mangle {
 namespace detail {
@@ -38,17 +39,17 @@ std::string discriminator(const std::string & occurrence)
   std::size_t value = 0;
   for(char ch : occurrence) {
     if(ch < '0' || ch > '9') {
-      throw std::logic_error(
+	  ThrowAbiFactInput(
         "invalid local discriminator '" + occurrence + "'");
     }
     const std::size_t digit = static_cast<std::size_t>(ch - '0');
     if(value > (std::numeric_limits<std::size_t>::max() - digit) / 10) {
-      throw std::logic_error(
+	  ThrowAbiFactInput(
         "local discriminator out of range '" + occurrence + "'");
     }
     value = value * 10 + digit;
   }
-  if(value == 0) throw std::logic_error("invalid local discriminator");
+  if(value == 0) ThrowAbiFactInput("invalid local discriminator");
   return local_discriminator(value);
 }
 

@@ -1,7 +1,7 @@
 #include "abi/itanium/abi_mangle.h"
+#include "abi/itanium/abi_mangle_errors.h"
 
 #include <limits>
-#include <stdexcept>
 
 namespace abi_mangle {
 
@@ -22,7 +22,7 @@ const char * abi_expression_operation_code(AbiExpressionOperationKind kind)
                   ABI_EXPRESSION_OPERATION_INDIRECT_MEMBER + 1,
                 "ABI expression operation table is incomplete");
   if(kind > ABI_EXPRESSION_OPERATION_INDIRECT_MEMBER || codes[kind] == nullptr)
-    throw std::logic_error("ABI expression operation has no fixed encoding");
+    ThrowAbiInternal("ABI expression operation has no fixed encoding");
   return codes[kind];
 }
 
@@ -101,7 +101,7 @@ AbiTerminalKind abi_terminal_kind(const std::string & word)
 {
   AbiTerminalKind kind = ABI_TERMINAL_NONE;
   if(abi_find_terminal_kind(word, &kind)) return kind;
-  throw std::logic_error("unknown ABI terminal '" + word + "'");
+  ThrowAbiFactInput("unknown ABI terminal '" + word + "'");
 }
 
 const char * abi_terminal_code(AbiTerminalKind kind, bool member,
@@ -123,7 +123,7 @@ const char * abi_terminal_code(AbiTerminalKind kind, bool member,
   if(kind == ABI_TERMINAL_MINUS)
     return (member ? parameter_count == 0 : parameter_count == 1) ? "ng" : "mi";
   if(kind > ABI_TERMINAL_INDEX || codes[kind] == nullptr)
-    throw std::logic_error("ABI terminal has no fixed encoding");
+    ThrowAbiInternal("ABI terminal has no fixed encoding");
   return codes[kind];
 }
 
@@ -135,7 +135,7 @@ size_t make_semantic_substitution(AbiSemanticSubstitutionKind kind,
   if(kind_value >= kind_count ||
      identity > (std::numeric_limits<size_t>::max() - kind_value - 1) /
        kind_count)
-    throw std::logic_error("semantic ABI substitution identity is invalid");
+    ThrowAbiInternal("semantic ABI substitution identity is invalid");
   return identity * kind_count + kind_value;
 }
 
