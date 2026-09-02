@@ -737,7 +737,8 @@ Append one row for each retained or rejected increment:
 | E7m | native host-EH analysis/LSDA and x86 encoding | MIR/region/encoding contradictions and one EH range ceiling shared generic logic base in hot backend owners | centralized native internal/resource/source cold boundary; encoder availability and EH traversal remain ordinary flow | PA38 native EH, encoding, structural, and generated behavior | successful frozen remains 0; generic logic sites -62 | -768 text, -64 rodata, -8 EH header, -360 unwind, -988 exception table | cumulative frozen user 0.440/0.445 s; paired +0.56% (neutral) | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `c87b815a` | retained |
 | E7n | native code buffer, relocations, fixups, labels, and ELF string table | symbol/label/relocation invariants, unresolved source symbols, and finite offset/identity ranges shared generic bases | native internal/source/resource types through the centralized cold boundary; fixup resolution and branch relaxation remain ordinary flow | PA38 native object, relocation, encoding, and generated behavior | successful frozen remains 0; generic logic/runtime sites -50/-19 | -2,368 text, neutral rodata, -24 EH header, -672 unwind, -1,064 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `afcdcde4` | retained |
 | E7o | ELF section, symbol, relocation, COMDAT, and host-object layout | object-layout identities/invariants, undefined alias input, and 16-bit section ceiling shared generic bases | native internal/source/resource types through the centralized cold boundary; section/symbol lookup remains ordinary flow | PA38 native object, EH relocation, COMDAT, and generated behavior | successful frozen remains 0; generic logic/runtime sites -43/-2 | -256 text, neutral rodata, -16 EH header, -192 unwind, -456 exception table | cumulative frozen user 0.450/0.455 s; paired +1.67% (noise) | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `41736c1d` | retained |
-| E7p | final MIR-to-x86 and executable/object writer | encoder/MIR contradictions, unsupported opcode/source entry, target invocation, and output I/O shared generic bases | native internal/source/invocation/I/O types through the centralized cold boundary; opcode dispatch remains ordinary flow | PA38 native executable/object, encoding, and generated behavior | successful frozen remains 0; generic logic/runtime sites -55/-9; native generic census reaches zero | -6,272 text, neutral rodata, -96 EH header, -632 unwind, -1,172 exception table | frozen paired +0.56%; isolated full O1 +0.08%, O3 +0.01% CPU | PA38 45/45; through-PA38 5,477/5,477; 223 O1/O3 objects and final binaries exact | pending | retained |
+| E7p | final MIR-to-x86 and executable/object writer | encoder/MIR contradictions, unsupported opcode/source entry, target invocation, and output I/O shared generic bases | native internal/source/invocation/I/O types through the centralized cold boundary; opcode dispatch remains ordinary flow | PA38 native executable/object, encoding, and generated behavior | successful frozen remains 0; generic logic/runtime sites -55/-9; native generic census reaches zero | -6,272 text, neutral rodata, -96 EH header, -632 unwind, -1,172 exception table | frozen paired +0.56%; isolated full O1 +0.08%, O3 +0.01% CPU | PA38 45/45; through-PA38 5,477/5,477; 223 O1/O3 objects and final binaries exact | `c1c2e8ca` | retained |
+| E7q | PA7 namespace semantics/parser | source, syntax, semantic, resource, and namespace-model invariant failures shared generic bases | typed lexical/syntax/semantic/resource/internal exits; speculative declarator and declaration probes remain Boolean | PA7 namespace declaration, lookup, declarator, and invalid-input exit behavior | no recovery catch or valid-input unwind; generic logic/runtime sites -3/-43 | nsdecl: -1,408 text, +32 rodata, +64 EH header, +264 unwind, -535 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA7 43/43; through-PA7 335/335; audits pass; integrated compiler binary exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -1999,6 +2000,27 @@ windows show isolated multi-second scheduler outliers under elevated host
 load.  The native phase is therefore retained as neutral; expected backend
 alternatives remain non-exception flow and no hot status conversion is
 justified.
+
+### E7q execution record
+
+The PA7 namespace semantic/parser owner contains no recovery catch around any
+of its 46 generic failures.  Its speculative declaration, type-id, and
+declarator alternatives already return Boolean miss/success results, so valid
+parser control flow remains exception-free.  The migrated sites are terminal
+lexical/syntax diagnostics, ordinary namespace/type semantic rejection,
+finite identifier/type/namespace/memo ceilings, or canonical/declarator-frame
+invariants; they now use the corresponding typed disposition through cold
+helpers.  Converting these terminal checks to returned status would add
+successful-path propagation without removing a measured unwind.
+
+The generic audit falls by 3 logic and 43 runtime sites, to 113/173/27.  PA7
+passes 43/43 and through-PA7 passes 335/335; the exception and frontend source
+set audits pass.  Against E7p the staged `nsdecl` `.text` changes 323,718 ->
+322,310, `.rodata` 15,520 -> 15,552, `.eh_frame_hdr` 3,892 -> 3,956,
+`.eh_frame` 21,316 -> 21,580, and `.gcc_except_table` 6,101 -> 5,566.  This
+owner is not part of the integrated `cppgm++` source set, and rebuilding both
+revisions produces the exact same integrated compiler hash
+`4438331165dbb...`; therefore it has no frozen/full timing exposure.
 
 ## Initial code map
 

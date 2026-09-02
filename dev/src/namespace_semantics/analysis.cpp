@@ -1,12 +1,14 @@
 #include "namespace_semantics/analysis.h"
 
+#include "support/driver_errors.h"
+#include "support/exceptions.h"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstring>
 #include <limits>
 #include <ostream>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -80,7 +82,7 @@ public:
 			slot = (slot + 1) & mask;
 		}
 		if (spellings_.size() > std::numeric_limits<NameId>::max())
-			throw std::runtime_error("too many identifiers");
+			ThrowSemanticResourceLimit("too many identifiers");
 		const NameId id = static_cast<NameId>(spellings_.size());
 		spellings_.push_back(spelling);
 		spelling_bytes_ += spelling.size();
@@ -145,7 +147,7 @@ public:
 
 	void EmitInvalid(const std::string& source)
 	{
-		throw std::runtime_error("invalid phase-7 token: " + source);
+		driver_errors::ThrowLexicalSource("invalid phase-7 token: " + source);
 	}
 
 	void EmitSimple(const std::string&, SimpleTokenKind kind)
@@ -175,25 +177,25 @@ public:
 	void EmitUserDefinedCharacter(const std::string&, const std::string&,
 		FundamentalType, const void*, std::size_t)
 	{
-		throw std::runtime_error("user-defined literal in PA7 input");
+		ThrowSyntaxError("user-defined literal in PA7 input");
 	}
 
 	void EmitUserDefinedString(const std::string&, const std::string&,
 		std::size_t, FundamentalType, const void*, std::size_t)
 	{
-		throw std::runtime_error("user-defined literal in PA7 input");
+		ThrowSyntaxError("user-defined literal in PA7 input");
 	}
 
 	void EmitUserDefinedInteger(const std::string&, const std::string&,
 		const std::string&)
 	{
-		throw std::runtime_error("user-defined literal in PA7 input");
+		ThrowSyntaxError("user-defined literal in PA7 input");
 	}
 
 	void EmitUserDefinedFloating(const std::string&, const std::string&,
 		const std::string&)
 	{
-		throw std::runtime_error("user-defined literal in PA7 input");
+		ThrowSyntaxError("user-defined literal in PA7 input");
 	}
 
 	void EmitEof() { tokens_.push_back(SemanticToken(kEofToken)); }
@@ -333,10 +335,10 @@ public:
 		const TypeRecord& left = Get(first);
 		const TypeRecord& right = Get(second);
 		if (left.kind != TYPE_ARRAY || right.kind != TYPE_ARRAY)
-			throw std::runtime_error("incompatible redeclaration");
+			ThrowSemanticError("incompatible redeclaration");
 		const TypeId child = MergeRedeclaration(left.child, right.child);
 		if (left.bound != 0 && right.bound != 0 && left.bound != right.bound)
-			throw std::runtime_error("incompatible array bounds");
+			ThrowSemanticError("incompatible array bounds");
 		return Array(child, left.bound == 0 ? right.bound : left.bound);
 	}
 
@@ -443,7 +445,7 @@ public:
 				}
 				break;
 			default:
-				throw std::logic_error("invalid canonical type");
+				ThrowSemanticInternal("invalid canonical type");
 			}
 		}
 	}
@@ -504,7 +506,7 @@ private:
 			slot = (slot + 1) & mask;
 		}
 		if (types_.size() > std::numeric_limits<TypeId>::max())
-			throw std::runtime_error("too many canonical types");
+			ThrowSemanticResourceLimit("too many canonical types");
 		candidate.parameter_offset =
 			static_cast<std::uint32_t>(parameters_.size());
 		if (parameter_count != 0)
@@ -883,7 +885,7 @@ public:
 			if (existing != kNoNamespace)
 			{
 				if (is_inline && !namespaces_[existing].is_inline)
-					throw std::runtime_error("namespace inline mismatch");
+					ThrowSemanticError("namespace inline mismatch");
 				return existing;
 			}
 			const NamespaceId created = NewNamespace(parent, name, is_inline);
@@ -898,14 +900,14 @@ public:
 			const NamespaceId existing = binding->name_space;
 			if (namespaces_[existing].parent != parent ||
 				namespaces_[existing].name != name)
-				throw std::runtime_error("namespace alias cannot be reopened");
+				ThrowSemanticError("namespace alias cannot be reopened");
 			if (is_inline && !namespaces_[existing].is_inline)
-				throw std::runtime_error("namespace inline mismatch");
+				ThrowSemanticError("namespace inline mismatch");
 			return existing;
 		}
 		if (binding && (binding->type != 0 || binding->variable != kNoEntity ||
 			binding->function != kNoEntity))
-			throw std::runtime_error("namespace name conflicts with declaration");
+			ThrowSemanticError("namespace name conflicts with declaration");
 
 		const NamespaceId created = NewNamespace(parent, name, is_inline);
 		InvalidateLookupName(parent, name);
@@ -923,13 +925,13 @@ public:
 		{
 			if (binding.type != 0 || binding.variable != kNoEntity ||
 				binding.function != kNoEntity)
-				throw std::runtime_error("namespace alias name conflict");
+				ThrowSemanticError("namespace alias name conflict");
 			InvalidateLookupName(owner, name);
 			binding.name_space = target;
 			return;
 		}
 		if (binding.name_space != target)
-			throw std::runtime_error("namespace alias target mismatch");
+			ThrowSemanticError("namespace alias target mismatch");
 	}
 
 	void AddUsingEdge(NamespaceId owner, NamespaceId target)
@@ -946,7 +948,7 @@ public:
 			slot = (slot + 1) & mask;
 		}
 		if (using_edges_.size() >= kNoUsingEdge)
-			throw std::runtime_error("too many using-directive edges");
+			ThrowSemanticResourceLimit("too many using-directive edges");
 		const UsingEdgeId id = static_cast<UsingEdgeId>(using_edges_.size());
 		using_edges_.push_back(UsingEdgeRecord(owner, target));
 		using_edge_slots_[slot] = id + 1;
@@ -975,9 +977,9 @@ public:
 	{
 		Binding& binding = EnsureBinding(owner, name);
 		if (binding.type != 0 && binding.type != type)
-			throw std::runtime_error("type alias redeclaration mismatch");
+			ThrowSemanticError("type alias redeclaration mismatch");
 		if (binding.variable != kNoEntity || binding.function != kNoEntity)
-			throw std::runtime_error("type alias name conflict");
+			ThrowSemanticError("type alias name conflict");
 		if (binding.type != type) InvalidateLookupName(owner, name);
 		binding.type = type;
 	}
@@ -985,12 +987,12 @@ public:
 	void Declare(NamespaceId current, const QualifiedName& name, TypeId type)
 	{
 		if (name.segments.empty())
-			throw std::runtime_error("declarator has no name");
+			ThrowSemanticError("declarator has no name");
 		const bool function = types.IsFunction(type);
 		const bool qualified = name.absolute || name.segments.size() > 1;
 		NamespaceId owner = current;
 		if (qualified && !ResolvePrefix(current, name, &owner))
-			throw std::runtime_error("declarator qualifier lookup failed");
+			ThrowSemanticError("declarator qualifier lookup failed");
 		const NameId unqualified = name.segments.back();
 
 		if (qualified)
@@ -999,7 +1001,7 @@ public:
 				function ? LOOKUP_FUNCTION : LOOKUP_VARIABLE);
 			const EntityId entity = function ? found.function : found.variable;
 			if (entity == kNoEntity)
-				throw std::runtime_error("qualified declaration not found");
+				ThrowSemanticError("qualified declaration not found");
 			entities_[entity].type = types.MergeRedeclaration(
 				entities_[entity].type, type);
 			return;
@@ -1014,7 +1016,7 @@ public:
 			return;
 		}
 		if (binding.type != 0)
-			throw std::runtime_error("declaration conflicts with type name");
+			ThrowSemanticError("declaration conflicts with type name");
 		InvalidateLookupName(owner, unqualified);
 		const EntityId entity = static_cast<EntityId>(entities_.size());
 		entities_.push_back(EntityRecord(unqualified, type, owner));
@@ -1165,7 +1167,7 @@ private:
 	NamespaceId NewNamespace(NamespaceId parent, NameId name, bool is_inline)
 	{
 		if (namespaces_.size() > std::numeric_limits<NamespaceId>::max())
-			throw std::runtime_error("too many namespaces");
+			ThrowSemanticResourceLimit("too many namespaces");
 		const NamespaceId id = static_cast<NamespaceId>(namespaces_.size());
 		namespaces_.push_back(NamespaceRecord(name, parent, is_inline));
 		scope_lookup_generations_.push_back(1);
@@ -1449,7 +1451,7 @@ private:
 	{
 		if (source == 0) return;
 		if (*destination != 0 && *destination != source)
-			throw std::runtime_error("using declaration type conflict");
+			ThrowSemanticError("using declaration type conflict");
 		*destination = source;
 	}
 
@@ -1457,7 +1459,7 @@ private:
 	{
 		if (source == kNoEntity) return;
 		if (*destination != kNoEntity && *destination != source)
-			throw std::runtime_error("using declaration entity conflict");
+			ThrowSemanticError("using declaration entity conflict");
 		*destination = source;
 	}
 
@@ -1623,13 +1625,13 @@ public:
 			if (AtEof())
 			{
 				if (!namespace_stack_.empty())
-					throw std::runtime_error("unterminated namespace");
+					ThrowSyntaxError("unterminated namespace");
 				return;
 			}
 			if (Match(OP_RBRACE))
 			{
 				if (namespace_stack_.empty())
-					throw std::runtime_error("unexpected namespace close");
+					ThrowSyntaxError("unexpected namespace close");
 				current_namespace_ = namespace_stack_.back();
 				namespace_stack_.pop_back();
 				continue;
@@ -1742,7 +1744,7 @@ private:
 			RehashDeclaratorMemo(declarator_memo_slots_.size() * 2);
 		if (declarator_memo_entries_.size() >=
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many declarator memo entries");
+			ThrowSemanticResourceLimit("too many declarator memo entries");
 		const std::size_t mask = declarator_memo_slots_.size() - 1;
 		std::size_t slot = HashDeclaratorMemo(key) & mask;
 		while (declarator_memo_slots_[slot].generation ==
@@ -1811,13 +1813,13 @@ private:
 	void Expect(SimpleTokenKind kind)
 	{
 		if (!Match(kind))
-			throw std::runtime_error(std::string("expected ") +
+			ThrowSyntaxError(std::string("expected ") +
 				SimpleTokenKindName(kind));
 	}
 
 	NameId ConsumeIdentifier()
 	{
-		if (!AtIdentifier()) throw std::runtime_error("expected identifier");
+		if (!AtIdentifier()) ThrowSyntaxError("expected identifier");
 		return tokens_[position_++].name;
 	}
 
@@ -2089,7 +2091,7 @@ private:
 		if (saw_bare_void)
 		{
 			if (parsed.parameters.size() != 1 || parsed.variadic)
-				throw std::runtime_error("void parameter in parameter list");
+				ThrowSemanticError("void parameter in parameter list");
 			parsed.parameters.clear();
 		}
 		*operation = std::move(parsed);
@@ -2100,7 +2102,7 @@ private:
 	{
 		BeginDeclaratorMemoSession();
 		if (declarator_call_depth_ >= kMaxDeclaratorCallDepth)
-			throw std::runtime_error("declarator nesting limit exceeded");
+			ThrowSemanticResourceLimit("declarator nesting limit exceeded");
 		++declarator_call_depth_;
 		const std::size_t start = position_;
 		if (declarator_call_depth_ == 1)
@@ -2196,7 +2198,7 @@ private:
 				continue;
 			}
 			if (frame.state == FRAME_WAITING_FOR_GROUP)
-				throw std::logic_error("declarator frame did not resume");
+				ThrowSemanticInternal("declarator frame did not resume");
 
 			while (!frame.failed)
 			{
@@ -2234,7 +2236,7 @@ private:
 			}
 			Frame& parent = frames.back();
 			if (parent.state != FRAME_WAITING_FOR_GROUP)
-				throw std::logic_error("invalid declarator frame state");
+				ThrowSemanticInternal("invalid declarator frame state");
 			if (success && Match(OP_RPAREN))
 			{
 				parent.parsed = std::move(completed);
@@ -2303,11 +2305,11 @@ private:
 			Expect(OP_ASS);
 			QualifiedName target_name;
 			if (!ParseQualifiedName(&target_name))
-				throw std::runtime_error("expected namespace alias target");
+				ThrowSyntaxError("expected namespace alias target");
 			NamespaceId target;
 			if (!model_.ResolveNamespaceName(current_namespace_, target_name,
 				&target))
-				throw std::runtime_error("namespace alias lookup failed");
+				ThrowSemanticError("namespace alias lookup failed");
 			Expect(OP_SEMICOLON);
 			model_.AddNamespaceAlias(current_namespace_, alias, target);
 			return;
@@ -2329,11 +2331,11 @@ private:
 		{
 			QualifiedName target_name;
 			if (!ParseQualifiedName(&target_name))
-				throw std::runtime_error("expected using-directive target");
+				ThrowSyntaxError("expected using-directive target");
 			NamespaceId target;
 			if (!model_.ResolveNamespaceName(current_namespace_, target_name,
 				&target))
-				throw std::runtime_error("using-directive lookup failed");
+				ThrowSemanticError("using-directive lookup failed");
 			Expect(OP_SEMICOLON);
 			model_.AddUsingEdge(current_namespace_, target);
 			return;
@@ -2345,11 +2347,11 @@ private:
 			Expect(OP_ASS);
 			DeclSpecifiers specifiers;
 			if (!ParseDeclSpecifiers(&specifiers))
-				throw std::runtime_error("expected alias type-id");
+				ThrowSyntaxError("expected alias type-id");
 			Declarator declarator;
 			if (!At(OP_SEMICOLON) &&
 				!ParseDeclarator(DECLARATOR_ABSTRACT, &declarator))
-				throw std::runtime_error("invalid alias declarator");
+				ThrowSyntaxError("invalid alias declarator");
 			Expect(OP_SEMICOLON);
 			model_.AddTypeAlias(current_namespace_, alias,
 				ApplyDeclarator(specifiers.type, declarator));
@@ -2359,10 +2361,10 @@ private:
 		QualifiedName target_name;
 		if (!ParseQualifiedName(&target_name) ||
 			(!target_name.absolute && target_name.segments.size() < 2))
-			throw std::runtime_error("expected qualified using-declaration");
+			ThrowSyntaxError("expected qualified using-declaration");
 		LookupResult target;
 		if (!model_.ResolveUsingTarget(current_namespace_, target_name, &target))
-			throw std::runtime_error("using-declaration lookup failed");
+			ThrowSemanticError("using-declaration lookup failed");
 		Expect(OP_SEMICOLON);
 		model_.AddUsingDeclaration(current_namespace_,
 			target_name.segments.back(), target);
@@ -2372,18 +2374,18 @@ private:
 	{
 		DeclSpecifiers specifiers;
 		if (!ParseDeclSpecifiers(&specifiers))
-			throw std::runtime_error("expected declaration specifiers");
+			ThrowSyntaxError("expected declaration specifiers");
 		while (true)
 		{
 			Declarator declarator;
 			if (!ParseDeclarator(DECLARATOR_NAMED, &declarator))
-				throw std::runtime_error("expected declarator");
+				ThrowSyntaxError("expected declarator");
 			const TypeId type = ApplyDeclarator(specifiers.type, declarator);
 			if (specifiers.is_typedef)
 			{
 				if (declarator.name.absolute ||
 					declarator.name.segments.size() != 1)
-					throw std::runtime_error("qualified typedef declarator");
+					ThrowSemanticError("qualified typedef declarator");
 				model_.AddTypeAlias(current_namespace_,
 					declarator.name.segments[0], type);
 			}
