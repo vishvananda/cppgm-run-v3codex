@@ -1,10 +1,11 @@
 #include "namespace_initialization/program.h"
 
+#include "support/exceptions.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <ostream>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -32,19 +33,19 @@ std::size_t HashSpelling(const std::string& spelling)
 
 std::uint64_t Align(std::uint64_t offset, std::size_t alignment)
 {
-	if (alignment == 0) throw std::logic_error("zero alignment");
+	if (alignment == 0) ThrowSemanticInternal("zero alignment");
 	const std::uint64_t remainder = offset % alignment;
 	if (remainder == 0) return offset;
 	const std::uint64_t padding = alignment - remainder;
 	if (offset > std::numeric_limits<std::uint64_t>::max() - padding)
-		throw std::runtime_error("program image is too large");
+		ThrowSemanticResourceLimit("program image is too large");
 	return offset + padding;
 }
 
 void AddImageSize(std::uint64_t* offset, std::size_t size)
 {
 	if (*offset > std::numeric_limits<std::uint64_t>::max() - size)
-		throw std::runtime_error("program image is too large");
+		ThrowSemanticResourceLimit("program image is too large");
 	*offset += size;
 }
 
@@ -52,7 +53,7 @@ void WriteRaw(std::ostream& output, const void* data, std::size_t size)
 {
 	if (size == 0) return;
 	output.write(static_cast<const char*>(data), size);
-	if (!output) throw std::runtime_error("unable to write program image");
+	if (!output) ThrowSemanticInputOutput("unable to write program image");
 }
 
 void WriteZeros(std::ostream& output, std::uint64_t count)
@@ -133,7 +134,7 @@ NameId IdentifierTable::Intern(const std::string& spelling)
 		slot = (slot + 1) & mask;
 	}
 	if (spellings_.size() > std::numeric_limits<NameId>::max())
-		throw std::runtime_error("too many identifiers");
+		ThrowSemanticResourceLimit("too many identifiers");
 	const NameId id = static_cast<NameId>(spellings_.size());
 	spellings_.push_back(spelling);
 	slots_[slot] = id;
@@ -202,7 +203,7 @@ TypeId TypeTable::Unary(TypeKind kind, TypeId child)
 TypeId TypeTable::Pointer(TypeId child)
 {
 	if (IsReference(child))
-		throw std::runtime_error("pointer to reference type");
+		ThrowSemanticError("pointer to reference type");
 	return Unary(TYPE_POINTER, child);
 }
 
@@ -214,13 +215,13 @@ TypeId TypeTable::Reference(TypeKind kind, TypeId child,
 		referred.kind == TYPE_RVALUE_REFERENCE)
 	{
 		if (!collapse_allowed)
-			throw std::runtime_error("direct reference to reference type");
+			ThrowSemanticError("direct reference to reference type");
 		if (referred.kind == TYPE_LVALUE_REFERENCE ||
 			kind == TYPE_LVALUE_REFERENCE)
 			return Unary(TYPE_LVALUE_REFERENCE, referred.child);
 		return Unary(TYPE_RVALUE_REFERENCE, referred.child);
 	}
-	if (IsVoid(child)) throw std::runtime_error("reference to void type");
+	if (IsVoid(child)) ThrowSemanticError("reference to void type");
 	return Unary(kind, child);
 }
 
@@ -229,7 +230,7 @@ TypeId TypeTable::Array(TypeId child, std::uint64_t bound)
 	const TypeRecord& element = Get(child);
 	if (element.kind == TYPE_LVALUE_REFERENCE ||
 		element.kind == TYPE_RVALUE_REFERENCE || element.kind == TYPE_FUNCTION ||
-		IsVoid(child)) throw std::runtime_error("invalid array element type");
+		IsVoid(child)) ThrowSemanticError("invalid array element type");
 	TypeRecord candidate;
 	candidate.kind = TYPE_ARRAY;
 	candidate.child = child;
@@ -241,10 +242,10 @@ TypeId TypeTable::Function(TypeId result,
 	const std::vector<TypeId>& parameters, bool variadic)
 {
 	if (parameters.size() > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("too many function parameters");
+		ThrowSemanticResourceLimit("too many function parameters");
 	const TypeRecord& returned = Get(result);
 	if (returned.kind == TYPE_ARRAY || returned.kind == TYPE_FUNCTION)
-		throw std::runtime_error("invalid function return type");
+		ThrowSemanticError("invalid function return type");
 	TypeRecord candidate;
 	candidate.kind = TYPE_FUNCTION;
 	candidate.child = result;
@@ -264,7 +265,7 @@ TypeId TypeTable::Qualify(TypeId type, unsigned char cv)
 	if (record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE) return type;
 	if (record.kind == TYPE_FUNCTION)
-		throw std::runtime_error("cv-qualified function type");
+		ThrowSemanticError("cv-qualified function type");
 	if (record.kind == TYPE_QUALIFIED)
 		return Qualify(record.child, record.cv | cv);
 	TypeRecord candidate;
@@ -294,19 +295,19 @@ TypeId TypeTable::MergeRedeclaration(TypeId first, TypeId second)
 	const TypeRecord& left = Get(first);
 	const TypeRecord& right = Get(second);
 	if (left.kind != TYPE_ARRAY || right.kind != TYPE_ARRAY)
-		throw std::runtime_error("incompatible redeclaration");
+		ThrowSemanticError("incompatible redeclaration");
 	const TypeId child = MergeRedeclaration(left.child, right.child);
 	if (left.bound != 0 && right.bound != 0 && left.bound != right.bound)
-		throw std::runtime_error("incompatible array bounds");
+		ThrowSemanticError("incompatible array bounds");
 	return Array(child, left.bound == 0 ? right.bound : left.bound);
 }
 
 TypeId TypeTable::CompleteArray(TypeId type, std::uint64_t bound)
 {
 	const TypeRecord& record = Get(type);
-	if (record.kind != TYPE_ARRAY) throw std::logic_error("not an array");
+	if (record.kind != TYPE_ARRAY) ThrowSemanticInternal("not an array");
 	if (record.bound != 0 && record.bound != bound)
-		throw std::runtime_error("array initializer bound mismatch");
+		ThrowSemanticError("array initializer bound mismatch");
 	return record.bound == 0 ? Array(record.child, bound) : type;
 }
 
@@ -321,7 +322,7 @@ TypeId TypeTable::Referred(TypeId type) const
 	const TypeRecord& record = Get(type);
 	if (record.kind != TYPE_LVALUE_REFERENCE &&
 		record.kind != TYPE_RVALUE_REFERENCE)
-		throw std::logic_error("not a reference type");
+		ThrowSemanticInternal("not a reference type");
 	return record.child;
 }
 
@@ -511,7 +512,7 @@ std::size_t FundamentalSize(FundamentalType type)
 	case FT_VOID:
 		break;
 	}
-	throw std::runtime_error("incomplete fundamental type");
+	ThrowSemanticError("incomplete fundamental type");
 }
 
 std::size_t TypeTable::SizeOf(TypeId type) const
@@ -528,11 +529,11 @@ std::size_t TypeTable::SizeOf(TypeId type) const
 		if (record.kind == TYPE_ARRAY)
 		{
 			if (record.bound == 0)
-				throw std::runtime_error("incomplete array type");
+				ThrowSemanticError("incomplete array type");
 			if (record.bound > std::numeric_limits<std::size_t>::max() ||
 				multiplier > std::numeric_limits<std::size_t>::max() /
 					static_cast<std::size_t>(record.bound))
-				throw std::runtime_error("object type is too large");
+				ThrowSemanticResourceLimit("object type is too large");
 			multiplier *= static_cast<std::size_t>(record.bound);
 			type = record.child;
 			continue;
@@ -544,10 +545,10 @@ std::size_t TypeTable::SizeOf(TypeId type) const
 		case TYPE_POINTER: case TYPE_LVALUE_REFERENCE:
 		case TYPE_RVALUE_REFERENCE: size = 8; break;
 		case TYPE_FUNCTION: size = 4; break;
-		default: throw std::runtime_error("invalid complete type");
+		default: ThrowSemanticInternal("invalid complete type");
 		}
 		if (multiplier > std::numeric_limits<std::size_t>::max() / size)
-			throw std::runtime_error("object type is too large");
+			ThrowSemanticResourceLimit("object type is too large");
 		return multiplier * size;
 	}
 }
@@ -612,7 +613,7 @@ TypeId TypeTable::Intern(TypeRecord candidate, const TypeId* parameters,
 {
 	if (parameters_.size() > std::numeric_limits<std::uint32_t>::max() -
 		parameter_count)
-		throw std::runtime_error("canonical type parameter storage is too large");
+		ThrowSemanticResourceLimit("canonical type parameter storage is too large");
 	if ((types_.size() + 1) * 10 > slots_.size() * 7)
 		Rehash(slots_.size() * 2);
 	const std::size_t mask = slots_.size() - 1;
@@ -624,7 +625,7 @@ TypeId TypeTable::Intern(TypeRecord candidate, const TypeId* parameters,
 		slot = (slot + 1) & mask;
 	}
 	if (types_.size() > std::numeric_limits<TypeId>::max())
-		throw std::runtime_error("too many canonical types");
+		ThrowSemanticResourceLimit("too many canonical types");
 	candidate.parameter_offset = static_cast<std::uint32_t>(parameters_.size());
 	if (parameter_count != 0)
 		parameters_.insert(parameters_.end(), parameters,
@@ -814,7 +815,7 @@ Model::Model(Stats* stats_value)
 ScopeId Model::NewTranslationUnit()
 {
 	if (scopes_.size() >= kNoScope)
-		throw std::runtime_error("too many scopes");
+		ThrowSemanticResourceLimit("too many scopes");
 	const ScopeId id = static_cast<ScopeId>(scopes_.size());
 	scopes_.push_back(ScopeRecord(kNoScope, 0, 0, false, false,
 		current_unit_));
@@ -867,7 +868,7 @@ Binding& Model::EnsureBinding(ScopeId owner, NameId name)
 		slot = (slot + 1) & mask;
 	}
 	if (bindings_.size() >= kNoBinding)
-		throw std::runtime_error("too many bindings");
+		ThrowSemanticResourceLimit("too many bindings");
 	const BindingId id = static_cast<BindingId>(bindings_.size());
 	bindings_.push_back(Binding(id, owner, name));
 	binding_slots_[slot] = static_cast<std::uint32_t>(bindings_.size());
@@ -898,7 +899,7 @@ PathId Model::InternPath(PathId parent, NameId name)
 		slot = (slot + 1) & mask;
 	}
 	if (path_names_.size() > std::numeric_limits<PathId>::max())
-		throw std::runtime_error("too many namespace paths");
+		ThrowSemanticResourceLimit("too many namespace paths");
 	const PathId id = static_cast<PathId>(path_names_.size());
 	path_parents_.push_back(parent);
 	path_names_.push_back(name);
@@ -914,7 +915,7 @@ ScopeId Model::OpenNamespace(ScopeId parent, NameId name,
 		if (scopes_[parent].unnamed_child != kNoScope)
 			return scopes_[parent].unnamed_child;
 		if (scopes_.size() >= kNoScope)
-			throw std::runtime_error("too many scopes");
+			ThrowSemanticResourceLimit("too many scopes");
 		const ScopeId id = static_cast<ScopeId>(scopes_.size());
 		scopes_.push_back(ScopeRecord(parent, scopes_[parent].path, 0,
 			false, true, scopes_[parent].translation_unit));
@@ -927,14 +928,14 @@ ScopeId Model::OpenNamespace(ScopeId parent, NameId name,
 	if (existing)
 	{
 		if (existing->name_space == kNoScope || existing->namespace_alias)
-			throw std::runtime_error("namespace name conflict");
+			ThrowSemanticError("namespace name conflict");
 		ScopeRecord& scope = scopes_[existing->name_space];
 		if (is_inline && !scope.is_inline)
-			throw std::runtime_error("namespace inline mismatch");
+			ThrowSemanticError("namespace inline mismatch");
 		return existing->name_space;
 	}
 	if (scopes_.size() >= kNoScope)
-		throw std::runtime_error("too many scopes");
+		ThrowSemanticResourceLimit("too many scopes");
 	const ScopeId id = static_cast<ScopeId>(scopes_.size());
 	const PathId path = InternPath(scopes_[parent].path, name);
 	scopes_.push_back(ScopeRecord(parent, path, name, is_inline,
@@ -952,7 +953,7 @@ void Model::AddNamespaceAlias(ScopeId owner, NameId name,
 	ScopeId target)
 {
 	Binding* existing = FindDirect(owner, name);
-	if (existing) throw std::runtime_error("namespace alias name conflict");
+	if (existing) ThrowSemanticError("namespace alias name conflict");
 	InvalidateLookupName(owner, name);
 	Binding& binding = EnsureBinding(owner, name);
 	binding.name_space = target;
@@ -973,7 +974,7 @@ void Model::AddFunctionCandidate(Binding& binding, EntityId entity)
 		if (candidates_[id].entity == entity) return;
 	}
 	if (candidates_.size() >= kNoCandidate)
-		throw std::runtime_error("too many function candidates");
+		ThrowSemanticResourceLimit("too many function candidates");
 	const CandidateId id = static_cast<CandidateId>(candidates_.size());
 	candidates_.push_back(CandidateLink(entity, kNoCandidate));
 	if (binding.last_function == kNoCandidate) binding.first_function = id;
@@ -985,13 +986,13 @@ void Model::AddUsingDeclaration(ScopeId owner, NameId name,
 	const LookupResult& target)
 {
 	if (target.ambiguous || !target.Found(LOOKUP_USING_TARGET))
-		throw std::runtime_error("ambiguous using-declaration target");
+		ThrowSemanticError("ambiguous using-declaration target");
 	InvalidateLookupName(owner, name);
 	Binding& binding = EnsureBinding(owner, name);
 	if (target.type != 0)
 	{
 		if (binding.type != 0 && binding.type_origin != target.type_origin)
-			throw std::runtime_error("using type conflict");
+			ThrowSemanticError("using type conflict");
 		binding.type = target.type;
 		binding.type_origin = target.type_origin;
 	}
@@ -999,7 +1000,7 @@ void Model::AddUsingDeclaration(ScopeId owner, NameId name,
 	{
 		if (binding.variable != kNoEntity &&
 			binding.variable != target.variable)
-			throw std::runtime_error("using variable conflict");
+			ThrowSemanticError("using variable conflict");
 		binding.variable = target.variable;
 	}
 	for (CandidateId id = target.first_function; id != kNoCandidate;
@@ -1014,7 +1015,7 @@ void Model::AddTypeAlias(ScopeId owner, NameId name, TypeId type)
 	if (binding.name_space != kNoScope || binding.variable != kNoEntity ||
 		binding.first_function != kNoCandidate ||
 		(binding.type != 0 && binding.type != type))
-		throw std::runtime_error("type alias name conflict");
+		ThrowSemanticError("type alias name conflict");
 	binding.type = type;
 	if (binding.type_origin == kNoBinding)
 		binding.type_origin = binding.identity;
@@ -1048,7 +1049,7 @@ void Model::AddUsingEdge(ScopeId owner, ScopeId target)
 		slot = (slot + 1) & mask;
 	}
 	if (using_edges_.size() >= kNoUsingEdge)
-		throw std::runtime_error("too many using-directive edges");
+		ThrowSemanticResourceLimit("too many using-directive edges");
 	const UsingEdgeId id = static_cast<UsingEdgeId>(using_edges_.size());
 	using_edges_.push_back(UsingEdgeRecord(owner, target));
 	using_edge_slots_[slot] = id + 1;
@@ -1268,7 +1269,7 @@ LookupResult Model::MergeLookupResults(LookupKind,
 			if (candidate_marks_[entity] == candidate_generation_) continue;
 			candidate_marks_[entity] = candidate_generation_;
 			if (candidates_.size() >= kNoCandidate)
-				throw std::runtime_error("too many lookup candidates");
+				ThrowSemanticResourceLimit("too many lookup candidates");
 			const CandidateId appended =
 				static_cast<CandidateId>(candidates_.size());
 			candidates_.push_back(CandidateLink(entity, kNoCandidate));
@@ -1478,7 +1479,7 @@ ScopeId Model::ResolveDeclaratorOwner(ScopeId current,
 	if (!name.absolute && name.segments.size() == 1) return current;
 	const ScopeId owner = ResolvePrefix(current, name);
 	if (owner == kNoScope || !ScopeEncloses(current, owner))
-		throw std::runtime_error("qualified declarator is not in an enclosing namespace");
+		ThrowSemanticError("qualified declarator is not in an enclosing namespace");
 	return owner;
 }
 
@@ -1545,46 +1546,46 @@ EntityId Model::Declare(ScopeId current,
 	bool function_definition, std::uint32_t unit)
 {
 	if (!declarator.has_name || declarator.name.segments.empty())
-		throw std::runtime_error("declarator has no name");
+		ThrowSemanticError("declarator has no name");
 	const ScopeId owner = declarator.resolved_owner;
 	if (!ScopeEncloses(current, owner))
-		throw std::runtime_error("declaration owner is outside its namespace");
+		ThrowSemanticError("declaration owner is outside its namespace");
 	const NameId name = declarator.name.segments.back();
 	const bool function = types.IsFunction(type);
 	if (specifiers.is_inline && !function)
-		throw std::runtime_error("inline specifier on variable");
+		ThrowSemanticError("inline specifier on variable");
 	if (specifiers.is_thread_local && function)
-		throw std::runtime_error("thread_local specifier on function");
+		ThrowSemanticError("thread_local specifier on function");
 	if (specifiers.is_constexpr && function &&
 		types.IsVoid(types.Get(type).child))
-		throw std::runtime_error("constexpr function returns void");
+		ThrowSemanticError("constexpr function returns void");
 	if (function_definition && (!function || !declarator.has_function_operation))
-		throw std::runtime_error("invalid function definition declarator");
+		ThrowSemanticError("invalid function definition declarator");
 	Binding* existing_binding = FindDirect(owner, name);
 	const bool qualified = declarator.name.absolute ||
 		declarator.name.segments.size() > 1;
 	if (qualified && !existing_binding)
-		throw std::runtime_error("qualified declaration was not previously declared");
+		ThrowSemanticError("qualified declaration was not previously declared");
 	InvalidateLookupName(owner, name);
 	Binding& binding = existing_binding ? *existing_binding :
 		EnsureBinding(owner, name);
 	if (binding.type != 0 || binding.name_space != kNoScope ||
 		(function && binding.variable != kNoEntity) ||
 		(!function && binding.first_function != kNoCandidate))
-		throw std::runtime_error("declaration name conflict");
+		ThrowSemanticError("declaration name conflict");
 	EntityId entity = function ? FindFunction(binding, type) : binding.variable;
 	Linkage linkage = LINKAGE_EXTERNAL;
 	if (scopes_[owner].internal_context || specifiers.is_static ||
 		(!function && types.IsConst(type) && !specifiers.is_extern))
 		linkage = LINKAGE_INTERNAL;
 	if (entity == kNoEntity && qualified)
-		throw std::runtime_error("qualified declaration does not match an entity");
+		ThrowSemanticError("qualified declaration does not match an entity");
 	if (entity == kNoEntity && linkage == LINKAGE_EXTERNAL)
 		entity = FindExternal(scopes_[owner].path, name, type, function);
 	if (entity == kNoEntity)
 	{
 		if (entities_.size() >= kNoEntity)
-			throw std::runtime_error("too many entities");
+			ThrowSemanticResourceLimit("too many entities");
 		entity = static_cast<EntityId>(entities_.size());
 		entities_.push_back(EntityRecord(name, type, owner, linkage, function));
 		if (linkage == LINKAGE_EXTERNAL)
@@ -1592,12 +1593,12 @@ EntityId Model::Declare(ScopeId current,
 	}
 	EntityRecord& record = entities_[entity];
 	if (record.function != function)
-		throw std::runtime_error("entity kind mismatch");
+		ThrowSemanticError("entity kind mismatch");
 	if (function)
 	{
 		if (!types.SameFunctionSignature(record.type, type) ||
 			record.type != type)
-			throw std::runtime_error("incompatible function redeclaration");
+			ThrowSemanticError("incompatible function redeclaration");
 		AddFunctionCandidate(binding, entity);
 	}
 	else
@@ -1607,13 +1608,13 @@ EntityId Model::Declare(ScopeId current,
 	}
 	if (record.declaration_count != 0 && specifiers.is_static &&
 		record.linkage == LINKAGE_EXTERNAL)
-		throw std::runtime_error("static declaration follows external declaration");
+		ThrowSemanticError("static declaration follows external declaration");
 	if (function && record.declaration_count != 0 &&
 		record.constexpr_declared != specifiers.is_constexpr)
-		throw std::runtime_error("constexpr function redeclaration mismatch");
+		ThrowSemanticError("constexpr function redeclaration mismatch");
 	if (record.declaration_count != 0 &&
 		record.has_thread_storage != specifiers.is_thread_local)
-		throw std::runtime_error("thread_local redeclaration mismatch");
+		ThrowSemanticError("thread_local redeclaration mismatch");
 	record.has_thread_storage = specifiers.is_thread_local;
 	++record.declaration_count;
 	const bool declaration_inline = specifiers.is_inline ||
@@ -1624,7 +1625,7 @@ EntityId Model::Declare(ScopeId current,
 	{
 		if (record.defined && !(function && record.definitions_inline &&
 			declaration_inline && record.definition_unit != unit))
-			throw std::runtime_error("multiple definitions");
+			ThrowSemanticError("multiple definitions");
 		if (!record.defined)
 		{
 			record.defined = true;
@@ -1667,19 +1668,19 @@ InitialValue Model::ResolveReferenceAddress(EntityId entity) const
 {
 	const EntityRecord& record = entities_[entity];
 	if (!types.IsReference(record.type))
-		throw std::logic_error("entity is not a reference");
+		ThrowSemanticInternal("entity is not a reference");
 	return record.initial;
 }
 
 InitialValue Model::LvalueAddress(const Expression& expression) const
 {
 	if (expression.category != VALUE_LVALUE)
-		throw std::runtime_error("expression has no object address");
+		ThrowSemanticError("expression has no object address");
 	if (expression.entity == kNoEntity)
 	{
 		if (expression.value.kind == INITIAL_ADDRESS_STRING)
 			return expression.value;
-		throw std::runtime_error("expression has no object address");
+		ThrowSemanticError("expression has no object address");
 	}
 	const EntityRecord& entity = entities_[expression.entity];
 	if (types.IsReference(entity.type)) return ResolveReferenceAddress(
@@ -1740,9 +1741,9 @@ StringId Model::AddString(FundamentalType type,
 {
 	if (size > std::numeric_limits<std::uint32_t>::max() ||
 		retained_bytes.size() > std::numeric_limits<std::uint32_t>::max() - size)
-		throw std::runtime_error("retained string storage is too large");
+		ThrowSemanticResourceLimit("retained string storage is too large");
 	if (strings_.size() >= kNoString)
-		throw std::runtime_error("too many string literals");
+		ThrowSemanticResourceLimit("too many string literals");
 	StringRecord record;
 	record.element_type = type;
 	record.byte_offset = static_cast<std::uint32_t>(retained_bytes.size());
@@ -1759,7 +1760,7 @@ TemporaryId Model::AddTemporary(TypeId type,
 	const InitialValue& initial)
 {
 	if (temporaries_.size() >= kNoTemporary)
-		throw std::runtime_error("too many lifetime-extended temporaries");
+		ThrowSemanticResourceLimit("too many lifetime-extended temporaries");
 	TemporaryRecord record;
 	record.type = type;
 	record.initial = initial;
@@ -1868,12 +1869,12 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 			target = types.RemoveTopCv(target);
 			target_record = &types.Get(target);
 			if (target_record->kind != TYPE_POINTER)
-				throw std::runtime_error("overloaded function has no target type");
+				ThrowSemanticError("overloaded function has no target type");
 			target = target_record->child;
 			target_record = &types.Get(target);
 		}
 		if (target_record->kind != TYPE_FUNCTION)
-			throw std::runtime_error("overloaded function target is not a function");
+			ThrowSemanticError("overloaded function target is not a function");
 		EntityId selected = kNoEntity;
 		for (CandidateId id = source.first_function; id != kNoCandidate;
 			id = candidates_[id].next)
@@ -1881,11 +1882,11 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 			const EntityId candidate = candidates_[id].entity;
 			if (entities_[candidate].type != target) continue;
 			if (selected != kNoEntity)
-				throw std::runtime_error("ambiguous overloaded function initializer");
+				ThrowSemanticError("ambiguous overloaded function initializer");
 			selected = candidate;
 		}
 		if (selected == kNoEntity)
-			throw std::runtime_error("no overloaded function matches target type");
+			ThrowSemanticError("no overloaded function matches target type");
 		return ConvertInitializer(destination, ExpressionForEntity(selected,
 			source.translation_unit), constant);
 	}
@@ -1893,7 +1894,7 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 	if (destination_record.kind == TYPE_ARRAY)
 	{
 		if (!source.string_literal)
-			throw std::runtime_error("array requires a string initializer");
+			ThrowSemanticError("array requires a string initializer");
 		TypeId element = types.RemoveTopCv(destination_record.child);
 		const TypeRecord& element_record = types.Get(element);
 		const StringRecord& string = strings_[source.string_id];
@@ -1903,18 +1904,18 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 			  (string.element_type == FT_CHAR &&
 			   (element_record.fundamental == FT_SIGNED_CHAR ||
 			    element_record.fundamental == FT_UNSIGNED_CHAR))))
-			throw std::runtime_error("incompatible string array initializer");
+			ThrowSemanticError("incompatible string array initializer");
 		const std::size_t element_size = FundamentalSize(string.element_type);
 		const std::uint64_t elements = string.byte_size / element_size;
 		if (destination_record.bound != 0 && destination_record.bound < elements)
-			throw std::runtime_error("string is too long for array");
+			ThrowSemanticError("string is too long for array");
 		if (destination_record.bound == 0)
 			*destination = types.CompleteArray(*destination, elements);
 		const std::size_t bytes = types.SizeOf(*destination);
 		if (bytes > std::numeric_limits<std::uint32_t>::max() ||
 			retained_bytes.size() >
 				std::numeric_limits<std::uint32_t>::max() - bytes)
-			throw std::runtime_error("retained initializer storage is too large");
+			ThrowSemanticResourceLimit("retained initializer storage is too large");
 		InitialValue result;
 		result.kind = INITIAL_ARRAY_BYTES;
 		result.byte_offset = static_cast<std::uint32_t>(retained_bytes.size());
@@ -1935,7 +1936,7 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 			types.ReferenceCompatible(source.type, referred))
 		{
 			if (destination_record.kind == TYPE_RVALUE_REFERENCE)
-				throw std::runtime_error("rvalue reference cannot bind an lvalue");
+				ThrowSemanticError("rvalue reference cannot bind an lvalue");
 			const InitialValue address = LvalueAddress(source);
 			*constant = address.kind == INITIAL_ADDRESS_ENTITY ||
 				address.kind == INITIAL_ADDRESS_STRING ||
@@ -1946,7 +1947,7 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 			(!types.IsConst(referred) || types.IsVolatile(referred))) ||
 			(destination_record.kind == TYPE_RVALUE_REFERENCE &&
 			 source.category == VALUE_LVALUE && related))
-			throw std::runtime_error("non-const reference cannot bind a prvalue");
+			ThrowSemanticError("non-const reference cannot bind a prvalue");
 		TypeId temporary_type = referred;
 		bool temporary_constant = false;
 		const InitialValue temporary_value = ConvertInitializer(&temporary_type,
@@ -1973,7 +1974,7 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 			const TypeRecord& array = types.Get(source.type);
 			if (!PointerTargetConvertible(types, array.child,
 				plain_destination.child))
-				throw std::runtime_error("string literal drops qualifiers");
+				ThrowSemanticError("string literal drops qualifiers");
 			InitialValue result;
 			result.kind = INITIAL_ADDRESS_STRING;
 			result.target = source.string_id;
@@ -1986,7 +1987,7 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 		{
 			if (!PointerTargetConvertible(types, source_record.child,
 				plain_destination.child))
-				throw std::runtime_error("array-to-pointer qualification mismatch");
+				ThrowSemanticError("array-to-pointer qualification mismatch");
 			*constant = source.constant_expression;
 			return LvalueAddress(source);
 		}
@@ -1994,7 +1995,7 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 			source_record.kind == TYPE_FUNCTION)
 		{
 			if (plain_destination.child != source_plain)
-				throw std::runtime_error("function pointer type mismatch");
+				ThrowSemanticError("function pointer type mismatch");
 			*constant = true;
 			return LvalueAddress(source);
 		}
@@ -2004,14 +2005,14 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 		if (source_record.kind != TYPE_POINTER ||
 			!PointerTargetConvertible(types, source_record.child,
 				plain_destination.child))
-			throw std::runtime_error("invalid pointer initializer");
+			ThrowSemanticError("invalid pointer initializer");
 		*constant = value_constant;
 		return value;
 	}
 	if (plain_destination.kind != TYPE_FUNDAMENTAL ||
 		plain_destination.fundamental == FT_VOID ||
 		plain_destination.fundamental == FT_NULLPTR_T)
-		throw std::runtime_error("invalid scalar initializer destination");
+		ThrowSemanticError("invalid scalar initializer destination");
 	const TypeId source_plain = types.RemoveTopCv(source.type);
 	const TypeRecord& source_record = types.Get(source_plain);
 	if (plain_destination.fundamental == FT_BOOL &&
@@ -2048,7 +2049,7 @@ InitialValue Model::ConvertInitializer(TypeId* destination,
 	if (source_record.kind != TYPE_FUNDAMENTAL ||
 		(!IsIntegralFundamental(source_record.fundamental) &&
 		 !IsFloatingFundamental(source_record.fundamental)))
-		throw std::runtime_error("invalid arithmetic initializer");
+		ThrowSemanticError("invalid arithmetic initializer");
 	if (value.kind != INITIAL_SCALAR)
 	{
 		value.kind = INITIAL_UNKNOWN;
@@ -2077,7 +2078,7 @@ bool Model::ContextualBool(const Expression& expression,
 	if (record.kind == TYPE_POINTER || expression.null_pointer_constant)
 		return value.kind != INITIAL_ZERO;
 	if (record.kind != TYPE_FUNDAMENTAL)
-		throw std::runtime_error("expression is not contextually convertible to bool");
+		ThrowSemanticError("expression is not contextually convertible to bool");
 	return ReadArithmetic(value) != 0;
 }
 
@@ -2088,7 +2089,7 @@ std::uint64_t Model::ResolveAddress(const InitialValue& value) const
 	{
 		const EntityRecord& entity = entities_[value.target];
 		if (entity.image_offset == std::numeric_limits<std::uint64_t>::max())
-			throw std::runtime_error("address refers to an undefined entity");
+			ThrowSemanticError("address refers to an undefined entity");
 		address = entity.image_offset;
 	}
 	else if (value.kind == INITIAL_ADDRESS_STRING)
@@ -2096,14 +2097,14 @@ std::uint64_t Model::ResolveAddress(const InitialValue& value) const
 	else if (value.kind == INITIAL_ADDRESS_TEMPORARY)
 		address = temporaries_[value.target].image_offset;
 	else if (value.kind != INITIAL_ZERO)
-		throw std::logic_error("value is not an address");
+		ThrowSemanticInternal("value is not an address");
 	return static_cast<std::uint64_t>(
 		static_cast<std::int64_t>(address) + value.addend);
 }
 
 void Model::WriteImage(std::ostream& output)
 {
-	if (image_written_) throw std::logic_error("program image already written");
+	if (image_written_) ThrowSemanticInternal("program image already written");
 	image_written_ = true;
 	std::uint64_t offset = 4;
 	for (EntityId id = 0; id < entities_.size(); ++id)
@@ -2129,7 +2130,7 @@ void Model::WriteImage(std::ostream& output)
 		AddImageSize(&offset, string.byte_size);
 	}
 	if (offset > std::numeric_limits<std::size_t>::max())
-		throw std::runtime_error("program image is too large");
+		ThrowSemanticResourceLimit("program image is too large");
 	const unsigned char magic[4] = {'P', 'A', '8', 0};
 	WriteRaw(output, magic, sizeof(magic));
 	std::uint64_t written = sizeof(magic);
@@ -2148,7 +2149,7 @@ void Model::WriteImage(std::ostream& output)
 			if (value.byte_size > size ||
 				value.byte_size > retained_bytes.size() ||
 				value.byte_offset > retained_bytes.size() - value.byte_size)
-				throw std::logic_error("invalid retained initializer range");
+				ThrowSemanticInternal("invalid retained initializer range");
 			WriteRaw(output, &retained_bytes[value.byte_offset], value.byte_size);
 			WriteZeros(output, size - value.byte_size);
 			return;
@@ -2158,7 +2159,7 @@ void Model::WriteImage(std::ostream& output)
 			value.kind == INITIAL_ADDRESS_TEMPORARY)
 		{
 			if (size != sizeof(std::uint64_t))
-				throw std::logic_error("address initializer has non-pointer size");
+				ThrowSemanticInternal("address initializer has non-pointer size");
 			const std::uint64_t address = ResolveAddress(value);
 			WriteRaw(output, &address, sizeof(address));
 			return;
@@ -2171,7 +2172,7 @@ void Model::WriteImage(std::ostream& output)
 		if (entity.image_offset == std::numeric_limits<std::uint64_t>::max())
 			continue;
 		if (entity.image_offset < written)
-			throw std::logic_error("entity image order is not monotonic");
+			ThrowSemanticInternal("entity image order is not monotonic");
 		WriteZeros(output, entity.image_offset - written);
 		if (entity.function)
 			WriteRaw(output, function_stub.data(), function_stub.size());
@@ -2184,7 +2185,7 @@ void Model::WriteImage(std::ostream& output)
 	{
 		const TemporaryRecord& temporary = temporaries_[id];
 		if (temporary.image_offset < written)
-			throw std::logic_error("temporary image order is not monotonic");
+			ThrowSemanticInternal("temporary image order is not monotonic");
 		WriteZeros(output, temporary.image_offset - written);
 		write_initial(temporary.type, temporary.initial);
 		written = temporary.image_offset + types.SizeOf(temporary.type);
@@ -2195,12 +2196,12 @@ void Model::WriteImage(std::ostream& output)
 		if (string.image_offset < written ||
 			string.byte_size > retained_bytes.size() ||
 			string.byte_offset > retained_bytes.size() - string.byte_size)
-			throw std::logic_error("invalid string image range");
+			ThrowSemanticInternal("invalid string image range");
 		WriteZeros(output, string.image_offset - written);
 		WriteRaw(output, &retained_bytes[string.byte_offset], string.byte_size);
 		written = string.image_offset + string.byte_size;
 	}
-	if (written > offset) throw std::logic_error("program image overflow");
+	if (written > offset) ThrowSemanticInternal("program image overflow");
 	WriteZeros(output, offset - written);
 	if (stats) stats->image_bytes = static_cast<std::size_t>(offset);
 }

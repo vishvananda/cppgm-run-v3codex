@@ -1,11 +1,12 @@
 #include "namespace_initialization/driver.h"
 
+#include "support/driver_errors.h"
+#include "support/exceptions.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <limits>
-#include <stdexcept>
-
 #include "namespace_initialization/program.h"
 
 namespace cppgm
@@ -29,7 +30,7 @@ public:
 
 	void EmitInvalid(const std::string& source)
 	{
-		throw std::runtime_error("invalid phase-7 token: " + source);
+		driver_errors::ThrowLexicalSource("invalid phase-7 token: " + source);
 	}
 
 	void EmitSimple(const std::string&, SimpleTokenKind kind)
@@ -47,9 +48,9 @@ public:
 	void EmitLiteral(const std::string& source, FundamentalType type,
 		const void* data, std::size_t size)
 	{
-		if (size > 16) throw std::runtime_error("oversized scalar literal");
+		if (size > 16) ThrowSemanticResourceLimit("oversized scalar literal");
 		if (output_.bytes.size() > std::numeric_limits<std::uint32_t>::max() -
-			size) throw std::runtime_error("literal storage is too large");
+			size) ThrowSemanticResourceLimit("literal storage is too large");
 		Token token(kLiteralToken);
 		token.literal_type = type;
 		token.byte_offset = static_cast<std::uint32_t>(output_.bytes.size());
@@ -67,7 +68,7 @@ public:
 		if (elements > std::numeric_limits<std::uint32_t>::max() ||
 			output_.bytes.size() > std::numeric_limits<std::uint32_t>::max() -
 				size)
-			throw std::runtime_error("string literal storage is too large");
+			ThrowSemanticResourceLimit("string literal storage is too large");
 		Token token(kLiteralToken);
 		token.literal_type = type;
 		token.byte_offset = static_cast<std::uint32_t>(output_.bytes.size());
@@ -82,25 +83,25 @@ public:
 	void EmitUserDefinedCharacter(const std::string&, const std::string&,
 		FundamentalType, const void*, std::size_t)
 	{
-		throw std::runtime_error("user-defined literal in PA8 input");
+		ThrowSyntaxError("user-defined literal in PA8 input");
 	}
 
 	void EmitUserDefinedString(const std::string&, const std::string&,
 		std::size_t, FundamentalType, const void*, std::size_t)
 	{
-		throw std::runtime_error("user-defined literal in PA8 input");
+		ThrowSyntaxError("user-defined literal in PA8 input");
 	}
 
 	void EmitUserDefinedInteger(const std::string&, const std::string&,
 		const std::string&)
 	{
-		throw std::runtime_error("user-defined literal in PA8 input");
+		ThrowSyntaxError("user-defined literal in PA8 input");
 	}
 
 	void EmitUserDefinedFloating(const std::string&, const std::string&,
 		const std::string&)
 	{
-		throw std::runtime_error("user-defined literal in PA8 input");
+		ThrowSyntaxError("user-defined literal in PA8 input");
 	}
 
 	void EmitEof()

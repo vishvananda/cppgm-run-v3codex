@@ -223,6 +223,18 @@ void ThrowSemanticResourceLimit(const std::string& message)
 }
 
 __attribute__((cold, noinline, noreturn)) inline
+void ThrowSemanticInputOutput(const char* message)
+{
+	throw InputOutputError(message, CompilerErrorDomain::SEMANTIC);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowSemanticInputOutput(const std::string& message)
+{
+	throw InputOutputError(message, CompilerErrorDomain::SEMANTIC);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
 void ThrowSemanticInternal(const char* message)
 {
 	throw InternalCompilerError(message, CompilerErrorDomain::SEMANTIC);

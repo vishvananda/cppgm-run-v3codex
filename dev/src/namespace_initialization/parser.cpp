@@ -1,8 +1,9 @@
 #include "namespace_initialization/program.h"
 
+#include "support/exceptions.h"
+
 #include <algorithm>
 #include <cstring>
-#include <stdexcept>
 #include <utility>
 
 namespace cppgm
@@ -103,13 +104,13 @@ public:
 			if (AtEof())
 			{
 				if (!scope_stack_.empty())
-					throw std::runtime_error("unterminated namespace");
+					ThrowSyntaxError("unterminated namespace");
 				return;
 			}
 			if (Match(OP_RBRACE))
 			{
 				if (scope_stack_.empty())
-					throw std::runtime_error("unexpected namespace close");
+					ThrowSyntaxError("unexpected namespace close");
 				current_scope_ = scope_stack_.back();
 				scope_stack_.pop_back();
 				continue;
@@ -227,7 +228,7 @@ private:
 			RehashDeclaratorMemo(declarator_memo_slots_.size() * 2);
 		if (declarator_memo_entries_.size() >=
 			std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many declarator memo entries");
+			ThrowSemanticResourceLimit("too many declarator memo entries");
 		const std::size_t mask = declarator_memo_slots_.size() - 1;
 		std::size_t slot = HashDeclaratorMemo(start, scope, mode) & mask;
 		while (declarator_memo_slots_[slot].generation ==
@@ -295,13 +296,13 @@ private:
 	void Expect(SimpleTokenKind kind)
 	{
 		if (!Match(kind))
-			throw std::runtime_error(std::string("expected ") +
+			ThrowSyntaxError(std::string("expected ") +
 				SimpleTokenKindName(kind));
 	}
 
 	NameId ConsumeIdentifier()
 	{
-		if (!AtIdentifier()) throw std::runtime_error("expected identifier");
+		if (!AtIdentifier()) ThrowSyntaxError("expected identifier");
 		return input_.tokens[position_++].name;
 	}
 
@@ -357,11 +358,11 @@ private:
 			(value.signed_count && value.unsigned_count) ||
 			value.short_count > 1 || value.int_count > 1 ||
 			value.long_count > 2 || named > 1)
-			throw std::runtime_error("invalid fundamental type specifiers");
+			ThrowSemanticError("invalid fundamental type specifiers");
 		if (value.character)
 		{
 			if (value.short_count || value.int_count || value.long_count)
-				throw std::runtime_error("invalid character type specifiers");
+				ThrowSemanticError("invalid character type specifiers");
 			if (value.unsigned_count) return FT_UNSIGNED_CHAR;
 			if (value.signed_count) return FT_SIGNED_CHAR;
 			return FT_CHAR;
@@ -371,7 +372,7 @@ private:
 		{
 			if (value.signed_count || value.unsigned_count || value.short_count ||
 				value.int_count || value.long_count)
-				throw std::runtime_error("invalid fundamental type combination");
+				ThrowSemanticError("invalid fundamental type combination");
 			if (value.character16) return FT_CHAR16_T;
 			if (value.character32) return FT_CHAR32_T;
 			if (value.wide_character) return FT_WCHAR_T;
@@ -383,11 +384,11 @@ private:
 		{
 			if (value.signed_count || value.unsigned_count || value.short_count ||
 				value.int_count || value.long_count > 1)
-				throw std::runtime_error("invalid floating type combination");
+				ThrowSemanticError("invalid floating type combination");
 			return value.long_count == 0 ? FT_DOUBLE : FT_LONG_DOUBLE;
 		}
 		if (value.short_count && value.long_count)
-			throw std::runtime_error("short and long cannot be combined");
+			ThrowSemanticError("short and long cannot be combined");
 		if (value.short_count)
 			return value.unsigned_count ? FT_UNSIGNED_SHORT_INT : FT_SHORT_INT;
 		if (value.long_count >= 2)
@@ -409,46 +410,46 @@ private:
 		{
 			if (Match(KW_STATIC))
 			{
-				if (result->is_static) throw std::runtime_error("duplicate static");
+				if (result->is_static) ThrowSemanticError("duplicate static");
 				result->is_static = true; consumed = true; continue;
 			}
 			if (Match(KW_EXTERN))
 			{
-				if (result->is_extern) throw std::runtime_error("duplicate extern");
+				if (result->is_extern) ThrowSemanticError("duplicate extern");
 				result->is_extern = true; consumed = true; continue;
 			}
 			if (Match(KW_THREAD_LOCAL))
 			{
 				if (result->is_thread_local)
-					throw std::runtime_error("duplicate thread_local");
+					ThrowSemanticError("duplicate thread_local");
 				result->is_thread_local = true; consumed = true; continue;
 			}
 			if (Match(KW_TYPEDEF))
 			{
-				if (result->is_typedef) throw std::runtime_error("duplicate typedef");
+				if (result->is_typedef) ThrowSemanticError("duplicate typedef");
 				result->is_typedef = true; consumed = true; continue;
 			}
 			if (Match(KW_CONSTEXPR))
 			{
 				if (result->is_constexpr)
-					throw std::runtime_error("duplicate constexpr");
+					ThrowSemanticError("duplicate constexpr");
 				result->is_constexpr = true; consumed = true; continue;
 			}
 			if (Match(KW_INLINE))
 			{
-				if (result->is_inline) throw std::runtime_error("duplicate inline");
+				if (result->is_inline) ThrowSemanticError("duplicate inline");
 				result->is_inline = true; consumed = true; continue;
 			}
 			if (Match(KW_CONST))
 			{
 				if ((cv & CV_CONST) != 0)
-					throw std::runtime_error("duplicate const qualifier");
+					ThrowSemanticError("duplicate const qualifier");
 				cv |= CV_CONST; consumed = true; continue;
 			}
 			if (Match(KW_VOLATILE))
 			{
 				if ((cv & CV_VOLATILE) != 0)
-					throw std::runtime_error("duplicate volatile qualifier");
+					ThrowSemanticError("duplicate volatile qualifier");
 				cv |= CV_VOLATILE; consumed = true; continue;
 			}
 			if (named_type == 0 && ConsumeFundamental(&fundamental))
@@ -474,11 +475,11 @@ private:
 			return false;
 		}
 		if (result->is_static && result->is_extern)
-			throw std::runtime_error("static and extern cannot be combined");
+			ThrowSemanticError("static and extern cannot be combined");
 		if (result->is_typedef && (result->is_static || result->is_extern ||
 			result->is_constexpr || result->is_inline ||
 			result->is_thread_local))
-			throw std::runtime_error("invalid typedef specifiers");
+			ThrowSemanticError("invalid typedef specifiers");
 		TypeId type = named_type == 0 ?
 			model_.types.Fundamental(SelectFundamental(fundamental)) : named_type;
 		result->type = model_.types.Qualify(type, cv);
@@ -495,13 +496,13 @@ private:
 				if (Match(KW_CONST))
 				{
 					if ((operation->cv & CV_CONST) != 0)
-						throw std::runtime_error("duplicate pointer const qualifier");
+						ThrowSemanticError("duplicate pointer const qualifier");
 					operation->cv |= CV_CONST;
 				}
 				else if (Match(KW_VOLATILE))
 				{
 					if ((operation->cv & CV_VOLATILE) != 0)
-						throw std::runtime_error("duplicate pointer volatile qualifier");
+						ThrowSemanticError("duplicate pointer volatile qualifier");
 					operation->cv |= CV_VOLATILE;
 				}
 				else break;
@@ -531,11 +532,11 @@ private:
 		if (!constant || record.kind != TYPE_FUNDAMENTAL ||
 			!IsIntegralFundamental(record.fundamental) ||
 			value.kind != INITIAL_SCALAR)
-			throw std::runtime_error("array bound is not an integral constant expression");
+			ThrowSemanticError("array bound is not an integral constant expression");
 		const long double decoded = ReadArithmetic(value);
 		if (decoded <= 0 || decoded >
 			static_cast<long double>(std::numeric_limits<std::uint64_t>::max()))
-			throw std::runtime_error("invalid array bound");
+			ThrowSemanticError("invalid array bound");
 		return static_cast<std::uint64_t>(decoded);
 	}
 
@@ -569,7 +570,7 @@ private:
 			specifiers.is_extern ||
 			specifiers.is_thread_local || specifiers.is_constexpr ||
 			specifiers.is_inline)
-			throw std::runtime_error("invalid parameter specifiers");
+			ThrowSemanticError("invalid parameter specifiers");
 		Declarator declarator;
 		bool has_declarator = false;
 		if (!IsParameterEnd())
@@ -592,7 +593,7 @@ private:
 		TypeId type = ApplyDeclarator(specifiers.type, declarator);
 		*bare_void = !has_declarator && model_.types.IsVoid(type);
 		if (has_declarator && model_.types.IsVoid(type))
-			throw std::runtime_error("named parameter has void type");
+			ThrowSemanticError("named parameter has void type");
 		*result = model_.types.AdjustParameter(type);
 		current_scope_ = saved;
 		return true;
@@ -648,7 +649,7 @@ private:
 		if (saw_bare_void)
 		{
 			if (parsed.parameters.size() != 1 || parsed.variadic)
-				throw std::runtime_error("void parameter in parameter list");
+				ThrowSemanticError("void parameter in parameter list");
 			parsed.parameters.clear();
 		}
 		*operation = parsed;
@@ -659,7 +660,7 @@ private:
 	{
 		BeginDeclaratorMemoSession();
 		if (declarator_call_depth_ >= kMaxDeclaratorCallDepth)
-			throw std::runtime_error("declarator nesting limit exceeded");
+			ThrowSemanticResourceLimit("declarator nesting limit exceeded");
 		++declarator_call_depth_;
 		const std::size_t start = position_;
 		const ScopeId scope = current_scope_;
@@ -785,7 +786,7 @@ private:
 			}
 			Frame& parent = frames.back();
 			if (parent.state != FRAME_WAIT_GROUP)
-				throw std::logic_error("invalid declarator frame state");
+				ThrowSemanticInternal("invalid declarator frame state");
 			if (success && Match(OP_RPAREN))
 			{
 				parent.parsed = std::move(completed);
@@ -822,7 +823,7 @@ private:
 			case TYPE_FUNCTION:
 				type = model_.types.Function(type, i->parameters, i->variadic);
 				break;
-			default: throw std::logic_error("invalid declarator operation");
+			default: ThrowSemanticInternal("invalid declarator operation");
 			}
 		}
 		return type;
@@ -885,12 +886,12 @@ private:
 		{
 			QualifiedName name;
 			if (!ParseQualifiedName(&name))
-				throw std::runtime_error("expected expression");
+				ThrowSyntaxError("expected expression");
 			LookupResult found;
 			const EntityId entity = model_.ResolveExpressionEntity(scope, name,
 				&found);
 			if (entity == kNoEntity && found.first_function == kNoCandidate)
-				throw std::runtime_error("id-expression lookup failed");
+				ThrowSemanticError("id-expression lookup failed");
 			if (entity == kNoEntity)
 			{
 				expression.first_function = found.first_function;
@@ -916,10 +917,10 @@ private:
 			Expect(OP_ASS);
 			QualifiedName target_name;
 			if (!ParseQualifiedName(&target_name))
-				throw std::runtime_error("expected namespace alias target");
+				ThrowSyntaxError("expected namespace alias target");
 			ScopeId target;
 			if (!model_.ResolveNamespaceName(current_scope_, target_name, &target))
-				throw std::runtime_error("namespace alias lookup failed");
+				ThrowSemanticError("namespace alias lookup failed");
 			Expect(OP_SEMICOLON);
 			model_.AddNamespaceAlias(current_scope_, alias, target);
 			return;
@@ -939,10 +940,10 @@ private:
 		{
 			QualifiedName target_name;
 			if (!ParseQualifiedName(&target_name))
-				throw std::runtime_error("expected using-directive target");
+				ThrowSyntaxError("expected using-directive target");
 			ScopeId target;
 			if (!model_.ResolveNamespaceName(current_scope_, target_name, &target))
-				throw std::runtime_error("using-directive lookup failed");
+				ThrowSemanticError("using-directive lookup failed");
 			Expect(OP_SEMICOLON);
 			model_.AddUsingDirective(current_scope_, target);
 			return;
@@ -956,11 +957,11 @@ private:
 				specifiers.is_static || specifiers.is_extern ||
 				specifiers.is_thread_local || specifiers.is_constexpr ||
 				specifiers.is_inline)
-				throw std::runtime_error("expected alias type-id");
+				ThrowSyntaxError("expected alias type-id");
 			Declarator declarator;
 			if (!At(OP_SEMICOLON) &&
 				!ParseDeclarator(DECLARATOR_ABSTRACT, &declarator))
-				throw std::runtime_error("invalid alias declarator");
+				ThrowSyntaxError("invalid alias declarator");
 			Expect(OP_SEMICOLON);
 			model_.AddTypeAlias(current_scope_, alias,
 				ApplyDeclarator(specifiers.type, declarator));
@@ -968,10 +969,10 @@ private:
 		}
 		QualifiedName target_name;
 		if (!ParseQualifiedName(&target_name))
-			throw std::runtime_error("expected using-declaration target");
+			ThrowSyntaxError("expected using-declaration target");
 		LookupResult target;
 		if (!model_.ResolveUsingTarget(current_scope_, target_name, &target))
-			throw std::runtime_error("using-declaration lookup failed");
+			ThrowSemanticError("using-declaration lookup failed");
 		Expect(OP_SEMICOLON);
 		model_.AddUsingDeclaration(current_scope_, target_name.segments.back(),
 			target);
@@ -991,7 +992,7 @@ private:
 	{
 		Declarator declarator;
 		if (!ParseDeclarator(DECLARATOR_NAMED, &declarator))
-			throw std::runtime_error("expected declarator");
+			ThrowSyntaxError("expected declarator");
 		TypeId type = ApplyDeclarator(specifiers.type, declarator);
 		if (specifiers.is_constexpr && !model_.types.IsFunction(type))
 			type = model_.types.AddTopConst(type);
@@ -999,7 +1000,7 @@ private:
 		{
 			if (declarator.name.absolute || declarator.name.segments.size() != 1 ||
 				At(OP_ASS) || At(OP_LBRACE))
-				throw std::runtime_error("invalid typedef declaration");
+				ThrowSemanticError("invalid typedef declaration");
 			model_.AddTypeAlias(current_scope_, declarator.name.segments[0], type);
 			return false;
 		}
@@ -1007,11 +1008,11 @@ private:
 		const bool function_definition = first && At(OP_LBRACE);
 		const bool has_initializer = At(OP_ASS);
 		if (function && has_initializer)
-			throw std::runtime_error("function cannot have an initializer");
+			ThrowSemanticError("function cannot have an initializer");
 		if (specifiers.is_constexpr && !function && !has_initializer)
-			throw std::runtime_error("constexpr variable requires an initializer");
+			ThrowSemanticError("constexpr variable requires an initializer");
 		if (specifiers.is_constexpr && function_definition)
-			throw std::runtime_error("empty constexpr function body is invalid");
+			ThrowSemanticError("empty constexpr function body is invalid");
 		const bool definition = function ? function_definition :
 			(!specifiers.is_extern || has_initializer);
 		const EntityId entity = model_.Declare(current_scope_, declarator, type,
@@ -1036,15 +1037,15 @@ private:
 		else
 		{
 			if (specifiers.is_constexpr)
-				throw std::runtime_error("constexpr variable requires an initializer");
+				ThrowSemanticError("constexpr variable requires an initializer");
 			if (model_.types.IsReference(type))
-				throw std::runtime_error("reference requires an initializer");
+				ThrowSemanticError("reference requires an initializer");
 			if (model_.types.IsConst(type))
-				throw std::runtime_error("const object requires an initializer");
+				ThrowSemanticError("const object requires an initializer");
 			model_.types.SizeOf(type);
 		}
 		if (specifiers.is_constexpr && !initializer_constant)
-			throw std::runtime_error("constexpr initializer is not constant");
+			ThrowSemanticError("constexpr initializer is not constant");
 		const bool usable = specifiers.is_constexpr ||
 			IsUsableIntegralConstant(type, initializer_constant) ||
 			(model_.types.IsReference(type) && initializer_constant);
@@ -1056,7 +1057,7 @@ private:
 	{
 		DeclarationSpecifiers specifiers;
 		if (!ParseDeclarationSpecifiers(&specifiers))
-			throw std::runtime_error("expected declaration specifiers");
+			ThrowSyntaxError("expected declaration specifiers");
 		bool first = true;
 		while (true)
 		{
@@ -1074,14 +1075,14 @@ private:
 		const Expression expression = ParseExpression(current_scope_);
 		Expect(OP_COMMA);
 		if (!AtLiteral() || !input_.tokens[position_].literal_array)
-			throw std::runtime_error("static_assert message is not a string literal");
+			ThrowSemanticError("static_assert message is not a string literal");
 		++position_;
 		Expect(OP_RPAREN);
 		Expect(OP_SEMICOLON);
 		bool constant = false;
 		const bool value = model_.ContextualBool(expression, &constant);
-		if (!constant) throw std::runtime_error("static_assert is not constant");
-		if (!value) throw std::runtime_error("static assertion failed");
+		if (!constant) ThrowSemanticError("static_assert is not constant");
+		if (!value) ThrowSemanticError("static assertion failed");
 	}
 
 	void ParseDeclaration()

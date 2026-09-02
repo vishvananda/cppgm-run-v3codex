@@ -738,7 +738,8 @@ Append one row for each retained or rejected increment:
 | E7n | native code buffer, relocations, fixups, labels, and ELF string table | symbol/label/relocation invariants, unresolved source symbols, and finite offset/identity ranges shared generic bases | native internal/source/resource types through the centralized cold boundary; fixup resolution and branch relaxation remain ordinary flow | PA38 native object, relocation, encoding, and generated behavior | successful frozen remains 0; generic logic/runtime sites -50/-19 | -2,368 text, neutral rodata, -24 EH header, -672 unwind, -1,064 exception table | cumulative frozen 0.450/0.450 s; paired neutral | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `afcdcde4` | retained |
 | E7o | ELF section, symbol, relocation, COMDAT, and host-object layout | object-layout identities/invariants, undefined alias input, and 16-bit section ceiling shared generic bases | native internal/source/resource types through the centralized cold boundary; section/symbol lookup remains ordinary flow | PA38 native object, EH relocation, COMDAT, and generated behavior | successful frozen remains 0; generic logic/runtime sites -43/-2 | -256 text, neutral rodata, -16 EH header, -192 unwind, -456 exception table | cumulative frozen user 0.450/0.455 s; paired +1.67% (noise) | PA38 45/45; through-PA38 5,477/5,477; frozen object exact | `41736c1d` | retained |
 | E7p | final MIR-to-x86 and executable/object writer | encoder/MIR contradictions, unsupported opcode/source entry, target invocation, and output I/O shared generic bases | native internal/source/invocation/I/O types through the centralized cold boundary; opcode dispatch remains ordinary flow | PA38 native executable/object, encoding, and generated behavior | successful frozen remains 0; generic logic/runtime sites -55/-9; native generic census reaches zero | -6,272 text, neutral rodata, -96 EH header, -632 unwind, -1,172 exception table | frozen paired +0.56%; isolated full O1 +0.08%, O3 +0.01% CPU | PA38 45/45; through-PA38 5,477/5,477; 223 O1/O3 objects and final binaries exact | `c1c2e8ca` | retained |
-| E7q | PA7 namespace semantics/parser | source, syntax, semantic, resource, and namespace-model invariant failures shared generic bases | typed lexical/syntax/semantic/resource/internal exits; speculative declarator and declaration probes remain Boolean | PA7 namespace declaration, lookup, declarator, and invalid-input exit behavior | no recovery catch or valid-input unwind; generic logic/runtime sites -3/-43 | nsdecl: -1,408 text, +32 rodata, +64 EH header, +264 unwind, -535 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA7 43/43; through-PA7 335/335; audits pass; integrated compiler binary exact | pending | retained |
+| E7q | PA7 namespace semantics/parser | source, syntax, semantic, resource, and namespace-model invariant failures shared generic bases | typed lexical/syntax/semantic/resource/internal exits; speculative declarator and declaration probes remain Boolean | PA7 namespace declaration, lookup, declarator, and invalid-input exit behavior | no recovery catch or valid-input unwind; generic logic/runtime sites -3/-43 | nsdecl: -1,408 text, +32 rodata, +64 EH header, +264 unwind, -535 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA7 43/43; through-PA7 335/335; audits pass; integrated compiler binary exact | `a9f4b15a` | retained |
+| E7r | PA8 namespace initialization/parser/image model | syntax and semantic rejection, image I/O, capacity limits, and model/image invariants shared generic bases | typed lexical/syntax/semantic/I/O/resource/internal exits; parser probes remain Boolean | PA8 namespace initialization, semantic rejection, linking, and mock-image behavior | no recovery catch or valid-input unwind; generic logic/runtime sites -14/-136 | nsinit: -13,888 text, +32 rodata, +112 EH header, -48 unwind, -2,030 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA8 67/67; through-PA8 402/402; audits pass; integrated compiler binary exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -2021,6 +2022,25 @@ set audits pass.  Against E7p the staged `nsdecl` `.text` changes 323,718 ->
 owner is not part of the integrated `cppgm++` source set, and rebuilding both
 revisions produces the exact same integrated compiler hash
 `4438331165dbb...`; therefore it has no frozen/full timing exposure.
+
+### E7r execution record
+
+The PA8 namespace-initialization driver, parser, semantic/image model, and
+writer likewise contain no recovery catch around their generic failures.
+Committed grammar failures use `SyntaxError`; source semantic rejection uses
+`SemanticError`; the image writer has a distinct semantic-domain I/O exit;
+finite token/model/image ceilings use `ResourceLimitError`; and impossible
+model/image states use `InternalCompilerError`.  Speculative declarator and
+declaration parsing continues to return Boolean miss/success, so no expected
+control-flow exception or hot status-conversion opportunity exists.
+
+The generic audit falls by 14 logic and 136 runtime sites, to 99/37/24.  PA8
+passes 67/67 and through-PA8 passes 402/402; the exception audit passes.
+Against E7q the staged `nsinit` `.text` changes 353,990 -> 340,102, `.rodata`
+22,891 -> 22,923, `.eh_frame_hdr` 5,156 -> 5,268, `.eh_frame` 27,196 ->
+27,148, and `.gcc_except_table` 7,919 -> 5,889.  These owners are not part of
+the integrated source set, and the integrated compiler remains exact at
+`4438331165dbb...`, so there is no frozen/full timing exposure.
 
 ## Initial code map
 
