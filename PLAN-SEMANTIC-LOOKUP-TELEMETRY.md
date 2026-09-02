@@ -1,6 +1,6 @@
 # Plan: Semantic Lookup and Telemetry Hot Paths
 
-Status: active from `07ea39fc`; L0-L1 complete, lookup measurement and
+Status: active from `07ea39fc`; L0-L3 complete with the narrow cache rejected,
 telemetry implementation pending
 
 Date: 2026-09-02
@@ -295,3 +295,7 @@ The plan is complete only when:
 | L0 gates | Ran PA11 and all architecture/file audits | PA11 72/72; LowIR 127/102; source sets 14/52/233; owner and exception audits clean; layout 487 files; PA38 file audit zero-fatal/32 established warnings | proceed to L1 |
 | L1 | Removed five impossible core cache counters from `Program`, semantic stats, lowering aggregation, and all integrated reports | 51 source lines removed; current stats report only the real 213,269 queries, 694,418 scope visits, and 34,085 edge visits for `program.cpp`; repository search finds no core producer/report while PA7/PA8 counters and producers remain | retained |
 | L1 gates | Rebuilt `cppgm++`, ran semantic tests and audits | PA11 72/72; through PA11 659/659; layout/source-set/semantic-owner audits clean; PA38 file audit zero-fatal/32 | commit and push |
+| L2 full-map ceiling | Stats-only shadowed every logical graph key while always recomputing the authoritative result across all 233 production sources | 47,161,349 lookups, 21,511,170 graph calls, 17,510,316 stable repeats, and 54,659 changed repeats; 5,251,791 stable complete-class graph repeats could theoretically avoid 11,414,186/188,663,125 scope visits (6.05%) and 6,162,395/13,045,094 edges (47.24%), but accumulated 3,946,195 keys; 94.64% of eligible results were negative | full map rejected on prior measured maintenance/storage evidence; temporal screen warranted |
+| L2 one-entry/generation ceiling | Shadowed one graph-traversing result per complete class and required a conservative global semantic-mutation generation match | completion alone was unsound: 1,115 same-key repeats changed after the class was marked complete; one-entry temporal locality gave 2,204,251 stable repeats; global generation retained 2,036,994 (92.41%), theoretically avoiding 4,336,770 scope visits (2.30%) and 2,299,776 edges (17.63%) | proceed to one bounded L3 prototype; precise invalidation prohibited |
+| L3 prototype | Cached one graph-traversing result per complete-class scope behind a global semantic-mutation generation; direct, lexical, namespace, and non-traversing results remained uncached | `classes.cpp` produced 16,056 hits, 1,527 generation misses, and 36,463 stores; actual scope visits fell only about 1.57%; GCC-O3 compiler `.text` grew 7,424 bytes; PA11 72/72, PA12 184/184, PA20 175/175, PA23 414/414 | performance screen required removal |
+| L3 ABBA | Three clean ABBA blocks compiled `semantic/templates/classes.cpp` with committed L1 versus the prototype | exact output; medians 2.185/2.185 s wall and 1.975/1.990 s user; candidate +0.46% paired wall, +0.76% paired user, and +0.19% RSS | rejected below the 1% gate and directionally slower; prototype and temporary telemetry removed |
