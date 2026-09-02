@@ -566,7 +566,7 @@ TemplateWitnessObserver::FunctionSpecializationFact::
 
 TemplateWitnessObserver::TemplateWitnessObserver(bool debug)
 	: text_(), debug_text_(), primary_source_file_(), debug_(debug),
-	  semantic_source_facts_(), source_events_(),
+	  semantic_source_facts_(), retained_member_source_facts_(), source_events_(),
 	  function_specializations_(), class_specializations_(),
 	  variable_specializations_(),
 	  overload_selections_(), deduction_drops_(), dependent_class_uses_(),
@@ -761,6 +761,7 @@ void TemplateWitnessObserver::BeginTranslationUnit(
 {
 	primary_source_file_ = primary_source_file;
 	semantic_source_facts_.clear();
+	retained_member_source_facts_.clear();
 	source_events_.clear();
 	function_specializations_.clear();
 	class_specializations_.clear();
@@ -800,6 +801,26 @@ void TemplateWitnessObserver::NoteSemanticSourceFact(
 	}
 	semantic_source_facts_.push_back(SemanticSourceFact(
 		owner, syntax, semantic_index, kind, resolution, explicit_count));
+}
+
+void TemplateWitnessObserver::NoteRetainedMemberSource(
+	syntax::NodeId owner, syntax::NodeId source, NameId member_name,
+	std::uint32_t pattern, std::uint32_t partial_pattern,
+	BindingId concrete_owner)
+{
+	if (owner == syntax::kNoNode || source == syntax::kNoNode ||
+		member_name == 0) return;
+	for (std::size_t i = 0; i < retained_member_source_facts_.size(); ++i)
+	{
+		const RetainedMemberSourceFact& prior =
+			retained_member_source_facts_[i];
+		if (prior.owner == owner && prior.source == source &&
+			prior.member_name == member_name && prior.pattern == pattern &&
+			prior.partial_pattern == partial_pattern &&
+			prior.concrete_owner == concrete_owner) return;
+	}
+	retained_member_source_facts_.push_back(RetainedMemberSourceFact(
+		owner, source, member_name, pattern, partial_pattern, concrete_owner));
 }
 
 void TemplateWitnessObserver::RecordSemanticCurrentClassUses(
@@ -2415,6 +2436,7 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 	RenderSourceEvents(analyzer, replacements);
 	RenderClosureEvents(analyzer, replacements);
 	semantic_source_facts_.clear();
+	retained_member_source_facts_.clear();
 	source_events_.clear();
 	function_specializations_.clear();
 	class_specializations_.clear();

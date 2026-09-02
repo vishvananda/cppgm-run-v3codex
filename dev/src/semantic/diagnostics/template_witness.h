@@ -73,6 +73,26 @@ private:
 			  explicit_count(static_cast<std::uint16_t>(
 				explicit_count_value > 65535 ? 65535 : explicit_count_value)) {}
 	};
+	struct RetainedMemberSourceFact
+	{
+		syntax::NodeId owner;
+		syntax::NodeId source;
+		NameId member_name;
+		std::uint32_t pattern;
+		std::uint32_t partial_pattern;
+		BindingId concrete_owner;
+
+		RetainedMemberSourceFact(syntax::NodeId owner_value,
+			syntax::NodeId source_value, NameId member_name_value,
+			std::uint32_t pattern_value, std::uint32_t partial_pattern_value,
+			BindingId concrete_owner_value)
+			: owner(owner_value), source(source_value),
+			  member_name(member_name_value), pattern(pattern_value),
+			  partial_pattern(partial_pattern_value),
+			  concrete_owner(concrete_owner_value) {}
+	};
+	static_assert(sizeof(RetainedMemberSourceFact) == 24,
+		"retained member source facts must stay compact");
 	enum OverloadDropReason
 	{
 		OVERLOAD_DROP_NONE,
@@ -255,6 +275,9 @@ private:
 		syntax::NodeId syntax, std::uint32_t semantic_index,
 		SemanticSourceKind kind, SemanticSourceResolution resolution,
 		std::size_t explicit_count);
+	void NoteRetainedMemberSource(syntax::NodeId owner,
+		syntax::NodeId source, NameId member_name, std::uint32_t pattern,
+		std::uint32_t partial_pattern, BindingId concrete_owner);
 	void RecordSemanticCurrentClassUses(syntax::NodeId owner,
 		std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments);
@@ -329,6 +352,7 @@ private:
 	std::string primary_source_file_;
 	bool debug_;
 	std::vector<SemanticSourceFact> semantic_source_facts_;
+	std::vector<RetainedMemberSourceFact> retained_member_source_facts_;
 	std::vector<SourceEvent> source_events_;
 	std::vector<FunctionSpecializationFact> function_specializations_;
 	std::vector<ClassSpecializationFact> class_specializations_;

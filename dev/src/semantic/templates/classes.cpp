@@ -791,6 +791,12 @@ bool Analyzer::AnalyzeClassTemplateMember(NodeId declaration,
 			return false;
 	}
 	SelectClassTemplateMemberOwner(pattern_index, &member);
+	if (template_witness_ &&
+		pattern_index <= std::numeric_limits<std::uint32_t>::max())
+		template_witness_->NoteRetainedMemberSource(
+			declaration, member.owner_source, path.Last(),
+			static_cast<std::uint32_t>(pattern_index),
+			member.owner_partial_pattern, member.concrete_owner);
 	if (!arena_->IsTag(declaration, ::cppgm::syntax::STAG_TEMPLATE_DECLARATION))
 	{
 		// Owner selection can instantiate nested templates and grow the pattern
