@@ -1103,6 +1103,30 @@ foundation measured -0.41% wall and -0.41% combined user+system CPU with
 byte-identical objects.  The report is
 `/tmp/v3codex-w5-foundation-combined-ab.json`.
 
+### Phase W5M-O: Terminal object-type source role
+
+Treat the terminal component of a written structured object type as a distinct
+source role.  A terminal template-id is already an explicit class use and must
+not also publish the resolved object type as deduced.  A terminal alias,
+typedef, or nested member name has no direct class-template event of its own;
+if its resolved object type is a class specialization, publish that result at
+the structured type's source range with deduced provenance.
+
+Do not apply this rule prematurely inside a retained dependent definition.
+The W5D validator already marks exact dependent source nodes.  If a
+non-terminal qualifier component has that typed provenance, leave publication
+to replay at the final semantic boundary.  This distinguishes
+`outer<int>::type` in ordinary source from `deduce<A>::type` in a retained
+function body without inspecting names, source text, fixture paths, or
+canonical result spelling.  Reuse the terminal component for source-name
+identity instead of walking the same components a second time.
+
+Validate the consumer against every PA19--PA24 witness and LowIR artifact.  A
+terminal-only prototype is rejected if it publishes a concrete result from a
+retained dependent qualifier.  Retain only the exact-node join with W5D's
+dependent-source facts, and require the usual frozen O0/O1/O3, audit, ordinary
+test, and repeated no-witness timing gates before committing.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1162,6 +1186,7 @@ byte-identical objects.  The report is
 | W5M rejected source-range ordering | Ordered same-start source events by widest syntax range before semantic insertion order | made 4 witnesses exact but regressed 19 previously exact files; PA22 -4, PA23 -4, PA24 -7 exact | reject; source containment is not semantic evaluation/dependency order, so retain the authoritative ranges but add no geometric tie-breaker |
 | W5M-O final function lifecycle | Filtered collected function instantiation/requirement facts by the binding's final explicit-instantiation suppression state | exactly 2 PA22 extern-function witnesses change and become exact, later manifests unchanged; inline/defaulted extern-class member control preserved; PA22 311/311; frozen outputs/audits exact; extended paired user +0.000% | retain; final typed state, not collection timing or source spelling, owns lifecycle publication |
 | W5M-O explicit class finalization | Published class finalization at the common completed-class boundary for explicit instantiation declarations and definitions | 3 witness deltas; PA22 +1 and PA24 +1 exact, no regression; PA22 311/311; frozen outputs/audits exact; extended paired user -0.488% | retain; class completion precedes the typed declaration/definition emission policy split |
+| W5M-O terminal object-type source | Used the authoritative terminal name component to distinguish explicit template-ids from alias/typedef/member results, while suppressing a retained dependent qualifier through W5D's exact-node provenance | terminal-only prototype improved 7 files but regressed one exact PA23 retained-body witness and was rejected; exact-node join changes 7 files, with PA22 +1 and PA24 +3 exact, no PA19/20/23 regression, all 1,532 LowIR artifacts exact; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; extended paired user +0.182%, wall +0.000%, RSS +0.020% | retain the source-role consumer; do not infer retained context from result type or source spelling |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

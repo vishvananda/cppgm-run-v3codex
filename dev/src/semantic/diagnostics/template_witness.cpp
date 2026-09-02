@@ -671,15 +671,23 @@ void Analyzer::RecordDeducedClassObjectUse(NodeId specifiers, TypeId type)
 			}
 		if (structure == kNoNode) structure = specifiers;
 	}
+	NodeId terminal_component = kNoNode;
+	bool dependent_qualifier = false;
 	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
-	{
-		const NodeId component = arena_->EdgeChild(edge);
-		if (arena_->IsTag(component, ::cppgm::syntax::STAG_NAME_COMPONENT) &&
-			FindChild(component,
-				::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) != kNoNode)
-			return;
-	}
+		if (arena_->IsTag(arena_->EdgeChild(edge),
+			::cppgm::syntax::STAG_NAME_COMPONENT))
+		{
+			if (terminal_component != kNoNode &&
+				template_witness_->IsRetainedDependentSourceUse(
+					terminal_component))
+				dependent_qualifier = true;
+			terminal_component = arena_->EdgeChild(edge);
+		}
+	if (dependent_qualifier) return;
+	if (terminal_component != kNoNode && FindChild(terminal_component,
+		::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) != kNoNode)
+		return;
 	const EntityId entity = EntityOf(type);
 	if (template_witness_->debug_)
 		template_witness_->debug_text_ += "  structure=" +
@@ -693,17 +701,10 @@ void Analyzer::RecordDeducedClassObjectUse(NodeId specifiers, TypeId type)
 	if (pattern == kNoDumpEdge || pattern >= class_templates_.size() ||
 		record.template_argument_begin == kNoBinding ||
 		record.declaration == kNoBinding) return;
-	NameId source_name = arena_->SemanticPayloadId(structure);
-	if (source_name == 0) source_name = arena_->PayloadId(structure);
-	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-	{
-		const NodeId component = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(component, ::cppgm::syntax::STAG_NAME_COMPONENT))
-			continue;
-		source_name = arena_->SemanticPayloadId(component);
-		if (source_name == 0) source_name = arena_->PayloadId(component);
-	}
+	const NodeId source_component = terminal_component == kNoNode ?
+		structure : terminal_component;
+	NameId source_name = arena_->SemanticPayloadId(source_component);
+	if (source_name == 0) source_name = arena_->PayloadId(source_component);
 	template_witness_->RecordDeducedClassUse(
 		structure, pattern,
 		record.declaration, StoredTemplateArguments(
@@ -835,6 +836,13 @@ void TemplateWitnessObserver::NoteSemanticSourceFact(
 	}
 	semantic_source_facts_.push_back(SemanticSourceFact(
 		owner, syntax, semantic_index, kind, resolution, explicit_count));
+}
+
+bool TemplateWitnessObserver::IsRetainedDependentSourceUse(
+	syntax::NodeId syntax) const
+{
+	return std::find(dependent_source_uses_.begin(),
+		dependent_source_uses_.end(), syntax) != dependent_source_uses_.end();
 }
 
 void TemplateWitnessObserver::NoteRetainedMemberSource(

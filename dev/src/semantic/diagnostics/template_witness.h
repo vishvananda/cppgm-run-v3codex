@@ -326,6 +326,7 @@ private:
 		syntax::NodeId syntax, std::uint32_t semantic_index,
 		SemanticSourceKind kind, SemanticSourceResolution resolution,
 		std::size_t explicit_count);
+	bool IsRetainedDependentSourceUse(syntax::NodeId syntax) const;
 	void NoteRetainedMemberSource(syntax::NodeId owner,
 		syntax::NodeId source, NameId member_name, std::uint32_t pattern,
 		std::uint32_t partial_pattern, BindingId concrete_owner);
