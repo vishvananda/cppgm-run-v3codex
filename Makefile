@@ -287,7 +287,7 @@ test-report-through-%: build
 		TEST_REPORT_SUBTEST_JOBS='$(TEST_REPORT_SUBTEST_JOBS)' \
 		ORDERED='$(ORDERED)'
 
-test-report-nobuild:
+test-report-nobuild: audit-compiler-exceptions
 	@export KEEP_GOING=1; \
 	if [ "$(CPPGM_TEST_RUNNER)" = "1" ]; then \
 		export CPPGM_BATCH_TESTS=1; \

@@ -66,4 +66,27 @@ private:
 	bool active_;
 };
 
+// Runs a cleanup or rollback action unless the owning transaction commits.
+// noexcept(false) preserves the behavior of the former paired try/catch cleanup:
+// an invariant failure in cleanup propagates on an ordinary exit and terminates
+// if it occurs while another exception is already unwinding.
+template<typename Action>
+class ScopedCleanup
+{
+public:
+	explicit ScopedCleanup(const Action& action)
+		: action_(action), active_(true) {}
+	~ScopedCleanup() noexcept(false)
+	{
+		if (active_) action_();
+	}
+	void Release() { active_ = false; }
+
+private:
+	ScopedCleanup(const ScopedCleanup&);
+	ScopedCleanup& operator=(const ScopedCleanup&);
+	Action action_;
+	bool active_;
+};
+
 }

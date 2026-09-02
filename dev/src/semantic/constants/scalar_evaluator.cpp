@@ -1166,17 +1166,13 @@ bool Analyzer::AnalyzeConstexprExpression(NodeId node, ScopeId scope,
 {
 	const std::size_t nodes = dump_.nodes.size();
 	const std::size_t edges = dump_.edges.size();
-	try
-	{
-		*result = AnalyzeExpression(node, scope, target);
-		SetExpressionDumpObject(result);
-	}
-	catch (...)
+	const auto release_scratch = [this, nodes, edges]()
 	{
 		ReleaseConstexprScratch(nodes, edges);
-		throw;
-	}
-	ReleaseConstexprScratch(nodes, edges);
+	};
+	ScopedCleanup<decltype(release_scratch)> scratch(release_scratch);
+	*result = AnalyzeExpression(node, scope, target);
+	SetExpressionDumpObject(result);
 	return result->constant ||
 		result->constexpr_address != kNoConstexprAddress ||
 		result->constexpr_lvalue_address != kNoConstexprAddress;
@@ -1187,17 +1183,13 @@ bool Analyzer::AnalyzeConstexprInitializer(NodeId node, ScopeId scope,
 {
 	const std::size_t nodes = dump_.nodes.size();
 	const std::size_t edges = dump_.edges.size();
-	try
-	{
-		*result = AnalyzeVariableInitializer(node, scope, target, true);
-		SetExpressionDumpObject(result);
-	}
-	catch (...)
+	const auto release_scratch = [this, nodes, edges]()
 	{
 		ReleaseConstexprScratch(nodes, edges);
-		throw;
-	}
-	ReleaseConstexprScratch(nodes, edges);
+	};
+	ScopedCleanup<decltype(release_scratch)> scratch(release_scratch);
+	*result = AnalyzeVariableInitializer(node, scope, target, true);
+	SetExpressionDumpObject(result);
 	return result->constant ||
 		result->constexpr_address != kNoConstexprAddress ||
 		result->constexpr_lvalue_address != kNoConstexprAddress;
@@ -1523,7 +1515,11 @@ bool Analyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 	const std::size_t nodes = dump_.nodes.size();
 	const std::size_t edges = dump_.edges.size();
 	bool valid = false;
-	try
+	const auto release_scratch = [this, nodes, edges]()
+	{
+		ReleaseConstexprScratch(nodes, edges);
+	};
+	ScopedCleanup<decltype(release_scratch)> scratch(release_scratch);
 	{
 		if (arena_->IsTag(node, ::cppgm::syntax::STAG_ALIAS_DECLARATION))
 		{
@@ -1605,12 +1601,6 @@ bool Analyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 			}
 		}
 	}
-	catch (...)
-	{
-		ReleaseConstexprScratch(nodes, edges);
-		throw;
-	}
-	ReleaseConstexprScratch(nodes, edges);
 	return valid;
 }
 

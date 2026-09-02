@@ -1,5 +1,6 @@
 #include "semantic/extensions/lambda_capture.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <limits>
@@ -368,14 +369,17 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 {
 	states_[fact] = 1;
 	const std::size_t mark = bound_stack_.size();
-	++depth_;
+	ScopedValueRestore<std::uint32_t> depth(&depth_, depth_ + 1);
+	const auto restore_bounds = [this, mark]() { RestoreBounds(mark); };
+	ScopedCleanup<decltype(restore_bounds)> bounds(restore_bounds);
+	const auto fail_fact = [this, fact]() { states_[fact] = 3; };
+	ScopedCleanup<decltype(fail_fact)> failure(fail_fact);
 	std::vector<NameId> free_names;
 	std::vector<NameId> explicit_names;
 	std::vector<std::uint8_t> explicit_reference;
 	bool captures_this = false;
 	bool default_reference = false;
 	bool has_default = false;
-	try
 	{
 		const NodeId lambda = facts_[fact].syntax;
 		NodeId body = kNoNode;
@@ -499,15 +503,7 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 		name_uses_ += free_names.size();
 		states_[fact] = 2;
 	}
-	catch (...)
-	{
-		states_[fact] = 3;
-		RestoreBounds(mark);
-		--depth_;
-		throw;
-	}
-	RestoreBounds(mark);
-	--depth_;
+	failure.Release();
 }
 
 std::size_t LambdaCaptureUseTable::Requests() const { return requests_; }

@@ -1,6 +1,7 @@
 #include "cy86/cy86_internal.h"
 
 #include "cy86/errors.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 #include <cstring>
@@ -27,15 +28,14 @@ Cy86Identifier Cy86Identifiers::Intern(const std::string& spelling)
 		static_cast<Cy86Identifier>(spellings_.size());
 	std::pair<std::unordered_map<std::string, Cy86Identifier>::iterator, bool>
 		inserted = index_.insert(std::make_pair(spelling, identifier));
-	try
-	{
-		spellings_.push_back(&inserted.first->first);
-	}
-	catch (...)
+	const auto erase_uncommitted_identifier = [this, &inserted]()
 	{
 		index_.erase(inserted.first);
-		throw;
-	}
+	};
+	ScopedCleanup<decltype(erase_uncommitted_identifier)> identifier_cleanup(
+		erase_uncommitted_identifier);
+	spellings_.push_back(&inserted.first->first);
+	identifier_cleanup.Release();
 	bytes_ += spelling.size();
 	return identifier;
 }

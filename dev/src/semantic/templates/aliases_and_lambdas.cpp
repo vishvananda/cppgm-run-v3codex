@@ -1639,7 +1639,12 @@ TypeId Analyzer::InstantiateAliasTemplate(std::size_t index,
 		else BindTemplateArgument(substitution_scope,
 			pattern.parameters[parameter], arguments[parameter]);
 	}
-	try
+	const auto mark_hard_failure = [this, binding]()
+	{
+		alias_template_instantiation_states_[binding] =
+			ALIAS_TEMPLATE_HARD_FAILURE;
+	};
+	ScopedCleanup<decltype(mark_hard_failure)> completion(mark_hard_failure);
 	{
 		// Alias substitution establishes a canonical type identity; it does not
 		// by itself require the aliased class layout.  Qualified components in
@@ -1662,6 +1667,7 @@ TypeId Analyzer::InstantiateAliasTemplate(std::size_t index,
 		{
 			alias_template_instantiation_states_[binding] =
 				ALIAS_TEMPLATE_EXPECTED_FAILURE;
+			completion.Release();
 			return kNoType;
 		}
 		if (result == kNoType)
@@ -1672,18 +1678,14 @@ TypeId Analyzer::InstantiateAliasTemplate(std::size_t index,
 			RecordCandidateSubstitutionFailure();
 			alias_template_instantiation_states_[binding] =
 				ALIAS_TEMPLATE_EXPECTED_FAILURE;
+			completion.Release();
 			return kNoType;
 		}
 		program_->bindings[binding].type = result;
 		alias_template_instantiation_states_[binding] =
 			ALIAS_TEMPLATE_SUCCEEDED;
+		completion.Release();
 		return result;
-	}
-	catch (...)
-	{
-		alias_template_instantiation_states_[binding] =
-			ALIAS_TEMPLATE_HARD_FAILURE;
-		throw;
 	}
 }
 

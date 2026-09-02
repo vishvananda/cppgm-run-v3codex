@@ -1,5 +1,6 @@
 #include "semantic/analysis/analyzer.h"
 #include "support/exceptions.h"
+#include "support/scoped_state.h"
 
 #include <algorithm>
 
@@ -102,93 +103,71 @@ DeclaratorInfo Analyzer::BuildVariableDeclarator(
 		(spec.placeholder_cv & CV_CONST) != 0;
 	const bool preserve_recipe = !local && spec.is_constexpr &&
 		arena_->HasDescendantTag(initializer, ::cppgm::syntax::STAG_CONDITIONAL_EXPRESSION);
-	if (require_constant)
-	{
-		++constant_expression_required_depth_;
-		++constant_initializer_required_depth_;
-		if (local) ++local_constant_initializer_depth_;
-	}
-	if (preserve_recipe) ++preserve_constant_initializer_recipe_depth_;
-	bool context_active = true;
-	const auto release_context = [this, require_constant, local,
-		preserve_recipe, &context_active]()
-	{
-		if (!context_active) return;
-		if (require_constant)
-		{
-			if (local) --local_constant_initializer_depth_;
-			--constant_initializer_required_depth_;
-			--constant_expression_required_depth_;
-		}
-		if (preserve_recipe) --preserve_constant_initializer_recipe_depth_;
-		context_active = false;
-	};
+	ScopedCounterIncrement required_expression(
+		&constant_expression_required_depth_, require_constant);
+	ScopedCounterIncrement required_initializer(
+		&constant_initializer_required_depth_, require_constant);
+	ScopedCounterIncrement local_initializer(
+		&local_constant_initializer_depth_, require_constant && local);
+	ScopedCounterIncrement retained_recipe(
+		&preserve_constant_initializer_recipe_depth_, preserve_recipe);
 	ExpressionInfo value;
 	DeclaratorInfo parsed;
-	try
+	value = AnalyzeExpression(expression, scope);
+	std::string pointer_operator;
+	for (std::uint32_t edge = arena_->FirstEdge(declarator);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
 	{
-		value = AnalyzeExpression(expression, scope);
-		std::string pointer_operator;
-		for (std::uint32_t edge = arena_->FirstEdge(declarator);
-			edge != kNoEdge; edge = arena_->NextEdge(edge))
-		{
-			const NodeId child = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(child, ::cppgm::syntax::STAG_PTR_OPERATOR)) continue;
-			if (!pointer_operator.empty())
-				ThrowSemanticError(
-					"compound placeholder declarator is outside the PA23 boundary");
-			pointer_operator = PayloadSource(child);
-		}
-		TypeId base = EffectiveType(value.type);
-		if (pointer_operator.empty()) base = Decay(value.type);
-		else if (pointer_operator == "&")
-		{
-			if (value.category != VALUE_LVALUE)
-				ThrowSemanticError("auto& requires an lvalue initializer");
-		}
-		else if (pointer_operator == "&&")
-		{
-			if (value.category == VALUE_LVALUE &&
-				spec.placeholder_cv == CV_NONE)
-				base = program_->types.Reference(TYPE_LVALUE_REFERENCE, base);
-		}
-		else if (pointer_operator == "*")
-		{
-			const TypeRecord& pointer = program_->types.Get(Decay(value.type));
-			if (pointer.kind != TYPE_POINTER)
-				ThrowSemanticError("auto* requires a pointer initializer");
-			base = pointer.child;
-		}
-		else ThrowSemanticError(
-			"unsupported placeholder pointer operator in PA23");
-		base = program_->types.Qualify(base, spec.placeholder_cv);
-		parsed = BuildDeclarator(declarator, base, scope);
-		if (spec.is_constexpr)
-			parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
-		value = ApplyTarget(value, parsed.type);
-		const TypeRecord& declared = program_->types.Get(parsed.type);
-		if (declared.kind != TYPE_LVALUE_REFERENCE &&
-			declared.kind != TYPE_RVALUE_REFERENCE &&
-			IsClassObjectType(parsed.type) && value.category == VALUE_PRVALUE &&
-			dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION &&
-			!dump_.nodes[value.node].explicit_user_conversion_call &&
-			program_->types.RemoveTopCv(EffectiveType(value.type)) ==
-				program_->types.RemoveTopCv(EffectiveType(parsed.type)))
-		{
-			const BindingId selected =
-				ValidateClassValueConstruction(parsed.type, value);
-			value = BuildDirectClassValueTransfer(
-				value, parsed.type, selected);
-		}
-		value = FinalizeVariableInitializer(
-			value, parsed.type, EntityOf(parsed.type), local);
+		const NodeId child = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(child, ::cppgm::syntax::STAG_PTR_OPERATOR)) continue;
+		if (!pointer_operator.empty())
+			ThrowSemanticError(
+				"compound placeholder declarator is outside the PA23 boundary");
+		pointer_operator = PayloadSource(child);
 	}
-	catch (...)
+	TypeId base = EffectiveType(value.type);
+	if (pointer_operator.empty()) base = Decay(value.type);
+	else if (pointer_operator == "&")
 	{
-		release_context();
-		throw;
+		if (value.category != VALUE_LVALUE)
+			ThrowSemanticError("auto& requires an lvalue initializer");
 	}
-	release_context();
+	else if (pointer_operator == "&&")
+	{
+		if (value.category == VALUE_LVALUE &&
+			spec.placeholder_cv == CV_NONE)
+			base = program_->types.Reference(TYPE_LVALUE_REFERENCE, base);
+	}
+	else if (pointer_operator == "*")
+	{
+		const TypeRecord& pointer = program_->types.Get(Decay(value.type));
+		if (pointer.kind != TYPE_POINTER)
+			ThrowSemanticError("auto* requires a pointer initializer");
+		base = pointer.child;
+	}
+	else ThrowSemanticError(
+		"unsupported placeholder pointer operator in PA23");
+	base = program_->types.Qualify(base, spec.placeholder_cv);
+	parsed = BuildDeclarator(declarator, base, scope);
+	if (spec.is_constexpr)
+		parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
+	value = ApplyTarget(value, parsed.type);
+	const TypeRecord& declared = program_->types.Get(parsed.type);
+	if (declared.kind != TYPE_LVALUE_REFERENCE &&
+		declared.kind != TYPE_RVALUE_REFERENCE &&
+		IsClassObjectType(parsed.type) && value.category == VALUE_PRVALUE &&
+		dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION &&
+		!dump_.nodes[value.node].explicit_user_conversion_call &&
+		program_->types.RemoveTopCv(EffectiveType(value.type)) ==
+			program_->types.RemoveTopCv(EffectiveType(parsed.type)))
+	{
+		const BindingId selected =
+			ValidateClassValueConstruction(parsed.type, value);
+		value = BuildDirectClassValueTransfer(
+			value, parsed.type, selected);
+	}
+	value = FinalizeVariableInitializer(
+		value, parsed.type, EntityOf(parsed.type), local);
 	*prepared_initializer = value;
 	return parsed;
 }
@@ -378,17 +357,22 @@ void Analyzer::AnalyzeRetainedPlaceholderFunctionBody(
 	}
 	InstallLambdaCaptureBindings(function_scope, this_binding, requested);
 
-	const TypeId previous_return = current_return_type_;
-	const EntityId previous_class = current_class_context_;
-	const BindingId previous_function = current_function_context_;
-	current_return_type_ = requested.placeholder_return_deduced ?
-		requested.placeholder_return_type : kNoType;
-	current_class_context_ = requested.friend_of != kNoEntity ?
-		requested.friend_of : program_->bindings[requested.binding].member_owner;
-	current_function_context_ = function;
-	BeginFunctionControlFlowFacts();
-	try
 	{
+		ScopedValueRestore<TypeId> return_context(&current_return_type_,
+			requested.placeholder_return_deduced ?
+				requested.placeholder_return_type : kNoType);
+		ScopedValueRestore<EntityId> class_context(&current_class_context_,
+			requested.friend_of != kNoEntity ? requested.friend_of :
+				program_->bindings[requested.binding].member_owner);
+		ScopedValueRestore<BindingId> function_context(
+			&current_function_context_, function);
+		BeginFunctionControlFlowFacts();
+		const auto fail_body = [this, function]()
+		{
+			GetMutableFunction(function).placeholder_body_state =
+				PLACEHOLDER_BODY_FAILED;
+		};
+		ScopedCleanup<decltype(fail_body)> body_failure(fail_body);
 		AnalyzeCompound(requested.definition_body, function_scope, detached);
 		FinishFunctionControlFlowFacts();
 		CompletePlaceholderFunctionReturn(function);
@@ -399,19 +383,8 @@ void Analyzer::AnalyzeRetainedPlaceholderFunctionBody(
 		if (declared_constexpr)
 			ValidateConstexprCallableType(completed.type, false);
 		FinalizeNamedReturnSlot(detached);
+		body_failure.Release();
 	}
-	catch (...)
-	{
-		GetMutableFunction(function).placeholder_body_state =
-			PLACEHOLDER_BODY_FAILED;
-		current_return_type_ = previous_return;
-		current_class_context_ = previous_class;
-		current_function_context_ = previous_function;
-		throw;
-	}
-	current_return_type_ = previous_return;
-	current_class_context_ = previous_class;
-	current_function_context_ = previous_function;
 	FunctionInfo& completed = GetMutableFunction(function);
 	completed.retained_definition_semantics = detached;
 	if (completed.template_pattern < function_templates_.size() &&

@@ -743,7 +743,8 @@ Append one row for each retained or rejected increment:
 | E7s | integrated syntax arena, attributes, name facts, brace matches, and spelling interning | syntax/resource/invariant failures shared generic bases in hot parser support | typed lexical/syntax/resource/internal cold exits; attribute and name/declarator probes remain status flow | PA10 syntax structure, attributes, templates, ambiguity, and malformed-input behavior | successful frozen remains 0; generic logic/runtime sites -8/-13 | -704 text, neutral rodata, +64 EH header, +152 unwind, -296 exception table | frozen user medians 0.460/0.455 s; mean +0.83%, one-tick noise | PA10 165/165; through-PA10 587/587; frozen object exact; audits pass | `f8ae46f1` | retained |
 | E7t | ABI model, vocabulary, presentation, and mangler | ABI fact/model/encoding/resource/I/O failures shared generic bases; two catch-alls restored active graph cases | centralized ABI fact-input/internal/resource/I/O exits; scoped graph-case cleanup; ordinary cache/substitution lookup remains status flow | PA14 valid, malformed, numeric, model, and mangling behavior | successful frozen remains 0; generic logic/runtime -37/-1; catch-all -2 | +2,176 text, neutral rodata, +40 EH header, -288 unwind, -924 exception table | 16-run frozen mean exactly neutral at 0.45125/0.45125 s | PA14 117/117; through-PA14 1,082/1,082; frozen objects exact; audits pass | `b4433caf` | retained |
 | E7u | PA9 CY86 frontend, backend, model, and ELF writer | CY86 source rejection, capacities, output I/O, and backend/model invariants shared generic bases | centralized CY86 source/resource/I/O/internal exits; parsing/opcode lookup stays status flow; one transactional cleanup/rethrow retained for E8 review | PA9 valid/invalid CY86 and generated native behavior | no recovery catch or valid-input unwind; generic logic/runtime -25/-13 | cy86: +3,328 text, neutral rodata, +72 EH header, +384 unwind, -1,265 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA9 20/20; through-PA9 422/422; audits pass; integrated compiler binary exact | `9b2da99f` | retained |
-| E7v | remaining staged executable adapters | invocation, output I/O, and one invalid phase-7 token used generic terminal throws | driver/optimizer/native invocation, driver I/O, and lexical source dispositions; terminal presentation unchanged | PA3-PA9, PA13/14, PA37/38 staged behavior | generic logic/runtime -29/-10; repository generic census reaches zero | eleven staged binaries aggregate: +5,152 text, -52 rodata, +208 EH header, +1,016 unwind, +140 exception table; integrated exact | adapters not on integrated hot path; no timing exposure | through-PA38 5,477/5,477; all 11 invalid invocations fail; audits pass; integrated compiler exact | pending | retained |
+| E7v | remaining staged executable adapters | invocation, output I/O, and one invalid phase-7 token used generic terminal throws | driver/optimizer/native invocation, driver I/O, and lexical source dispositions; terminal presentation unchanged | PA3-PA9, PA13/14, PA37/38 staged behavior | generic logic/runtime -29/-10; repository generic census reaches zero | eleven staged binaries aggregate: +5,152 text, -52 rodata, +208 EH header, +1,016 unwind, +140 exception table; integrated exact | adapters not on integrated hot path; no timing exposure | through-PA38 5,477/5,477; all 11 invalid invocations fail; audits pass; integrated compiler exact | `a78bb76a` | retained |
+| E8 | semantic and allocator rollback; architecture enforcement | twelve catch-alls duplicated cleanup or assigned failure/cache states around unknown exceptions | scoped cleanup/commit owns scratch, contexts, cache state, optimizer storage, and CY86 table rollback; typed semantic exception-specification policy remains explicit | PA9, PA12, PA21, PA23, PA26, PA37 and cumulative behavior | successful frozen remains 0; catch-all sites 12->0 | -256 text, neutral rodata/EH header, -16 unwind, -292 exception table; exception RTTI remains 20 symbols | frozen baseline/candidate user means 0.4525/0.4550 s across semantic slice and 0.4525/0.4500 s across allocator slice (timer noise) | through-PA38 5,477/5,477; focused suites and audits pass; file audit zero-fatal/32 warnings; frozen object exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -2141,6 +2142,61 @@ added ABI I/O overload also moved the integrated binary by 128 bytes; routing
 that wrapper-owned operation through the existing driver I/O boundary restores
 the exact E7t integrated compiler hash `44f180930596...`.  The staged size cost
 therefore has no frozen/full compile-time exposure.
+
+### E8 execution record
+
+The final twelve catch-alls did not implement ordinary successful control
+flow.  Ten were semantic rollback/state transactions: three paired constexpr
+scratch marks, lambda-capture bounds/depth/failure state, placeholder context
+and body state, alias hard-failure state, class partial-shape reset, function
+default-request failure, and exception-specification deferral.  The other two
+owned allocations between insertion into parallel containers.  All now use a
+small scoped cleanup/commit owner.  The only remaining internal policy catch
+is typed: dependent exception specifications cache `SemanticError` as a stable
+failure and leave every other project disposition retryable.  Parser,
+substitution, optimizer eligibility, lookup, and cache-hit alternatives remain
+explicit Boolean/result flow.
+
+This answers the hot-control-flow concern directly.  The successful frozen
+census is zero throws, as was the most recent full-source census before this
+cleanup-only slice.  Therefore none of these paths was repeatedly throwing as
+a valid-input alternative.  The optimizer arena catch did put a landing pad
+around a hot allocation owner, however; scoped allocation ownership removes
+it and changes the integrated compiler by -384 bytes of text, -16 bytes of
+unwind data, and -60 bytes of exception table relative to the semantic-only
+candidate.  The analogous staged CY86 change is text/unwind neutral and saves
+32 bytes of exception table.  Returned allocation status was rejected because
+`operator new` and container growth already throw by protocol and translating
+them would add a catch plus successful-path status plumbing.
+
+Across all E8 changes, the integrated compiler moves from 6,453,734 to
+6,453,478 bytes of `.text`; `.rodata` remains 214,720; `.eh_frame_hdr` remains
+51,588; `.eh_frame` changes 319,272 -> 319,256; and `.gcc_except_table`
+changes 123,012 -> 122,720.  The ten project exception types retain exactly 20
+typeinfo/typeinfo-name symbols, and the source still contains 19 C++-language
+RTTI operator sites unrelated to error policy.  Eight-run interleaved frozen
+checks for each of the semantic and allocator slices reproduce the exact
+98,736-byte object hash `8545fec6...`; one-tick user-time movement changes
+direction between the two slices and is neutral.
+
+The E8 audit now rejects every non-project explicit throw except the two
+allocator-protocol `std::bad_alloc` sites, every generic logic/runtime throw,
+every catch-all, internal generic standard catch, message-based policy, and
+untyped terminal fallback.  It exact-counts the 15 reviewed executable
+fallback catches and four `stoll`/`stoull` translations.  The final inventory
+is 226 explicit typed throw sites and zero generic throw files.  Root
+`test-report-nobuild` depends on this audit, so every cumulative through-target
+report enforces the architecture rather than relying on a separately invoked
+check.  PA9 passes 20/20, PA12 184/184, PA21 151/151, PA23 414/414, PA26
+114/114, PA37 190/190, PA38 45/45, through-PA26 passes 3,822/3,822, and
+through-PA38 passes 5,477/5,477.  The layout, rename-manifest, source-set,
+semantic/lowering/native owner, LowIR-contract, and exception audits pass.
+The PA39 file audit initially exposed the ABI guard's one-line destructor as a
+scanner ambiguity and two native owners three/six lines over the hard limit;
+inert formatting makes the destructor structurally visible and returns both
+owners to exactly 3,000 lines.  The resulting compiler binary is byte-exact,
+and the audit closes zero-fatal with the established 32 warnings.  Final full
+performance, census, and inception gates are recorded in E9.
 
 ## Initial code map
 

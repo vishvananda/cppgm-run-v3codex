@@ -1823,17 +1823,11 @@ bool Analyzer::MaterializeTemplatePartialArguments(
 				record.value_type, false, static_cast<std::int64_t>(parameter));
 	}
 	*state = 2;
-	bool built = false;
-	try
-	{
-		built = BuildTemplateArguments(primary_parameters, syntax, shape_scope,
-			lexical_scope, arguments, true, &dependent_names);
-	}
-	catch (...)
-	{
-		*state = 0;
-		throw;
-	}
+	const auto reset_shape = [state]() { *state = 0; };
+	ScopedCleanup<decltype(reset_shape)> shape_failure(reset_shape);
+	const bool built = BuildTemplateArguments(primary_parameters, syntax,
+		shape_scope, lexical_scope, arguments, true, &dependent_names);
+	shape_failure.Release();
 	if (!built || arguments->empty())
 	{
 		arguments->clear();

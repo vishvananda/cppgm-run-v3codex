@@ -53,14 +53,12 @@ const std::uint64_t kLoadAddress = 0x400000;
 const std::size_t kElfHeaderSize = 64;
 const std::size_t kProgramHeaderSize = 56;
 const std::size_t kContentOffset = kElfHeaderSize + kProgramHeaderSize;
-
 struct HostEhStackCleanup
 {
   lowir_model::LocalLabelId label;
   lowir_model::LocalLabelId continuation;
   std::size_t stack_bytes = 0;
 };
-
 std::vector<unsigned char> ordinary_host_block_entries(
     const mir_model::MirFunction & function)
 {
@@ -87,7 +85,6 @@ std::vector<unsigned char> ordinary_host_block_entries(
   }
   return result;
 }
-
 void emit_function_prologue(CodeBuffer & out, const mir_model::MirFunction & function)
 {
   if(!function.omit_frame_pointer) {
@@ -100,7 +97,6 @@ void emit_function_prologue(CodeBuffer & out, const mir_model::MirFunction & fun
                     static_cast<unsigned>(
                       epilogue_detail::function_stack_adjustment(function)));
 }
-
 void emit_function_teardown(CodeBuffer & out,
                             const mir_model::MirFunction & function)
 {
@@ -120,13 +116,11 @@ void emit_function_teardown(CodeBuffer & out,
     emit_pop(out, function.callee_saved_regs[i - 1]);
   if(!function.omit_frame_pointer) emit_pop(out, XR_RBP);
 }
-
 void emit_function_return(CodeBuffer & out, const mir_model::MirFunction & function)
 {
   emit_function_teardown(out, function);
   out.byte(0xc3);
 }
-
 void require_operands(const mir_model::MirInstruction & instruction,
                       std::size_t count)
 {

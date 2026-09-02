@@ -2008,20 +2008,19 @@ BindingId Analyzer::InstantiateFunctionTemplate(std::size_t index,
 	SpecInfo spec;
 	EntityId member_owner = kNoEntity;
 	DeclaratorInfo parsed;
-	try
-	{
-		template_scope = BindFunctionTemplateArguments(
-			pattern, completed, parameter_offsets);
-		parsed = BuildFunctionTemplateSpecializationDeclarator(
-			pattern, template_scope, &spec, &member_owner);
-	}
-	catch (...)
+	const auto fail_default_request = [this, needs_defaults, &request_key]()
 	{
 		if (needs_defaults)
 			function_template_default_requests_.SetRequest(
 				request_key, TEMPLATE_REQUEST_FAILED);
-		throw;
-	}
+	};
+	ScopedCleanup<decltype(fail_default_request)> default_failure(
+		fail_default_request);
+	template_scope = BindFunctionTemplateArguments(
+		pattern, completed, parameter_offsets);
+	parsed = BuildFunctionTemplateSpecializationDeclarator(
+		pattern, template_scope, &spec, &member_owner);
+	default_failure.Release();
 	if (CandidateSubstitutionFailed() || parsed.type == kNoType)
 	{
 		if (needs_defaults)
@@ -2192,6 +2191,13 @@ void Analyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 		EXCEPTION_SPECIFICATION_IN_PROGRESS;
 	++function_template_exception_specification_evaluations_;
 	const FunctionInfo function = GetFunction(binding);
+	const auto defer_specification = [this, binding]()
+	{
+		GetMutableFunction(binding).exception_specification_state =
+			EXCEPTION_SPECIFICATION_DEFERRED;
+	};
+	ScopedCleanup<decltype(defer_specification)> specification_failure(
+		defer_specification);
 	try
 	{
 		if (function.destructor &&
@@ -2300,20 +2306,17 @@ void Analyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 		// Hard diagnostics, resource exhaustion, and compiler failures may be
 		// affected by the surrounding instantiation and remain retryable.
 		const CompilerErrorDisposition disposition = error.Disposition();
-		GetMutableFunction(binding).exception_specification_state =
-			disposition == CompilerErrorDisposition::SEMANTIC ?
-				EXCEPTION_SPECIFICATION_FAILED :
-				EXCEPTION_SPECIFICATION_DEFERRED;
-		throw;
-	}
-	catch (...)
-	{
-		GetMutableFunction(binding).exception_specification_state =
-			EXCEPTION_SPECIFICATION_DEFERRED;
+		if (disposition == CompilerErrorDisposition::SEMANTIC)
+		{
+			GetMutableFunction(binding).exception_specification_state =
+				EXCEPTION_SPECIFICATION_FAILED;
+			specification_failure.Release();
+		}
 		throw;
 	}
 	GetMutableFunction(binding).exception_specification_state =
 		EXCEPTION_SPECIFICATION_SUCCEEDED;
+	specification_failure.Release();
 }
 
 bool Analyzer::FunctionIsNonthrowing(BindingId binding)

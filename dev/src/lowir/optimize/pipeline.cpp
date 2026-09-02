@@ -23,6 +23,7 @@
 #include "lowir/optimize/small_object_promotion.h"
 #include "lowir/optimize/terminal_query_split.h"
 #include "lowir/optimize/unreachable.h"
+#include "support/scoped_state.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -109,19 +110,21 @@ public:
     block.storage = static_cast<unsigned char *>(::operator new(capacity));
     block.capacity = capacity;
     block.used = 0;
+    const auto delete_uncommitted_storage = [&block]()
+    {
+      ::operator delete(block.storage);
+    };
+    cppgm::ScopedCleanup<decltype(delete_uncommitted_storage)> storage_cleanup(
+      delete_uncommitted_storage);
     Block * stored;
     if(block_count_ != sizeof(inline_blocks_) / sizeof(inline_blocks_[0])) {
       inline_blocks_[block_count_++] = block;
       stored = &inline_blocks_[block_count_ - 1];
     } else {
-      try {
-        overflow_blocks_.push_back(block);
-      } catch(...) {
-        ::operator delete(block.storage);
-        throw;
-      }
+      overflow_blocks_.push_back(block);
       stored = &overflow_blocks_.back();
     }
+    storage_cleanup.Release();
     active_block_ = block_count_ + overflow_blocks_.size() - 1;
     if(next_block_size_ < 1024 * 1024) next_block_size_ *= 2;
     return allocate_from(stored->storage, capacity, &stored->used,

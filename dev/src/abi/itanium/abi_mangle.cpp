@@ -1065,7 +1065,10 @@ class FactGraphCaseScope
 {
 public:
   explicit FactGraphCaseScope(FactGraph & graph) : graph_(graph) {}
-  ~FactGraphCaseScope() { graph_.end_case(); }
+  ~FactGraphCaseScope()
+  {
+    graph_.end_case();
+  }
 
 private:
   FactGraphCaseScope(const FactGraphCaseScope &);

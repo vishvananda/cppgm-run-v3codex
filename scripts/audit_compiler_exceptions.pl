@@ -10,19 +10,60 @@ use FindBin;
 
 my $root = abs_path("$FindBin::Bin/..");
 
-# E0 freezes the pre-migration ceiling.  Later phases lower these ceilings as
-# each family is converted, and E8 sets the generic-policy ceilings to zero.
+# E8 closes the migration.  Generic exception policy and catch-all handlers
+# are forbidden; allocation rollback is represented by scoped ownership.
 my %ceiling = (
-	logic_throw => 116,
-	runtime_throw => 216,
-	generic_throw_files => 28,
+	logic_throw => 0,
+	runtime_throw => 0,
+	generic_throw_files => 0,
 	generic_return_helper => 0,
-	catch_all => 14,
+	catch_all => 0,
 	internal_runtime_catch => 0,
 	internal_exception_catch => 0,
 	legacy_not_implemented => 0,
 	message_policy => 0,
 	terminal_untyped_standard_catch => 0,
+	foreign_explicit_throw => 0,
+);
+
+my %explicit_throw_type = map { $_ => 1 } qw(
+	Error
+	parser.Error
+	InvocationError
+	InputOutputError
+	InternalCompilerError
+	SourceError
+	SyntaxError
+	SemanticError
+	HardSemanticError
+	SerializedInputError
+	ResourceLimitError
+	std::bad_alloc
+);
+
+# Every generic standard catch is a last-resort executable boundary paired
+# with a CompilerError catch.  Counts make additions and moves explicit.
+my %terminal_allowlist = (
+	'dev/abimangle.cpp' => 1,
+	'dev/cppgm++.cpp' => 1,
+	'dev/ctrlexpr.cpp' => 1,
+	'dev/cy86.cpp' => 1,
+	'dev/lowir2cy86.cpp' => 1,
+	'dev/lowir2native.cpp' => 1,
+	'dev/lowiropt.cpp' => 1,
+	'dev/macro.cpp' => 1,
+	'dev/nsdecl.cpp' => 1,
+	'dev/nsinit.cpp' => 1,
+	'dev/posttoken.cpp' => 1,
+	'dev/pptoken.cpp' => 1,
+	'dev/preproc.cpp' => 1,
+	'dev/recog.cpp' => 2,
+);
+
+# std::stoll/stoull expose only these standard types.  The ABI parser converts
+# them immediately to coded project-owned fact-input failures.
+my %translation_allowlist = (
+	'dev/src/abi/itanium/abi_mangle_parse.cpp' => 4,
 );
 
 sub read_text
@@ -95,6 +136,11 @@ my @message_policy;
 my @cleanup_catch;
 my @terminal_catch;
 my @standard_translation;
+my %terminal_seen;
+my %translation_seen;
+my @foreign_explicit_throw;
+my $explicit_throw_sites = 0;
+my @bad_alloc_throw;
 
 for my $path (@files)
 {
@@ -105,6 +151,27 @@ for my $path (@files)
 	my ($file_terminal_standard, $file_terminal_compiler) = (0, 0);
 	$count{legacy_not_implemented} += () =
 		$code =~ /\b(?:NotImplementedException|CPPGM_EXIT_NOT_IMPLEMENTED)\b/g;
+	while ($code =~ /\bthrow\s+(?!;)\s*(parser\s*\.\s*Error|(?:std::)?[A-Za-z_]\w*)\b/g)
+	{
+		++$explicit_throw_sites;
+		my $type = $1;
+		$type =~ s/\s+//g;
+		if ($type eq 'std::bad_alloc')
+		{
+			push @bad_alloc_throw,
+				"$relative:" . line_number($code, $-[0]);
+		}
+		if (!$explicit_throw_type{$type} ||
+			($type eq 'Error' && $relative !~
+				m{\Adev/src/syntax/parser/(?:cursor\.h|parser\.cpp)\z}) ||
+			($type eq 'parser.Error' && $relative !~
+				m{\Adev/src/syntax/}))
+		{
+			++$count{foreign_explicit_throw};
+			push @foreign_explicit_throw,
+				"$relative:" . line_number($code, $-[0]) . " ($type)";
+		}
+	}
 
 	while ($text =~ /\bthrow\s+(?:std::)?logic_error\b/g)
 	{
@@ -144,6 +211,7 @@ for my $path (@files)
 		else
 		{
 			++$file_terminal_standard;
+			++$terminal_seen{$relative};
 			push @terminal_catch,
 				"$relative:" . line_number($text, $-[0]);
 		}
@@ -158,6 +226,7 @@ for my $path (@files)
 	}
 	while ($text =~ /\bcatch\s*\(\s*const\s+std::(?:invalid_argument|out_of_range)\s*&/g)
 	{
+		++$translation_seen{$relative};
 		push @standard_translation,
 			"$relative:" . line_number($text, $-[0]);
 	}
@@ -180,10 +249,41 @@ $count{generic_throw_files} = scalar(keys %generic_file);
 my @error;
 for my $kind (sort keys %ceiling)
 {
-	push @error, "$kind count $count{$kind} exceeds E0 ceiling $ceiling{$kind}"
+	push @error, "$kind count $count{$kind} exceeds architecture limit $ceiling{$kind}"
 		if $count{$kind} > $ceiling{$kind};
 }
 push @error, "exception-message policy at $_" for @message_policy;
+push @error, "foreign explicit exception type at $_"
+	for @foreign_explicit_throw;
+push @error, "allocator-protocol bad_alloc inventory is " .
+	scalar(@bad_alloc_throw) . ", expected exactly 2 in optimizer arena"
+	if @bad_alloc_throw != 2 ||
+		grep { $_ !~ m{\Adev/src/lowir/optimize/pipeline\.cpp:} }
+			@bad_alloc_throw;
+for my $path (sort keys %terminal_seen)
+{
+	push @error, "unreviewed terminal standard catch in $path"
+		if !exists($terminal_allowlist{$path});
+}
+for my $path (sort keys %terminal_allowlist)
+{
+	my $actual = $terminal_seen{$path} || 0;
+	push @error, "terminal catch count in $path is $actual, expected " .
+		$terminal_allowlist{$path}
+		if $actual != $terminal_allowlist{$path};
+}
+for my $path (sort keys %translation_seen)
+{
+	push @error, "unreviewed standard-exception translation in $path"
+		if !exists($translation_allowlist{$path});
+}
+for my $path (sort keys %translation_allowlist)
+{
+	my $actual = $translation_seen{$path} || 0;
+	push @error, "standard translation count in $path is $actual, expected " .
+		$translation_allowlist{$path}
+		if $actual != $translation_allowlist{$path};
+}
 
 if (@error)
 {
@@ -193,7 +293,7 @@ if (@error)
 	exit 1;
 }
 
-print "Compiler exception audit passed at E0 ceilings: " .
+print "Compiler exception audit passed at E8 architecture limits: " .
 	"$count{logic_throw} logic throws, $count{runtime_throw} runtime throws, " .
 	"$count{generic_throw_files} files, " .
 	"$count{generic_return_helper} generic return helper, " .
@@ -206,4 +306,5 @@ print "Compiler exception audit passed at E0 ceilings: " .
 print "Reviewed presentation/cleanup inventory: " . scalar(@terminal_catch) .
 	" terminal standard catches, " . scalar(@cleanup_catch) .
 	" catch-all sites, and " . scalar(@standard_translation) .
-	" narrow standard translations.\n";
+	" narrow standard translations; $explicit_throw_sites explicit typed " .
+	"throw sites.\n";
