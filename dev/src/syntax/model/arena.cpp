@@ -1,11 +1,13 @@
 #include "syntax/model/arena.h"
+
+#include "support/driver_errors.h"
+#include "support/exceptions.h"
 #include "preprocess/tokens/post_tokenizer.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <ostream>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -42,7 +44,7 @@ SyntaxToken::SyntaxToken(std::uint16_t kind_value, TextId spelling_value,
 	  source_line(0), source_file(0), source_column(0)
 {
 	if (kind_value > 0xffU)
-		throw std::logic_error("syntax token kind exceeds packed identity");
+		ThrowSyntaxInternal("syntax token kind exceeds packed identity");
 	if (source_file_value <= std::numeric_limits<std::uint16_t>::max() &&
 		source_column_value <= std::numeric_limits<std::uint16_t>::max())
 	{
@@ -53,7 +55,7 @@ SyntaxToken::SyntaxToken(std::uint16_t kind_value, TextId spelling_value,
 	const std::uint32_t encoded_fact = literal_fact == kNoLiteralFact ? 0 :
 		literal_fact + 1;
 	if (encoded_fact > 0xffffffU)
-		throw std::runtime_error("too many scalar literal facts");
+		ThrowSyntaxResourceLimit("too many scalar literal facts");
 	kind_and_literal_fact = kind_value | (encoded_fact << 8);
 }
 
@@ -126,7 +128,7 @@ void SyntaxTokenSink::EmitInvalid(const std::string& source)
 			sizeof(multicharacter));
 		return;
 	}
-	throw std::runtime_error("invalid phase-7 token: " + source);
+	driver_errors::ThrowLexicalSource("invalid phase-7 token: " + source);
 }
 
 void SyntaxTokenSink::EmitSimple(const std::string& source,
@@ -271,7 +273,7 @@ void SyntaxTokenSink::EmitScalarLiteral(const std::string& source,
 			value |= static_cast<std::uint64_t>(bytes[i]) << (i * 8);
 	}
 	if (literal_facts_.size() >= 0xffffffU)
-		throw std::runtime_error("too many scalar literal facts");
+		ThrowSyntaxResourceLimit("too many scalar literal facts");
 	const std::uint32_t fact =
 		static_cast<std::uint32_t>(literal_facts_.size());
 	literal_facts_.push_back(SyntaxLiteralFact(type, value, value_valid));
@@ -347,7 +349,7 @@ NodeId SyntaxArena::Make(const char* tag)
 NodeId SyntaxArena::Make(const char* tag, const std::string& payload)
 {
 	if (nodes_.size() >= kNoNode)
-		throw std::runtime_error("too many syntax nodes");
+		ThrowSyntaxResourceLimit("too many syntax nodes");
 	const NodeId id = static_cast<NodeId>(nodes_.size());
 	// The payload may refer to a spelling already owned by strings_.  Interning
 	// the tag can grow that table and invalidate the reference, so capture the
@@ -377,7 +379,7 @@ void SyntaxArena::Add(NodeId parent, NodeId child)
 std::uint32_t SyntaxArena::PrepareEdgeMutation(NodeId parent, NodeId child)
 {
 	if (edges_.size() >= kNoEdge)
-		throw std::runtime_error("too many syntax edges");
+		ThrowSyntaxResourceLimit("too many syntax edges");
 	const std::uint32_t edge = static_cast<std::uint32_t>(edges_.size());
 	SyntaxNode& node = nodes_[parent];
 	edge_mutations_.push_back(
@@ -404,7 +406,7 @@ void SyntaxArena::Rollback(std::size_t node_mark, std::size_t edge_mark)
 	if (node_mark > nodes_.size() || edge_mark > edges_.size() ||
 		edge_mark < rollback_edge_base_ ||
 		edge_mutations_.size() != edges_.size() - rollback_edge_base_)
-		throw std::logic_error("invalid syntax rollback checkpoint");
+		ThrowSyntaxInternal("invalid syntax rollback checkpoint");
 	for (std::size_t edge = edges_.size(); edge != edge_mark; --edge)
 	{
 		const EdgeMutation& mutation =
@@ -551,7 +553,7 @@ void SyntaxArena::SetLiteralFact(NodeId node, std::uint32_t fact)
 {
 	if (fact == kNoLiteralFact) return;
 	if (fact >= literal_facts_.size())
-		throw std::logic_error("invalid scalar literal fact");
+		ThrowSyntaxInternal("invalid scalar literal fact");
 	nodes_[node].token_first = fact;
 	nodes_[node].flags |= SYNTAX_FLAG_LITERAL_FACT;
 }
@@ -562,7 +564,7 @@ bool SyntaxArena::ScalarLiteralFact(NodeId node, FundamentalType* type,
 	const SyntaxNode& syntax = nodes_[node];
 	if ((syntax.flags & SYNTAX_FLAG_LITERAL_FACT) == 0) return false;
 	if (syntax.token_first >= literal_facts_.size())
-		throw std::logic_error("scalar literal fact is out of range");
+		ThrowSyntaxInternal("scalar literal fact is out of range");
 	const SyntaxLiteralFact& fact = literal_facts_[syntax.token_first];
 	if (!fact.value_valid) return false;
 	if (type) *type = fact.type;
@@ -682,7 +684,7 @@ void SyntaxArena::SetTokenRange(NodeId node, std::size_t first,
 {
 	if (first > std::numeric_limits<std::uint32_t>::max() ||
 		last > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("syntax token range is too large");
+		ThrowSyntaxResourceLimit("syntax token range is too large");
 	nodes_[node].token_first = static_cast<std::uint32_t>(first);
 	nodes_[node].token_last = static_cast<std::uint32_t>(last);
 }

@@ -4,10 +4,10 @@
 #include "syntax/model/arena.h"
 #include "syntax/parser/token_classification.h"
 #include "preprocess/hosted/builtin_registry.h"
+#include "support/exceptions.h"
 
 #include <cstddef>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -226,7 +226,7 @@ protected:
 		const std::uint32_t no_match =
 			std::numeric_limits<std::uint32_t>::max() - 1;
 		if (opener >= no_match)
-			throw std::runtime_error("too many syntax tokens");
+			ThrowSyntaxResourceLimit("too many syntax tokens");
 		const typename Derived::AngleMatch& cached =
 			parser.angle_matches_[opener];
 		if (cached.fact_revision == parser.name_fact_revision_)
@@ -377,7 +377,7 @@ protected:
 				else if (parser.AtCloseAngle())
 				{
 					if (open_angles.empty())
-						throw std::logic_error("invalid angle lookahead stack");
+						ThrowSyntaxInternal("invalid angle lookahead stack");
 					const std::size_t matched_opener = open_angles.back();
 					open_angles.pop_back();
 					--angle;

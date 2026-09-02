@@ -1,7 +1,8 @@
 #include "syntax/parser/brace_matching.h"
 
+#include "support/exceptions.h"
+
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -13,7 +14,7 @@ std::vector<std::uint32_t> BuildBraceMatches(
 {
 	const std::uint32_t no_match = std::numeric_limits<std::uint32_t>::max();
 	if (tokens.size() >= no_match - 1)
-		throw std::runtime_error("too many syntax tokens");
+		ThrowSyntaxResourceLimit("too many syntax tokens");
 	std::vector<std::uint32_t> matches(tokens.size(), no_match);
 	std::vector<std::uint32_t> open_braces;
 	for (std::size_t i = 0; i < tokens.size(); ++i)

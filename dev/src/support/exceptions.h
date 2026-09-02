@@ -199,6 +199,24 @@ void ThrowSyntaxError(const std::string& message)
 }
 
 __attribute__((cold, noinline, noreturn)) inline
+void ThrowSyntaxResourceLimit(const char* message)
+{
+	throw ResourceLimitError(message, CompilerErrorDomain::SYNTAX);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowSyntaxInternal(const char* message)
+{
+	throw InternalCompilerError(message, CompilerErrorDomain::SYNTAX);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
+void ThrowGeneralResourceLimit(const char* message)
+{
+	throw ResourceLimitError(message);
+}
+
+__attribute__((cold, noinline, noreturn)) inline
 void ThrowInternalCompilerError(const char* message)
 {
 	throw InternalCompilerError(message);

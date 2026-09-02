@@ -1,8 +1,9 @@
 #include "support/interning/frontend_intern.h"
 
+#include "support/exceptions.h"
+
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace cppgm
 {
@@ -66,7 +67,7 @@ InternedStringId InternedStringTable::InternRange(const std::string& text,
 	std::size_t first, std::size_t count)
 {
 	if (first > text.size() || count > text.size() - first)
-		throw std::logic_error("invalid interned spelling range");
+		ThrowInternalCompilerError("invalid interned spelling range");
 	if (stats_)
 	{
 		++stats_->calls;
@@ -103,7 +104,7 @@ InternedStringId InternedStringTable::InternRange(const std::string& text,
 			stats_->max_occupied_slot_probes, occupied_probes);
 	}
 	if (texts_.size() > std::numeric_limits<InternedStringId>::max())
-		throw std::runtime_error("too many interned front-end spellings");
+		ThrowGeneralResourceLimit("too many interned front-end spellings");
 	const InternedStringId id =
 		static_cast<InternedStringId>(texts_.size());
 	texts_.push_back(text.substr(first, count));

@@ -1,8 +1,9 @@
 #include "syntax/extensions/object_attributes.h"
 
+#include "support/exceptions.h"
+
 #include "hosted_extension_registry.h"
 
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -36,7 +37,7 @@ void Expect(const std::vector<SyntaxToken>& tokens, std::size_t* position,
 	SimpleTokenKind kind)
 {
 	if (!At(tokens, *position, kind))
-		throw std::runtime_error("malformed GNU attribute token sequence");
+		ThrowSyntaxError("malformed GNU attribute token sequence");
 	++*position;
 }
 
@@ -45,7 +46,7 @@ bool ConsumeGnuObjectAttributeFacts(
 	std::size_t* position, std::vector<GnuObjectAttributeSyntaxFact>* facts)
 {
 	if (!position || !facts)
-		throw std::logic_error("missing GNU attribute parser destination");
+		ThrowSyntaxInternal("missing GNU attribute parser destination");
 	if (*position >= tokens.size() ||
 		tokens[*position].Kind() != kIdentifierToken ||
 		!hosted_extension::IsGnuAttributeIntroducer(
@@ -57,7 +58,7 @@ bool ConsumeGnuObjectAttributeFacts(
 	while (!At(tokens, *position, OP_RPAREN))
 	{
 		if (*position >= tokens.size() || tokens[*position].Kind() == kEofToken)
-			throw std::runtime_error("unterminated GNU attribute");
+			ThrowSyntaxError("unterminated GNU attribute");
 		if (tokens[*position].Kind() != kIdentifierToken &&
 			tokens[*position].Kind() != KW_CONST)
 		{
@@ -79,7 +80,7 @@ bool ConsumeGnuObjectAttributeFacts(
 			{
 				if (*position >= tokens.size() ||
 					tokens[*position].Kind() == kEofToken)
-					throw std::runtime_error("unterminated GNU attribute argument");
+					ThrowSyntaxError("unterminated GNU attribute argument");
 				if (At(tokens, *position, OP_LPAREN))
 				{
 					if (depth == 1) fact.literal_argument_list = false;
@@ -190,7 +191,7 @@ bool ConsumeLeadingStandardObjectAttribute(
 	std::vector<NodeId>* attributes)
 {
 	if (!position || !attributes)
-		throw std::logic_error("missing standard attribute parser destination");
+		ThrowSyntaxInternal("missing standard attribute parser destination");
 	if (!At(tokens, *position, OP_LSQUARE) ||
 		!At(tokens, *position + 1, OP_LSQUARE)) return false;
 	*position += 2;
@@ -201,7 +202,7 @@ bool ConsumeLeadingStandardObjectAttribute(
 		!At(tokens, *position + 1, OP_RSQUARE))
 	{
 		if (*position >= tokens.size() || tokens[*position].Kind() == kEofToken)
-			throw std::runtime_error("unterminated standard attribute");
+			ThrowSyntaxError("unterminated standard attribute");
 		if (tokens[*position].Kind() == kIdentifierToken)
 		{
 			const std::string& name = strings.Get(tokens[*position].spelling);
