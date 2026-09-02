@@ -229,6 +229,8 @@ private:
 		ScopeId scope, NameId name, LookupKind kind);
 	void RecordFunctionTemplateSourceCall(NodeId syntax,
 		BindingId selected, std::size_t explicit_count);
+	void RecordFunctionTemplateSourceAction(NodeId syntax,
+		std::uint32_t action);
 	bool TemplateWitnessSourceUseEnabled() const;
 	void RecordDeducedClassObjectUse(NodeId specifiers, TypeId type);
 	void RecordStaticMemberTemplateWitness(BindingId binding);
@@ -347,7 +349,8 @@ private:
 	bool ConstructorSubobjectsAreEmpty(BindingId constructor);
 	void ValidateRetainedTemplateDefinition(NodeId target, ScopeId scope,
 		const std::vector<TemplateParameter>& parameters,
-		NodeId class_declaration = kNoNode);
+		NodeId class_declaration = kNoNode,
+		NodeId class_source = kNoNode);
 	void RecordRetainedCallLookup(NodeId callee, ScopeId scope,
 		const std::string& spelling, bool adl_eligible);
 	void PublishRetainedCallLookup(NodeId callee,

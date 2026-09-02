@@ -1,4 +1,5 @@
 #include "semantic/analysis/analyzer.h"
+#include "semantic/diagnostics/template_witness.h"
 #include "support/exception_types.h"
 
 #include <unordered_set>
@@ -819,6 +820,10 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 		copy_initialization && !list_initialization ?
 			LambdaConstructorDeductionArguments(arguments) : arguments, &candidates,
 		&argument_syntax, scope);
+	std::vector<std::uint8_t> witness_drop_reasons;
+	if (template_witness_ && !quiet)
+		witness_drop_reasons.assign(candidates.size(),
+			TemplateWitnessObserver::OVERLOAD_DROP_NONE);
 	const BindingId list_phase = list_initialization ? SelectInitializerListConstructorPhase(
 		scope, initialized_type, source_list, argument_syntax, candidates,
 		copy_initialization, selected_conversions, quiet,
@@ -843,6 +848,10 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 			 constructor.explicit_constructor))
 		{
 			viable[c] = false;
+			if (template_witness_ && !quiet)
+				witness_drop_reasons[c] = constructor.constructor ?
+					TemplateWitnessObserver::OVERLOAD_DROP_EXPLICIT_NOT_ALLOWED :
+					TemplateWitnessObserver::OVERLOAD_DROP_BAD_CONVERSION;
 			continue;
 		}
 		std::size_t required = function_type.parameter_count;
@@ -853,6 +862,10 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 			arity > function_type.parameter_count))
 		{
 			viable[c] = false;
+			if (template_witness_ && !quiet)
+				witness_drop_reasons[c] = arity < required ?
+					TemplateWitnessObserver::OVERLOAD_DROP_TOO_FEW_ARGUMENTS :
+					TemplateWitnessObserver::OVERLOAD_DROP_TOO_MANY_ARGUMENTS;
 			continue;
 		}
 		for (std::size_t a = 0; a < arity; ++a)
@@ -905,7 +918,13 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 				}
 			}
 			conversions[c * arity + a] = conversion;
-			if (conversion.rank == CONVERSION_INVALID) viable[c] = false;
+			if (conversion.rank == CONVERSION_INVALID)
+			{
+				viable[c] = false;
+				if (template_witness_ && !quiet)
+					witness_drop_reasons[c] =
+						TemplateWitnessObserver::OVERLOAD_DROP_BAD_CONVERSION;
+			}
 		}
 	}
 	const auto better = [this, &conversions, &braced_sources, &arguments,
@@ -994,6 +1013,34 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 			}
 	const BindingId selected = candidates[champion];
 	const FunctionInfo& constructor = GetFunction(selected);
+	if (template_witness_ && !quiet &&
+		constructor.template_specialization)
+	{
+		for (std::size_t c = 0; c < candidates.size(); ++c)
+			if (c != champion && viable[c])
+			{
+				bool better_conversion = false;
+				for (std::size_t a = 0; a < arity; ++a)
+				{
+					const CallConversionFact& selected_conversion =
+						conversions[champion * arity + a];
+					const CallConversionFact& other_conversion =
+						conversions[c * arity + a];
+					if (selected_conversion.rank < other_conversion.rank ||
+						(selected_conversion.rank == other_conversion.rank &&
+						 CompareCallConversions(selected_conversion,
+							other_conversion) > 0))
+						better_conversion = true;
+				}
+				witness_drop_reasons[c] = better_conversion ?
+					TemplateWitnessObserver::OVERLOAD_DROP_WORSE_CONVERSION :
+					TemplateWitnessObserver::
+						OVERLOAD_DROP_BETTER_CANDIDATE_SELECTED;
+			}
+		template_witness_->RecordOverloadSelection(
+			program_->bindings[selected].canonical, candidates,
+			witness_drop_reasons);
+	}
 	std::vector<CallConversionFact> selected_facts;
 	selected_facts.reserve(arity);
 	for (std::size_t a = 0; a < arity; ++a)

@@ -89,10 +89,11 @@ class RetainedTemplateValidator
 public:
 	RetainedTemplateValidator(Analyzer& analyzer, NodeId target,
 		ScopeId lexical_scope, const std::vector<TemplateParameter>& parameters,
-		NodeId class_declaration)
+		NodeId class_declaration, NodeId class_source)
 		: analyzer_(analyzer), target_(target), lexical_scope_(lexical_scope),
 		  parameters_(parameters), class_declaration_(class_declaration),
 		  source_owner_pattern_(std::numeric_limits<std::size_t>::max()),
+		  source_owner_component_(class_source),
 		  source_owner_is_partial_(false) {}
 
 	void Run();
@@ -153,7 +154,9 @@ private:
 	void VisitIdExpression(NodeId node, std::size_t scope,
 		bool unknown_callee);
 	void ValidateKnownTemplateArgumentKinds(NodeId node, ScopeId scope);
+	void PublishStructuredTemplateSourceFacts(NodeId node, ScopeId scope);
 	void InitializeSemanticSourceOwner();
+	bool IsCurrentClassSource(NodeId component) const;
 	const TemplateParameter* TemplateParameterUsedBy(NodeId node) const;
 	void ValidateSpecialMemberExceptionSpecification();
 	RetainedSpecialMemberKind SpecialMemberKind(NodeId node) const;
@@ -175,6 +178,7 @@ private:
 	const std::vector<TemplateParameter>& parameters_;
 	NodeId class_declaration_;
 	std::size_t source_owner_pattern_;
+	NodeId source_owner_component_;
 	bool source_owner_is_partial_;
 	std::unordered_set<NameId> parameter_names_;
 	std::unordered_set<NodeId> template_argument_validation_visited_;
@@ -533,7 +537,27 @@ const TemplateParameter* RetainedTemplateValidator::TemplateParameterUsedBy(
 
 void RetainedTemplateValidator::InitializeSemanticSourceOwner()
 {
-	if (!analyzer_.template_witness_ || class_declaration_ == kNoNode) return;
+	if (!analyzer_.template_witness_) return;
+	if (class_declaration_ == kNoNode)
+	{
+		if (parameters_.empty() ||
+			(!analyzer_.arena_->IsTag(target_,
+				::cppgm::syntax::STAG_CLASS_SPECIFIER) &&
+			 !analyzer_.arena_->IsTag(target_,
+				::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION))) return;
+		NamePath primary;
+		std::vector<NodeId> arguments;
+		if (!analyzer_.CollectExplicitTemplateArguments(
+			target_, &primary, &arguments)) return;
+		const std::size_t pattern =
+			analyzer_.FindClassTemplate(lexical_scope_, primary);
+		if (pattern == std::numeric_limits<std::size_t>::max()) return;
+		source_owner_pattern_ = pattern;
+		source_owner_component_ =
+			analyzer_.arena_->TerminalNameComponent(target_);
+		source_owner_is_partial_ = true;
+		return;
+	}
 	for (std::size_t pattern = 0;
 		pattern < analyzer_.class_templates_.size(); ++pattern)
 	{
@@ -556,10 +580,83 @@ void RetainedTemplateValidator::InitializeSemanticSourceOwner()
 	}
 }
 
+bool RetainedTemplateValidator::IsCurrentClassSource(NodeId component) const
+{
+	if (!source_owner_is_partial_ || component == kNoNode ||
+		source_owner_component_ == kNoNode) return false;
+	const NodeId left = analyzer_.FindChild(component,
+		::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
+	const NodeId right = analyzer_.FindChild(source_owner_component_,
+		::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
+	if (left == kNoNode || right == kNoNode) return false;
+	std::uint32_t left_edge = analyzer_.arena_->FirstEdge(left);
+	std::uint32_t right_edge = analyzer_.arena_->FirstEdge(right);
+	while (left_edge != kNoEdge && right_edge != kNoEdge)
+	{
+		if (!EquivalentNormalizedTemplateSyntax(*analyzer_.arena_,
+			analyzer_.arena_->EdgeChild(left_edge),
+			analyzer_.arena_->EdgeChild(right_edge),
+			parameters_, parameters_)) return false;
+		left_edge = analyzer_.arena_->NextEdge(left_edge);
+		right_edge = analyzer_.arena_->NextEdge(right_edge);
+	}
+	return left_edge == kNoEdge && right_edge == kNoEdge;
+}
+
+void RetainedTemplateValidator::PublishStructuredTemplateSourceFacts(
+	NodeId node, ScopeId scope)
+{
+	if (!analyzer_.template_witness_ || !analyzer_.arena_->IsTag(
+		node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME)) return;
+	NamePath primary;
+	primary.global = analyzer_.FindChild(
+		node, ::cppgm::syntax::STAG_GLOBAL_QUALIFIER) != kNoNode;
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+	{
+		const NodeId component = analyzer_.arena_->EdgeChild(edge);
+		if (!analyzer_.arena_->IsTag(
+			component, ::cppgm::syntax::STAG_NAME_COMPONENT)) continue;
+		primary.Push(analyzer_.program_->names.UseInterned(
+			analyzer_.arena_->SemanticPayloadId(component)));
+		const NodeId list = analyzer_.FindChild(component,
+			::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
+		if (list == kNoNode || component == source_owner_component_) continue;
+		std::size_t pattern = analyzer_.FindClassTemplate(scope, primary);
+		if (pattern == std::numeric_limits<std::size_t>::max() &&
+			source_owner_is_partial_ &&
+			source_owner_pattern_ < analyzer_.class_templates_.size() &&
+			analyzer_.program_->names.UseInterned(
+				analyzer_.arena_->SemanticPayloadId(component)) ==
+				analyzer_.class_templates_[source_owner_pattern_].name)
+			pattern = source_owner_pattern_;
+		if (pattern == std::numeric_limits<std::size_t>::max() ||
+			pattern > std::numeric_limits<std::uint32_t>::max()) continue;
+		std::size_t explicit_count = 0;
+		for (std::uint32_t argument = analyzer_.arena_->FirstEdge(list);
+			argument != kNoEdge;
+			argument = analyzer_.arena_->NextEdge(argument))
+			++explicit_count;
+		const bool dependent = SyntaxUsesTemplateParameter(component);
+		const TemplateWitnessObserver::SemanticSourceResolution resolution =
+			!dependent ?
+				TemplateWitnessObserver::SEMANTIC_SOURCE_DECLARATION_COMPLETE :
+			(source_owner_is_partial_ && pattern == source_owner_pattern_ &&
+			 IsCurrentClassSource(component)) ?
+				TemplateWitnessObserver::SEMANTIC_SOURCE_CURRENT_PARTIAL :
+				TemplateWitnessObserver::SEMANTIC_SOURCE_REPLAY_REQUIRED;
+		analyzer_.template_witness_->NoteSemanticSourceFact(
+			target_, component, static_cast<std::uint32_t>(pattern),
+			TemplateWitnessObserver::SEMANTIC_SOURCE_CLASS_TEMPLATE,
+			resolution, explicit_count);
+	}
+}
+
 void RetainedTemplateValidator::ValidateKnownTemplateArgumentKinds(
 	NodeId node, ScopeId scope)
 {
 	if (!template_argument_validation_visited_.insert(node).second) return;
+	PublishStructuredTemplateSourceFacts(node, scope);
 	NamePath primary;
 	std::vector<NodeId> arguments;
 	if (analyzer_.CollectExplicitTemplateArguments(
@@ -569,33 +666,25 @@ void RetainedTemplateValidator::ValidateKnownTemplateArgumentKinds(
 			analyzer_.FindClassTemplate(scope, primary);
 		if (pattern_index != std::numeric_limits<std::size_t>::max())
 		{
-			if (node == target_ && class_declaration_ == kNoNode &&
-				!parameters_.empty() &&
-				(analyzer_.arena_->IsTag(target_,
-					::cppgm::syntax::STAG_CLASS_SPECIFIER) ||
-				 analyzer_.arena_->IsTag(target_,
-					::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION)))
-			{
-				source_owner_pattern_ = pattern_index;
-				source_owner_is_partial_ = true;
-			}
+			const NodeId source = analyzer_.template_witness_ ?
+				analyzer_.arena_->TerminalNameComponent(node) : kNoNode;
 			if (analyzer_.template_witness_ &&
+				source != source_owner_component_ &&
 				pattern_index <= std::numeric_limits<std::uint32_t>::max())
 			{
-				const NodeId source =
-					analyzer_.arena_->TerminalNameComponent(node);
 				const bool dependent = SyntaxUsesTemplateParameter(node);
 				const TemplateWitnessObserver::SemanticSourceResolution resolution =
 					!dependent ?
 						TemplateWitnessObserver::SEMANTIC_SOURCE_DECLARATION_COMPLETE :
 					(source_owner_is_partial_ &&
-					 pattern_index == source_owner_pattern_) ?
+					 pattern_index == source_owner_pattern_ &&
+					 IsCurrentClassSource(source)) ?
 						TemplateWitnessObserver::SEMANTIC_SOURCE_CURRENT_PARTIAL :
 						TemplateWitnessObserver::SEMANTIC_SOURCE_REPLAY_REQUIRED;
 				analyzer_.template_witness_->NoteSemanticSourceFact(
 					target_, source, static_cast<std::uint32_t>(pattern_index),
 					TemplateWitnessObserver::SEMANTIC_SOURCE_CLASS_TEMPLATE,
-					resolution);
+					resolution, arguments.size());
 			}
 			const ClassTemplatePattern& pattern =
 				analyzer_.class_templates_[pattern_index];
@@ -1413,17 +1502,18 @@ void RetainedTemplateValidator::PublishRetainedSourceProvenance(
 	NodeId node, bool definition)
 {
 	if (!analyzer_.template_witness_ || node == kNoNode) return;
-	if (analyzer_.arena_->IsTag(node,
-		::cppgm::syntax::STAG_CALL_EXPRESSION))
+	if (analyzer_.arena_->IsTag(
+		node, ::cppgm::syntax::STAG_CALL_EXPRESSION) &&
+		(definition || SyntaxUsesTemplateParameter(node)))
 	{
-		const std::uint32_t callee_edge = analyzer_.arena_->FirstEdge(node);
-		if (callee_edge != kNoEdge &&
-			(definition || SyntaxUsesTemplateParameter(node)))
-			analyzer_.template_witness_->NoteRetainedFunctionCallSource(
-				analyzer_.arena_->EdgeChild(callee_edge));
+		const NodeId source = analyzer_.arena_->OverloadSourceAnchor(node);
+		if (source != kNoNode)
+			analyzer_.template_witness_->NoteRetainedFunctionCallSource(source);
 	}
 	if (analyzer_.arena_->IsTag(
 		node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME))
+	{
+		bool dependent_qualifier = false;
 		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		{
@@ -1432,10 +1522,20 @@ void RetainedTemplateValidator::PublishRetainedSourceProvenance(
 				component, ::cppgm::syntax::STAG_NAME_COMPONENT)) continue;
 			const NodeId arguments = analyzer_.FindChild(component,
 				::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
-			if (arguments != kNoNode &&
-				SyntaxUsesTemplateParameter(arguments))
+			const NameId component_name = analyzer_.program_->names.UseInterned(
+				analyzer_.arena_->SemanticPayloadId(component));
+			bool template_parameter_name = false;
+			for (std::size_t parameter = 0; parameter < parameters_.size(); ++parameter)
+				if (parameters_[parameter].kind == TEMPLATE_ARGUMENT_TEMPLATE &&
+					parameters_[parameter].name == component_name)
+					template_parameter_name = true;
+			if (arguments != kNoNode && (dependent_qualifier ||
+				template_parameter_name || SyntaxUsesTemplateParameter(arguments)))
 				analyzer_.template_witness_->NoteDependentSourceUse(component);
+			dependent_qualifier = dependent_qualifier ||
+				SyntaxUsesTemplateParameter(component);
 		}
+	}
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		PublishRetainedSourceProvenance(
@@ -1457,7 +1557,17 @@ void RetainedTemplateValidator::ScanDependentSourceUses(
 	NodeId node, std::size_t scope)
 {
 	if (analyzer_.template_witness_)
+	{
 		NoteDependentSourceUse(node, scope);
+		const NodeId overload_source =
+			analyzer_.arena_->OverloadSourceAnchor(node);
+		if (overload_source != kNoNode &&
+			(SyntaxUsesTemplateParameter(node) ||
+			 SyntaxUsesRetainedType(node, scope) ||
+			 SyntaxUsesRetainedValue(node, scope)))
+			analyzer_.template_witness_->NoteRetainedFunctionCallSource(
+				overload_source);
+	}
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		ScanDependentSourceUses(analyzer_.arena_->EdgeChild(edge), scope);
@@ -1467,6 +1577,17 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 	bool unknown_callee)
 {
 	if (node == kNoNode) return;
+	if (analyzer_.template_witness_)
+	{
+		const NodeId overload_source =
+			analyzer_.arena_->OverloadSourceAnchor(node);
+		if (overload_source != kNoNode &&
+			(SyntaxUsesTemplateParameter(node) ||
+			 SyntaxUsesRetainedType(node, scope) ||
+			 SyntaxUsesRetainedValue(node, scope)))
+			analyzer_.template_witness_->NoteRetainedFunctionCallSource(
+				overload_source);
+	}
 	NoteDependentSourceUse(node, scope);
 	if (VisitSwitchLabel(node, scope)) return;
 	// The parser and specialization demand own type syntax within this boundary.
@@ -2085,7 +2206,7 @@ void RetainedTemplateValidator::Run()
 	if (analyzer_.template_witness_)
 	{
 		InitializeSemanticSourceOwner();
-		PublishRetainedSourceProvenance(target_, true);
+		PublishRetainedSourceProvenance(target_, !definition);
 		for (std::size_t i = 0; i < parameters_.size(); ++i)
 			PublishTemplateParameterSourceProvenance(parameters_[i]);
 	}
@@ -2097,10 +2218,10 @@ void RetainedTemplateValidator::Run()
 
 void Analyzer::ValidateRetainedTemplateDefinition(NodeId target,
 	ScopeId scope, const std::vector<TemplateParameter>& parameters,
-	NodeId class_declaration)
+	NodeId class_declaration, NodeId class_source)
 {
 	RetainedTemplateValidator(
-		*this, target, scope, parameters, class_declaration).Run();
+		*this, target, scope, parameters, class_declaration, class_source).Run();
 }
 
 void Analyzer::PublishRetainedCallLookup(NodeId callee,

@@ -59,15 +59,19 @@ private:
 		std::uint32_t semantic_index;
 		std::uint8_t kind;
 		std::uint8_t resolution;
+		std::uint16_t explicit_count;
 
 		SemanticSourceFact(syntax::NodeId owner_value,
 			syntax::NodeId syntax_value, std::uint32_t semantic_index_value,
 			SemanticSourceKind kind_value,
-			SemanticSourceResolution resolution_value)
+			SemanticSourceResolution resolution_value,
+			std::size_t explicit_count_value)
 			: owner(owner_value), syntax(syntax_value),
 			  semantic_index(semantic_index_value),
 			  kind(static_cast<std::uint8_t>(kind_value)),
-			  resolution(static_cast<std::uint8_t>(resolution_value)) {}
+			  resolution(static_cast<std::uint8_t>(resolution_value)),
+			  explicit_count(static_cast<std::uint16_t>(
+				explicit_count_value > 65535 ? 65535 : explicit_count_value)) {}
 	};
 	enum OverloadDropReason
 	{
@@ -96,7 +100,7 @@ private:
 				  reason(reason_value) {}
 		};
 		SourceEventKind kind;
-		syntax::NodeId syntax;
+		syntax::NodeId syntax, component_syntax;
 		std::uint32_t pattern;
 		BindingId binding;
 		std::vector<TemplateArgument> arguments;
@@ -111,6 +115,7 @@ private:
 		std::size_t insertion_ordinal;
 		bool suppressed;
 		bool allow_substituted_source;
+		bool complete_at_source;
 		std::uint8_t selection_kind;
 		std::vector<Drop> drops;
 
@@ -248,7 +253,11 @@ private:
 	void BeginTranslationUnit(const std::string& primary_source_file);
 	void NoteSemanticSourceFact(syntax::NodeId owner,
 		syntax::NodeId syntax, std::uint32_t semantic_index,
-		SemanticSourceKind kind, SemanticSourceResolution resolution);
+		SemanticSourceKind kind, SemanticSourceResolution resolution,
+		std::size_t explicit_count);
+	void RecordSemanticCurrentClassUses(syntax::NodeId owner,
+		std::uint32_t pattern,
+		const std::vector<TemplateArgument>& arguments);
 	void RecordClassUse(syntax::NodeId syntax, std::uint32_t pattern,
 		BindingId binding, const std::vector<TemplateArgument>& arguments,
 		std::size_t explicit_count, std::size_t source_column_offset = 0,
@@ -263,6 +272,12 @@ private:
 	void RecordInstantiatedClassUse(syntax::NodeId syntax,
 		std::uint32_t pattern, BindingId binding,
 		const std::vector<TemplateArgument>& arguments);
+	void RecordRetainedClassOwnerUse(syntax::NodeId syntax,
+		std::uint32_t pattern,
+		const std::vector<TemplateArgument>& arguments);
+	void RecordCurrentClassUse(syntax::NodeId syntax, std::uint32_t pattern,
+		BindingId binding, const std::vector<TemplateArgument>& arguments,
+		std::size_t explicit_count);
 	void RecordAliasUse(syntax::NodeId syntax, std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments,
 		std::size_t explicit_count);
@@ -285,7 +300,8 @@ private:
 		std::uint8_t selection_kind);
 	void RecordVariableUse(syntax::NodeId syntax, BindingId binding,
 		std::size_t explicit_count);
-	void RecordFunctionCall(syntax::NodeId syntax, std::uint32_t pattern,
+	void RecordFunctionCall(syntax::NodeId syntax,
+		syntax::NodeId component_syntax, std::uint32_t pattern,
 		BindingId binding, const std::vector<TemplateArgument>& arguments,
 		std::size_t explicit_count);
 	void RecordOverloadSelection(BindingId selected,

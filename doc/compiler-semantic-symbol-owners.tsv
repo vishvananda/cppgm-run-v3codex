@@ -853,5 +853,6 @@ dev/src/semantic/templates/validation.cpp	RetainedFunctionCallCandidates	1	dev/s
 dev/src/semantic/templates/validation.cpp	ValidateRetainedTemplateDefinition	1	dev/src/semantic/templates/validation.cpp	keep
 dev/src/semantic/diagnostics/template_witness.cpp	RecordDeducedClassObjectUse	1	dev/src/semantic/diagnostics/template_witness.cpp	keep
 dev/src/semantic/diagnostics/template_witness.cpp	RecordFunctionTemplateSourceCall	1	dev/src/semantic/diagnostics/template_witness.cpp	keep
+dev/src/semantic/diagnostics/template_witness.cpp	RecordFunctionTemplateSourceAction	1	dev/src/semantic/diagnostics/template_witness.cpp	keep
 dev/src/semantic/diagnostics/template_witness.cpp	RecordStaticMemberTemplateWitness	1	dev/src/semantic/diagnostics/template_witness.cpp	keep
 dev/src/semantic/diagnostics/template_witness.cpp	TemplateWitnessSourceUseEnabled	1	dev/src/semantic/diagnostics/template_witness.cpp	keep

@@ -533,7 +533,8 @@ TemplateWitnessObserver::SourceEvent::SourceEvent(
 	const std::vector<TemplateArgument>& argument_values,
 	std::size_t explicit_count, std::size_t column_offset,
 	std::size_t ordinal)
-	: kind(kind_value), syntax(syntax_value), pattern(pattern_value),
+	: kind(kind_value), syntax(syntax_value), component_syntax(syntax_value),
+	  pattern(pattern_value),
 	  binding(binding_value), arguments(argument_values),
 	  provenance(argument_values.size(), 2), parameter_offsets(),
 	  specialization_arguments(), specialization_offsets(),
@@ -541,7 +542,8 @@ TemplateWitnessObserver::SourceEvent::SourceEvent(
 	  source_column_offset(column_offset), source_name(0),
 	  source_token(std::numeric_limits<std::size_t>::max()),
 	  insertion_ordinal(ordinal), suppressed(false),
-	  allow_substituted_source(false), selection_kind(0)
+	  allow_substituted_source(false), complete_at_source(false),
+	  selection_kind(0)
 {
 	for (std::size_t i = 0; i < explicit_count && i < provenance.size(); ++i)
 		provenance[i] = 0;
@@ -665,6 +667,7 @@ void Analyzer::RecordFunctionTemplateSourceCall(NodeId syntax,
 {
 	if (!TemplateWitnessSourceUseEnabled() || syntax == kNoNode ||
 		selected == kNoBinding) return;
+	const NodeId component_syntax = arena_->TerminalNameComponent(syntax);
 	selected = program_->bindings[selected].canonical;
 	const FunctionInfo& function = GetFunction(selected);
 	if (!function.template_specialization) return;
@@ -682,8 +685,29 @@ void Analyzer::RecordFunctionTemplateSourceCall(NodeId syntax,
 	if (record.template_argument_begin == kNoBinding) return;
 	const std::vector<TemplateArgument> arguments = StoredTemplateArguments(
 		record.template_argument_begin, record.template_argument_count);
-	template_witness_->RecordFunctionCall(syntax, pattern,
+	template_witness_->RecordFunctionCall(syntax, component_syntax, pattern,
 		selected, arguments, explicit_count);
+}
+
+void Analyzer::RecordFunctionTemplateSourceAction(
+	NodeId syntax, std::uint32_t action)
+{
+	if (!template_witness_ || syntax == kNoNode ||
+		action == kNoDumpEdge || action >= dump_.nodes.size()) return;
+	for (std::size_t depth = 0; depth != 4; ++depth)
+	{
+		const DumpNode& node = dump_.nodes[action];
+		if (node.kind == DUMP_CONSTRUCTOR_ACTION)
+		{
+			RecordFunctionTemplateSourceCall(syntax, node.binding, 0);
+			return;
+		}
+		if ((node.kind != DUMP_TEMPORARY_OBJECT &&
+			 node.kind != DUMP_CLASS_VALUE_TRANSFER) ||
+			node.first_edge == kNoDumpEdge ||
+			dump_.edges[node.first_edge].next != kNoDumpEdge) return;
+		action = dump_.edges[node.first_edge].child;
+	}
 }
 
 void Analyzer::RecordStaticMemberTemplateWitness(BindingId binding)
@@ -758,7 +782,8 @@ void TemplateWitnessObserver::BeginTranslationUnit(
 
 void TemplateWitnessObserver::NoteSemanticSourceFact(
 	syntax::NodeId owner, syntax::NodeId syntax, std::uint32_t semantic_index,
-	SemanticSourceKind kind, SemanticSourceResolution resolution)
+	SemanticSourceKind kind, SemanticSourceResolution resolution,
+	std::size_t explicit_count)
 {
 	if (owner == syntax::kNoNode || syntax == syntax::kNoNode) return;
 	for (std::size_t i = 0; i < semantic_source_facts_.size(); ++i)
@@ -768,10 +793,36 @@ void TemplateWitnessObserver::NoteSemanticSourceFact(
 			prior.semantic_index != semantic_index || prior.kind != kind)
 			continue;
 		if (prior.resolution < resolution) prior.resolution = resolution;
+		if (prior.explicit_count < explicit_count)
+			prior.explicit_count = static_cast<std::uint16_t>(
+				explicit_count > 65535 ? 65535 : explicit_count);
 		return;
 	}
 	semantic_source_facts_.push_back(SemanticSourceFact(
-		owner, syntax, semantic_index, kind, resolution));
+		owner, syntax, semantic_index, kind, resolution, explicit_count));
+}
+
+void TemplateWitnessObserver::RecordSemanticCurrentClassUses(
+	syntax::NodeId owner, std::uint32_t pattern,
+	const std::vector<TemplateArgument>& arguments)
+{
+	for (std::size_t i = 0; i < semantic_source_facts_.size(); ++i)
+	{
+		const SemanticSourceFact& fact = semantic_source_facts_[i];
+		if (fact.owner != owner || fact.semantic_index != pattern ||
+			fact.kind != SEMANTIC_SOURCE_CLASS_TEMPLATE ||
+			fact.resolution != SEMANTIC_SOURCE_CURRENT_PARTIAL)
+			continue;
+		bool duplicate = false;
+		for (std::size_t event = 0; event < source_events_.size(); ++event)
+			if (source_events_[event].kind == SOURCE_CLASS_USE &&
+				source_events_[event].syntax == fact.syntax &&
+				source_events_[event].pattern == pattern)
+				duplicate = true;
+		if (!duplicate)
+			RecordCurrentClassUse(fact.syntax, pattern, kNoBinding,
+				arguments, fact.explicit_count);
+	}
 }
 
 void TemplateWitnessObserver::RecordClassUse(syntax::NodeId syntax,
@@ -781,12 +832,13 @@ void TemplateWitnessObserver::RecordClassUse(syntax::NodeId syntax,
 {
 	const bool resolved = std::find(resolved_source_uses_.begin(),
 		resolved_source_uses_.end(), syntax) != resolved_source_uses_.end();
+	const bool dependent_source = std::find(dependent_source_uses_.begin(),
+		dependent_source_uses_.end(), syntax) != dependent_source_uses_.end();
+	const bool dependent_class = std::find(dependent_class_uses_.begin(),
+		dependent_class_uses_.end(), std::make_pair(syntax, pattern)) !=
+		dependent_class_uses_.end();
 	if (replayed && !resolved) return;
-	if (std::find(dependent_source_uses_.begin(), dependent_source_uses_.end(),
-		syntax) != dependent_source_uses_.end() && !resolved) return;
-	if (std::find(dependent_class_uses_.begin(), dependent_class_uses_.end(),
-		std::make_pair(syntax, pattern)) != dependent_class_uses_.end() &&
-		!resolved) return;
+	if (!resolved && (dependent_source || dependent_class)) return;
 	source_events_.push_back(SourceEvent(SOURCE_CLASS_USE, syntax, pattern,
 		binding, arguments, explicit_count, source_column_offset,
 		next_insertion_ordinal_++));
@@ -801,7 +853,8 @@ void TemplateWitnessObserver::NoteDependentSourceUse(syntax::NodeId syntax)
 		dependent_source_uses_.push_back(syntax);
 	for (std::size_t i = 0; i < source_events_.size(); ++i)
 		if (source_events_[i].kind == SOURCE_CLASS_USE &&
-			source_events_[i].syntax == syntax)
+			source_events_[i].syntax == syntax &&
+			!source_events_[i].complete_at_source)
 			source_events_[i].suppressed = true;
 }
 
@@ -813,10 +866,6 @@ void TemplateWitnessObserver::NoteRetainedFunctionCallSource(
 		retained_function_call_sources_.end(), syntax) ==
 		retained_function_call_sources_.end())
 		retained_function_call_sources_.push_back(syntax);
-	for (std::size_t i = 0; i < source_events_.size(); ++i)
-		if (source_events_[i].kind == SOURCE_FUNCTION_CALL &&
-			source_events_[i].syntax == syntax)
-			source_events_[i].suppressed = true;
 }
 
 void TemplateWitnessObserver::NoteResolvedSourceUse(syntax::NodeId syntax)
@@ -861,7 +910,8 @@ void TemplateWitnessObserver::NoteDependentClassUse(
 	for (std::size_t i = 0; i < source_events_.size(); ++i)
 		if (source_events_[i].kind == SOURCE_CLASS_USE &&
 			source_events_[i].syntax == syntax &&
-			source_events_[i].pattern == pattern)
+			source_events_[i].pattern == pattern &&
+			!source_events_[i].complete_at_source)
 			source_events_[i].suppressed = true;
 }
 
@@ -874,12 +924,53 @@ void TemplateWitnessObserver::RecordInstantiatedClassUse(
 	source_events_.back().allow_substituted_source = true;
 }
 
+void TemplateWitnessObserver::RecordRetainedClassOwnerUse(
+	syntax::NodeId syntax, std::uint32_t pattern,
+	const std::vector<TemplateArgument>& arguments)
+{
+	if (syntax == syntax::kNoNode) return;
+	source_events_.push_back(SourceEvent(SOURCE_CLASS_USE, syntax, pattern,
+		kNoBinding, arguments, arguments.size(), 0,
+		next_insertion_ordinal_++));
+	SourceEvent& event = source_events_.back();
+	event.allow_substituted_source = true;
+	event.complete_at_source = true;
+	event.selection_kind = 2;
+}
+
+void TemplateWitnessObserver::RecordCurrentClassUse(
+	syntax::NodeId syntax, std::uint32_t pattern, BindingId binding,
+	const std::vector<TemplateArgument>& arguments, std::size_t explicit_count)
+{
+	if (syntax == syntax::kNoNode) return;
+	source_events_.push_back(SourceEvent(SOURCE_CLASS_USE, syntax, pattern,
+		binding, arguments, explicit_count, 0, next_insertion_ordinal_++));
+	SourceEvent& event = source_events_.back();
+	event.allow_substituted_source = true;
+	event.complete_at_source = true;
+	event.selection_kind = 2;
+}
+
 void TemplateWitnessObserver::RecordAliasUse(syntax::NodeId syntax,
 	std::uint32_t pattern, const std::vector<TemplateArgument>& arguments,
 	std::size_t explicit_count)
 {
 	if (std::find(dependent_source_uses_.begin(), dependent_source_uses_.end(),
-		syntax) != dependent_source_uses_.end()) return;
+		syntax) != dependent_source_uses_.end())
+	{
+		// Retained syntax supplies the written arguments while concrete replay
+		// supplies the resolved alias identity.  Join those two authoritative
+		// facts without replacing the source spelling with one replay's values.
+		for (std::size_t i = 0; i < source_events_.size(); ++i)
+			if (source_events_[i].kind == SOURCE_ALIAS_USE &&
+				source_events_[i].syntax == syntax &&
+				source_events_[i].pattern == pattern) return;
+		source_events_.push_back(SourceEvent(SOURCE_ALIAS_USE, syntax, pattern,
+			kNoBinding, std::vector<TemplateArgument>(), 0, 0,
+			next_insertion_ordinal_++));
+		source_events_.back().allow_substituted_source = true;
+		return;
+	}
 	if (std::find(dependent_alias_uses_.begin(), dependent_alias_uses_.end(),
 		std::make_pair(syntax, pattern)) != dependent_alias_uses_.end()) return;
 	for (std::size_t i = 0; i < source_events_.size(); ++i)
@@ -985,15 +1076,16 @@ void TemplateWitnessObserver::RecordVariableUse(syntax::NodeId syntax,
 }
 
 void TemplateWitnessObserver::RecordFunctionCall(syntax::NodeId syntax,
-	std::uint32_t pattern, BindingId binding,
+	syntax::NodeId component_syntax, std::uint32_t pattern, BindingId binding,
 	const std::vector<TemplateArgument>& arguments, std::size_t explicit_count)
 {
 	if (std::find(retained_function_call_sources_.begin(),
-		retained_function_call_sources_.end(), syntax) !=
+		retained_function_call_sources_.end(), component_syntax) !=
 		retained_function_call_sources_.end()) return;
 	source_events_.push_back(SourceEvent(SOURCE_FUNCTION_CALL, syntax, pattern,
 		binding, arguments, 0, 0, next_insertion_ordinal_++));
 	SourceEvent& event = source_events_.back();
+	event.component_syntax = component_syntax;
 	for (std::size_t i = 0; i < function_specializations_.size(); ++i)
 		if (function_specializations_[i].binding == binding &&
 			function_specializations_[i].arguments == arguments)
@@ -1477,7 +1569,7 @@ std::string TemplateWitnessObserver::SourceDistinguishedClassName(
 				entity || event.pattern >= analyzer.class_templates_.size())
 			continue;
 		std::vector<std::string> spellings;
-		CollectExplicitTemplateArgumentSpellings(arena, event.syntax,
+		CollectExplicitTemplateArgumentSpellings(arena, event.component_syntax,
 			analyzer.program_->names.Get(
 				analyzer.class_templates_[event.pattern].name),
 			event.source_token, &spellings);
@@ -1555,7 +1647,7 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 		if (opening == std::string::npos) continue;
 		std::vector<syntax::NodeId> argument_syntax;
 		CollectExplicitTemplateArgumentSyntax(
-			arena, event.syntax, &argument_syntax);
+			arena, event.component_syntax, &argument_syntax);
 		std::string presented = full.substr(0, opening + 1);
 		for (std::size_t argument = 0;
 			argument < event.arguments.size(); ++argument)
@@ -1621,7 +1713,7 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 			event.suppressed = true;
 		if (event.kind == SOURCE_ALIAS_USE &&
 			event.pattern < analyzer.alias_templates_.size() &&
-			arena.SemanticPayloadId(event.syntax) !=
+			arena.SemanticPayloadId(event.component_syntax) !=
 				analyzer.alias_templates_[event.pattern].name)
 			event.suppressed = true;
 	}
@@ -1648,6 +1740,7 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 				arena.TokenFirst(event.syntax) : event.source_token;
 			trace << "  event kind=" << static_cast<unsigned>(event.kind)
 				<< " syntax=" << event.syntax << " pattern=" << event.pattern
+				<< " component=" << event.component_syntax
 				<< " suppressed=" << event.suppressed
 				<< " syntax-file=" << arena.SourceFile(event.syntax)
 				<< " syntax-line=" << arena.SourceLine(event.syntax)
@@ -1665,7 +1758,17 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 		trace << "  dependent-class-uses=" << dependent_class_uses_.size()
 			<< " dependent-alias-uses=" << dependent_alias_uses_.size()
 			<< " dependent-source-uses=" << dependent_source_uses_.size()
+			<< " retained-call-sources=" << retained_function_call_sources_.size()
 			<< '\n';
+		for (std::size_t i = 0; i < retained_function_call_sources_.size(); ++i)
+		{
+			const syntax::NodeId node = retained_function_call_sources_[i];
+			trace << "    retained-call-source syntax=" << node
+				<< " tag=" << arena.Tag(node)
+				<< " payload=" << arena.Payload(node)
+				<< " line=" << arena.SourceLine(node)
+				<< " column=" << arena.SourceColumn(node) << '\n';
+		}
 		for (std::size_t i = 0; i < dependent_class_uses_.size(); ++i)
 			trace << "    dependent-class syntax=" <<
 				dependent_class_uses_[i].first << " pattern=" <<
@@ -1849,14 +1952,14 @@ std::string TemplateWitnessObserver::RenderSourceBindings(
 	const bool variable_use = event.kind == SOURCE_VARIABLE_USE;
 	std::vector<syntax::NodeId> explicit_argument_syntax;
 	CollectExplicitTemplateArgumentSyntax(
-		arena, event.syntax, &explicit_argument_syntax);
+		arena, event.component_syntax, &explicit_argument_syntax);
 	NameId event_template_name = class_use ?
 		analyzer.class_templates_[event.pattern].name : alias_use ?
 		analyzer.alias_templates_[event.pattern].name : variable_use ?
 		analyzer.variable_templates_[event.pattern].name :
 		analyzer.function_templates_[event.pattern].name;
 	std::vector<std::string> explicit_argument_spellings;
-	CollectExplicitTemplateArgumentSpellings(arena, event.syntax,
+	CollectExplicitTemplateArgumentSpellings(arena, event.component_syntax,
 		analyzer.program_->names.Get(event_template_name), event.source_token,
 		&explicit_argument_spellings);
 	const auto render_argument = [&analyzer, &arena, &event,

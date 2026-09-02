@@ -615,6 +615,8 @@ void Analyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 			value.type = returned_object;
 			value.category = VALUE_PRVALUE;
 		}
+		if (template_witness_)
+			RecordFunctionTemplateSourceAction(expression, value.node);
 		dump_.Add(statement, value.node);
 		const std::size_t first_cleanup_edge = dump_.edges.size();
 		AppendFullExpressionDestructionActions(value.node, statement);

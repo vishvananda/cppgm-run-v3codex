@@ -1442,9 +1442,15 @@ ExpressionInfo Analyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId target)
 					ApplyTarget(initialized, target);
 			}
 			if (IsClassObjectType(cast_type))
-				return AnalyzeClassFunctionalCast(cast_type, scope,
+			{
+				ExpressionInfo result = AnalyzeClassFunctionalCast(cast_type, scope,
 					argument_syntax, arguments_node, target,
 					arguments_analyzed ? &analyzed_arguments : 0);
+				if (template_witness_)
+					RecordFunctionTemplateSourceAction(
+						direct_callee_syntax, result.node);
+				return result;
+			}
 			if (argument_syntax.size() > 1)
 				ThrowSemanticError("too many functional cast arguments");
 			if (argument_syntax.empty())
@@ -2220,6 +2226,9 @@ void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				initializer = AnalyzeConstantAwareVariableInitializer(initializer_node,
 					semantic_scope, parsed.type, local, require_constant,
 					preserve_runtime_recipe);
+			if (template_witness_)
+				RecordFunctionTemplateSourceAction(
+					arena_->DeclaratorIdentifier(declarator), initializer.node);
 			if (program_->types.Get(parsed.type).IsIncompleteArray())
 			{
 				parsed.type = initializer.type;

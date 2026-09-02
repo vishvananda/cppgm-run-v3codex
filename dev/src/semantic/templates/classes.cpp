@@ -428,6 +428,7 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 					&arguments)) return LookupResult();
 				BindingId specialization = MatchingInjectedClassTemplateSpecialization(
 					found, pattern, arguments);
+				const bool current_specialization = specialization != kNoBinding;
 				if (specialization == kNoBinding)
 					specialization = InstantiateClassTemplate(pattern, arguments);
 				if (specialization == kNoBinding) return LookupResult();
@@ -441,7 +442,15 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 							  arguments[argument].kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
 							 FunctionTemplateTypeIsDependent(arguments[argument].type)))
 							dependent_arguments = true;
-					if (dependent_arguments)
+					if (dependent_arguments && current_specialization)
+					{
+						template_witness_->NoteDependentClassUse(component_node,
+							static_cast<std::uint32_t>(pattern));
+						template_witness_->RecordCurrentClassUse(component_node,
+							static_cast<std::uint32_t>(pattern), specialization,
+							arguments, argument_syntax.size());
+					}
+					else if (dependent_arguments)
 						template_witness_->NoteDependentClassUse(component_node,
 							static_cast<std::uint32_t>(pattern));
 					else
@@ -803,8 +812,13 @@ bool Analyzer::AnalyzeClassTemplateMember(NodeId declaration,
 		// names. Concrete replay still resolves those names in the canonical
 		// specialization scope and publishes the substituted type identities.
 		ValidateRetainedTemplateDefinition(
-			declaration, scope, parameters, class_declaration);
+			declaration, scope, parameters, class_declaration,
+			member.owner_source);
 	}
+	if (template_witness_ && member.owner_partial_pattern != kNoDumpEdge)
+		template_witness_->RecordSemanticCurrentClassUses(
+			declaration, static_cast<std::uint32_t>(pattern_index),
+			member.canonical_owner_arguments);
 
 	const bool demand_definition =
 		arena_->IsTag(described_declaration, ::cppgm::syntax::STAG_SIMPLE_DECLARATION);
@@ -1100,6 +1114,10 @@ void Analyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		(void)MaterializeTemplatePartialArguments(owner.parameters,
 			partial.parameters, partial.arguments, partial.lexical_scope,
 			&partial.canonical_arguments, &partial.canonical_argument_state);
+		if (template_witness_)
+			template_witness_->RecordSemanticCurrentClassUses(
+				partial.declaration, static_cast<std::uint32_t>(primary),
+				partial.canonical_arguments);
 		std::unordered_set<NameId> dependent_names;
 		for (std::size_t parameter = 0;
 			parameter < partial.parameters.size(); ++parameter)
@@ -1375,6 +1393,14 @@ void Analyzer::ApplyClassTemplateMemberDefinitions(
 		const std::uint32_t selected_partial = selection ?
 			selection->pattern : kNoDumpEdge;
 		if (definition.owner_partial_pattern != selected_partial) continue;
+		if (template_witness_ && selected_partial != kNoDumpEdge &&
+			!arena_->IsTag(definition.declaration,
+				::cppgm::syntax::STAG_CLASS_SPECIFIER) &&
+			!arena_->IsTag(definition.declaration,
+				::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION))
+			template_witness_->RecordRetainedClassOwnerUse(
+				definition.owner_source, static_cast<std::uint32_t>(index),
+				definition.canonical_owner_arguments);
 		FunctionTemplateDeduction owner_bindings(definition.parameters);
 		if (!MatchTemplatePartialArguments(definition.parameters,
 			definition.canonical_owner_arguments, arguments, &owner_bindings))
