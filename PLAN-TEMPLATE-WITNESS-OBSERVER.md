@@ -1149,6 +1149,21 @@ policy.  Add explicit policy overloads to the shared typed-argument renderer
 and use them only while constructing closure/entity replacements; ordinary
 source-event bindings retain their existing spelling policy.
 
+### Phase W5M-O: Call-operator deduction source
+
+Publish failed call-operator template candidates through the exact call source
+already carried by `TryAnalyzeOverloadedOperator`.  Member call-operator
+deduction uses the shared function-template deduction routine, which already
+computes typed arity and deduction-failure reasons, but previously omitted its
+optional `witness_syntax` argument.  Pass the existing source node without
+adding syntax recovery, changing candidate formation, or allocating argument
+syntax on the normal path.
+
+Keep the handoff at this final operator candidate boundary.  Do not infer a
+call source from the selected binding in the renderer and do not publish from
+the lower-level deduction routine unless its caller has supplied authoritative
+syntax.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1211,6 +1226,7 @@ source-event bindings retain their existing spelling policy.
 | W5M-O terminal object-type source | Used the authoritative terminal name component to distinguish explicit template-ids from alias/typedef/member results, while suppressing a retained dependent qualifier through W5D's exact-node provenance | terminal-only prototype improved 7 files but regressed one exact PA23 retained-body witness and was rejected; exact-node join changes 7 files, with PA22 +1 and PA24 +3 exact, no PA19/20/23 regression, all 1,532 LowIR artifacts exact; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; extended paired user +0.182%, wall +0.000%, RSS +0.020% | retain the source-role consumer; do not infer retained context from result type or source spelling |
 | W5M rejected retained-call shortcut | Allowed an explicit template-id call to bypass the retained-source suppression bit | one intended PA22 call became exact, but 6 PA19, 7 PA20, 6 PA22, 48 PA23, and 33 PA24 previously exact witnesses regressed; LowIR stayed exact | reject; explicit syntax does not prove that a call is a public evaluated use, so add typed evaluation/replay provenance before revisiting |
 | W5M-S recursive entity presentation | Propagated the existing anonymous-namespace policy through typed template arguments, declarator types, member-pointer owners, value bindings, and closure replacement identities | 2 witnesses change: PA22 gains 1 exact file, and every affected function/require/variable closure identity in one PA24 file gains its missing anonymous scopes; no regression, all 1,532 LowIR artifacts exact; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; cumulative paired user -0.547%, wall -0.650%, RSS +0.704% | retain as shared typed presentation machinery; keep ordinary source-event rendering's default policy unchanged |
+| W5M-O call-operator deduction source | Passed `TryAnalyzeOverloadedOperator`'s exact call node to the shared typed function-template deduction result | exactly 1 PA22 witness changes and becomes exact (missing `too_few_arguments`); every other PA19--PA24 witness and all 1,532 LowIR artifacts are identical; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; paired user -0.301%, wall -0.212%, RSS -0.202% | retain; source-aware callers own drop publication and the deduction engine remains source-optional |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

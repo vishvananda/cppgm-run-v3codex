@@ -1963,7 +1963,8 @@ bool Analyzer::TryAnalyzeOverloadedOperator(
 				operands.begin() + 1, operands.end());
 			std::vector<BindingId> specializations;
 			DeduceFunctionTemplatePatterns(
-				patterns, arguments, &specializations);
+				patterns, arguments, &specializations, 0, 0, kNoScope, 0,
+				witness_source);
 			for (std::size_t i = 0; i < specializations.size(); ++i)
 				if (program_->bindings[specializations[i]].member_owner != kNoEntity)
 					AddCandidate(specializations[i], &candidates);
