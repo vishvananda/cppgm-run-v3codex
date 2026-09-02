@@ -1,6 +1,7 @@
 #pragma once
 
 #include "semantic/model/program.h"
+#include "semantic/presentation/source_identity.h"
 #include "syntax/model/arena.h"
 
 #include <cstddef>
@@ -396,6 +397,8 @@ private:
 	std::vector<SourceEvent> source_events_;
 	std::vector<FunctionSpecializationFact> function_specializations_;
 	std::vector<ClassSpecializationFact> class_specializations_;
+	std::vector<presentation::TemplateEntityArgumentLimit>
+		entity_argument_limits_;
 	std::vector<VariableSpecializationFact> variable_specializations_;
 	std::vector<OverloadSelectionFact> overload_selections_;
 	std::vector<DeductionDropFact> deduction_drops_;

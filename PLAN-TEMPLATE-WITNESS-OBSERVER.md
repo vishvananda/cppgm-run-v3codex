@@ -757,6 +757,19 @@ LowIR and all three audits are exact.  Four ABBA blocks measure -0.241% paired
 user, -0.538% wall, and +0.100% RSS; the report is
 `/tmp/v3codex-w5m-typed-elision-foundation-ab.json`.
 
+The first consumer derives typed limits only when an observed specialization
+fact exactly matches the canonical arguments stored on its entity.  It ignores
+trailing-pack templates and applies the sidecar to source bindings, selected-
+partial bindings, member owners, and closure entity presentation.  PA22 moves
+from 56 to 55 mismatches: the inherited alias operator fixture becomes exact,
+and every nested binding/specialization in the template-template use-scope
+fixture is corrected (its remaining difference is unrelated anonymous-
+namespace qualification).  PA19/20 remain exact; PA23/24 witness manifests do
+not change; frozen O0/O1/O3 LowIR and all audits remain exact.  Four ABBA
+blocks against the pre-foundation compiler measure -0.847% paired user,
+-0.544% wall, and -1.110% RSS; the report is
+`/tmp/v3codex-w5m-typed-elision-consumer-ab.json`.
+
 The first consumer uses the retained owner pattern/partial ordinal only after
 their bounds and completed canonical-argument state are validated.  It renders
 the primary name and typed partial arguments through the opt-in identity
@@ -932,6 +945,7 @@ byte-identical objects.  The report is
 | W5M-O alias cv presentation | Canonicalized cv placement only when token structure otherwise preserves the explicit source identity | broad canonical rendering worsened PA22 59 -> 72 and was rejected; narrow policy makes the owner fixture exact and PA22 59 -> 58, with PA19/20 exact and no PA23/24 manifest changes; objects/audits exact; final extended six-block paired user -0.122%, wall -0.000%, RSS +0.154% | retain the structural normalization; source-preserved identities remain authoritative |
 | W5M-O call-owner normalization | Applied the existing primitive spelling normalization at selected member-call owner presentation | PA22 58 -> 56; one PA23 and two PA24 files also become exact with no later-manifest regressions; PA19/20 and objects/audits exact; four-block paired user +0.000% | retain the shared final-render normalization |
 | W5M-S typed argument elision | Added an opt-in recursive source-identity policy keyed by semantic entity and bounded presentation arity | existing APIs and output unchanged; PA19/20 exact; PA22 stays 56; O0/O1/O3 LowIR and audits exact; four-block paired user -0.241%, wall -0.538%, RSS +0.100% | retain as the foundation for nested default provenance; do not manufacture qualified/unqualified string aliases |
+| W5M-O omitted argument provenance | Derived typed entity limits from exact canonical specialization facts and consumed them recursively | PA22 56 -> 55; inherited alias operator exact; nested use-scope arguments corrected; PA19/20 exact; PA23/24 unchanged; objects/audits exact; four-block paired user -0.847% | retain; keep semantic default equivalence separate from genuinely omitted source provenance |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

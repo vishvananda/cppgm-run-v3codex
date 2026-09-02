@@ -73,7 +73,8 @@ std::string NormalizeWitnessTypeSpelling(std::string spelling)
 }
 
 std::string RenderWitnessArgument(const Program& program,
-	const TemplateArgument& argument)
+	const TemplateArgument& argument,
+	const presentation::TemplateArgumentElision* elision = 0)
 {
 	if ((argument.kind == TEMPLATE_ARGUMENT_TYPE ||
 		 argument.kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
@@ -118,6 +119,8 @@ std::string RenderWitnessArgument(const Program& program,
 			return std::to_string(static_cast<std::uint64_t>(argument.value));
 	}
 	std::string spelling = NormalizeWitnessTypeSpelling(
+		elision ? presentation::RenderTemplateArgument(
+			program, argument, *elision) :
 		presentation::RenderTemplateArgument(program, argument));
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE &&
 		argument.type != kNoType && argument.type < program.types.Size() &&
@@ -127,9 +130,11 @@ std::string RenderWitnessArgument(const Program& program,
 }
 
 std::string RenderFunctionTypeSourceIdentity(const Program& program,
-	const TemplateArgument& argument, const std::string& source)
+	const TemplateArgument& argument, const std::string& source,
+	const presentation::TemplateArgumentElision* elision = 0)
 {
-	const std::string canonical = RenderWitnessArgument(program, argument);
+	const std::string canonical = RenderWitnessArgument(
+		program, argument, elision);
 	if (argument.kind != TEMPLATE_ARGUMENT_TYPE) return canonical;
 	const std::size_t close = source.rfind(')');
 	if (close == std::string::npos) return canonical;
@@ -418,7 +423,8 @@ void CollectExplicitTemplateArgumentSpellings(const SyntaxArena& arena,
 
 std::string RenderWitnessArgumentAtSource(const Program& program,
 	const SyntaxArena& arena, const TemplateArgument& argument,
-	syntax::NodeId source, bool prefer_source = false)
+	syntax::NodeId source, bool prefer_source = false,
+	const presentation::TemplateArgumentElision* elision = 0)
 {
 	if (source != syntax::kNoNode && prefer_source)
 	{
@@ -434,7 +440,7 @@ std::string RenderWitnessArgumentAtSource(const Program& program,
 		const std::string spelling = RenderSourceSyntax(arena, source);
 		if (!spelling.empty())
 			return RenderFunctionTypeSourceIdentity(
-				program, argument, spelling);
+				program, argument, spelling, elision);
 	}
 	if (source != syntax::kNoNode && argument.IsDependent())
 	{
@@ -466,9 +472,9 @@ std::string RenderWitnessArgumentAtSource(const Program& program,
 		if (arena.IsTag(source, ::cppgm::syntax::STAG_CAST_EXPRESSION))
 			return "(" + NormalizeWitnessTypeSpelling(
 				presentation::RenderType(program, argument.type)) + ")" +
-				RenderWitnessArgument(program, argument);
+				RenderWitnessArgument(program, argument, elision);
 	}
-	return RenderWitnessArgument(program, argument);
+	return RenderWitnessArgument(program, argument, elision);
 }
 
 std::size_t FinalTemplateOpening(const std::string& spelling)
@@ -610,7 +616,7 @@ TemplateWitnessObserver::TemplateWitnessObserver(bool debug)
 	  semantic_source_facts_(), retained_member_source_facts_(),
 	  retained_alias_qualifier_facts_(), source_events_(),
 	  function_specializations_(), class_specializations_(),
-	  variable_specializations_(),
+	  entity_argument_limits_(), variable_specializations_(),
 	  overload_selections_(), deduction_drops_(), dependent_class_uses_(),
 	  dependent_alias_uses_(), dependent_source_uses_(),
 	  retained_function_call_sources_(), resolved_source_uses_(),
@@ -790,6 +796,7 @@ void TemplateWitnessObserver::BeginTranslationUnit(
 	source_events_.clear();
 	function_specializations_.clear();
 	class_specializations_.clear();
+	entity_argument_limits_.clear();
 	variable_specializations_.clear();
 	overload_selections_.clear();
 	deduction_drops_.clear();
@@ -1416,6 +1423,8 @@ std::string TemplateWitnessObserver::OverloadName(const Analyzer& analyzer,
 	const SourceEvent::Drop& drop,
 	const EntityReplacements& replacements) const
 {
+	const presentation::TemplateArgumentElision argument_elision(
+		entity_argument_limits_);
 	const BindingId binding = drop.binding;
 	if (binding == kNoBinding)
 	{
@@ -1438,7 +1447,8 @@ std::string TemplateWitnessObserver::OverloadName(const Analyzer& analyzer,
 	std::string result;
 	if (visible.member_owner != kNoEntity)
 		result = presentation::RenderEntity(
-			*analyzer.program_, visible.member_owner, true) + "::" +
+			*analyzer.program_, visible.member_owner,
+			argument_elision, true) + "::" +
 			analyzer.program_->names.Get(terminal);
 	else result = presentation::RenderName(
 		*analyzer.program_, visible.owner, terminal);
@@ -1448,6 +1458,8 @@ std::string TemplateWitnessObserver::OverloadName(const Analyzer& analyzer,
 std::string TemplateWitnessObserver::FunctionContextName(
 	const Analyzer& analyzer, BindingId binding) const
 {
+	const presentation::TemplateArgumentElision argument_elision(
+		entity_argument_limits_);
 	binding = analyzer.program_->bindings[binding].canonical;
 	const FunctionInfo& function = analyzer.GetFunction(binding);
 	const BindingRecord& record = analyzer.program_->bindings[binding];
@@ -1458,7 +1470,8 @@ std::string TemplateWitnessObserver::FunctionContextName(
 	std::string result = record.member_owner == kNoEntity ?
 		presentation::RenderName(*analyzer.program_, record.owner, terminal) :
 		presentation::RenderEntity(
-			*analyzer.program_, record.member_owner, true) + "::" +
+			*analyzer.program_, record.member_owner,
+			argument_elision, true) + "::" +
 			analyzer.program_->names.Get(terminal);
 	const TypeRecord& type = analyzer.program_->types.Get(function.type);
 	result += '(';
@@ -1551,9 +1564,12 @@ std::string TemplateWitnessObserver::GeneratedLabel(const Analyzer& analyzer,
 std::string TemplateWitnessObserver::ClassEntityName(const Analyzer& analyzer,
 	const SyntaxArena& arena, EntityId entity) const
 {
+	const presentation::TemplateArgumentElision argument_elision(
+		entity_argument_limits_);
 	const syntax::NodeId leaf_node = GeneratedSourceNode(analyzer, entity);
 	if (leaf_node == syntax::kNoNode)
-		return presentation::RenderEntity(*analyzer.program_, entity, true);
+		return presentation::RenderEntity(
+			*analyzer.program_, entity, argument_elision, true);
 	std::vector<std::pair<EntityId, syntax::NodeId> > chain;
 	EntityId current = entity;
 	while (current != kNoEntity)
@@ -1571,7 +1587,7 @@ std::string TemplateWitnessObserver::ClassEntityName(const Analyzer& analyzer,
 			result = FunctionContextName(analyzer, leaf.local_context);
 		else if (current != kNoEntity)
 			result = presentation::RenderEntity(
-				*analyzer.program_, current, true);
+				*analyzer.program_, current, argument_elision, true);
 		for (std::size_t i = chain.size(); i > 1; --i)
 		{
 			if (!result.empty()) result += "::";
@@ -1583,7 +1599,8 @@ std::string TemplateWitnessObserver::ClassEntityName(const Analyzer& analyzer,
 	{
 		if (leaf.enclosing_class != kNoEntity)
 			result = presentation::RenderEntity(
-				*analyzer.program_, leaf.enclosing_class, true);
+				*analyzer.program_, leaf.enclosing_class,
+				argument_elision, true);
 		else if (leaf.local_context != kNoBinding)
 			result = FunctionContextName(analyzer, leaf.local_context);
 	}
@@ -1660,6 +1677,8 @@ bool TemplateWitnessObserver::IsRequiredTemplateFunction(
 std::string TemplateWitnessObserver::FunctionEntityName(
 	const Analyzer& analyzer, BindingId binding) const
 {
+	const presentation::TemplateArgumentElision argument_elision(
+		entity_argument_limits_);
 	binding = analyzer.program_->bindings[binding].canonical;
 	const FunctionInfo& function = analyzer.GetFunction(binding);
 	const BindingRecord& record = analyzer.program_->bindings[binding];
@@ -1679,7 +1698,7 @@ std::string TemplateWitnessObserver::FunctionEntityName(
 				owner.emission_name : owner.identity_name);
 		}
 		else result = presentation::RenderEntity(
-			*analyzer.program_, record.member_owner, true);
+			*analyzer.program_, record.member_owner, argument_elision, true);
 		result += "::";
 		if (function.conversion_function)
 		{
@@ -1704,8 +1723,10 @@ std::string TemplateWitnessObserver::FunctionEntityName(
 std::string TemplateWitnessObserver::SourceDistinguishedClassName(
 	const Analyzer& analyzer, const SyntaxArena& arena, EntityId entity) const
 {
+	const presentation::TemplateArgumentElision argument_elision(
+		entity_argument_limits_);
 	const std::string canonical = presentation::RenderEntity(
-		*analyzer.program_, entity, true);
+		*analyzer.program_, entity, argument_elision, true);
 	const std::size_t opening = FinalTemplateOpening(canonical);
 	if (opening == std::string::npos) return canonical;
 	for (std::size_t i = 0; i < source_events_.size(); ++i)
@@ -1729,10 +1750,11 @@ std::string TemplateWitnessObserver::SourceDistinguishedClassName(
 		{
 			if (argument != 0) presented += ", ";
 			const std::string ordinary = RenderWitnessArgument(
-				*analyzer.program_, event.arguments[argument]);
+				*analyzer.program_, event.arguments[argument], &argument_elision);
 			const std::string source = argument < spellings.size() ?
 				RenderFunctionTypeSourceIdentity(*analyzer.program_,
-					event.arguments[argument], spellings[argument]) : ordinary;
+					event.arguments[argument], spellings[argument],
+					&argument_elision) : ordinary;
 			if (source != ordinary) distinguished = true;
 			presented += source;
 		}
@@ -1747,6 +1769,52 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 {
 	const SyntaxArena& arena = *analyzer.arena_;
 	EntityReplacements& entity_replacements = *replacements;
+	entity_argument_limits_.clear();
+	for (std::size_t i = 0; i < class_specializations_.size(); ++i)
+	{
+		const ClassSpecializationFact& fact = class_specializations_[i];
+		if (fact.binding >= analyzer.program_->bindings.size()) continue;
+		const EntityId entity = analyzer.EntityOf(
+			analyzer.program_->bindings[fact.binding].type);
+		if (entity == kNoEntity || entity >= analyzer.program_->entities.size())
+			continue;
+		const EntityRecord& record = analyzer.program_->entities[entity];
+		const std::size_t first = record.template_argument_begin;
+		const std::size_t count = record.template_argument_count;
+		if (fact.explicit_count >= count || fact.arguments.size() != count ||
+			first > analyzer.program_->canonical_template_arguments.size() ||
+			count > analyzer.program_->canonical_template_arguments.size() - first)
+			continue;
+		bool same = true;
+		for (std::size_t argument = 0; argument < count; ++argument)
+			if (!(fact.arguments[argument] ==
+				analyzer.program_->canonical_template_arguments[first + argument]))
+				same = false;
+		if (!same) continue;
+		if (entity < analyzer.class_template_pattern_by_entity_.size())
+		{
+			const std::uint32_t pattern =
+				analyzer.class_template_pattern_by_entity_[entity];
+			if (pattern < analyzer.class_templates_.size() &&
+				HasTrailingTemplateParameterPack(
+					analyzer.class_templates_[pattern].parameters))
+				continue;
+		}
+		bool found = false;
+		for (std::size_t limit = 0;
+			limit < entity_argument_limits_.size(); ++limit)
+			if (entity_argument_limits_[limit].entity == entity)
+			{
+				entity_argument_limits_[limit].count = std::min(
+					entity_argument_limits_[limit].count,
+					fact.explicit_count);
+				found = true;
+				break;
+			}
+		if (!found) entity_argument_limits_.push_back(
+			presentation::TemplateEntityArgumentLimit(
+				entity, fact.explicit_count));
+	}
 	for (std::size_t i = 0; i < class_specializations_.size(); ++i)
 	{
 		const ClassSpecializationFact& fact = class_specializations_[i];
@@ -1946,6 +2014,8 @@ std::string TemplateWitnessObserver::RenderSourceSelection(
 	const bool function_call = event.kind == SOURCE_FUNCTION_CALL;
 	if (!class_use && !alias_use && !variable_use && !function_call)
 		return std::string();
+	const presentation::TemplateArgumentElision argument_elision(
+		entity_argument_limits_);
 	const bool token_location = event.source_token !=
 		std::numeric_limits<std::size_t>::max();
 	const std::string& source_file = token_location ?
@@ -1979,7 +2049,8 @@ std::string TemplateWitnessObserver::RenderSourceSelection(
 			{
 				const std::string entity_name = NormalizeEntity(
 					presentation::RenderEntity(
-						*analyzer.program_, specialization, true), replacements);
+						*analyzer.program_, specialization,
+						argument_elision, true), replacements);
 				const std::size_t opening = FinalTemplateOpening(entity_name);
 				if (opening != std::string::npos)
 					template_name = entity_name.substr(0, opening);
@@ -2024,7 +2095,8 @@ std::string TemplateWitnessObserver::RenderSourceSelection(
 		if (event.qualifier_entity != kNoEntity &&
 			!event.allow_substituted_source)
 			template_name = NormalizeEntity(presentation::RenderEntity(
-				*analyzer.program_, event.qualifier_entity, true), replacements) +
+				*analyzer.program_, event.qualifier_entity,
+				argument_elision, true), replacements) +
 				"::" + analyzer.program_->names.Get(pattern.name);
 		if (template_name.find("__cppgm_class_template_") != std::string::npos)
 		{
@@ -2072,7 +2144,8 @@ std::string TemplateWitnessObserver::RenderSourceSelection(
 		output << "    callee ";
 		if (binding.member_owner != kNoEntity)
 			output << NormalizeWitnessTypeSpelling(presentation::RenderEntity(
-				*analyzer.program_, binding.member_owner)) << "::"
+				*analyzer.program_, binding.member_owner,
+				argument_elision)) << "::"
 				<< analyzer.program_->names.Get(pattern.name) << '\n';
 		else output << presentation::RenderName(
 			*analyzer.program_, pattern.owner, pattern.name) << '\n';
@@ -2103,9 +2176,11 @@ std::string TemplateWitnessObserver::RenderSourceBindings(
 	CollectExplicitTemplateArgumentSpellings(arena, event.component_syntax,
 		analyzer.program_->names.Get(event_template_name), event.source_token,
 		&explicit_argument_spellings);
+	const presentation::TemplateArgumentElision argument_elision(
+		entity_argument_limits_);
 	const auto render_argument = [&analyzer, &arena, &event,
 		&explicit_argument_syntax, &explicit_argument_spellings,
-		&replacements, this](std::size_t argument) {
+		&replacements, &argument_elision, this](std::size_t argument) {
 		if (event.kind == SOURCE_ALIAS_USE &&
 			argument < explicit_argument_spellings.size())
 			return ElideEntities(NormalizeSourceArgumentSpelling(
@@ -2116,16 +2191,17 @@ std::string TemplateWitnessObserver::RenderSourceBindings(
 		{
 			const std::string source_identity = RenderFunctionTypeSourceIdentity(
 				*analyzer.program_, event.arguments[argument],
-				explicit_argument_spellings[argument]);
+				explicit_argument_spellings[argument], &argument_elision);
 			if (source_identity != RenderWitnessArgument(
-					*analyzer.program_, event.arguments[argument]))
+					*analyzer.program_, event.arguments[argument],
+					&argument_elision))
 				return ElideEntities(source_identity, replacements);
 		}
 		return ElideEntities(RenderWitnessArgumentAtSource(
 			*analyzer.program_, arena, event.arguments[argument],
 			argument < explicit_argument_syntax.size() ?
 				explicit_argument_syntax[argument] : syntax::kNoNode,
-			event.kind == SOURCE_ALIAS_USE), replacements);
+			event.kind == SOURCE_ALIAS_USE, &argument_elision), replacements);
 	};
 	std::ostringstream output;
 	const bool source_only_alias = alias_use && event.arguments.empty() &&
@@ -2206,6 +2282,8 @@ std::string TemplateWitnessObserver::RenderSourceSpecializations(
 	const EntityReplacements& replacements) const
 {
 	std::ostringstream output;
+	const presentation::TemplateArgumentElision argument_elision(
+		entity_argument_limits_);
 	if (event.kind == SOURCE_CLASS_USE && event.binding != kNoBinding)
 	{
 		const ClassTemplatePartialSelection* partial =
@@ -2245,12 +2323,14 @@ std::string TemplateWitnessObserver::RenderSourceSpecializations(
 					{
 						if (argument != 0) output << ", ";
 						output << ElideEntities(RenderWitnessArgument(
-							*analyzer.program_, pack[argument * stride]), replacements);
+							*analyzer.program_, pack[argument * stride],
+							&argument_elision), replacements);
 					}
 					output << '>';
 				}
 				else output << ElideEntities(RenderWitnessArgument(
-					*analyzer.program_, bindings.fixed_arguments[parameter]),
+					*analyzer.program_, bindings.fixed_arguments[parameter],
+					&argument_elision),
 					replacements);
 				output << " source=deduced\n";
 			}
@@ -2274,13 +2354,15 @@ std::string TemplateWitnessObserver::RenderSourceSpecializations(
 				{
 					if (argument != first) output << ", ";
 					output << ElideEntities(RenderWitnessArgument(
-						*analyzer.program_, event.specialization_arguments[argument]),
+						*analyzer.program_, event.specialization_arguments[argument],
+						&argument_elision),
 						replacements);
 				}
 				output << '>';
 			}
 			else output << ElideEntities(RenderWitnessArgument(
-				*analyzer.program_, event.specialization_arguments[first]),
+				*analyzer.program_, event.specialization_arguments[first],
+				&argument_elision),
 				replacements);
 			output << " source=deduced\n";
 		}
@@ -2561,6 +2643,7 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 	source_events_.clear();
 	function_specializations_.clear();
 	class_specializations_.clear();
+	entity_argument_limits_.clear();
 	variable_specializations_.clear();
 	overload_selections_.clear();
 	deduction_drops_.clear();
