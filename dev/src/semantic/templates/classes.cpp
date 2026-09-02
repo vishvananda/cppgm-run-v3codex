@@ -3045,7 +3045,7 @@ void Analyzer::AnalyzeExplicitInstantiation(NodeId node,
 		ThrowSemanticError(
 			"explicit class instantiation target is incomplete");
 	const BindingId specialization = program_->entities[entity].declaration;
-	if (definition && template_witness_)
+	if (template_witness_)
 		template_witness_->RecordClassFinalization(pattern.marker_entity);
 	if (class_template_explicit_instantiation_states_.size() <= specialization)
 		class_template_explicit_instantiation_states_.resize(

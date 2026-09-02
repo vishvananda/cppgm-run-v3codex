@@ -962,6 +962,18 @@ four-block sample measured +0.495% paired user; the extended eight-block run
 measures +0.000% user, -0.055% wall, and -0.099% RSS.  The retained report is
 `/tmp/v3codex-w5m-extern-final-state-ab8.json`.
 
+Explicit class instantiation now records class finalization after the common
+successful `EnsureClassDefinition` boundary, before the declaration/definition
+branches diverge.  An `extern template class` declaration still completes the
+class semantic surface before it suppresses member emission.  Three witnesses
+change: one PA22 and one PA24 file become exact, while the PA22 inline/defaulted
+member control gains only its missing finalization.  PA19/20/23 remain exact to
+their baselines, PA22 ordinary is 311/311, frozen no-witness O0/O1/O3 objects
+and all audits are exact.  The initial four-block timing was noisy at +0.428%
+paired user; the eight-block repeat measures -0.488% user, -0.543% wall, and
+-0.169% RSS.  The retained report is
+`/tmp/v3codex-w5m-explicit-class-finalization-ab8.json`.
+
 The first consumer uses the retained owner pattern/partial ordinal only after
 their bounds and completed canonical-argument state are validated.  It renders
 the primary name and typed partial arguments through the opt-in identity
@@ -1149,6 +1161,7 @@ byte-identical objects.  The report is
 | W5M semantic candidate viability | Restricted chained-user-conversion rejection to the N3485 class copy-initialization context already represented by `copy_initialization` | 34 witness-only deltas; PA22 +6, PA23 +7, PA24 +8 exact, 13 additional local improvements, no regression; through-PA24 3,565/3,565; frozen outputs/audits exact; clean four-block paired user +0.001% | retain as ordinary semantic correctness; back it with a relationship-based viability/rank check before plan exit |
 | W5M rejected source-range ordering | Ordered same-start source events by widest syntax range before semantic insertion order | made 4 witnesses exact but regressed 19 previously exact files; PA22 -4, PA23 -4, PA24 -7 exact | reject; source containment is not semantic evaluation/dependency order, so retain the authoritative ranges but add no geometric tie-breaker |
 | W5M-O final function lifecycle | Filtered collected function instantiation/requirement facts by the binding's final explicit-instantiation suppression state | exactly 2 PA22 extern-function witnesses change and become exact, later manifests unchanged; inline/defaulted extern-class member control preserved; PA22 311/311; frozen outputs/audits exact; extended paired user +0.000% | retain; final typed state, not collection timing or source spelling, owns lifecycle publication |
+| W5M-O explicit class finalization | Published class finalization at the common completed-class boundary for explicit instantiation declarations and definitions | 3 witness deltas; PA22 +1 and PA24 +1 exact, no regression; PA22 311/311; frozen outputs/audits exact; extended paired user -0.488% | retain; class completion precedes the typed declaration/definition emission policy split |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
