@@ -433,6 +433,18 @@ fields while constructing the node.  Four replacement blocks are exact and
 measure +0.12% paired user time, +0.21% wall, and -0.18% RSS; the CPU gate is
 met.  The report is `/tmp/v3codex-w5mf-packed-ab.json`.
 
+A follow-up W5M-F boundary makes terminal source identity canonical across
+direct, qualified, parenthesized, and member calls.  The arena query follows
+only the callee/name-bearing edge and stops at an exact name component or
+identifier; it never descends into call or template arguments, where an
+unrelated identifier could otherwise become the event anchor.  Both retained
+declaration provenance and later semantic replay therefore join on one node
+without a token/name search.  An isolated foundation-plus-query build passes
+PA19 295 ordinary + 279 witness + 10 course and PA20 164 ordinary + 158
+witness + 11 course.  Four no-witness ABBA blocks have exact objects and
+measure +0.00% paired user, +0.11% wall, and -0.35% RSS versus `fc6514a2`;
+the report is `/tmp/v3codex-w5mf-anchor-only-ab.json`.
+
 PA22 exposes one additional provenance boundary: an out-of-class member
 definition retains canonical owner arguments but historically discards the
 exact owner template-id node.  Preserve that component when the definition is
@@ -532,6 +544,7 @@ byte-identical objects.  The report is
 | W5D | Added observer-gated declaration-context provenance over retained definitions and all template-parameter syntax, with distinct facts for dependent class/alias uses and retained calls | dependent function-body casts, dependent defaults, and dependent non-type parameter declarators are suppressed; replayed variable-template uses remain public; PA19 279/279 and PA20 158/158 strict remain exact | retain typed context facts; reject a single generic `inside template` suppression bit |
 | W5R | Anchored explicit uses on terminal name components, kept deduced alias-backed class uses on the written type-id start, added literal provenance, and reduced final rendering to preparation/selection/binding/specialization/drop/closure routines | PA19 295/295 ordinary + 279/279 strict + 10/10 course; PA20 164/164 ordinary + 158/158 strict + 11/11 course; witness module file audit passes; final frozen A/B -0.41% wall / -0.41% combined CPU with exact objects | retain direct provenance and decomposed renderer; delete global token searches, event retargeting, pairwise provenance repair, constructor source tunnelling, and provisional deferred-alias inference |
 | W5M-F | Retained exact owner components, initialized existing call/subscript/parenthesized ranges at node creation, and centralized overload/declarator source anchors | retained-member record remains 120 bytes; PA10 165/165, PA19 295 ordinary + 279 witness + 10 course, and PA20 164 ordinary + 158 witness + 11 course; exact frozen objects; four-block paired user +0.12%, wall +0.21%, RSS -0.18% | retain and commit independently; rejected the two-call range initializer at +0.77% paired user |
+| W5M-F source identity | Canonicalized terminal name-component selection across call/member wrappers without descending into argument syntax | isolated PA19 and PA20 strict/ordinary/course suites exact; frozen objects exact; four-block paired user +0.00%, wall +0.11%, RSS -0.35% | retain as provenance-only machinery before the observer consumes it |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F provenance | PA22 convergence in progress; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer semantic-record provenance over any observer-side syntax recovery |
 
 ## Exit criteria

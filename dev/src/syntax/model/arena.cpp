@@ -651,7 +651,22 @@ NodeId SyntaxArena::FindDirectChildTag(NodeId node, const char* tag) const
 
 NodeId SyntaxArena::TerminalNameComponent(NodeId node) const
 {
-	if (node == kNoNode || IsTag(node, STAG_NAME_COMPONENT)) return node;
+	if (node == kNoNode) return node;
+	if (IsTag(node, STAG_NAME_COMPONENT) || IsTag(node, STAG_IDENTIFIER))
+		return node;
+	if (IsTag(node, STAG_CALL_EXPRESSION) ||
+		IsTag(node, STAG_PARENTHESIZED_EXPRESSION))
+	{
+		const std::uint32_t edge = FirstEdge(node);
+		return edge == kNoEdge ? node : TerminalNameComponent(EdgeChild(edge));
+	}
+	if (IsTag(node, STAG_MEMBER_EXPRESSION))
+	{
+		std::uint32_t edge = FirstEdge(node);
+		if (edge == kNoEdge) return node;
+		while (NextEdge(edge) != kNoEdge) edge = NextEdge(edge);
+		return TerminalNameComponent(EdgeChild(edge));
+	}
 	const NodeId structure = IsTag(node, STAG_STRUCTURED_TYPE_NAME) ? node :
 		FindDirectChildTag(node, STAG_STRUCTURED_TYPE_NAME);
 	if (structure == kNoNode) return node;
