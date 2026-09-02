@@ -714,6 +714,49 @@ Its final eight-block sample against the same pre-foundation compiler measured
 -0.119% paired user, +0.109% wall, and +0.271% RSS; the report is
 `/tmp/v3codex-w5m-canonical-identity-complete-ab-extended.json`.
 
+Before adding more PA22 rendering rules, replace the remaining class-template
+argument recovery with a typed presentation sidecar.  The semantic
+instantiation boundary already knows the canonical specialization binding, its
+complete canonical argument vector, and the number of arguments supplied on
+each path.  Retain the minimum observed presentation arity for that exact
+typed specialization, and let an observer-only recursive argument renderer
+consult it by entity identity.  This must work for nested specializations and
+for qualified and anonymous-namespace entities without manufacturing global
+string-replacement aliases.  Keep the ordinary presentation API and
+`TemplateArgument` layout unchanged.
+
+Treat declared defaults as a second, narrower provenance source.  A supplied
+count alone cannot represent the checked witness convention: some fixtures
+write trailing arguments that are semantically equal to their declarations'
+defaults and the reference still presents them as `defaulted`.  Do not infer
+that equality from identifier text.  First factor class-template default
+materialization so the existing missing-argument path and an observer-gated
+canonical-equivalence probe use the same typed operation and binding scope.
+The probe may lower the presentation arity only for a contiguous trailing
+suffix whose materialized defaults equal the specialization's canonical
+arguments.  A substitution failure leaves the arguments explicit and must not
+change compilation success, closure publication, or semantic caches visible to
+ordinary compilation.
+
+Land the typed recursive renderer as an output-inert foundation and measure it
+before consumption.  Then consume naturally omitted provenance; validate
+PA19/20 exactness and compare PA22/23/24 manifests.  Only after that boundary
+is stable may the observer-gated default-equivalence producer be added.  Reject
+the earlier experiment that replaced every explicit specialization argument:
+although it fixed the `char` closure spelling, it rewrote dependent zero to a
+character literal, erased required casts, and rendered `-1` as an unsigned
+maximum in PA23/24.
+
+The typed renderer foundation is output-inert.  It adds an opt-in
+`TemplateArgumentElision` sidecar keyed by `EntityId`; recursive entity/type
+rendering applies a bounded argument count without changing any existing
+presentation entry point or semantic record.  PA19 remains 295/295 ordinary,
+279/279 strict, and 10/10 course; PA20 remains 164/164 ordinary, 158/158
+strict, and 11/11 course; PA22 remains at 56 mismatches.  Frozen O0/O1/O3
+LowIR and all three audits are exact.  Four ABBA blocks measure -0.241% paired
+user, -0.538% wall, and +0.100% RSS; the report is
+`/tmp/v3codex-w5m-typed-elision-foundation-ab.json`.
+
 The first consumer uses the retained owner pattern/partial ordinal only after
 their bounds and completed canonical-argument state are validated.  It renders
 the primary name and typed partial arguments through the opt-in identity
@@ -888,6 +931,7 @@ byte-identical objects.  The report is
 | W5M-O dependent alias owner | Rendered a retained partial owner from its typed primary-pattern and partial-argument identities | exactly one PA22 witness changes, only its owner line; PA19/20 exact; frozen objects/audits exact; four-block paired user +0.178% | retain the bounded consumer; resolve the remaining cv presentation difference independently |
 | W5M-O alias cv presentation | Canonicalized cv placement only when token structure otherwise preserves the explicit source identity | broad canonical rendering worsened PA22 59 -> 72 and was rejected; narrow policy makes the owner fixture exact and PA22 59 -> 58, with PA19/20 exact and no PA23/24 manifest changes; objects/audits exact; final extended six-block paired user -0.122%, wall -0.000%, RSS +0.154% | retain the structural normalization; source-preserved identities remain authoritative |
 | W5M-O call-owner normalization | Applied the existing primitive spelling normalization at selected member-call owner presentation | PA22 58 -> 56; one PA23 and two PA24 files also become exact with no later-manifest regressions; PA19/20 and objects/audits exact; four-block paired user +0.000% | retain the shared final-render normalization |
+| W5M-S typed argument elision | Added an opt-in recursive source-identity policy keyed by semantic entity and bounded presentation arity | existing APIs and output unchanged; PA19/20 exact; PA22 stays 56; O0/O1/O3 LowIR and audits exact; four-block paired user -0.241%, wall -0.538%, RSS +0.100% | retain as the foundation for nested default provenance; do not manufacture qualified/unqualified string aliases |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
