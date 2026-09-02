@@ -382,6 +382,13 @@ bool Analyzer::AnalyzeExplicitTemplateSpecialization(
 				program_->bindings[owner].canonical, complete_arguments,
 				ClassTemplatePresentationArity(
 					pattern, complete_arguments, argument_syntax.size()));
+			const ClassTemplatePartialSelection* source_selection =
+				FindClassTemplatePartialSelection(owner);
+			template_witness_->NoteClassTemplateSource(components[component],
+				static_cast<std::uint32_t>(pattern_index),
+				program_->bindings[owner].canonical,
+				source_selection ? source_selection->pattern : kNoDumpEdge,
+				argument_syntax, false);
 			template_witness_->RecordInstantiatedClassUse(components[component],
 				static_cast<std::uint32_t>(pattern_index), owner, arguments,
 				argument_syntax.size());

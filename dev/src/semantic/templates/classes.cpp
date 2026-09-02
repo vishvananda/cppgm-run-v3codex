@@ -482,6 +482,14 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 							complete_arguments,
 							ClassTemplatePresentationArity(class_pattern,
 								complete_arguments, argument_syntax.size()));
+						const ClassTemplatePartialSelection* source_selection =
+							FindClassTemplatePartialSelection(specialization);
+						template_witness_->NoteClassTemplateSource(component_node,
+							static_cast<std::uint32_t>(pattern),
+							program_->bindings[specialization].canonical,
+							source_selection ? source_selection->pattern : kNoDumpEdge,
+							argument_syntax,
+							class_template_member_replay_depth_ != 0);
 						if (TemplateWitnessSourceUseEnabled())
 							template_witness_->RecordClassUse(component_node,
 								static_cast<std::uint32_t>(pattern), specialization,

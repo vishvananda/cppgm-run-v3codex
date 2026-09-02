@@ -791,6 +791,89 @@ the frozen O0/O1/O3 no-witness LowIR is also exact.  Four ABBA blocks against
 the prior consumer measure -0.717% paired user, -0.536% wall, and -0.237% RSS;
 the report is `/tmp/v3codex-w5m-default-provenance-ab.json`.
 
+Re-examine provenance before extending that producer to dependent defaults or
+conversion-function names.  Two narrowly scoped probes exposed a missing
+abstraction.  The first allowed a concrete supplied argument to compare equal
+to a dependent declared default.  It made the `V<char, traits<char>>` entity
+presentation closer to the reference and made one PA24 file exact, but it also
+reclassified the explicitly written `int` in
+`deduce<proxy<result>, int>` as defaulted.  The second rendered a conversion
+target from its typed primary class-template pattern.  Although that spelling
+is correct for the focused PA22 cases, its first full-manifest run changed
+eight PA23 and four PA24 files, including source-call publication as well as
+closure spelling.  Reject both consumers in that form.
+
+The underlying problem is that three distinct facts are currently compressed
+into one specialization-wide minimum argument count:
+
+1. which arguments were written at a particular source use;
+2. whether a written argument has the same source-semantic shape as a declared
+   default; and
+3. how a canonical entity should be abbreviated when it is nested in another
+   type or printed in the closure.
+
+`PrepareSourceEvents` currently applies the minimum count from a typed
+specialization fact back to every source event with the same binding and
+canonical arguments.  That loses occurrence provenance.  The entity-wide
+`TemplateArgumentElision` sidecar is useful for canonical closure spelling,
+but it must not decide the `source=explicit/defaulted` label of an unrelated
+source occurrence.
+
+Add the missing machinery in output-inert stages before either consumer:
+
+1. Add an observer-owned class-template source fact recorded only at a
+   successful semantic lookup.  It carries the exact name-component `NodeId`,
+   primary pattern ID, canonical specialization `BindingId`, selected partial
+   ordinal, replay/source role, and the exact explicit argument `NodeId`s.
+   Keep this separate from `ClassSpecializationFact`, whose typed canonical
+   vector remains suitable for entity presentation.  No production semantic
+   record or `TemplateArgument` grows.
+2. Give each `SourceEvent` its own typed argument-origin decision.  Join a
+   source fact only by `(source NodeId, pattern ID, canonical binding)`, never
+   by spelling or merely by canonical argument equality.  Remove the global
+   post-pass that lowers every matching event's provenance only after focused
+   positive and negative fixtures prove the replacement is equivalent for
+   already passing PA19/20 behavior.
+3. Represent declared-default equivalence as a small structural source
+   identity, not a rendered string and not post-substitution value equality
+   alone.  The identity must distinguish a dependent template-id default such
+   as `traits<CharT>` supplied as `traits<char>` from a dependent qualified
+   result such as `typename traits<V>::scalar_type` supplied as `int`.  Resolve
+   referenced templates/entities and template-parameter ordinals while the
+   declaration and source syntax are alive; use `NodeId` only as provenance,
+   not as the semantic key.  A failed or ambiguous structural comparison keeps
+   the argument explicit.
+4. Retain two consumers after those foundations pass independently.  The
+   occurrence consumer labels only the joined source event.  The canonical
+   entity consumer may lower a nested/closure presentation arity from a proven
+   omitted or structurally-default-equivalent suffix.  Neither consumer may
+   rewrite source spelling globally.
+5. Before changing conversion-operator presentation, retain its typed target
+   role explicitly: target `TypeId`, target class-template pattern/entity when
+   present, and source occurrence remain separate from the display name.
+   Deduplicate and join events by typed IDs before rendering.  Re-run the
+   PA22/23/24 manifest experiment in isolation; a display-only change must not
+   add, remove, or retarget any source event.
+
+Gate every foundation and consumer separately with PA19/20 exactness, full
+PA22/23/24 before/after witness manifests, focused witness-mode LowIR equality,
+frozen no-witness O0/O1/O3 equality, the file/source/owner audits, and repeated
+position-balanced no-witness timing.  Use 32-way builds.  Foundations must be
+output-inert and each consumer must have no later-assignment regression.
+
+The first revised foundation retains a 48-byte observer-only
+`ClassTemplateSourceFact` at the successful class-template lookup.  Its key and
+payload are the exact component `NodeId`, primary pattern ID, canonical
+specialization binding, selected partial ordinal, explicit argument nodes, and
+replay role.  It is deliberately separate from the canonical specialization
+fact and has no renderer consumer yet.  All 731 PA19/20/22 witness manifests
+and witness-mode LowIR files are byte-identical to the prior compiler; PA19 is
+295/295 ordinary, 279/279 strict, and 10/10 course, PA20 is 164/164 ordinary,
+158/158 strict, and 11/11 course, and PA22 ordinary/course is 309/309 plus
+2/2.  Frozen no-witness O0/O1/O3 objects and all three audits are exact.  Four
+ABBA blocks measure -0.971% paired user, -1.033% wall, and +0.354% RSS; the
+report is `/tmp/v3codex-w5m-class-source-fact-ab.json`.
+
 The first consumer uses the retained owner pattern/partial ordinal only after
 their bounds and completed canonical-argument state are validated.  It renders
 the primary name and typed partial arguments through the opt-in identity
@@ -968,6 +1051,8 @@ byte-identical objects.  The report is
 | W5M-S typed argument elision | Added an opt-in recursive source-identity policy keyed by semantic entity and bounded presentation arity | existing APIs and output unchanged; PA19/20 exact; PA22 stays 56; O0/O1/O3 LowIR and audits exact; four-block paired user -0.241%, wall -0.538%, RSS +0.100% | retain as the foundation for nested default provenance; do not manufacture qualified/unqualified string aliases |
 | W5M-O omitted argument provenance | Derived typed entity limits from exact canonical specialization facts and consumed them recursively | PA22 56 -> 55; inherited alias operator exact; nested use-scope arguments corrected; PA19/20 exact; PA23/24 unchanged; objects/audits exact; four-block paired user -0.847% | retain; keep semantic default equivalence separate from genuinely omitted source provenance |
 | W5M-S/O declared default provenance | Factored typed class-default materialization and published complete canonical source facts with an observer-only arity; excluded defaults that refer to template parameters | PA22 55 -> 50 with five newly exact fixtures; dependent-default negative control exact; PA19/20 exact; PA23/24 unchanged; focused witness LowIR and frozen O0/O1/O3 LowIR exact; four-block paired user -0.717% | retain; reject post-substitution equality for dependent defaults |
+| W5M provenance re-audit | Probed dependent-default equality and typed conversion-target presentation against PA22/23/24 | dependent-default probe made one PA24 file exact but regressed explicit `deduce<proxy<result>, int>` provenance; conversion-target probe changed 8 PA23 and 4 PA24 files and was not display-contained | reject both consumers; first separate per-occurrence source provenance, structural default identity, and canonical entity presentation in output-inert foundations |
+| W5M-S class source provenance | Retained successful class-template source identity separately from canonical specialization presentation | 48-byte observer-only fact; 731 PA19/20/22 witness and LowIR manifests exact; PA19/20 strict and ordinary clean; frozen O0/O1/O3 and audits exact; four-block paired user -0.971% | retain as output-inert foundation; consumers must join exact source node, typed pattern, and canonical binding |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

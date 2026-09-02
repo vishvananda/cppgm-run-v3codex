@@ -217,6 +217,26 @@ private:
 			: binding(binding_value), arguments(argument_values),
 			  explicit_count(explicit_count_value) {}
 	};
+	struct ClassTemplateSourceFact
+	{
+		syntax::NodeId syntax;
+		std::uint32_t pattern;
+		BindingId binding;
+		std::uint32_t selected_partial;
+		std::vector<syntax::NodeId> argument_syntax;
+		bool replayed;
+
+		ClassTemplateSourceFact(syntax::NodeId syntax_value,
+			std::uint32_t pattern_value, BindingId binding_value,
+			std::uint32_t selected_partial_value,
+			const std::vector<syntax::NodeId>& argument_syntax_value,
+			bool replayed_value)
+			: syntax(syntax_value), pattern(pattern_value), binding(binding_value),
+			  selected_partial(selected_partial_value),
+			  argument_syntax(argument_syntax_value), replayed(replayed_value) {}
+	};
+	static_assert(sizeof(ClassTemplateSourceFact) == 48,
+		"class template source facts must stay compact");
 	struct VariableSpecializationFact
 	{
 		BindingId binding;
@@ -354,6 +374,10 @@ private:
 	void RecordClassSpecialization(BindingId binding,
 		const std::vector<TemplateArgument>& arguments,
 		std::size_t explicit_count);
+	void NoteClassTemplateSource(syntax::NodeId syntax,
+		std::uint32_t pattern, BindingId binding,
+		std::uint32_t selected_partial,
+		const std::vector<syntax::NodeId>& argument_syntax, bool replayed);
 	void RecordVariableSpecialization(BindingId binding,
 		std::uint32_t primary_pattern,
 		const std::vector<TemplateArgument>& arguments,
@@ -397,6 +421,7 @@ private:
 	std::vector<SourceEvent> source_events_;
 	std::vector<FunctionSpecializationFact> function_specializations_;
 	std::vector<ClassSpecializationFact> class_specializations_;
+	std::vector<ClassTemplateSourceFact> class_template_source_facts_;
 	std::vector<presentation::TemplateEntityArgumentLimit>
 		entity_argument_limits_;
 	std::vector<VariableSpecializationFact> variable_specializations_;

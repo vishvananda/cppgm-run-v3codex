@@ -616,6 +616,7 @@ TemplateWitnessObserver::TemplateWitnessObserver(bool debug)
 	  semantic_source_facts_(), retained_member_source_facts_(),
 	  retained_alias_qualifier_facts_(), source_events_(),
 	  function_specializations_(), class_specializations_(),
+	  class_template_source_facts_(),
 	  entity_argument_limits_(), variable_specializations_(),
 	  overload_selections_(), deduction_drops_(), dependent_class_uses_(),
 	  dependent_alias_uses_(), dependent_source_uses_(),
@@ -796,6 +797,7 @@ void TemplateWitnessObserver::BeginTranslationUnit(
 	source_events_.clear();
 	function_specializations_.clear();
 	class_specializations_.clear();
+	class_template_source_facts_.clear();
 	entity_argument_limits_.clear();
 	variable_specializations_.clear();
 	overload_selections_.clear();
@@ -1191,6 +1193,24 @@ void TemplateWitnessObserver::RecordClassSpecialization(BindingId binding,
 		}
 	class_specializations_.push_back(ClassSpecializationFact(
 		binding, arguments, explicit_count));
+}
+
+void TemplateWitnessObserver::NoteClassTemplateSource(
+	syntax::NodeId syntax, std::uint32_t pattern, BindingId binding,
+	std::uint32_t selected_partial,
+	const std::vector<syntax::NodeId>& argument_syntax, bool replayed)
+{
+	if (syntax == syntax::kNoNode || binding == kNoBinding) return;
+	for (std::size_t i = 0; i < class_template_source_facts_.size(); ++i)
+	{
+		const ClassTemplateSourceFact& fact = class_template_source_facts_[i];
+		if (fact.syntax == syntax && fact.pattern == pattern &&
+			fact.binding == binding && fact.selected_partial == selected_partial &&
+			fact.argument_syntax == argument_syntax && fact.replayed == replayed)
+			return;
+	}
+	class_template_source_facts_.push_back(ClassTemplateSourceFact(
+		syntax, pattern, binding, selected_partial, argument_syntax, replayed));
 }
 
 void TemplateWitnessObserver::RecordVariableSpecialization(BindingId binding,
@@ -2643,6 +2663,7 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 	source_events_.clear();
 	function_specializations_.clear();
 	class_specializations_.clear();
+	class_template_source_facts_.clear();
 	entity_argument_limits_.clear();
 	variable_specializations_.clear();
 	overload_selections_.clear();
