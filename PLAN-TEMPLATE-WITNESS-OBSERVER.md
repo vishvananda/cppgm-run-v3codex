@@ -1164,6 +1164,21 @@ call source from the selected binding in the renderer and do not publish from
 the lower-level deduction routine unless its caller has supplied authoritative
 syntax.
 
+### Phase W5M-F/O: ADL deduction source
+
+Carry the same optional source identity through ADL and hidden-friend candidate
+formation.  `CompleteArgumentDependentCallCandidates` begins at a real call
+site and already receives the callee's argument syntax; retain its exact callee
+component separately through namespace and associated-entity lookup, then give
+it to the typed deduction routine.  Synthesized range-for ADL and other callers
+without source syntax continue to pass `kNoNode` and cannot publish witness
+drops.
+
+This is a compact provenance handoff only: candidate sets, lookup order,
+deduction, and overload selection remain unchanged.  The observer still owns
+allocation, and a failed candidate is visible only when its source-aware caller
+requests witness output.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1227,6 +1242,7 @@ syntax.
 | W5M rejected retained-call shortcut | Allowed an explicit template-id call to bypass the retained-source suppression bit | one intended PA22 call became exact, but 6 PA19, 7 PA20, 6 PA22, 48 PA23, and 33 PA24 previously exact witnesses regressed; LowIR stayed exact | reject; explicit syntax does not prove that a call is a public evaluated use, so add typed evaluation/replay provenance before revisiting |
 | W5M-S recursive entity presentation | Propagated the existing anonymous-namespace policy through typed template arguments, declarator types, member-pointer owners, value bindings, and closure replacement identities | 2 witnesses change: PA22 gains 1 exact file, and every affected function/require/variable closure identity in one PA24 file gains its missing anonymous scopes; no regression, all 1,532 LowIR artifacts exact; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; cumulative paired user -0.547%, wall -0.650%, RSS +0.704% | retain as shared typed presentation machinery; keep ordinary source-event rendering's default policy unchanged |
 | W5M-O call-operator deduction source | Passed `TryAnalyzeOverloadedOperator`'s exact call node to the shared typed function-template deduction result | exactly 1 PA22 witness changes and becomes exact (missing `too_few_arguments`); every other PA19--PA24 witness and all 1,532 LowIR artifacts are identical; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; paired user -0.301%, wall -0.212%, RSS -0.202% | retain; source-aware callers own drop publication and the deduction engine remains source-optional |
+| W5M-F/O ADL deduction source | Carried the exact callee component through ADL namespace and hidden-friend candidate formation into typed function-template deduction | exactly 1 PA22 witness changes and becomes exact (missing hidden-friend `non_deduced_mismatch`); every other PA19--PA24 witness and all 1,532 LowIR artifacts are identical; PA22 ordinary 311/311; frozen O0/O1/O3 and audits exact; paired user +0.062%, wall -0.218%, RSS -0.140% | retain the nullable provenance parameter; synthesized source-free ADL remains non-publishing |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

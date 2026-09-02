@@ -246,7 +246,7 @@ void Analyzer::AppendHiddenFriendCandidates(EntityId owner,
 	bool enum_operator_only,
 	std::vector<BindingId>* candidates,
 	const std::vector<NodeId>* explicit_syntax, ScopeId use_scope,
-	const std::vector<NodeId>* argument_syntax)
+	const std::vector<NodeId>* argument_syntax, NodeId witness_syntax)
 {
 	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
 	const CompactIndexSequence* functions = hidden_friend_sets_.Find(key);
@@ -272,9 +272,10 @@ void Analyzer::AppendHiddenFriendCandidates(EntityId owner,
 				"explicit hidden-friend deduction has no use context");
 		DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
 			arguments, *explicit_syntax, use_scope, &specializations,
-			argument_syntax);
+			argument_syntax, witness_syntax);
 	}
-	else DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
+	else DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
+		0, 0, kNoScope, argument_syntax, witness_syntax);
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const BindingId binding = specializations[i];
@@ -288,7 +289,7 @@ void Analyzer::AppendArgumentDependentCandidates(NameId name,
 	const std::vector<ExpressionInfo>& arguments,
 	std::vector<BindingId>* candidates, bool enum_operator_only,
 	const std::vector<NodeId>* explicit_syntax, ScopeId use_scope,
-	const std::vector<NodeId>* argument_syntax)
+	const std::vector<NodeId>* argument_syntax, NodeId witness_syntax)
 {
 	const bool has_explicit_syntax = explicit_syntax != 0;
 	if (has_explicit_syntax &&
@@ -373,9 +374,10 @@ void Analyzer::AppendArgumentDependentCandidates(NameId name,
 			if (has_explicit_syntax)
 				DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
 					arguments, *explicit_syntax, use_scope, &specializations,
-					argument_syntax);
+					argument_syntax, witness_syntax);
 			else DeduceFunctionTemplatePatterns(patterns, arguments,
-				&specializations);
+				&specializations, 0, 0, kNoScope, argument_syntax,
+				witness_syntax);
 			for (std::size_t specialization = 0;
 				specialization < specializations.size(); ++specialization)
 				if (!enum_operator_only || MatchesEnumOnlyOperatorCandidate(
@@ -392,14 +394,15 @@ void Analyzer::AppendArgumentDependentCandidates(NameId name,
 		AppendHiddenFriendCandidates(associated_entities_[i], name,
 			arguments, enum_operator_only, candidates,
 			explicit_syntax, use_scope,
-			argument_syntax);
+			argument_syntax, witness_syntax);
 }
 
 void Analyzer::CompleteArgumentDependentCallCandidates(NameId name,
 	const std::vector<NodeId>* explicit_syntax, ScopeId use_scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
-	bool suppress_adl, std::vector<BindingId>* candidates)
+	bool suppress_adl, std::vector<BindingId>* candidates,
+	NodeId witness_syntax)
 {
 	BeginCandidateCollection();
 	std::vector<BindingId> combined;
@@ -411,7 +414,7 @@ void Analyzer::CompleteArgumentDependentCallCandidates(NameId name,
 	}
 	if (!suppress_adl)
 		AppendArgumentDependentCandidates(name, arguments, &combined, false,
-			explicit_syntax, use_scope, &argument_syntax);
+			explicit_syntax, use_scope, &argument_syntax, witness_syntax);
 
 	// Candidate formation is reentrant: substituting an ADL template can start
 	// a nested collection and advance the scratch generation. Canonicalize at
@@ -1986,7 +1989,7 @@ bool Analyzer::TryAnalyzeOverloadedOperator(
 					AddCandidate(ordinary[i], &candidates);
 		}
 		AppendArgumentDependentCandidates(name, operands, &candidates,
-			enum_operator_only);
+			enum_operator_only, 0, kNoScope, 0, witness_source);
 	}
 	if (candidates.empty()) return false;
 	const ExpressionInfo object = MakeImplicitObjectPointer(operands[0]);

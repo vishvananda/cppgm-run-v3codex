@@ -1313,12 +1313,14 @@ private:
 		std::vector<BindingId>* candidates, bool enum_operator_only = false,
 		const std::vector<NodeId>* explicit_syntax = 0,
 		ScopeId use_scope = kNoScope,
-		const std::vector<NodeId>* argument_syntax = 0);
+		const std::vector<NodeId>* argument_syntax = 0,
+		NodeId witness_syntax = kNoNode);
 	void CompleteArgumentDependentCallCandidates(NameId name,
 		const std::vector<NodeId>* explicit_syntax, ScopeId use_scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
-		bool suppress_adl, std::vector<BindingId>* candidates);
+		bool suppress_adl, std::vector<BindingId>* candidates,
+		NodeId witness_syntax = kNoNode);
 	bool TryAnalyzeOverloadedOperator(const std::string& operation,
 		ScopeId scope, const std::vector<NodeId>& operand_syntax,
 		const std::vector<ExpressionInfo>& operands, bool member_only,
@@ -1373,7 +1375,8 @@ private:
 		std::vector<BindingId>* candidates,
 		const std::vector<NodeId>* explicit_syntax = 0,
 		ScopeId use_scope = kNoScope,
-		const std::vector<NodeId>* argument_syntax = 0);
+		const std::vector<NodeId>* argument_syntax = 0,
+		NodeId witness_syntax = kNoNode);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeComplexComponent(const std::string& operation,

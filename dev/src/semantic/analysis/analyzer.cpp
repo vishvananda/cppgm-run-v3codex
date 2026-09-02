@@ -1391,8 +1391,8 @@ ExpressionInfo Analyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId target)
 			CompleteArgumentDependentCallCandidates(adl_name,
 				explicit_template_id ? &explicit_template_syntax : 0, scope,
 				argument_syntax, analyzed_arguments, retained_lookup &&
-				!RetainedCallAllowsArgumentDependentLookup(direct_callee_syntax),
-				&candidates);
+					!RetainedCallAllowsArgumentDependentLookup(direct_callee_syntax),
+				&candidates, direct_callee_syntax);
 		}
 		if (!type_precedes_functions && !candidates.empty())
 		{
