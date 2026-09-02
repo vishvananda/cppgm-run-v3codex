@@ -1,7 +1,7 @@
 # Plan: Typed Compiler Failures and Non-Exception Recovery
 
-Status: in progress; E0-E8 are complete and E9 final performance,
-correctness, and inception closure is underway
+Status: complete through E9 at `44fc67de`; final correctness, exception-census,
+performance, and 32-way inception gates are recorded below
 
 Date: 2026-09-01
 
@@ -756,6 +756,7 @@ Append one row for each retained or rejected increment:
 | E7u | PA9 CY86 frontend, backend, model, and ELF writer | CY86 source rejection, capacities, output I/O, and backend/model invariants shared generic bases | centralized CY86 source/resource/I/O/internal exits; parsing/opcode lookup stays status flow; one transactional cleanup/rethrow retained for E8 review | PA9 valid/invalid CY86 and generated native behavior | no recovery catch or valid-input unwind; generic logic/runtime -25/-13 | cy86: +3,328 text, neutral rodata, +72 EH header, +384 unwind, -1,265 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA9 20/20; through-PA9 422/422; audits pass; integrated compiler binary exact | `9b2da99f` | retained |
 | E7v | remaining staged executable adapters | invocation, output I/O, and one invalid phase-7 token used generic terminal throws | driver/optimizer/native invocation, driver I/O, and lexical source dispositions; terminal presentation unchanged | PA3-PA9, PA13/14, PA37/38 staged behavior | generic logic/runtime -29/-10; repository generic census reaches zero | eleven staged binaries aggregate: +5,152 text, -52 rodata, +208 EH header, +1,016 unwind, +140 exception table; integrated exact | adapters not on integrated hot path; no timing exposure | through-PA38 5,477/5,477; all 11 invalid invocations fail; audits pass; integrated compiler exact | `a78bb76a` | retained |
 | E8 | semantic and allocator rollback; architecture enforcement | twelve catch-alls duplicated cleanup or assigned failure/cache states around unknown exceptions | scoped cleanup/commit owns scratch, contexts, cache state, optimizer storage, and CY86 table rollback; typed semantic exception-specification policy remains explicit | PA9, PA12, PA21, PA23, PA26, PA37 and cumulative behavior | successful frozen remains 0; catch-all sites 12->0 | -256 text, neutral rodata/EH header, -16 unwind, -292 exception table; exception RTTI remains 20 symbols | frozen baseline/candidate user means 0.4525/0.4550 s across semantic slice and 0.4525/0.4500 s across allocator slice (timer noise) | through-PA38 5,477/5,477; focused suites and audits pass; file audit zero-fatal/32 warnings; frozen object exact | `282c12e9` | retained |
+| E9 | exception declaration/linkage consolidation and final hot-flow audit | the complete taxonomy and inline constructors crossed most throw-helper headers; zero dynamic throws did not explain a preprocessing code-shape regression | lightweight throw declarations, explicit full-type includes, one out-of-line taxonomy owner, centralized domain helpers, and a host-neutral cursor boundary; expected alternatives remain status flow and cold failures remain typed exceptions | PA1/PA4 lexical and paste behavior; PA13/14/30/37/38 serialized, optimizer, object, and native behavior; cumulative PA1-PA38 | frozen 0->0; final 221-source census 0; 226 typed throws and zero generic/catch-all/message-policy sites | host compiler -10,048 text, -64 rodata, -400 EH header, -3,392 unwind, -604 exception table; 20 RTTI symbols unchanged | E8/current frozen user 0.784/0.766 s; E8/current full-O3 compile CPU 736.12/736.25 s (neutral); final self/GCC/Clang controls below | 5,477/5,477; zero-fatal/32-warning file audit; frozen hash `8545fec6...`; 223-object inception and final hash `4398825a...` exact | `44fc67de` | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -2208,6 +2209,87 @@ inert formatting makes the destructor structurally visible and returns both
 owners to exactly 3,000 lines.  The resulting compiler binary is byte-exact,
 and the audit closes zero-fatal with the established 32 warnings.  Final full
 performance, census, and inception gates are recorded in E9.
+
+### E9 execution record
+
+The final linkage audit separated the cheap throwing interface from the full
+exception representation.  `support/exceptions.h` is now a 34-line
+declaration-only helper surface, `support/exception_types.h` owns the compact
+taxonomy, and `support/exceptions.cpp` owns constructors, accessors, terminal
+presentation, and the shared domain throw helpers.  Domain error headers are
+declaration-only; six redundant implementation owners were removed.  LowIR
+identity failure helpers moved from inline model-header definitions to the
+existing identity owner.  Every tool links the single support owner through
+its responsibility source set, while only 32 source files include the full
+taxonomy.  The exception audit enforces both properties in addition to the E8
+zero-generic policy.
+
+The final successful frozen compile and a fresh 221-source native census both
+record zero calls to `__cxa_throw`.  Software `perf` sampling and per-phase
+stats nevertheless found ordinary-flow interference in preprocessing.  The
+historical fast tokenizer generated a 47-byte cached `Lexer::Peek(0)` query
+and a separate 72-byte fill path; the first consolidated form generated a
+259-byte combined specialization.  This was not the cost of throwing an
+exception.  It was a source-call/inlining interaction around error-capable
+fixed-queue operations and cursor boundaries.  Retaining a conditional
+`PhysicalCursor::Next` boundary lets the self compiler choose its better
+shape while GCC and Clang see the original `noinline` source and therefore
+preserve their established code generation.
+
+The required non-exception prototypes were measured rather than inferred.
+Guard-proven unchecked queue operations reduced static instructions but were
+neutral/slower (preprocess medians 487.3 versus 485.8 ms).  A general explicit
+fast/slow `Peek` split regressed to 540.5 versus 486.7 ms; an offset-zero
+wrapper regressed to 497.8 versus 487.7 ms; direct offset-zero calls regressed
+to 514.4 versus 485.2 ms; and direct typed throws regressed to 630.0 versus
+485.7 ms while greatly expanding text and EH data.  Branch hints, throw-owner
+link position, returned token-paste objects, and cold typed paste helpers were
+also neutral or worse.  All prototypes preserved the exact frozen object and
+were removed.  The result-side audit is therefore conclusive for this phase:
+adding unchecked APIs, out-parameters, moves, or repeated status branches does
+not improve successful control flow merely by avoiding a cold throw.  The
+remaining compact-query opportunity belongs to a future PA37 optimizer change
+with structural and behavioral coverage, not a tokenizer workaround.
+
+The final GCC-O3 compiler is `f70915c8...`.  Relative to E8 its sections move
+as follows: `.text` 6,453,478 -> 6,443,430, `.rodata` 214,720 -> 214,656,
+`.eh_frame_hdr` 51,588 -> 51,188, `.eh_frame` 319,256 -> 315,864, and
+`.gcc_except_table` 122,720 -> 122,116.  The ten project types still contribute
+exactly 20 typeinfo/typeinfo-name symbols.  An exact E8 replay compiling the
+same current frozen source gives mean user time 0.784 seconds versus 0.766 for
+E9 (-2.3%).  A same-current-source 223-unit O3 replay is neutral at 736.12
+versus 736.25 aggregate compile CPU seconds.  This distinguishes the retained
+change from the rejected source splits above.
+
+Final eight-run frozen controls, all producing `8545fec6...`, are:
+
+| Producer / requested level | Mean wall | Mean user | Median wall | Median user |
+| --- | ---: | ---: | ---: | ---: |
+| self O1 / O0 | 0.9712 s | 0.9300 s | 0.970 s | 0.930 s |
+| self O3 / O0 | 0.7862 s | 0.7412 s | 0.780 s | 0.740 s |
+| GCC O1 / O0 | 0.6025 s | 0.5587 s | 0.600 s | 0.555 s |
+| GCC O3 / O0 | 0.4938 s | 0.4512 s | 0.490 s | 0.450 s |
+| Clang O1 / O0 | 0.5875 s | 0.5438 s | 0.590 s | 0.540 s |
+| Clang O3 / O0 | 0.5200 s | 0.4775 s | 0.520 s | 0.480 s |
+
+Fresh, serially ordered 32-way full-build controls give self/GCC/Clang wall
+times of 33.01/22.09/20.31 seconds at O1 and 29.44/18.76/18.29 seconds at O3.
+Their user times are 887.17/552.03/522.95 and 736.25/455.72/469.91 seconds,
+respectively.  The user-time self/GCC and self/Clang ratios are therefore
+1.607x/1.696x at O1 and 1.616x/1.567x at O3.  These ratios are recorded rather
+than hidden: header thinning helps GCC and Clang more than the current self
+compiler.  The same-source E8 replay above shows no absolute self regression;
+recovering the host-relative difference requires the future compact-query
+optimizer work, not reintroducing duplicated exception definitions.
+
+Root `make -j32 test-report-through-pa38` passes 5,477/5,477.  The exception,
+layout, rename-manifest, frontend-source-set, semantic/lowering/native-owner,
+and LowIR-contract audits pass.  The PA38 file audit remains zero-fatal with
+the established 32 warnings.  The final native census is empty.  Fresh
+32-way inception builds 223 objects in each generation; explicit object
+comparison finds zero mismatches and both final compilers have SHA-256
+`4398825aed4f...`.  No Cachegrind, Valgrind, or owned `perf record` process was
+left running at closure.
 
 ## Initial code map
 
