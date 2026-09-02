@@ -396,8 +396,8 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 				if (type == kNoType) return LookupResult();
 				if (template_witness_)
 				{
-					const EntityId qualifier_entity = carrier != kNoScope ?
-						program_->EntityForScope(carrier) : found.naming_class;
+					const EntityId qualifier_entity = carrier == kNoScope ?
+						kNoEntity : program_->EntityForScope(carrier);
 					bool dependent_arguments = false;
 					for (std::size_t argument = 0;
 						argument < arguments.size(); ++argument)

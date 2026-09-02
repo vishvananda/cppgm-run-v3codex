@@ -573,17 +573,21 @@ decision.  For a qualified source use this is the concrete entity represented
 by the carrier scope immediately before the alias component; for an
 unqualified class-member use it is the lookup result's naming class.  This is
 the cppgm analogue of the declaration context attached to Clang's resolved
-`TypeAliasTemplateDecl`.  Today cppgm discards that identity and the renderer
+`TypeAliasTemplateDecl`.  An unqualified member alias deliberately has no
+source qualifier; its typed declaration owner remains authoritative.  Today
+cppgm discards the written qualifier identity and the renderer
 tries to recover it by searching for an earlier class-use event with the same
 syntax node and token order, then falls back to the primary class-template
 name.  That event-order join is neither authoritative nor complete.
 
-Add the qualifier entity to the observer's typed source-use record at the
-existing lookup publication point.  It must be observer-only, occupy existing
-record padding if possible, perform no lookup or rendering, and initially make
-no witness-output change.  Preserve the declaration-time qualifier when a
-dependent retained use is later joined with concrete replay; do not replace it
-with whichever specialization replayed first.  Validate record size, PA19/20
+Add the written qualifier entity to the observer's typed source-use record at
+the existing lookup publication point.  An unqualified use records no
+qualifier instead of the lookup result's later naming class.  The field must be
+observer-only, occupy existing record padding if possible, perform no lookup
+or rendering, and initially make no witness-output change.  Preserve the
+declaration-time qualifier when a dependent retained use is later joined with
+concrete replay; do not replace it with whichever specialization replayed
+first.  Validate record size, PA19/20
 strict and ordinary output, frozen no-witness O0/O1/O3 objects, audits, and four
 position-balanced A/B blocks, then commit and push this qualifier-provenance
 foundation independently.
