@@ -493,7 +493,8 @@ TemplateWitnessObserver::SourceEvent::SourceEvent(
 	std::size_t ordinal)
 	: kind(kind_value), syntax(syntax_value), component_syntax(syntax_value),
 	  pattern(pattern_value),
-	  binding(binding_value), arguments(argument_values),
+	  binding(binding_value), qualifier_entity(kNoEntity),
+	  arguments(argument_values),
 	  provenance(argument_values.size(), 2), parameter_offsets(),
 	  specialization_arguments(), specialization_offsets(),
 	  specialization_packs(),
@@ -950,7 +951,7 @@ void TemplateWitnessObserver::RecordCurrentClassUse(
 
 void TemplateWitnessObserver::RecordAliasUse(syntax::NodeId syntax,
 	std::uint32_t pattern, const std::vector<TemplateArgument>& arguments,
-	std::size_t explicit_count)
+	std::size_t explicit_count, EntityId qualifier_entity)
 {
 	if (std::find(dependent_source_uses_.begin(), dependent_source_uses_.end(),
 		syntax) != dependent_source_uses_.end())
@@ -961,11 +962,17 @@ void TemplateWitnessObserver::RecordAliasUse(syntax::NodeId syntax,
 		for (std::size_t i = 0; i < source_events_.size(); ++i)
 			if (source_events_[i].kind == SOURCE_ALIAS_USE &&
 				source_events_[i].syntax == syntax &&
-				source_events_[i].pattern == pattern) return;
+				source_events_[i].pattern == pattern)
+			{
+				if (source_events_[i].qualifier_entity == kNoEntity)
+					source_events_[i].qualifier_entity = qualifier_entity;
+				return;
+			}
 		source_events_.push_back(SourceEvent(SOURCE_ALIAS_USE, syntax, pattern,
 			kNoBinding, std::vector<TemplateArgument>(), 0, 0,
 			next_insertion_ordinal_++));
 		source_events_.back().allow_substituted_source = true;
+		source_events_.back().qualifier_entity = qualifier_entity;
 		return;
 	}
 	if (std::find(dependent_alias_uses_.begin(), dependent_alias_uses_.end(),
@@ -977,6 +984,8 @@ void TemplateWitnessObserver::RecordAliasUse(syntax::NodeId syntax,
 			source_events_[i].arguments.empty())
 		{
 			source_events_[i].arguments = arguments;
+			if (source_events_[i].qualifier_entity == kNoEntity)
+				source_events_[i].qualifier_entity = qualifier_entity;
 			source_events_[i].provenance.assign(arguments.size(), 2);
 			for (std::size_t argument = 0;
 				argument < explicit_count && argument < arguments.size(); ++argument)
@@ -986,12 +995,13 @@ void TemplateWitnessObserver::RecordAliasUse(syntax::NodeId syntax,
 	source_events_.push_back(SourceEvent(SOURCE_ALIAS_USE, syntax, pattern,
 		kNoBinding, arguments, explicit_count, 0,
 		next_insertion_ordinal_++));
+	source_events_.back().qualifier_entity = qualifier_entity;
 }
 
 void TemplateWitnessObserver::NoteDependentAliasUse(
 	syntax::NodeId syntax, std::uint32_t pattern,
 	const std::vector<TemplateArgument>& arguments,
-	std::size_t explicit_count)
+	std::size_t explicit_count, EntityId qualifier_entity)
 {
 	const std::pair<syntax::NodeId, std::uint32_t> key(syntax, pattern);
 	if (std::find(dependent_alias_uses_.begin(), dependent_alias_uses_.end(),
@@ -1005,6 +1015,7 @@ void TemplateWitnessObserver::NoteDependentAliasUse(
 	source_events_.push_back(SourceEvent(SOURCE_ALIAS_USE, syntax, pattern,
 		kNoBinding, arguments, explicit_count, 0, next_insertion_ordinal_++));
 	source_events_.back().allow_substituted_source = true;
+	source_events_.back().qualifier_entity = qualifier_entity;
 }
 
 void TemplateWitnessObserver::RecordFunctionSpecialization(BindingId binding,

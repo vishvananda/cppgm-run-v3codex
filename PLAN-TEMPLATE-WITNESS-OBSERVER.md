@@ -567,6 +567,46 @@ foundation.  Four O0 ABBA blocks measure -0.66% paired user, -0.43% wall, and
 -0.00% RSS; the report is
 `/tmp/v3codex-w5m-object-type-consumer-ab.json`.
 
+Before changing member-alias witness rendering, retain the semantic qualifier
+that `LookupStructuredName` already has at the successful alias-template
+decision.  For a qualified source use this is the concrete entity represented
+by the carrier scope immediately before the alias component; for an
+unqualified class-member use it is the lookup result's naming class.  This is
+the cppgm analogue of the declaration context attached to Clang's resolved
+`TypeAliasTemplateDecl`.  Today cppgm discards that identity and the renderer
+tries to recover it by searching for an earlier class-use event with the same
+syntax node and token order, then falls back to the primary class-template
+name.  That event-order join is neither authoritative nor complete.
+
+Add the qualifier entity to the observer's typed source-use record at the
+existing lookup publication point.  It must be observer-only, occupy existing
+record padding if possible, perform no lookup or rendering, and initially make
+no witness-output change.  Preserve the declaration-time qualifier when a
+dependent retained use is later joined with concrete replay; do not replace it
+with whichever specialization replayed first.  Validate record size, PA19/20
+strict and ordinary output, frozen no-witness O0/O1/O3 objects, audits, and four
+position-balanced A/B blocks, then commit and push this qualifier-provenance
+foundation independently.
+
+Only after that gate may the alias renderer consume the retained qualifier
+entity.  Rendering becomes a direct `qualified owner + alias name` operation
+and deletes the scan of neighboring class-use events plus the internal-name
+fallback.  The consumer must improve the member-alias identity fixtures without
+changing unrelated PA22 witnesses or PA19/20 exactness, and receives its own
+object-equality and timing gate before retention.
+
+The qualifier-provenance foundation stores one `EntityId` in existing
+`SourceEvent` padding, so the record remains 232 bytes and ordinary compiler
+records are unchanged.  PA19 remains 295/295 ordinary, 279/279 strict, and
+10/10 course; PA20 remains 164/164 ordinary, 158/158 strict, and 11/11 course;
+PA22 remains at 63 mismatches.  The source-set, semantic-owner, and compiler-
+layout audits pass, and frozen O0/O1/O3 objects are byte-identical to
+`38db37b3`.  The initial four-block sample landed on the timer's 0.01-second
+quantization boundary at +0.247% paired user; an extended six-block sample
+under lower load measures -0.299% paired user, -0.267% wall, and -0.038% RSS.
+The retained report is
+`/tmp/v3codex-w5m-alias-owner-source-ab-extended.json`.
+
 The first W5M-F expression-range implementation called `Make` and then
 `SetTokenRange` for every parenthesized call and subscript node.  Although its
 output was exact, four ABBA blocks measured +0.77% paired user time, so that
@@ -693,6 +733,7 @@ byte-identical objects.  The report is
 | W5M-O retained members | Selected retained definition provenance from the committed static-member binding and removed recursive declarator/template-name scanning | only two targeted witness files change; nested fixture exact; PA22 65 -> 64 mismatches; PA19/20 exact; O0/O1/O3 objects exact; four-block paired user -0.00%, wall +0.48%, RSS -0.27% | retain; publish same-pattern typed facts only, leaving deduced source identity as a separate category |
 | W5M-S object-type role | Retained the exact structured-type root separately from its explicit template-id component | output remains unchanged; temporary consumer probe finds the intended rooted location; PA19/20 exact; PA22 remains 64; O0/O1/O3 objects exact; four-block paired user -0.12%, wall -0.52%, RSS +0.24% | retain as output-inert source-role machinery before consumption |
 | W5M-O object-type role | Published retained object-type facts through deduced provenance while preserving explicit counts on nested components | exactly one witness file changes and becomes exact; PA22 64 -> 63; PA19/20 exact; O0/O1/O3 objects exact; four-block paired user -0.66%, wall -0.43%, RSS -0.00% | retain; source role, not renderer inference, determines binding provenance |
+| W5M-S alias qualifier | Retained the concrete structured-name carrier or unqualified naming class at the final alias-template lookup decision without changing output | `SourceEvent` remains 232 bytes; PA19/20 exact; PA22 remains 63; audits and frozen O0/O1/O3 objects exact; extended six-block paired user -0.299%, wall -0.267%, RSS -0.038% | retain before deleting alias owner reconstruction in the renderer |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

@@ -124,6 +124,7 @@ private:
 		syntax::NodeId syntax, component_syntax;
 		std::uint32_t pattern;
 		BindingId binding;
+		EntityId qualifier_entity;
 		std::vector<TemplateArgument> arguments;
 		std::vector<std::uint8_t> provenance;
 		std::vector<std::uint32_t> parameter_offsets;
@@ -146,6 +147,8 @@ private:
 			std::size_t explicit_count, std::size_t column_offset,
 			std::size_t ordinal);
 	};
+	static_assert(sizeof(SourceEvent) == 232,
+		"source events must retain qualifier provenance in existing padding");
 	struct DeductionDropFact
 	{
 		syntax::NodeId syntax;
@@ -309,10 +312,10 @@ private:
 		std::size_t explicit_count);
 	void RecordAliasUse(syntax::NodeId syntax, std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments,
-		std::size_t explicit_count);
+		std::size_t explicit_count, EntityId qualifier_entity);
 	void NoteDependentAliasUse(syntax::NodeId syntax, std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments,
-		std::size_t explicit_count);
+		std::size_t explicit_count, EntityId qualifier_entity);
 	void RecordFunctionSpecialization(BindingId binding, std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments,
 		const std::vector<TemplateArgument>& requested_arguments,

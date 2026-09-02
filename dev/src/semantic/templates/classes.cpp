@@ -396,6 +396,8 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 				if (type == kNoType) return LookupResult();
 				if (template_witness_)
 				{
+					const EntityId qualifier_entity = carrier != kNoScope ?
+						program_->EntityForScope(carrier) : found.naming_class;
 					bool dependent_arguments = false;
 					for (std::size_t argument = 0;
 						argument < arguments.size(); ++argument)
@@ -407,11 +409,11 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 					if (dependent_arguments)
 						template_witness_->NoteDependentAliasUse(component_node,
 							static_cast<std::uint32_t>(alias), arguments,
-							argument_syntax.size());
+							argument_syntax.size(), qualifier_entity);
 					else if (TemplateWitnessSourceUseEnabled())
 						template_witness_->RecordAliasUse(component_node,
 							static_cast<std::uint32_t>(alias), arguments,
-							argument_syntax.size());
+							argument_syntax.size(), qualifier_entity);
 				}
 				found = LookupResult();
 				found.type = type;
