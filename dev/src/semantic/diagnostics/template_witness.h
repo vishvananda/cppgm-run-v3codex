@@ -127,22 +127,31 @@ private:
 		OVERLOAD_DROP_SUBSTITUTION_FAILURE,
 		OVERLOAD_DROP_EXPLICIT_NOT_ALLOWED
 	};
+	enum CandidateDeclarationOriginKind
+	{
+		CANDIDATE_ORIGIN_TEMPLATE_PATTERN,
+		CANDIDATE_ORIGIN_BINDING,
+		CANDIDATE_ORIGIN_IMPLICIT_CONSTRUCTOR_FAMILY,
+		CANDIDATE_ORIGIN_IMPLICIT_ASSIGNMENT_FAMILY
+	};
 
 	struct SourceEvent
 	{
 		struct Drop
 		{
 			BindingId binding;
-			// A specialization retains the declaration pattern that produced it.
-			// Ordinary candidates leave this unset and use their canonical binding
-			// as the declaration origin. Rendering still uses `binding`.
-			std::uint32_t declaration_pattern;
+			std::uint32_t declaration_origin;
 			std::uint8_t reason;
-			Drop(BindingId binding_value, std::uint32_t pattern_value,
+			std::uint8_t origin_kind;
+			Drop(BindingId binding_value, std::uint32_t declaration_value,
+				CandidateDeclarationOriginKind origin_kind_value,
 				std::uint8_t reason_value)
-				: binding(binding_value), declaration_pattern(pattern_value),
-				  reason(reason_value) {}
+				: binding(binding_value), declaration_origin(declaration_value),
+				  reason(reason_value),
+				  origin_kind(static_cast<std::uint8_t>(origin_kind_value)) {}
 		};
+		static_assert(sizeof(Drop) == 12,
+			"candidate origins must reuse the compact drop record padding");
 		SourceEventKind kind;
 		syntax::NodeId syntax, component_syntax;
 		std::uint32_t pattern;

@@ -1299,7 +1299,9 @@ void TemplateWitnessObserver::RecordFunctionCall(syntax::NodeId syntax,
 			deduction_drops_[i].syntax == syntax)
 		{
 			event.drops.push_back(SourceEvent::Drop(kNoBinding,
-				deduction_drops_[i].pattern, deduction_drops_[i].reason));
+				deduction_drops_[i].pattern,
+				CANDIDATE_ORIGIN_TEMPLATE_PATTERN,
+				deduction_drops_[i].reason));
 			deduction_drops_[i].consumed = true;
 		}
 	for (std::size_t i = 0; i < overload_selections_.size(); ++i)
@@ -1323,17 +1325,38 @@ void TemplateWitnessObserver::RecordOverloadSelection(
 	for (std::size_t i = 0; i < candidates.size() && i < reasons.size(); ++i)
 		if (reasons[i] != 0)
 		{
-			std::uint32_t declaration_pattern = kNoDumpEdge;
+			std::uint32_t declaration = kNoBinding;
+			CandidateDeclarationOriginKind origin_kind =
+				CANDIDATE_ORIGIN_BINDING;
 			if (candidates[i] < analyzer.program_->bindings.size())
 			{
+				const BindingRecord& visible =
+					analyzer.program_->bindings[candidates[i]];
 				const BindingId canonical =
-					analyzer.program_->bindings[candidates[i]].canonical;
+					visible.canonical;
+				declaration = canonical;
 				if (canonical < analyzer.program_->bindings.size())
-					declaration_pattern =
-						analyzer.GetFunction(canonical).template_pattern;
+				{
+					const FunctionInfo& function = analyzer.GetFunction(canonical);
+					if (function.template_pattern != kNoDumpEdge)
+					{
+						declaration = function.template_pattern;
+						origin_kind = CANDIDATE_ORIGIN_TEMPLATE_PATTERN;
+					}
+					else if (function.implicit_special_member)
+					{
+						const bool assignment =
+							function.special_member == SPECIAL_MEMBER_COPY_ASSIGNMENT ||
+							function.special_member == SPECIAL_MEMBER_MOVE_ASSIGNMENT;
+						declaration = visible.member_owner;
+						origin_kind = assignment ?
+							CANDIDATE_ORIGIN_IMPLICIT_ASSIGNMENT_FAMILY :
+							CANDIDATE_ORIGIN_IMPLICIT_CONSTRUCTOR_FAMILY;
+					}
+				}
 			}
 			const SourceEvent::Drop drop(
-				candidates[i], declaration_pattern, reasons[i]);
+				candidates[i], declaration, origin_kind, reasons[i]);
 			bool duplicate = false;
 			for (std::size_t prior = 0; prior < drops.size(); ++prior)
 				if (drops[prior].binding == drop.binding &&
@@ -1475,11 +1498,11 @@ std::string TemplateWitnessObserver::OverloadName(const Analyzer& analyzer,
 	const BindingId binding = drop.binding;
 	if (binding == kNoBinding)
 	{
-		if (drop.declaration_pattern == kNoDumpEdge ||
-			drop.declaration_pattern >= analyzer.function_templates_.size())
+		if (drop.origin_kind != CANDIDATE_ORIGIN_TEMPLATE_PATTERN ||
+			drop.declaration_origin >= analyzer.function_templates_.size())
 			return std::string();
 		const FunctionTemplatePattern& pattern =
-			analyzer.function_templates_[drop.declaration_pattern];
+			analyzer.function_templates_[drop.declaration_origin];
 		return NormalizeEntity(presentation::RenderName(
 			*analyzer.program_, pattern.owner, pattern.name), replacements);
 	}
@@ -2501,18 +2524,42 @@ std::string TemplateWitnessObserver::RenderSourceDrops(
 	const EntityReplacements& replacements) const
 {
 	std::ostringstream output;
-	std::vector<std::pair<std::string, std::uint8_t> > rendered_drops;
+	struct RenderedDrop
+	{
+		std::uint32_t declaration;
+		std::uint8_t reason;
+		std::uint8_t origin_kind;
+		RenderedDrop(std::uint32_t declaration_value,
+			std::uint8_t reason_value, std::uint8_t origin_kind_value)
+			: declaration(declaration_value), reason(reason_value),
+			  origin_kind(origin_kind_value) {}
+	};
+	std::vector<RenderedDrop> rendered_drops;
 	for (std::size_t drop = 0; drop < event.drops.size(); ++drop)
 	{
+		const SourceEvent::Drop& candidate = event.drops[drop];
 		const std::string name = OverloadName(
-			analyzer, event.drops[drop], replacements);
-		const std::pair<std::string, std::uint8_t> rendered(
-			name, event.drops[drop].reason);
-		if (name.empty() || std::find(rendered_drops.begin(),
-			rendered_drops.end(), rendered) != rendered_drops.end()) continue;
+			analyzer, candidate, replacements);
+		if (name.empty()) continue;
+		// A source occurrence selects one declaration origin. Re-entrant
+		// deduction may have formed and rejected another specialization from
+		// that same declaration, but that is not a distinct public candidate.
+		if (candidate.origin_kind == CANDIDATE_ORIGIN_TEMPLATE_PATTERN &&
+			candidate.declaration_origin == event.pattern) continue;
+		bool duplicate = false;
+		for (std::size_t prior = 0; prior < rendered_drops.size(); ++prior)
+			if (rendered_drops[prior].declaration ==
+					candidate.declaration_origin &&
+				rendered_drops[prior].reason == candidate.reason &&
+				rendered_drops[prior].origin_kind == candidate.origin_kind)
+				duplicate = true;
+		if (duplicate) continue;
+		const RenderedDrop rendered(
+			candidate.declaration_origin, candidate.reason,
+			candidate.origin_kind);
 		rendered_drops.push_back(rendered);
 		output << "    drop " << name << " reason="
-			<< OverloadDropReasonName(event.drops[drop].reason) << '\n';
+			<< OverloadDropReasonName(candidate.reason) << '\n';
 	}
 	return output.str();
 }

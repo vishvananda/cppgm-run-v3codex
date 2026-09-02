@@ -59,6 +59,16 @@ the same source-file ordering and `-o` relaxations as the earlier source-to-LowI
 milestones. Other `--emit-*` modes, driver mode, and optimized LowIR output are
 not part of PA22.
 
+#### Template witness candidate identity
+
+PA22 extends PA19's optional template witness through member-template overload
+resolution.  Candidate-drop entries describe semantically distinct rejected
+declarations for the selected source call, rather than every temporary
+specialization considered internally.  Distinct source-declared special
+members remain distinct even when the compact presentation gives them the same
+name.  A retry or substitution of the declaration that was ultimately selected
+does not also appear as a rejected declaration.
+
 ### Output Format
 
 On success, `cppgm++` shall write LowIR text to `<outfile>` and exit
