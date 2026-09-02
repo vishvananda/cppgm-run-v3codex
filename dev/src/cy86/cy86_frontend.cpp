@@ -1,9 +1,10 @@
 #include "cy86/cy86_internal.h"
 
+#include "cy86/errors.h"
+
 #include <algorithm>
 #include <cstring>
 #include <limits>
-#include <stdexcept>
 #include <unordered_set>
 #include <utility>
 
@@ -21,7 +22,7 @@ Cy86Identifier Cy86Identifiers::Intern(const std::string& spelling)
 		index_.find(spelling);
 	if (found != index_.end()) return found->second;
 	if (spellings_.size() >= std::numeric_limits<Cy86Identifier>::max())
-		throw std::runtime_error("too many CY86 identifiers");
+		cy86_errors::ThrowResourceLimit("too many CY86 identifiers");
 	const Cy86Identifier identifier =
 		static_cast<Cy86Identifier>(spellings_.size());
 	std::pair<std::unordered_map<std::string, Cy86Identifier>::iterator, bool>
@@ -42,7 +43,7 @@ Cy86Identifier Cy86Identifiers::Intern(const std::string& spelling)
 const std::string& Cy86Identifiers::Spelling(Cy86Identifier identifier) const
 {
 	if (identifier >= spellings_.size())
-		throw std::logic_error("invalid CY86 identifier");
+		cy86_errors::ThrowInternal("invalid CY86 identifier");
 	return *spellings_[identifier];
 }
 
@@ -352,7 +353,7 @@ std::size_t ScalarTypeSize(FundamentalType type)
 	case FT_VOID:
 		break;
 	}
-	throw std::runtime_error("invalid CY86 literal type");
+	cy86_errors::ThrowSource("invalid CY86 literal type");
 }
 
 enum ParsedTokenKind { TOKEN_IDENTIFIER, TOKEN_LITERAL, TOKEN_SIMPLE };
@@ -387,7 +388,7 @@ public:
 	bool End() const { return position_ == tokens_.size(); }
 	ParsedToken& Peek() const
 	{
-		if (End()) throw std::runtime_error("unexpected end of CY86 statement");
+		if (End()) cy86_errors::ThrowSource("unexpected end of CY86 statement");
 		return tokens_[position_];
 	}
 	ParsedToken& Take()
@@ -400,7 +401,7 @@ public:
 	void SetPosition(std::size_t position)
 	{
 		if (position > tokens_.size())
-			throw std::logic_error("invalid CY86 parser checkpoint");
+			cy86_errors::ThrowInternal("invalid CY86 parser checkpoint");
 		position_ = position;
 	}
 	bool TakeSimple(SimpleTokenKind kind)
@@ -423,7 +424,7 @@ Cy86Literal CopyLiteral(Cy86ProgramModel& program, FundamentalType type,
 		elements > std::numeric_limits<std::uint32_t>::max() ||
 		program.literal_bytes.size() >
 			std::numeric_limits<std::uint32_t>::max() - size)
-		throw std::runtime_error("CY86 literal storage limit exceeded");
+		cy86_errors::ThrowResourceLimit("CY86 literal storage limit exceeded");
 	Cy86Literal result;
 	result.type = type;
 	result.offset = static_cast<std::uint32_t>(program.literal_bytes.size());
@@ -442,13 +443,13 @@ unsigned char* LiteralData(Cy86ProgramModel& program,
 {
 	if (literal.offset > program.literal_bytes.size() ||
 		literal.size > program.literal_bytes.size() - literal.offset)
-		throw std::logic_error("invalid CY86 literal storage range");
+		cy86_errors::ThrowInternal("invalid CY86 literal storage range");
 	return literal.size == 0 ? 0 : &program.literal_bytes[literal.offset];
 }
 
 void Require(bool condition, const char* message)
 {
-	if (!condition) throw std::runtime_error(message);
+	if (!condition) cy86_errors::ThrowSource(message);
 }
 
 }
@@ -564,7 +565,7 @@ std::uint64_t ConvertCy86LiteralToUnsigned(const Cy86Literal& literal,
 		"unsupported integral width");
 	const std::size_t output_size = width / 8;
 	if (literal.offset > bytes.size() || literal.size > bytes.size() - literal.offset)
-		throw std::logic_error("invalid CY86 literal storage range");
+		cy86_errors::ThrowInternal("invalid CY86 literal storage range");
 	const std::size_t copied = std::min<std::size_t>(output_size, literal.size);
 	std::uint64_t result = 0;
 	for (std::size_t i = 0; i < copied; ++i)
@@ -640,7 +641,7 @@ public:
 private:
 	void InvalidToken() const
 	{
-		throw std::runtime_error("invalid token in CY86 program");
+		cy86_errors::ThrowSource("invalid token in CY86 program");
 	}
 	void CountToken()
 	{
@@ -695,7 +696,7 @@ private:
 		{
 			if (program_.opcodes.size() >=
 				std::numeric_limits<Cy86OpcodeId>::max())
-				throw std::runtime_error("too many distinct CY86 opcodes");
+				cy86_errors::ThrowResourceLimit("too many distinct CY86 opcodes");
 			facts.opcode = static_cast<Cy86OpcodeId>(program_.opcodes.size());
 			program_.opcodes.push_back(opcode);
 		}
@@ -860,7 +861,7 @@ private:
 			"CY86 opcode required");
 		const Cy86Identifier opcode_id = cursor.Take().identifier;
 		if (!FindOpcode(opcode_id, &statement->opcode))
-			throw std::runtime_error("unknown CY86 opcode: " +
+			cy86_errors::ThrowSource("unknown CY86 opcode: " +
 				program_.identifiers.Spelling(opcode_id));
 		const Cy86Opcode& opcode = program_.opcodes[statement->opcode];
 		statement->operands.reserve(opcode.operand_count);

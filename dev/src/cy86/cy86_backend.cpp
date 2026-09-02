@@ -1,12 +1,13 @@
 #include "cy86/cy86_internal.h"
 
+#include "cy86/errors.h"
+
 #include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <fstream>
-#include <stdexcept>
 #include <sys/stat.h>
 
 namespace cppgm
@@ -60,7 +61,7 @@ public:
 	void PatchLittle(std::size_t offset, std::uint64_t value, unsigned bytes)
 	{
 		if (offset + bytes > bytes_.size())
-			throw std::logic_error("invalid machine-code patch");
+			cy86_errors::ThrowInternal("invalid machine-code patch");
 		for (unsigned i = 0; i < bytes; ++i)
 			bytes_[offset + i] = static_cast<unsigned char>(value >> (i * 8));
 	}
@@ -106,7 +107,7 @@ int NativeRegister(const Cy86Register& reg)
 	case CY86_REG_T: return R15;
 	case CY86_REG_INVALID: break;
 	}
-	throw std::logic_error("invalid CY86 register in backend");
+	cy86_errors::ThrowInternal("invalid CY86 register in backend");
 }
 
 void EmitSizePrefix(NativeBuffer& output, unsigned width)
@@ -229,7 +230,7 @@ void EmitX87Load(NativeBuffer& output, unsigned width, int base)
 	if (width == 32) EmitX87Memory(output, 0xd9, 0, base);
 	else if (width == 64) EmitX87Memory(output, 0xdd, 0, base);
 	else if (width == 80) EmitX87Memory(output, 0xdb, 5, base);
-	else throw std::logic_error("invalid x87 load width");
+	else cy86_errors::ThrowInternal("invalid x87 load width");
 }
 
 void EmitX87StorePop(NativeBuffer& output, unsigned width, int base)
@@ -237,7 +238,7 @@ void EmitX87StorePop(NativeBuffer& output, unsigned width, int base)
 	if (width == 32) EmitX87Memory(output, 0xd9, 3, base);
 	else if (width == 64) EmitX87Memory(output, 0xdd, 3, base);
 	else if (width == 80) EmitX87Memory(output, 0xdb, 7, base);
-	else throw std::logic_error("invalid x87 store width");
+	else cy86_errors::ThrowInternal("invalid x87 store width");
 }
 
 void EmitSetCondition(NativeBuffer& output, unsigned opcode, int destination)
@@ -252,7 +253,7 @@ const unsigned char* LiteralData(const Cy86Literal& literal,
 	const std::vector<unsigned char>& bytes)
 {
 	if (literal.offset > bytes.size() || literal.size > bytes.size() - literal.offset)
-		throw std::logic_error("invalid CY86 literal storage range");
+		cy86_errors::ThrowInternal("invalid CY86 literal storage range");
 	return literal.size == 0 ? 0 : &bytes[literal.offset];
 }
 
@@ -260,7 +261,7 @@ std::uint64_t RawLiteralBits(const Cy86Literal& literal,
 	const std::vector<unsigned char>& bytes, unsigned width)
 {
 	if (width != 8 && width != 16 && width != 32 && width != 64)
-		throw std::logic_error("invalid raw literal width");
+		cy86_errors::ThrowInternal("invalid raw literal width");
 	const std::size_t output_size = width / 8;
 	const unsigned char* data = LiteralData(literal, bytes);
 	const std::size_t byte_count = std::min<std::size_t>(output_size,
@@ -345,7 +346,7 @@ private:
 	const Cy86Opcode& Opcode(const Cy86Statement& statement) const
 	{
 		if (statement.opcode == 0 || statement.opcode >= opcodes_.size())
-			throw std::logic_error("invalid CY86 opcode identity in backend");
+			cy86_errors::ThrowInternal("invalid CY86 opcode identity in backend");
 		return opcodes_[statement.opcode];
 	}
 
@@ -369,7 +370,7 @@ private:
 	void EmitLoad(const Cy86Operand& operand, unsigned width, int destination)
 	{
 		if (width == 80)
-			throw std::runtime_error("80-bit operand requires the floating backend");
+			cy86_errors::ThrowInternal("80-bit operand requires the floating backend");
 		if (operand.kind == CY86_REGISTER_OPERAND)
 		{
 			EmitZeroExtendedRegister(output_, destination,
@@ -403,7 +404,7 @@ private:
 			EmitMoveToMemory(output_, R11, source, width);
 		}
 		else
-			throw std::logic_error("backend received an immediate write operand");
+			cy86_errors::ThrowInternal("backend received an immediate write operand");
 	}
 
 	void EmitScratchAddress(std::int64_t displacement)
@@ -462,7 +463,7 @@ private:
 		if (width == 80)
 		{
 			if (operand.kind != CY86_IMMEDIATE_OPERAND)
-				throw std::logic_error("invalid 80-bit operand");
+				cy86_errors::ThrowInternal("invalid 80-bit operand");
 			if (operand.immediate.kind == CY86_LITERAL_VALUE)
 				EmitLiteral80(operand.immediate.literal, -32);
 			else
@@ -493,7 +494,7 @@ private:
 			return;
 		}
 		if (width == 80)
-			throw std::runtime_error("80-bit destination must be memory");
+			cy86_errors::ThrowInternal("80-bit destination must be memory");
 		EmitScratchAddress(-32);
 		EmitX87StorePop(output_, width, R11);
 		EmitLoadScratch(RAX, width, -32);
@@ -595,11 +596,11 @@ private:
 		}
 		else
 		{
-			throw std::logic_error("80-bit source cannot be a register");
+			cy86_errors::ThrowInternal("80-bit source cannot be a register");
 		}
 		const Cy86Operand& destination = statement.operands[0];
 		if (destination.kind != CY86_MEMORY_OPERAND)
-			throw std::logic_error("80-bit destination must be memory");
+			cy86_errors::ThrowInternal("80-bit destination must be memory");
 		EmitAddress(destination.memory);
 		EmitMoveToMemory(output_, R11, RAX, 64);
 		EmitImmediate64(output_, RBX, 8);
@@ -704,7 +705,7 @@ private:
 		case CY86_GE: return opcode.signed_operation ? 0x9d : 0x93;
 		default: break;
 		}
-		throw std::logic_error("invalid comparison opcode");
+		cy86_errors::ThrowInternal("invalid comparison opcode");
 	}
 
 	void EmitComparison(const Cy86Statement& statement)
@@ -824,7 +825,7 @@ private:
 			EmitFloatStore(statement.operands[0], opcode.operands[0].width);
 		}
 		else
-			throw std::logic_error("invalid CY86 conversion");
+			cy86_errors::ThrowInternal("invalid CY86 conversion");
 	}
 
 	void EmitFloatingArithmetic(const Cy86Statement& statement)
@@ -839,7 +840,7 @@ private:
 		case CY86_FMUL: opcode = 0xc9; break;
 		case CY86_FSUB: opcode = 0xe9; break;
 		case CY86_FDIV: opcode = 0xf9; break;
-		default: throw std::logic_error("invalid floating arithmetic operation");
+		default: cy86_errors::ThrowInternal("invalid floating arithmetic operation");
 		}
 		output_.Byte(0xde);
 		output_.Byte(opcode);
@@ -865,7 +866,7 @@ private:
 		case CY86_GT: condition = 0x97; break;
 		case CY86_LE: condition = 0x96; break;
 		case CY86_GE: condition = 0x93; break;
-		default: throw std::logic_error("invalid floating comparison operation");
+		default: cy86_errors::ThrowInternal("invalid floating comparison operation");
 		}
 		EmitSetCondition(output_, condition, RAX);
 		if (opcode.operation == CY86_NE)
@@ -907,7 +908,7 @@ std::size_t StatementAlignment(const Cy86ProgramModel& program,
 	if (statement.kind == CY86_LITERAL_STATEMENT)
 		return Cy86LiteralAlignment(statement.literal);
 	if (statement.opcode == 0 || statement.opcode >= program.opcodes.size())
-		throw std::logic_error("invalid CY86 opcode identity during layout");
+		cy86_errors::ThrowInternal("invalid CY86 opcode identity during layout");
 	const Cy86Opcode& opcode = program.opcodes[statement.opcode];
 	if (opcode.operation == CY86_DATA)
 		return opcode.width / 8;
@@ -965,7 +966,7 @@ NativeProgram LowerProgram(const Cy86ProgramModel& program)
 		for (std::size_t j = 0; j < statement.labels.size(); ++j)
 		{
 			if (statement.labels[j] >= label_addresses.size())
-				throw std::logic_error("invalid label identity in CY86 backend");
+				cy86_errors::ThrowInternal("invalid label identity in CY86 backend");
 			label_addresses[statement.labels[j]] = address;
 		}
 		if (statement.kind == CY86_LITERAL_STATEMENT)
@@ -998,7 +999,7 @@ NativeProgram LowerProgram(const Cy86ProgramModel& program)
 	{
 		if (fixups[i].label >= label_addresses.size() ||
 			label_addresses[fixups[i].label] == 0)
-			throw std::logic_error("unresolved label reached CY86 backend");
+			cy86_errors::ThrowInternal("unresolved label reached CY86 backend");
 		native.content.PatchLittle(fixups[i].offset,
 			label_addresses[fixups[i].label] + fixups[i].addend,
 			fixups[i].width / 8);
@@ -1046,7 +1047,7 @@ std::vector<unsigned char> BuildElfHeader(const NativeProgram& program)
 	AppendLittle(&image, file_size, 8);
 	AppendLittle(&image, 0x1000, 8);
 	if (image.size() != kContentOffset)
-		throw std::logic_error("invalid ELF header size");
+		cy86_errors::ThrowInternal("invalid ELF header size");
 	return image;
 }
 
@@ -1070,14 +1071,14 @@ void WriteCy86Executable(Cy86ProgramModel& program,
 	const std::vector<unsigned char> header = BuildElfHeader(native);
 	std::ofstream output(path.c_str(), std::ios::out | std::ios::binary |
 		std::ios::trunc);
-	if (!output) throw std::runtime_error("unable to open output file: " + path);
+	if (!output) cy86_errors::ThrowInputOutput("unable to open output file: " + path);
 	output.write(reinterpret_cast<const char*>(header.data()), header.size());
 	output.write(reinterpret_cast<const char*>(native.content.Bytes().data()),
 		native.content.Bytes().size());
-	if (!output) throw std::runtime_error("unable to write output file: " + path);
+	if (!output) cy86_errors::ThrowInputOutput("unable to write output file: " + path);
 	output.close();
 	if (::chmod(path.c_str(), 0755) != 0)
-		throw std::runtime_error("unable to make output executable: " +
+		cy86_errors::ThrowInputOutput("unable to make output executable: " +
 			std::string(std::strerror(errno)));
 	if (stats)
 	{

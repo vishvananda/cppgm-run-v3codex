@@ -21,7 +21,7 @@ FRONTEND_SOURCE_IDS_ABI_MANGLE_TOOL := abi/itanium/abi_mangle_errors abi/itanium
 FRONTEND_SOURCE_IDS_RECOGNITION := recognition/recognizer
 FRONTEND_SOURCE_IDS_NAMESPACE_SEMANTIC := namespace_semantics/analysis
 FRONTEND_SOURCE_IDS_NAMESPACE_INITIALIZATION := namespace_initialization/model namespace_initialization/parser namespace_initialization/driver
-FRONTEND_SOURCE_IDS_CY86 := cy86/cy86_frontend cy86/cy86_backend cy86/cy86_program
+FRONTEND_SOURCE_IDS_CY86 := cy86/errors cy86/cy86_frontend cy86/cy86_backend cy86/cy86_program
 
 FRONTEND_SOURCE_IDS_CPPGM_PREPROCESS := preprocess/tokens/pp_tokenizer preprocess/tokens/post_tokenizer preprocess/expressions/control_expression preprocess/hosted/preprocessor_probes preprocess/macros/macro_operator_code preprocess/macros/macro_processor preprocess/preprocessor support/interning/frontend_intern preprocess/hosted/builtin_registry hosted_extension_registry
 FRONTEND_SOURCE_IDS_CPPGM_SYNTAX_PRIMARY := syntax/model/arena syntax/parser/brace_matching syntax/extensions/object_attributes syntax/parser/parser syntax/driver syntax/stats

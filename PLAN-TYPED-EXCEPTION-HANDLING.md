@@ -741,7 +741,8 @@ Append one row for each retained or rejected increment:
 | E7q | PA7 namespace semantics/parser | source, syntax, semantic, resource, and namespace-model invariant failures shared generic bases | typed lexical/syntax/semantic/resource/internal exits; speculative declarator and declaration probes remain Boolean | PA7 namespace declaration, lookup, declarator, and invalid-input exit behavior | no recovery catch or valid-input unwind; generic logic/runtime sites -3/-43 | nsdecl: -1,408 text, +32 rodata, +64 EH header, +264 unwind, -535 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA7 43/43; through-PA7 335/335; audits pass; integrated compiler binary exact | `a9f4b15a` | retained |
 | E7r | PA8 namespace initialization/parser/image model | syntax and semantic rejection, image I/O, capacity limits, and model/image invariants shared generic bases | typed lexical/syntax/semantic/I/O/resource/internal exits; parser probes remain Boolean | PA8 namespace initialization, semantic rejection, linking, and mock-image behavior | no recovery catch or valid-input unwind; generic logic/runtime sites -14/-136 | nsinit: -13,888 text, +32 rodata, +112 EH header, -48 unwind, -2,030 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA8 67/67; through-PA8 402/402; audits pass; integrated compiler binary exact | `091d3579` | retained |
 | E7s | integrated syntax arena, attributes, name facts, brace matches, and spelling interning | syntax/resource/invariant failures shared generic bases in hot parser support | typed lexical/syntax/resource/internal cold exits; attribute and name/declarator probes remain status flow | PA10 syntax structure, attributes, templates, ambiguity, and malformed-input behavior | successful frozen remains 0; generic logic/runtime sites -8/-13 | -704 text, neutral rodata, +64 EH header, +152 unwind, -296 exception table | frozen user medians 0.460/0.455 s; mean +0.83%, one-tick noise | PA10 165/165; through-PA10 587/587; frozen object exact; audits pass | `f8ae46f1` | retained |
-| E7t | ABI model, vocabulary, presentation, and mangler | ABI fact/model/encoding/resource/I/O failures shared generic bases; two catch-alls restored active graph cases | centralized ABI fact-input/internal/resource/I/O exits; scoped graph-case cleanup; ordinary cache/substitution lookup remains status flow | PA14 valid, malformed, numeric, model, and mangling behavior | successful frozen remains 0; generic logic/runtime -37/-1; catch-all -2 | +2,176 text, neutral rodata, +40 EH header, -288 unwind, -924 exception table | 16-run frozen mean exactly neutral at 0.45125/0.45125 s | PA14 117/117; through-PA14 1,082/1,082; frozen objects exact; audits pass | pending | retained |
+| E7t | ABI model, vocabulary, presentation, and mangler | ABI fact/model/encoding/resource/I/O failures shared generic bases; two catch-alls restored active graph cases | centralized ABI fact-input/internal/resource/I/O exits; scoped graph-case cleanup; ordinary cache/substitution lookup remains status flow | PA14 valid, malformed, numeric, model, and mangling behavior | successful frozen remains 0; generic logic/runtime -37/-1; catch-all -2 | +2,176 text, neutral rodata, +40 EH header, -288 unwind, -924 exception table | 16-run frozen mean exactly neutral at 0.45125/0.45125 s | PA14 117/117; through-PA14 1,082/1,082; frozen objects exact; audits pass | `b4433caf` | retained |
+| E7u | PA9 CY86 frontend, backend, model, and ELF writer | CY86 source rejection, capacities, output I/O, and backend/model invariants shared generic bases | centralized CY86 source/resource/I/O/internal exits; parsing/opcode lookup stays status flow; one transactional cleanup/rethrow retained for E8 review | PA9 valid/invalid CY86 and generated native behavior | no recovery catch or valid-input unwind; generic logic/runtime -25/-13 | cy86: +3,328 text, neutral rodata, +72 EH header, +384 unwind, -1,265 exception table; integrated compiler exact | not linked into integrated compiler; no timing exposure | PA9 20/20; through-PA9 422/422; audits pass; integrated compiler binary exact | pending | retained |
 
 For status conversions, also record the result-state truth table and rollback
 owner.  For retained catch-alls, record the exact cleanup invariant and why an
@@ -2090,6 +2091,30 @@ pinned interleaved frozen runs reproduce object hash `8545fec6...` and give
 identical baseline/candidate mean user time of 0.45125 seconds.  The small text
 cost is therefore retained for the required typed separation and lower EH
 footprint, with no measured hot-path regression.
+
+### E7u execution record
+
+The PA9 CY86 frontend, backend, program model, and ELF writer now distinguish
+ill-formed CY86 source, fixed identifier/literal/opcode limits, output I/O,
+and impossible parser/backend/image states through a centralized CY86-domain
+cold boundary.  Token/operand/opcode recognition and lookup remain explicit
+ordinary flow.  Backend-only 80-bit/operand contradictions are internal
+rather than source recovery because the frontend has already validated those
+forms.
+
+The identifier table retains one cleanup/rethrow catch-all: after a hash-map
+entry is inserted, failure to grow the parallel pointer vector must erase that
+exact entry before rethrowing or the two structures diverge.  It never returns
+an ordinary result or classifies the exception and remains for explicit E8
+allowlist review.
+
+The generic audit falls by 25 logic and 13 runtime sites, to 29/10/11.  PA9
+passes 20/20 and through-PA9 passes 422/422.  Against E7t, staged `cy86`
+`.text` changes 356,230 -> 359,558; `.rodata` remains 16,424;
+`.eh_frame_hdr` 4,436 -> 4,508; `.eh_frame` 23,980 -> 24,364; and
+`.gcc_except_table` 6,423 -> 5,158.  CY86 is not in the integrated compiler
+source set, and the integrated binary remains exact at `44f180930596...`, so
+the staged typed-boundary size tradeoff has no frozen/full timing exposure.
 
 ## Initial code map
 

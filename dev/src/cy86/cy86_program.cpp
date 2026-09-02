@@ -1,8 +1,8 @@
 #include "cy86/cy86_program.h"
 
-#include <chrono>
-#include <stdexcept>
+#include "cy86/errors.h"
 
+#include <chrono>
 #include "cy86/cy86_internal.h"
 
 namespace cppgm
@@ -63,7 +63,7 @@ void Cy86Program::AddTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options)
 {
 	if (impl_->finished)
-		throw std::logic_error("cannot add a translation unit after CY86 lowering");
+		cy86_errors::ThrowInternal("cannot add a translation unit after CY86 lowering");
 	if (impl_->stats) impl_->stats->source_bytes += source.size();
 	const std::chrono::steady_clock::time_point start = impl_->stats ?
 		std::chrono::steady_clock::now() :
@@ -78,7 +78,7 @@ void Cy86Program::AddTranslationUnit(const std::string& path,
 void Cy86Program::WriteExecutable(const std::string& path)
 {
 	if (impl_->written)
-		throw std::logic_error("CY86 executable has already been written");
+		cy86_errors::ThrowInternal("CY86 executable has already been written");
 	impl_->Finish();
 	impl_->written = true;
 	WriteCy86Executable(impl_->model, path, impl_->stats);
