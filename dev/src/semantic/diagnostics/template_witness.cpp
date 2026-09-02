@@ -191,48 +191,6 @@ bool SyntaxUsesName(const SyntaxArena& arena, syntax::NodeId node, NameId name)
 	return false;
 }
 
-void CollectTemplateNameComponents(const SyntaxArena& arena,
-	syntax::NodeId node, NameId name, std::vector<syntax::NodeId>* result)
-{
-	if (node == syntax::kNoNode) return;
-	if (arena.IsTag(node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME))
-	{
-		for (std::uint32_t edge = arena.FirstEdge(node);
-			edge != syntax::kNoEdge; edge = arena.NextEdge(edge))
-		{
-			const syntax::NodeId component = arena.EdgeChild(edge);
-			if (!arena.IsTag(component, ::cppgm::syntax::STAG_NAME_COMPONENT) ||
-				(arena.SemanticPayloadId(component) != name &&
-				 arena.PayloadId(component) != name)) continue;
-			for (std::uint32_t child = arena.FirstEdge(component);
-				child != syntax::kNoEdge; child = arena.NextEdge(child))
-				if (arena.IsTag(arena.EdgeChild(child),
-					::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST))
-				{
-					result->push_back(component);
-					return;
-				}
-		}
-	}
-	else if (arena.IsTag(node, ::cppgm::syntax::STAG_NAME_COMPONENT) &&
-		(arena.SemanticPayloadId(node) == name ||
-		 arena.PayloadId(node) == name))
-	{
-		for (std::uint32_t edge = arena.FirstEdge(node);
-			edge != syntax::kNoEdge; edge = arena.NextEdge(edge))
-			if (arena.IsTag(arena.EdgeChild(edge),
-				::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST))
-			{
-				result->push_back(node);
-				break;
-			}
-	}
-	for (std::uint32_t edge = arena.FirstEdge(node);
-		edge != syntax::kNoEdge; edge = arena.NextEdge(edge))
-		CollectTemplateNameComponents(
-			arena, arena.EdgeChild(edge), name, result);
-}
-
 bool CollectExplicitTemplateArgumentSyntax(const SyntaxArena& arena,
 	syntax::NodeId node, std::vector<syntax::NodeId>* result)
 {
@@ -715,45 +673,27 @@ void Analyzer::RecordStaticMemberTemplateWitness(BindingId binding)
 	if (!template_witness_ || binding == kNoBinding ||
 		binding >= program_->bindings.size()) return;
 	binding = program_->bindings[binding].canonical;
-	EntityId entity = program_->bindings[binding].member_owner;
-	while (entity != kNoEntity &&
-		(entity >= class_template_pattern_by_entity_.size() ||
-		 class_template_pattern_by_entity_[entity] == kNoDumpEdge))
+	for (EntityId entity = program_->bindings[binding].member_owner;
+		entity != kNoEntity; entity = program_->entities[entity].enclosing_class)
 	{
 		if (entity >= program_->entities.size()) return;
-		entity = program_->entities[entity].enclosing_class;
+		if (entity >= class_template_pattern_by_entity_.size()) continue;
+		const std::uint32_t pattern =
+			class_template_pattern_by_entity_[entity];
+		if (pattern == kNoDumpEdge || pattern >= class_templates_.size()) continue;
+		const EntityRecord& owner = program_->entities[entity];
+		const BindingId specialization = owner.declaration;
+		if (specialization == kNoBinding ||
+			owner.template_argument_begin == kNoBinding) continue;
+		const ClassTemplatePartialSelection* selection =
+			FindClassTemplatePartialSelection(specialization);
+		const std::uint32_t selected_partial = selection ?
+			selection->pattern : kNoDumpEdge;
+		template_witness_->RecordRetainedMemberClassUses(
+			program_->bindings[binding].name, pattern, specialization,
+			selected_partial, StoredTemplateArguments(
+				owner.template_argument_begin, owner.template_argument_count));
 	}
-	if (entity == kNoEntity || entity >= class_template_pattern_by_entity_.size())
-		return;
-	const std::uint32_t pattern = class_template_pattern_by_entity_[entity];
-	if (pattern == kNoDumpEdge || pattern >= class_templates_.size()) return;
-	const BindingId specialization = program_->entities[entity].declaration;
-	const EntityRecord& owner = program_->entities[entity];
-	if (specialization == kNoBinding ||
-		owner.template_argument_begin == kNoBinding) return;
-	const std::vector<TemplateArgument> arguments = StoredTemplateArguments(
-		owner.template_argument_begin, owner.template_argument_count);
-	const auto record = [this, binding, pattern, specialization, &arguments](
-		const std::deque<ClassTemplateMemberPattern>& definitions) {
-		for (std::size_t i = 0; i < definitions.size(); ++i)
-		{
-			const NodeId declarator = FindDescendantTag(*arena_,
-				definitions[i].declaration,
-				::cppgm::syntax::STAG_DECLARATOR);
-			if (declarator == kNoNode ||
-				DeclaratorName(declarator) != program_->bindings[binding].name)
-				continue;
-			const NodeId structure = DeclaratorNameStructure(declarator);
-			std::vector<NodeId> sources;
-			CollectTemplateNameComponents(*arena_, structure,
-				class_templates_[pattern].name, &sources);
-			for (std::size_t source = 0; source < sources.size(); ++source)
-				template_witness_->RecordInstantiatedClassUse(sources[source],
-					pattern, specialization, arguments);
-		}
-	};
-	record(class_templates_[pattern].member_definitions);
-	record(class_templates_[pattern].demanded_member_definitions);
 }
 
 void TemplateWitnessObserver::BeginTranslationUnit(
@@ -821,6 +761,37 @@ void TemplateWitnessObserver::NoteRetainedMemberSource(
 	}
 	retained_member_source_facts_.push_back(RetainedMemberSourceFact(
 		owner, source, member_name, pattern, partial_pattern, concrete_owner));
+}
+
+void TemplateWitnessObserver::RecordRetainedMemberClassUses(
+	NameId member_name, std::uint32_t pattern, BindingId specialization,
+	std::uint32_t selected_partial,
+	const std::vector<TemplateArgument>& arguments)
+{
+	for (std::size_t i = 0; i < retained_member_source_facts_.size(); ++i)
+	{
+		const RetainedMemberSourceFact& member =
+			retained_member_source_facts_[i];
+		if (member.member_name != member_name || member.pattern != pattern ||
+			member.partial_pattern != selected_partial ||
+			(member.concrete_owner != kNoBinding &&
+			 member.concrete_owner != specialization)) continue;
+		if (selected_partial == kNoDumpEdge)
+			RecordInstantiatedClassUse(member.source, pattern,
+				specialization, arguments);
+		for (std::size_t fact_index = 0;
+			fact_index < semantic_source_facts_.size(); ++fact_index)
+		{
+			const SemanticSourceFact& fact =
+				semantic_source_facts_[fact_index];
+			if (fact.owner != member.owner ||
+				fact.kind != SEMANTIC_SOURCE_CLASS_TEMPLATE ||
+				fact.semantic_index != pattern ||
+				fact.resolution == SEMANTIC_SOURCE_CURRENT_PARTIAL) continue;
+			RecordInstantiatedClassUse(fact.syntax, pattern,
+				specialization, arguments);
+		}
+	}
 }
 
 void TemplateWitnessObserver::RecordSemanticCurrentClassUses(

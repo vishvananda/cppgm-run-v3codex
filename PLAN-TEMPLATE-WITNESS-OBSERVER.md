@@ -525,6 +525,19 @@ mismatches.  Frozen O0/O1/O3 objects are byte-identical.  Four O0 ABBA blocks
 against `4e6befac` measure -0.00% paired user, -0.53% wall, and +0.09% RSS;
 the report is `/tmp/v3codex-w5m-member-source-ab.json`.
 
+The first retained-member consumer replaces the old recursive declarator scan
+and template-name-component search.  A committed static-member binding now
+walks its typed enclosing-specialization chain and selects the indexed source
+fact by pattern, member `NameId`, selected partial, and concrete owner.  It then
+publishes the exact owner component plus same-pattern semantic source facts.
+Only the two targeted PA22 witness files change: the nested static-member
+fixture becomes exact, while the rooted definition gains its two missing
+explicit uses and is left only with a distinct deduced type occurrence.  PA22
+mismatches fall 65 -> 64 with PA19/20 exact.  Frozen O0/O1/O3 objects remain
+byte-identical; four ABBA blocks measure -0.00% paired user, +0.48% wall, and
+-0.27% RSS.  The report is
+`/tmp/v3codex-w5m-retained-member-consumer-ab.json`.
+
 The first W5M-F expression-range implementation called `Make` and then
 `SetTokenRange` for every parenthesized call and subscript node.  Although its
 output was exact, four ABBA blocks measured +0.77% paired user time, so that
@@ -648,6 +661,7 @@ byte-identical objects.  The report is
 | W5M-S | Added declaration-owned typed semantic source facts before expanding PA22 publication | 16-byte observer-only facts reuse the existing validation lookup; PA19/20 strict and ordinary suites remain exact; O0/O1/O3 objects exact; four-block paired user -0.06%, wall -0.48%, RSS +0.07%. Earlier observer-side type construction failed semantically, its scoped variant worsened PA22 from 68 to 74, and a TU-wide claimed-node set still worsened it to 70 | retain the output-inert foundation; reject observer reconstruction and global node ownership |
 | W5M-S retained members | Indexed exact out-of-class member owner components by semantic pattern, selected owner, and member identity without publishing events | 24-byte observer-only facts; production record sizes unchanged; PA19/20 exact; PA22 unchanged at 65 mismatches; O0/O1/O3 objects exact; four-block paired user -0.00%, wall -0.53%, RSS +0.09% | retain before replacing the static-member declaration scan; speculative replay is not an authoritative publication boundary |
 | W5M-O current partials | Consumed owner-scoped facts only when the written argument shape is equivalent to the selected partial owner | four focused current-owner/return fixtures and two negative controls exact; PA19 279/279 and PA20 158/158 strict remain exact; PA22 mismatches 68 -> 65; exact frozen objects; four-block paired user -0.06%, wall -0.54%, RSS -0.04% | retain; same primary-pattern identity alone is too broad |
+| W5M-O retained members | Selected retained definition provenance from the committed static-member binding and removed recursive declarator/template-name scanning | only two targeted witness files change; nested fixture exact; PA22 65 -> 64 mismatches; PA19/20 exact; O0/O1/O3 objects exact; four-block paired user -0.00%, wall +0.48%, RSS -0.27% | retain; publish same-pattern typed facts only, leaving deduced source identity as a separate category |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

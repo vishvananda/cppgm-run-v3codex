@@ -278,6 +278,10 @@ private:
 	void NoteRetainedMemberSource(syntax::NodeId owner,
 		syntax::NodeId source, NameId member_name, std::uint32_t pattern,
 		std::uint32_t partial_pattern, BindingId concrete_owner);
+	void RecordRetainedMemberClassUses(NameId member_name,
+		std::uint32_t pattern, BindingId specialization,
+		std::uint32_t selected_partial,
+		const std::vector<TemplateArgument>& arguments);
 	void RecordSemanticCurrentClassUses(syntax::NodeId owner,
 		std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments);
