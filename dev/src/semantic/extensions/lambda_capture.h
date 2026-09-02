@@ -84,7 +84,7 @@ private:
 	std::vector<BoundName> bound_stack_;
 	std::vector<std::uint32_t> dedup_marks_;
 	std::uint32_t depth_, dedup_generation_;
-	std::size_t requests_, cache_hits_, syntax_visits_, name_uses_;
+	ObservationCounter requests_, cache_hits_, syntax_visits_, name_uses_;
 };
 
 }

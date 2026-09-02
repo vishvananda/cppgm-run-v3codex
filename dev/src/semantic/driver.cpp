@@ -22,6 +22,7 @@ protected:
 		{ return traits_type::not_eof(value); }
 };
 
+#if CPPGM_TELEMETRY_ENABLED
 void PublishDriverStats(const std::string& source,
 	const syntax::Stats& syntax, const std::chrono::steady_clock::time_point& start,
 	Stats* stats)
@@ -39,6 +40,7 @@ void PublishDriverStats(const std::string& source,
 		std::chrono::duration_cast<std::chrono::nanoseconds>(
 			std::chrono::steady_clock::now() - start).count());
 }
+#endif
 
 }
 
@@ -46,15 +48,19 @@ void WriteTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
 	std::ostream& output, semantic::Stats* stats)
 {
+#if CPPGM_TELEMETRY_ENABLED
 	const std::chrono::steady_clock::time_point started =
 		std::chrono::steady_clock::now();
+#endif
 	if (stats) *stats = Stats();
 	syntax::Stats syntax;
 	GraphStorage graph;
 	Analyzer analyzer(graph, output, stats);
 	syntax::RunTranslationUnit(path, source, options,
 		0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
+#if CPPGM_TELEMETRY_ENABLED
 	PublishDriverStats(source, syntax, started, stats);
+#endif
 }
 
 void ConsumeTranslationUnit(const std::string& path,
@@ -63,8 +69,10 @@ void ConsumeTranslationUnit(const std::string& path,
 	Stats* stats, bool complete_constructor_unwind,
 	bool host_object_emission, bool source_type_view)
 {
+#if CPPGM_TELEMETRY_ENABLED
 	const std::chrono::steady_clock::time_point started =
 		std::chrono::steady_clock::now();
+#endif
 	if (stats) *stats = Stats();
 	syntax::Stats syntax;
 	NullStreamBuffer sink_buffer;
@@ -77,7 +85,9 @@ void ConsumeTranslationUnit(const std::string& path,
 		syntax::RunTranslationUnit(path, source, options,
 			0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
 	}
+#if CPPGM_TELEMETRY_ENABLED
 	PublishDriverStats(source, syntax, started, stats);
+#endif
 	// Token, parser, syntax, substitution, lookup, and demand scratch are dead.
 	// The typed next phase borrows only the canonical graph owner.
 	consumer.Consume(graph.View());

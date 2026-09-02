@@ -270,7 +270,7 @@ private:
 	std::vector<std::uint32_t> offsets_;
 	std::vector<Entry> entries_;
 	std::vector<std::uint32_t> slots_;
-	std::size_t requests_, cache_hits_, index_probes_;
+	ObservationCounter requests_, cache_hits_, index_probes_;
 };
 
 // Canonical identity for alias-expanded dependent function results. The
@@ -324,7 +324,7 @@ private:
 	std::vector<std::uint64_t> atoms_;
 	std::vector<Entry> entries_;
 	std::vector<std::uint32_t> slots_;
-	std::size_t requests_, cache_hits_, index_probes_, atom_visits_;
+	ObservationCounter requests_, cache_hits_, index_probes_, atom_visits_;
 };
 
 struct TemplateSpecializationKey

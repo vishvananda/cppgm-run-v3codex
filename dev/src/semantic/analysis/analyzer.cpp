@@ -2720,8 +2720,10 @@ void Analyzer::Consume(const SyntaxArena& arena, NodeId root)
 	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_DELETE);
 	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY);
 	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY);
+#if CPPGM_TELEMETRY_ENABLED
 	const std::chrono::steady_clock::time_point analysis_started =
 		std::chrono::steady_clock::now();
+#endif
 	for (std::uint32_t edge = arena.FirstEdge(root); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
 		AnalyzeDeclaration(arena.EdgeChild(edge), program.GlobalScope(), root_, false);
@@ -2731,9 +2733,12 @@ void Analyzer::Consume(const SyntaxArena& arena, NodeId root)
 	// the assignment's historical rendering contract and has no graph consumer.
 	if (!render_output_) PublishInternalIdentityFacts(&program);
 	if (source_type_view_) ApplySourceTypeOverrides();
+#if CPPGM_TELEMETRY_ENABLED
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
+#endif
 	if (render_output_) Render();
+#if CPPGM_TELEMETRY_ENABLED
 	if (stats_)
 	{
 		const std::chrono::steady_clock::time_point finished =
@@ -2902,6 +2907,7 @@ void Analyzer::Consume(const SyntaxArena& arena, NodeId root)
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				finished - render_started).count());
 	}
+#endif
 	arena_ = 0;
 }
 }

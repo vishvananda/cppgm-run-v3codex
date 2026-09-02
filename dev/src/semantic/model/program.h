@@ -1,6 +1,7 @@
 #pragma once
 
 #include "support/interning/frontend_intern.h"
+#include "support/telemetry.h"
 #include "preprocess/hosted/builtin_registry.h"
 
 #include <cstddef>
@@ -285,7 +286,7 @@ private:
 	std::vector<TypeRecord> types_;
 	std::vector<TypeId> parameters_;
 	std::vector<TypeId> slots_;
-	std::size_t index_probes_;
+	ObservationCounter index_probes_;
 };
 
 enum ScopeKind
@@ -924,19 +925,19 @@ public:
 	std::vector<FunctionTemplateAbiTypeId>
 		function_template_abi_function_parameter_types;
 	std::vector<FunctionTemplateAbiRecipe> function_template_abi_recipes;
-	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
-	mutable std::size_t base_path_queries, base_path_cache_hits,
+	ObservationCounter lookup_queries, lookup_scope_visits, lookup_edge_visits;
+	mutable ObservationCounter base_path_queries, base_path_cache_hits,
 		base_path_cache_misses;
-	mutable std::size_t base_path_edge_visits;
-	mutable std::size_t virtual_base_path_visits;
-	mutable std::size_t virtual_base_layout_lookups;
-	mutable std::size_t virtual_base_layout_probes;
-	std::size_t direct_base_validation_visits;
-	mutable std::size_t name_index_probes;
-	std::size_t using_index_probes;
-	std::size_t template_argument_list_requests;
-	std::size_t template_argument_list_cache_hits;
-	std::size_t template_argument_list_index_probes;
+	mutable ObservationCounter base_path_edge_visits;
+	mutable ObservationCounter virtual_base_path_visits;
+	mutable ObservationCounter virtual_base_layout_lookups;
+	mutable ObservationCounter virtual_base_layout_probes;
+	ObservationCounter direct_base_validation_visits;
+	mutable ObservationCounter name_index_probes;
+	ObservationCounter using_index_probes;
+	ObservationCounter template_argument_list_requests;
+	ObservationCounter template_argument_list_cache_hits;
+	ObservationCounter template_argument_list_index_probes;
 
 private:
 	struct ScopeRecord; struct NameEntry;
