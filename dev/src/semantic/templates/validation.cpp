@@ -94,6 +94,7 @@ public:
 		  parameters_(parameters), class_declaration_(class_declaration),
 		  source_owner_pattern_(std::numeric_limits<std::size_t>::max()),
 		  source_owner_component_(class_source),
+		  source_object_type_(kNoNode),
 		  source_owner_is_partial_(false) {}
 
 	void Run();
@@ -156,6 +157,7 @@ private:
 	void ValidateKnownTemplateArgumentKinds(NodeId node, ScopeId scope);
 	void PublishStructuredTemplateSourceFacts(NodeId node, ScopeId scope);
 	void InitializeSemanticSourceOwner();
+	void InitializeSemanticObjectTypeSource();
 	bool IsCurrentClassSource(NodeId component) const;
 	const TemplateParameter* TemplateParameterUsedBy(NodeId node) const;
 	void ValidateSpecialMemberExceptionSpecification();
@@ -179,6 +181,7 @@ private:
 	NodeId class_declaration_;
 	std::size_t source_owner_pattern_;
 	NodeId source_owner_component_;
+	NodeId source_object_type_;
 	bool source_owner_is_partial_;
 	std::unordered_set<NameId> parameter_names_;
 	std::unordered_set<NodeId> template_argument_validation_visited_;
@@ -580,6 +583,44 @@ void RetainedTemplateValidator::InitializeSemanticSourceOwner()
 	}
 }
 
+void RetainedTemplateValidator::InitializeSemanticObjectTypeSource()
+{
+	if (!analyzer_.template_witness_) return;
+	NodeId declaration = target_;
+	while (analyzer_.arena_->IsTag(
+		declaration, ::cppgm::syntax::STAG_TEMPLATE_DECLARATION))
+	{
+		const NodeId clause = analyzer_.FindChild(declaration,
+			::cppgm::syntax::STAG_TEMPLATE_PARAMETER_CLAUSE);
+		NodeId described = kNoNode;
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(declaration);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId child = analyzer_.arena_->EdgeChild(edge);
+			if (child != clause) described = child;
+		}
+		if (described == kNoNode) return;
+		declaration = described;
+	}
+	if (!analyzer_.arena_->IsTag(
+		declaration, ::cppgm::syntax::STAG_SIMPLE_DECLARATION)) return;
+	const NodeId specifiers = analyzer_.FindChild(
+		declaration, ::cppgm::syntax::STAG_DECL_SPECIFIER_SEQ);
+	for (std::uint32_t edge = specifiers == kNoNode ? kNoEdge :
+		analyzer_.arena_->FirstEdge(specifiers);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+	{
+		const NodeId specifier = analyzer_.arena_->EdgeChild(edge);
+		const NodeId structure = analyzer_.FindChild(
+			specifier, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
+		if (structure != kNoNode)
+		{
+			source_object_type_ = structure;
+			return;
+		}
+	}
+}
+
 bool RetainedTemplateValidator::IsCurrentClassSource(NodeId component) const
 {
 	if (!source_owner_is_partial_ || component == kNoNode ||
@@ -611,6 +652,9 @@ void RetainedTemplateValidator::PublishStructuredTemplateSourceFacts(
 	NamePath primary;
 	primary.global = analyzer_.FindChild(
 		node, ::cppgm::syntax::STAG_GLOBAL_QUALIFIER) != kNoNode;
+	std::size_t object_pattern = std::numeric_limits<std::size_t>::max();
+	TemplateWitnessObserver::SemanticSourceResolution object_resolution =
+		TemplateWitnessObserver::SEMANTIC_SOURCE_REPLAY_REQUIRED;
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
@@ -649,7 +693,16 @@ void RetainedTemplateValidator::PublishStructuredTemplateSourceFacts(
 			target_, component, static_cast<std::uint32_t>(pattern),
 			TemplateWitnessObserver::SEMANTIC_SOURCE_CLASS_TEMPLATE,
 			resolution, explicit_count);
+		object_pattern = pattern;
+		object_resolution = resolution;
 	}
+	if (node == source_object_type_ &&
+		object_pattern != std::numeric_limits<std::size_t>::max() &&
+		object_pattern <= std::numeric_limits<std::uint32_t>::max())
+		analyzer_.template_witness_->NoteSemanticSourceFact(
+			target_, node, static_cast<std::uint32_t>(object_pattern),
+			TemplateWitnessObserver::SEMANTIC_SOURCE_CLASS_OBJECT_TYPE,
+			object_resolution, 0);
 }
 
 void RetainedTemplateValidator::ValidateKnownTemplateArgumentKinds(
@@ -2206,6 +2259,7 @@ void RetainedTemplateValidator::Run()
 	if (analyzer_.template_witness_)
 	{
 		InitializeSemanticSourceOwner();
+		InitializeSemanticObjectTypeSource();
 		PublishRetainedSourceProvenance(target_, !definition);
 		for (std::size_t i = 0; i < parameters_.size(); ++i)
 			PublishTemplateParameterSourceProvenance(parameters_[i]);
