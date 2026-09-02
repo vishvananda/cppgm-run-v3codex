@@ -103,6 +103,12 @@ InternalCompilerError::InternalCompilerError(const std::string& message,
 		domain, message, code)
 {}
 
+InternalCompilerError::InternalCompilerError(const char* message,
+	CompilerErrorDomain domain, std::uint16_t code)
+	: CompilerError(CompilerErrorDisposition::INTERNAL,
+		domain, message, code)
+{}
+
 void ThrowSemanticError(const char* message)
 {
 	throw SemanticError(message);

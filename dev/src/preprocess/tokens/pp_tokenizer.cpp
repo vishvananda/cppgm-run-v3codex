@@ -54,7 +54,8 @@ public:
 	const T& operator[](std::size_t offset) const
 	{
 		if (offset >= size_)
-			ThrowLexicalInternalError("fixed lookahead queue underflow");
+			throw InternalCompilerError("fixed lookahead queue underflow",
+				CompilerErrorDomain::LEXICAL);
 		return unchecked(offset);
 	}
 
@@ -67,7 +68,8 @@ public:
 	void push_back(const T& value)
 	{
 		if (size_ == Capacity)
-			ThrowLexicalInternalError("fixed lookahead queue overflow");
+			throw InternalCompilerError("fixed lookahead queue overflow",
+				CompilerErrorDomain::LEXICAL);
 		data_[(begin_ + size_) % Capacity] = value;
 		++size_;
 	}
@@ -75,7 +77,8 @@ public:
 	void pop_front()
 	{
 		if (empty())
-			ThrowLexicalInternalError("fixed lookahead queue underflow");
+			throw InternalCompilerError("fixed lookahead queue underflow",
+				CompilerErrorDomain::LEXICAL);
 		begin_ = (begin_ + 1) % Capacity;
 		--size_;
 	}

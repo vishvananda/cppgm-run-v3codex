@@ -134,6 +134,9 @@ public:
 class InternalCompilerError : public CompilerError
 {
 public:
+	explicit InternalCompilerError(const char* message,
+		CompilerErrorDomain domain = CompilerErrorDomain::GENERAL,
+		std::uint16_t code = 0);
 	explicit InternalCompilerError(const std::string& message,
 		CompilerErrorDomain domain = CompilerErrorDomain::GENERAL,
 		std::uint16_t code = 0);
