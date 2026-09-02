@@ -770,6 +770,27 @@ blocks against the pre-foundation compiler measure -0.847% paired user,
 -0.544% wall, and -1.110% RSS; the report is
 `/tmp/v3codex-w5m-typed-elision-consumer-ab.json`.
 
+The declared-default producer now shares one typed materialization operation
+with ordinary class-template completion.  It runs only with a witness observer,
+under candidate-substitution and observer-suppression guards, and compares
+canonical `TemplateArgument` values.  Crucially, it refuses to reinterpret a
+default whose syntax refers to a template parameter: a dependent default that
+happens to become equal after substitution is explicit provenance, not a
+source default.  The final source-resolution call publishes the complete
+canonical argument vector together with this presentation arity, fixing the
+prior split between incomplete source arguments and completed specialization
+facts.
+
+PA22 moves from 55 to 50 mismatches.  Five fixtures become exact: defaulted
+template-template partial ordering, non-type partial ordering, explicit values
+equal to nondependent defaults, nested-member partial application, and chained
+member closures.  The dependent-default reference-reset fixture is an exact
+negative control.  PA19/20 remain exact and PA23/24 manifests do not change.
+Six focused before/after witness compilations produce byte-identical LowIR;
+the frozen O0/O1/O3 no-witness LowIR is also exact.  Four ABBA blocks against
+the prior consumer measure -0.717% paired user, -0.536% wall, and -0.237% RSS;
+the report is `/tmp/v3codex-w5m-default-provenance-ab.json`.
+
 The first consumer uses the retained owner pattern/partial ordinal only after
 their bounds and completed canonical-argument state are validated.  It renders
 the primary name and typed partial arguments through the opt-in identity
@@ -946,6 +967,7 @@ byte-identical objects.  The report is
 | W5M-O call-owner normalization | Applied the existing primitive spelling normalization at selected member-call owner presentation | PA22 58 -> 56; one PA23 and two PA24 files also become exact with no later-manifest regressions; PA19/20 and objects/audits exact; four-block paired user +0.000% | retain the shared final-render normalization |
 | W5M-S typed argument elision | Added an opt-in recursive source-identity policy keyed by semantic entity and bounded presentation arity | existing APIs and output unchanged; PA19/20 exact; PA22 stays 56; O0/O1/O3 LowIR and audits exact; four-block paired user -0.241%, wall -0.538%, RSS +0.100% | retain as the foundation for nested default provenance; do not manufacture qualified/unqualified string aliases |
 | W5M-O omitted argument provenance | Derived typed entity limits from exact canonical specialization facts and consumed them recursively | PA22 56 -> 55; inherited alias operator exact; nested use-scope arguments corrected; PA19/20 exact; PA23/24 unchanged; objects/audits exact; four-block paired user -0.847% | retain; keep semantic default equivalence separate from genuinely omitted source provenance |
+| W5M-S/O declared default provenance | Factored typed class-default materialization and published complete canonical source facts with an observer-only arity; excluded defaults that refer to template parameters | PA22 55 -> 50 with five newly exact fixtures; dependent-default negative control exact; PA19/20 exact; PA23/24 unchanged; focused witness LowIR and frozen O0/O1/O3 LowIR exact; four-block paired user -0.717% | retain; reject post-substitution equality for dependent defaults |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

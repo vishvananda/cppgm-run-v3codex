@@ -706,7 +706,9 @@ dev/src/semantic/templates/classes.cpp	AnalyzeFriendClassTemplate	1	dev/src/sema
 dev/src/semantic/templates/classes.cpp	ApplyClassTemplateMemberDefinitions	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	ApplyDemandedClassTemplateMemberDefinitions	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	BindClassTemplateArguments	1	dev/src/semantic/templates/classes.cpp	keep
+dev/src/semantic/templates/classes.cpp	ClassTemplateDefaultDependsOnParameter	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	ClassTemplateMemberNamesPrimaryParameters	1	dev/src/semantic/templates/classes.cpp	keep
+dev/src/semantic/templates/classes.cpp	ClassTemplatePresentationArity	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	CompareTemplatePartialPatterns	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	CompleteClassTemplateSpecialization	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	DeduceTemplatePartialArgument	1	dev/src/semantic/templates/classes.cpp	keep
@@ -727,6 +729,7 @@ dev/src/semantic/templates/classes.cpp	LookupStructuredName	1	dev/src/semantic/t
 dev/src/semantic/templates/classes.cpp	MarkClassTemplatePresentation	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	MarkClassTemplateSpecializationUse	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	MatchTemplatePartialArguments	1	dev/src/semantic/templates/classes.cpp	keep
+dev/src/semantic/templates/classes.cpp	MaterializeClassTemplateDefaultArgument	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	MaterializeTemplatePartialArguments	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	ParseExplicitTemplateArguments	1	dev/src/semantic/templates/classes.cpp	keep
 dev/src/semantic/templates/classes.cpp	PublishClassTemplateFriendGrants	1	dev/src/semantic/templates/classes.cpp	keep

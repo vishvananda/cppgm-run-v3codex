@@ -1,6 +1,7 @@
 #include "semantic/analysis/analyzer.h"
 #include "semantic/diagnostics/template_witness.h"
 #include "semantic/presentation/templates.h"
+#include "support/exception_types.h"
 #include "support/exceptions.h"
 #include "support/scoped_state.h"
 
@@ -465,9 +466,22 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 							static_cast<std::uint32_t>(pattern));
 					else
 					{
+						const EntityId specialization_entity = EntityOf(
+							program_->bindings[specialization].type);
+						if (specialization_entity == kNoEntity)
+							ThrowInternalCompilerError(
+								"class template specialization has no entity");
+						const EntityRecord& specialization_record =
+							program_->entities[specialization_entity];
+						const std::vector<TemplateArgument> complete_arguments =
+							StoredTemplateArguments(
+								specialization_record.template_argument_begin,
+								specialization_record.template_argument_count);
 						template_witness_->RecordClassSpecialization(
 							program_->bindings[specialization].canonical,
-							arguments, argument_syntax.size());
+							complete_arguments,
+							ClassTemplatePresentationArity(class_pattern,
+								complete_arguments, argument_syntax.size()));
 						if (TemplateWitnessSourceUseEnabled())
 							template_witness_->RecordClassUse(component_node,
 								static_cast<std::uint32_t>(pattern), specialization,
@@ -1381,6 +1395,101 @@ ScopeId Analyzer::BindClassTemplateArguments(
 		BindTemplateArgumentPack(template_scope, pattern.parameters.back(),
 			arguments, fixed, arguments.size());
 	return template_scope;
+}
+
+bool Analyzer::MaterializeClassTemplateDefaultArgument(
+	const TemplateParameter& parameter, ScopeId argument_scope,
+	TemplateArgument* argument)
+{
+	if (!argument)
+		ThrowInternalCompilerError("missing class template default argument");
+	if (parameter.default_argument == kNoNode) return false;
+	const NodeId source = FirstSemanticChild(parameter.default_argument);
+	if (source == kNoNode)
+		ThrowSemanticError("empty default template argument");
+	argument->kind = parameter.kind;
+	if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
+	{
+		const NodeId type_id = arena_->IsTag(
+			source, ::cppgm::syntax::STAG_TYPE_ID) ? source :
+			FindChild(source, ::cppgm::syntax::STAG_TYPE_ID);
+		if (type_id == kNoNode) return false;
+		argument->type = BuildTypeId(type_id, argument_scope);
+		return true;
+	}
+	if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
+		return BuildTemplateTemplateArgument(
+			source, argument_scope, parameter, argument);
+	argument->type = ResolveTemplateParameterType(parameter, argument_scope);
+	ExpressionInfo expression;
+	{
+		ScopedCounterIncrement required(&constant_expression_required_depth_);
+		expression = AnalyzeExpression(source, argument_scope, argument->type);
+	}
+	if (FormNonTypeTemplateArgumentValue(expression, argument)) return true;
+	ThrowSemanticError("default non-type template argument is not constant");
+}
+
+bool Analyzer::ClassTemplateDefaultDependsOnParameter(
+	const ClassTemplatePattern& pattern, NodeId syntax) const
+{
+	if (syntax == kNoNode) return false;
+	const NameId name = arena_->SemanticPayloadId(syntax);
+	if (name != 0)
+		for (std::size_t i = 0; i < pattern.parameters.size(); ++i)
+			if (pattern.parameters[i].name != 0 &&
+				pattern.parameters[i].name == name) return true;
+	for (std::uint32_t edge = arena_->FirstEdge(syntax); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		if (ClassTemplateDefaultDependsOnParameter(
+			pattern, arena_->EdgeChild(edge))) return true;
+	return false;
+}
+
+std::size_t Analyzer::ClassTemplatePresentationArity(
+	const ClassTemplatePattern& pattern,
+	const std::vector<TemplateArgument>& arguments,
+	std::size_t supplied_count)
+{
+	const std::size_t fixed = FixedTemplateParameterCount(pattern.parameters);
+	if (!template_witness_ || HasTrailingTemplateParameterPack(pattern.parameters) ||
+		arguments.size() != fixed || supplied_count == 0 ||
+		supplied_count > fixed ||
+		pattern.parameters[supplied_count - 1].default_argument == kNoNode)
+		return supplied_count;
+	const ScopeId argument_scope = NewScope(pattern.lexical_scope,
+		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(pattern.lexical_scope));
+	std::size_t result = 0;
+	for (std::size_t i = 0; i < fixed; ++i)
+	{
+		bool equivalent_default = i >= supplied_count;
+		if (!equivalent_default &&
+			pattern.parameters[i].default_argument != kNoNode &&
+			!ClassTemplateDefaultDependsOnParameter(
+				pattern, pattern.parameters[i].default_argument))
+		{
+			TemplateArgument materialized;
+			bool valid = false;
+			try
+			{
+				ScopedContainerPush<std::vector<std::uint8_t> > substitution(
+					&candidate_substitution_failures_, 0);
+				ScopedValueRestore<TemplateWitnessObserver*> suppress_observer(
+					&template_witness_, 0);
+				valid = MaterializeClassTemplateDefaultArgument(
+					pattern.parameters[i], argument_scope, &materialized) &&
+					!CandidateSubstitutionFailed();
+			}
+			catch (const SemanticError&)
+			{
+				valid = false;
+			}
+			equivalent_default = valid && materialized == arguments[i];
+		}
+		if (!equivalent_default) result = i + 1;
+		BindTemplateArgument(argument_scope, pattern.parameters[i], arguments[i]);
+	}
+	return result;
 }
 
 void Analyzer::ApplyClassTemplateMemberDefinitions(
@@ -2525,7 +2634,9 @@ BindingId Analyzer::ReuseClassTemplateSpecialization(
 			program_->bindings[binding].type);
 	if (template_witness_)
 		template_witness_->RecordClassSpecialization(
-			program_->bindings[binding].canonical, arguments, explicit_count);
+			program_->bindings[binding].canonical, arguments,
+			ClassTemplatePresentationArity(
+				pattern, arguments, explicit_count));
 	return binding;
 }
 
@@ -2569,40 +2680,9 @@ BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 	for (std::size_t i = arguments.size(); i < fixed; ++i)
 	{
 		const TemplateParameter& parameter = pattern.parameters[i];
-		if (parameter.default_argument == kNoNode) return kNoBinding;
-		NodeId source = FirstSemanticChild(parameter.default_argument);
-		if (source == kNoNode)
-			ThrowSemanticError("empty default template argument");
 		TemplateArgument argument;
-		argument.kind = parameter.kind;
-		if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
-		{
-			NodeId type_id = arena_->IsTag(source, ::cppgm::syntax::STAG_TYPE_ID) ? source :
-				FindChild(source, ::cppgm::syntax::STAG_TYPE_ID);
-			if (type_id == kNoNode) return kNoBinding;
-			argument.type = BuildTypeId(type_id, argument_scope);
-		}
-		else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
-		{
-			if (!BuildTemplateTemplateArgument(
-				source, argument_scope, parameter, &argument))
-				return kNoBinding;
-		}
-		else
-		{
-			argument.type = ResolveTemplateParameterType(
-				parameter, argument_scope);
-			ExpressionInfo expression;
-			{
-				ScopedCounterIncrement required(
-					&constant_expression_required_depth_);
-				expression = AnalyzeExpression(
-					source, argument_scope, argument.type);
-			}
-			if (!FormNonTypeTemplateArgumentValue(expression, &argument))
-				ThrowSemanticError(
-					"default non-type template argument is not constant");
-		}
+		if (!MaterializeClassTemplateDefaultArgument(
+			parameter, argument_scope, &argument)) return kNoBinding;
 		arguments.push_back(argument);
 		BindTemplateArgument(argument_scope, parameter, argument);
 	}
@@ -2669,7 +2749,8 @@ BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 		if (template_witness_)
 			template_witness_->RecordClassSpecialization(
 				program_->bindings[binding].canonical, arguments,
-				supplied_arguments.size());
+				ClassTemplatePresentationArity(
+					pattern, arguments, supplied_arguments.size()));
 		return binding;
 	}
 	FunctionTemplateDeduction partial_bindings(pattern.parameters);
@@ -2771,7 +2852,8 @@ BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 	if (template_witness_)
 		template_witness_->RecordClassSpecialization(
 			program_->bindings[binding].canonical, arguments,
-			supplied_arguments.size());
+			ClassTemplatePresentationArity(
+				pattern, arguments, supplied_arguments.size()));
 	return binding;
 }
 

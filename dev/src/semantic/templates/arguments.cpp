@@ -370,9 +370,18 @@ bool Analyzer::AnalyzeExplicitTemplateSpecialization(
 			pattern_index, arguments);
 		if (template_witness_ && owner != kNoBinding)
 		{
+			const EntityId owner_entity = EntityOf(program_->bindings[owner].type);
+			if (owner_entity == kNoEntity)
+				ThrowInternalCompilerError(
+					"explicit member specialization owner has no entity");
+			const EntityRecord& owner_record = program_->entities[owner_entity];
+			const std::vector<TemplateArgument> complete_arguments =
+				StoredTemplateArguments(owner_record.template_argument_begin,
+					owner_record.template_argument_count);
 			template_witness_->RecordClassSpecialization(
-				program_->bindings[owner].canonical, arguments,
-				argument_syntax.size());
+				program_->bindings[owner].canonical, complete_arguments,
+				ClassTemplatePresentationArity(
+					pattern, complete_arguments, argument_syntax.size()));
 			template_witness_->RecordInstantiatedClassUse(components[component],
 				static_cast<std::uint32_t>(pattern_index), owner, arguments,
 				argument_syntax.size());

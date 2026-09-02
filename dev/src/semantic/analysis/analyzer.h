@@ -913,6 +913,15 @@ private:
 	bool IsClassTemplateSpecializationContext(EntityId entity) const;
 	ScopeId BindClassTemplateArguments(const ClassTemplatePattern& pattern,
 		const std::vector<TemplateArgument>& arguments);
+	bool MaterializeClassTemplateDefaultArgument(
+		const TemplateParameter& parameter, ScopeId argument_scope,
+		TemplateArgument* argument);
+	bool ClassTemplateDefaultDependsOnParameter(
+		const ClassTemplatePattern& pattern, NodeId syntax) const;
+	std::size_t ClassTemplatePresentationArity(
+		const ClassTemplatePattern& pattern,
+		const std::vector<TemplateArgument>& arguments,
+		std::size_t supplied_count);
 	void UpgradeClassTemplateSpecializations(std::size_t pattern);
 	void ResetClassTemplateSpecializationDefinition(BindingId specialization);
 	void ApplyClassTemplateMemberDefinitions(std::size_t pattern,
