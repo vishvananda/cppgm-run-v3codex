@@ -1041,7 +1041,7 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 					TemplateWitnessObserver::
 						OVERLOAD_DROP_BETTER_CANDIDATE_SELECTED;
 			}
-		template_witness_->RecordOverloadSelection(
+		template_witness_->RecordOverloadSelection(*this,
 			program_->bindings[selected].canonical, candidates,
 			witness_drop_reasons);
 	}

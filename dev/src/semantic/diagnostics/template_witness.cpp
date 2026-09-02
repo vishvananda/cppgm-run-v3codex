@@ -1314,7 +1314,8 @@ void TemplateWitnessObserver::RecordFunctionCall(syntax::NodeId syntax,
 	}
 }
 
-void TemplateWitnessObserver::RecordOverloadSelection(BindingId selected,
+void TemplateWitnessObserver::RecordOverloadSelection(
+	const Analyzer& analyzer, BindingId selected,
 	const std::vector<BindingId>& candidates,
 	const std::vector<std::uint8_t>& reasons)
 {
@@ -1322,8 +1323,17 @@ void TemplateWitnessObserver::RecordOverloadSelection(BindingId selected,
 	for (std::size_t i = 0; i < candidates.size() && i < reasons.size(); ++i)
 		if (reasons[i] != 0)
 		{
+			std::uint32_t declaration_pattern = kNoDumpEdge;
+			if (candidates[i] < analyzer.program_->bindings.size())
+			{
+				const BindingId canonical =
+					analyzer.program_->bindings[candidates[i]].canonical;
+				if (canonical < analyzer.program_->bindings.size())
+					declaration_pattern =
+						analyzer.GetFunction(canonical).template_pattern;
+			}
 			const SourceEvent::Drop drop(
-				candidates[i], kNoDumpEdge, reasons[i]);
+				candidates[i], declaration_pattern, reasons[i]);
 			bool duplicate = false;
 			for (std::size_t prior = 0; prior < drops.size(); ++prior)
 				if (drops[prior].binding == drop.binding &&
@@ -1465,11 +1475,11 @@ std::string TemplateWitnessObserver::OverloadName(const Analyzer& analyzer,
 	const BindingId binding = drop.binding;
 	if (binding == kNoBinding)
 	{
-		if (drop.pattern == kNoDumpEdge ||
-			drop.pattern >= analyzer.function_templates_.size())
+		if (drop.declaration_pattern == kNoDumpEdge ||
+			drop.declaration_pattern >= analyzer.function_templates_.size())
 			return std::string();
 		const FunctionTemplatePattern& pattern =
-			analyzer.function_templates_[drop.pattern];
+			analyzer.function_templates_[drop.declaration_pattern];
 		return NormalizeEntity(presentation::RenderName(
 			*analyzer.program_, pattern.owner, pattern.name), replacements);
 	}

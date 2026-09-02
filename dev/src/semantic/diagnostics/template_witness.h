@@ -133,11 +133,14 @@ private:
 		struct Drop
 		{
 			BindingId binding;
-			std::uint32_t pattern;
+			// A specialization retains the declaration pattern that produced it.
+			// Ordinary candidates leave this unset and use their canonical binding
+			// as the declaration origin. Rendering still uses `binding`.
+			std::uint32_t declaration_pattern;
 			std::uint8_t reason;
 			Drop(BindingId binding_value, std::uint32_t pattern_value,
 				std::uint8_t reason_value)
-				: binding(binding_value), pattern(pattern_value),
+				: binding(binding_value), declaration_pattern(pattern_value),
 				  reason(reason_value) {}
 		};
 		SourceEventKind kind;
@@ -398,7 +401,7 @@ private:
 		syntax::NodeId component_syntax, std::uint32_t pattern,
 		BindingId binding, const std::vector<TemplateArgument>& arguments,
 		std::size_t explicit_count);
-	void RecordOverloadSelection(BindingId selected,
+	void RecordOverloadSelection(const Analyzer& analyzer, BindingId selected,
 		const std::vector<BindingId>& candidates,
 		const std::vector<std::uint8_t>& reasons);
 	void RecordDeductionDrop(syntax::NodeId syntax, std::uint32_t pattern,
