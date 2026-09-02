@@ -158,6 +158,14 @@ source-location layer:
    records.  Token scans, source-event retargeting, deferred source guesses,
    and semantic classification in `FinishTranslationUnit` are deletion
    targets.
+8. Retained-template validation publishes typed declaration-context facts for
+   exact source nodes: dependent class/alias template-ids and calls originating
+   in a retained definition.  Variable-template uses are deliberately distinct
+   because replay can turn one into the public deduced source event.  The facts
+   cover the complete retained target and template parameters/defaults,
+   including syntax that the ordinary validator deliberately skips.  This
+   observer-only provenance replaces renderer tests for whether a token happens
+   to occur inside a template.
 
 The source-range portion is general syntax provenance and must be validated
 before witness behavior changes.  It uses fields already present in every
@@ -352,6 +360,31 @@ This corrective phase precedes any further PA22 convergence.
 5. Commit and push the provenance foundation independently.  No PA22
    witness-parity workaround belongs in this commit.
 
+## Phase W5D: Declaration-context provenance
+
+1. Reuse the retained validator's template-parameter environment to classify
+   exact name-component nodes whose argument syntax is still dependent at the
+   declaration point, separately from call nodes owned by retained syntax.
+2. Publish this typed provenance for the full retained definition and every
+   template-parameter specifier, declarator, nested parameter, and default.
+   Do not rely on the validator's selective behavioral traversal: function
+   casts, unevaluated syntax, and defaults may correctly sit outside that
+   traversal while still producing semantic events later.
+3. Allocate and traverse only when the nullable witness observer exists.
+   Ordinary analysis receives no side table, node growth, or extra syntax
+   walk.
+4. Make each event kind consume only the fact that applies to its contract.
+   Dependent class/alias uses and retained calls are suppressed; a replayed
+   variable-template use remains publishable with deduced arguments.  The
+   final renderer may sort and format complete records, but may not rediscover
+   declaration context by parent walks, token searches, or spelling rules.
+5. Prove the boundary with dependent function-body, dependent default,
+   concrete-in-template, and replay-resolution fixtures; then repeat the
+   no-witness AB/BA gate before retaining it.
+
+Commit and push this provenance increment independently before the renderer
+reduction.
+
 ## Phase W5R: Rebase the observer on complete source-use records
 
 1. Change class, alias, variable, function, constructor, and operator
@@ -364,9 +397,9 @@ This corrective phase precedes any further PA22 convergence.
    at source-aware callers using the selected binding in the returned dump
    node.
 4. Remove global token searches, `used_tokens`, event retargeting, pairwise
-   default-provenance propagation, and witness-only dependent-name shadow
-   modeling from the validator.  A remaining recovery heuristic blocks this
-   phase from being committed.
+   default-provenance propagation, and renderer-side declaration-context
+   inference.  Keep only W5D's exact semantic provenance publisher.  A
+   remaining recovery heuristic blocks this phase from being committed.
 5. Re-run PA19 and PA20 strict/ordinary/cumulative gates before resuming PA22.
    Then classify PA22 differences against complete records rather than adding
    renderer inference.
@@ -380,6 +413,17 @@ frozen no-witness compile by 1.35% wall / 1.51% user; it was rejected.  Four
 ABBA blocks for the packed representation measured +0.22% wall / +0.31% user
 with byte-identical output and +0.21% RSS, all inside the 0.5% noise allowance.
 The report is `/tmp/v3codex-provenance-packed-ab.json`.
+
+Literal nodes originally reused `token_first` for their scalar-fact index, so
+W5R exposed the remaining provenance hole.  The retained representation stores
+the source token in `token_first` and the literal-fact index in `token_last`,
+whose interpretation is already guarded by the literal flag.  Parser
+publication combines both values in the existing `SetLiteralFact` call; the
+rejected intermediate form made a second `SetTokenRange` call for every
+literal.  The final four-block ABBA comparison against the committed packed
+foundation measured -0.41% wall and -0.41% combined user+system CPU with
+byte-identical objects.  The report is
+`/tmp/v3codex-w5-foundation-combined-ab.json`.
 
 ## Phase W6: Performance and repository closure
 
@@ -409,6 +453,8 @@ The report is `/tmp/v3codex-provenance-packed-ab.json`.
 | W5 PA20 | Added pack-aware class/function/variable provenance, variable-template selection, user-defined-literal calls, source-aware non-type argument presentation, constexpr-function closure, and actual-use tracking for retained static-member definitions | PA19 remains exact at 279/279 witness, 295/295 ordinary, and 10/10 course; PA20 passes 158/158 witness, 164/164 ordinary, and 11/11 course; `make test-report-through-pa20` passes 2,267/2,267 | retain typed final-decision events; a demanded definition alone does not create a source use, while an observed nested static member maps through its enclosing template owner |
 | W5 PA22 audit | Compared `~/clang.diff` with the full cppgm witness delta | Clang: +2,227/-11 in 8 files, with finished-AST source-use traversal; cppgm: +4,026/-135 in 33 files, including provisional +993/-112 in 14 dirty files; cppgm's renderer searches token spelling and reconstructs lost provenance | pause parity patches; do not commit the provisional PA22 increment; add authoritative source provenance first, then delete recovery logic |
 | W5P | Filled existing syntax ranges for exact name components, template-argument lists, type-id arguments, declarator names, and dependent `typename` uses; consolidated the name parser's parallel vectors into one component record | PA10 165/165, PA19 469/469, PA20 11/11, through-PA20 2,267/2,267; frozen output exact; packed-record A/B +0.22% wall / +0.31% user versus the pre-foundation binary | retain packed representation; reject the parallel-vector prototype; test provenance through W5R's public witness behavior |
+| W5D | Added observer-gated declaration-context provenance over retained definitions and all template-parameter syntax, with distinct facts for dependent class/alias uses and retained calls | dependent function-body casts, dependent defaults, and dependent non-type parameter declarators are suppressed; replayed variable-template uses remain public; PA19 279/279 and PA20 158/158 strict remain exact | retain typed context facts; reject a single generic `inside template` suppression bit |
+| W5R | Anchored explicit uses on terminal name components, kept deduced alias-backed class uses on the written type-id start, added literal provenance, and reduced final rendering to preparation/selection/binding/specialization/drop/closure routines | PA19 295/295 ordinary + 279/279 strict + 10/10 course; PA20 164/164 ordinary + 158/158 strict + 11/11 course; witness module file audit passes; final frozen A/B -0.41% wall / -0.41% combined CPU with exact objects | retain direct provenance and decomposed renderer; delete global token searches, event retargeting, pairwise provenance repair, constructor source tunnelling, and provisional deferred-alias inference |
 
 ## Exit criteria
 

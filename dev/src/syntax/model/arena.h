@@ -185,7 +185,8 @@ public:
 	TextId SemanticPayloadId(NodeId node) const;
 	bool HasSemanticPayload(NodeId node) const;
 	void SetSemanticPayload(NodeId node, TextId payload);
-	void SetLiteralFact(NodeId node, std::uint32_t fact);
+	void SetLiteralFact(NodeId node, std::uint32_t fact,
+		std::size_t source_token);
 	bool ScalarLiteralFact(NodeId node, FundamentalType* type,
 		std::uint64_t* value) const;
 	void AppendImmediateParameterNames(NodeId declarator,
@@ -203,6 +204,7 @@ public:
 		}
 		return kNoNode;
 	}
+	NodeId TerminalNameComponent(NodeId node) const;
 	bool HasDirectChildTag(NodeId node, const char* tag) const;
 	bool HasDirectChildTag(NodeId node, SyntaxTagCode tag) const;
 	bool HasDescendantTag(NodeId node, const char* tag) const;

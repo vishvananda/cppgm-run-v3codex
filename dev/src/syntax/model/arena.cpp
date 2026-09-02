@@ -549,12 +549,22 @@ void SyntaxArena::SetSemanticPayload(NodeId node, TextId payload)
 	nodes_[node].semantic_payload = payload;
 }
 
-void SyntaxArena::SetLiteralFact(NodeId node, std::uint32_t fact)
+void SyntaxArena::SetLiteralFact(NodeId node, std::uint32_t fact,
+	std::size_t source_token)
 {
-	if (fact == kNoLiteralFact) return;
+	if (source_token >= tokens_.size() ||
+		source_token >= std::numeric_limits<std::uint32_t>::max())
+		ThrowSyntaxResourceLimit("literal source token is out of range");
+	nodes_[node].token_first = static_cast<std::uint32_t>(source_token);
+	if (fact == kNoLiteralFact)
+	{
+		nodes_[node].token_last =
+			static_cast<std::uint32_t>(source_token + 1);
+		return;
+	}
 	if (fact >= literal_facts_.size())
 		ThrowSyntaxInternal("invalid scalar literal fact");
-	nodes_[node].token_first = fact;
+	nodes_[node].token_last = fact;
 	nodes_[node].flags |= SYNTAX_FLAG_LITERAL_FACT;
 }
 
@@ -563,9 +573,9 @@ bool SyntaxArena::ScalarLiteralFact(NodeId node, FundamentalType* type,
 {
 	const SyntaxNode& syntax = nodes_[node];
 	if ((syntax.flags & SYNTAX_FLAG_LITERAL_FACT) == 0) return false;
-	if (syntax.token_first >= literal_facts_.size())
+	if (syntax.token_last >= literal_facts_.size())
 		ThrowSyntaxInternal("scalar literal fact is out of range");
-	const SyntaxLiteralFact& fact = literal_facts_[syntax.token_first];
+	const SyntaxLiteralFact& fact = literal_facts_[syntax.token_last];
 	if (!fact.value_valid) return false;
 	if (type) *type = fact.type;
 	if (value) *value = fact.value;
@@ -619,6 +629,22 @@ NodeId SyntaxArena::FindDirectChildTag(NodeId node, const char* tag) const
 		if (nodes_[child].tag == identity) return child;
 	}
 	return kNoNode;
+}
+
+NodeId SyntaxArena::TerminalNameComponent(NodeId node) const
+{
+	if (node == kNoNode || IsTag(node, STAG_NAME_COMPONENT)) return node;
+	const NodeId structure = IsTag(node, STAG_STRUCTURED_TYPE_NAME) ? node :
+		FindDirectChildTag(node, STAG_STRUCTURED_TYPE_NAME);
+	if (structure == kNoNode) return node;
+	NodeId terminal = kNoNode;
+	for (std::uint32_t edge = FirstEdge(structure); edge != kNoEdge;
+		edge = NextEdge(edge))
+	{
+		const NodeId child = EdgeChild(edge);
+		if (IsTag(child, STAG_NAME_COMPONENT)) terminal = child;
+	}
+	return terminal == kNoNode ? node : terminal;
 }
 
 bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
@@ -686,11 +712,14 @@ void SyntaxArena::SetTokenRange(NodeId node, std::size_t first,
 		last > std::numeric_limits<std::uint32_t>::max())
 		ThrowSyntaxResourceLimit("syntax token range is too large");
 	nodes_[node].token_first = static_cast<std::uint32_t>(first);
-	nodes_[node].token_last = static_cast<std::uint32_t>(last);
+	if ((nodes_[node].flags & SYNTAX_FLAG_LITERAL_FACT) == 0)
+		nodes_[node].token_last = static_cast<std::uint32_t>(last);
 }
 
 bool SyntaxArena::HasTokenRange(NodeId node) const
 {
+	if ((nodes_[node].flags & SYNTAX_FLAG_LITERAL_FACT) != 0)
+		return nodes_[node].token_first < tokens_.size();
 	return nodes_[node].token_last > nodes_[node].token_first;
 }
 
@@ -701,6 +730,8 @@ std::size_t SyntaxArena::TokenFirst(NodeId node) const
 
 std::size_t SyntaxArena::TokenLast(NodeId node) const
 {
+	if ((nodes_[node].flags & SYNTAX_FLAG_LITERAL_FACT) != 0)
+		return static_cast<std::size_t>(nodes_[node].token_first) + 1;
 	return nodes_[node].token_last;
 }
 

@@ -1305,7 +1305,7 @@ NodeId SyntaxParser::ParsePrimaryExpression()
 	if (AtLiteral()) {
 		const std::size_t token = position_++;
 		const NodeId literal = arena_.Make("literal", Spelling(token));
-		arena_.SetLiteralFact(literal, tokens_[token].LiteralFact()); return literal;
+		arena_.SetLiteralFact(literal, tokens_[token].LiteralFact(), token); return literal;
 	}
 	if (At(KW_TRUE) || At(KW_FALSE) || At(KW_NULLPTR) || At(KW_THIS))
 	{
@@ -2172,7 +2172,7 @@ NodeId SyntaxParser::ParseNonTypeTemplateParameter()
 		if (bare_int_parameter && parameter_name == 0 && AtLiteral()) {
 			const std::size_t token = position_++;
 			value = arena_.Make("literal", "TT_LITERAL:" + Spelling(token));
-			arena_.SetLiteralFact(value, tokens_[token].LiteralFact());
+			arena_.SetLiteralFact(value, tokens_[token].LiteralFact(), token);
 		}
 		else value = ParseExpression(2);
 		if (value == kNoNode) throw Error("expected non-type default");

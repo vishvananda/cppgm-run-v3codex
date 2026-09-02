@@ -127,6 +127,9 @@ private:
 	bool SyntaxUsesDependentValue(NodeId node, std::size_t scope) const;
 	bool TemplateArgumentResolvesLocalValue(
 		NodeId node, std::size_t scope) const;
+	void PublishRetainedSourceProvenance(NodeId node, bool definition);
+	void PublishTemplateParameterSourceProvenance(
+		const TemplateParameter& parameter);
 	void NoteDependentSourceUse(NodeId node, std::size_t scope);
 	void ScanDependentSourceUses(NodeId node, std::size_t scope);
 	void Visit(NodeId node, std::size_t scope, bool unknown_callee = false);
@@ -1327,10 +1330,10 @@ void RetainedTemplateValidator::NoteDependentSourceUse(
 					dependent_arguments = true;
 			}
 			if (resolved_local_value && !dependent_arguments)
-				analyzer_.template_witness_->NoteResolvedSourceUse(node);
+				analyzer_.template_witness_->NoteResolvedSourceUse(component);
 			if (dependent_arguments)
 			{
-				analyzer_.template_witness_->NoteDependentSourceUse(node);
+				analyzer_.template_witness_->NoteDependentSourceUse(component);
 				return;
 			}
 		}
@@ -1347,6 +1350,50 @@ void RetainedTemplateValidator::NoteDependentSourceUse(
 		analyzer_.arena_->SemanticPayloadId(node));
 	if (name != 0 && IsDependentType(scope, name))
 		analyzer_.template_witness_->NoteDependentSourceUse(node);
+}
+
+void RetainedTemplateValidator::PublishRetainedSourceProvenance(
+	NodeId node, bool definition)
+{
+	if (!analyzer_.template_witness_ || node == kNoNode) return;
+	if (analyzer_.arena_->IsTag(node,
+		::cppgm::syntax::STAG_CALL_EXPRESSION))
+	{
+		const std::uint32_t callee_edge = analyzer_.arena_->FirstEdge(node);
+		if (callee_edge != kNoEdge &&
+			(definition || SyntaxUsesTemplateParameter(node)))
+			analyzer_.template_witness_->NoteRetainedFunctionCallSource(
+				analyzer_.arena_->EdgeChild(callee_edge));
+	}
+	if (analyzer_.arena_->IsTag(
+		node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME))
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId component = analyzer_.arena_->EdgeChild(edge);
+			if (!analyzer_.arena_->IsTag(
+				component, ::cppgm::syntax::STAG_NAME_COMPONENT)) continue;
+			const NodeId arguments = analyzer_.FindChild(component,
+				::cppgm::syntax::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
+			if (arguments != kNoNode &&
+				SyntaxUsesTemplateParameter(arguments))
+				analyzer_.template_witness_->NoteDependentSourceUse(component);
+		}
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		PublishRetainedSourceProvenance(
+			analyzer_.arena_->EdgeChild(edge), definition);
+}
+
+void RetainedTemplateValidator::PublishTemplateParameterSourceProvenance(
+	const TemplateParameter& parameter)
+{
+	PublishRetainedSourceProvenance(parameter.specifiers, false);
+	PublishRetainedSourceProvenance(parameter.declarator, false);
+	PublishRetainedSourceProvenance(parameter.default_argument, false);
+	for (std::size_t i = 0; i < parameter.template_parameters.size(); ++i)
+		PublishTemplateParameterSourceProvenance(
+			parameter.template_parameters[i]);
 }
 
 void RetainedTemplateValidator::ScanDependentSourceUses(
@@ -1986,6 +2033,12 @@ void RetainedTemplateValidator::Run()
 				analyzer_.program_->types.Fundamental(FUND_INT) :
 				parameters_[i].value_type, false,
 			static_cast<std::int64_t>(i));
+	}
+	if (analyzer_.template_witness_)
+	{
+		PublishRetainedSourceProvenance(target_, true);
+		for (std::size_t i = 0; i < parameters_.size(); ++i)
+			PublishTemplateParameterSourceProvenance(parameters_[i]);
 	}
 	ValidateKnownTemplateArgumentKinds(target_, semantic);
 	if (!definition && !analyzer_.arena_->IsTag(target_, ::cppgm::syntax::STAG_ALIAS_DECLARATION))

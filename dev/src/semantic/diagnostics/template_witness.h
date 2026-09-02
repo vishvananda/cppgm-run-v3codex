@@ -16,6 +16,7 @@ namespace semantic
 
 class Analyzer;
 class RetainedTemplateValidator;
+struct TemplateParameter;
 
 // Optional sink for the staged template-decision diagnostic.  The driver owns
 // the observer.  Analyzer publishes into it synchronously while the syntax
@@ -73,6 +74,7 @@ private:
 		std::vector<std::uint32_t> parameter_offsets;
 		std::vector<TemplateArgument> specialization_arguments;
 		std::vector<std::uint32_t> specialization_offsets;
+		std::vector<std::uint8_t> specialization_packs;
 		std::size_t source_column_offset;
 		NameId source_name;
 		std::size_t source_token;
@@ -141,6 +143,7 @@ private:
 		std::vector<TemplateArgument> arguments;
 		std::vector<TemplateArgument> specialization_arguments;
 		std::vector<std::uint32_t> specialization_offsets;
+		std::vector<std::uint8_t> specialization_packs;
 		std::uint8_t selection_kind;
 
 		VariableSpecializationFact(BindingId binding_value,
@@ -148,13 +151,69 @@ private:
 			const std::vector<TemplateArgument>& argument_values,
 			const std::vector<TemplateArgument>& specialization_values,
 			const std::vector<std::uint32_t>& specialization_offset_values,
+			const std::vector<std::uint8_t>& specialization_pack_values,
 			std::uint8_t selection_kind_value)
 			: binding(binding_value), primary_pattern(primary_pattern_value),
 			  arguments(argument_values),
 			  specialization_arguments(specialization_values),
 			  specialization_offsets(specialization_offset_values),
+			  specialization_packs(specialization_pack_values),
 			  selection_kind(selection_kind_value) {}
 	};
+	typedef std::vector<std::pair<std::string, std::string> >
+		EntityReplacements;
+
+	std::string ElideEntities(std::string spelling,
+		const EntityReplacements& replacements) const;
+	std::string NormalizeEntity(std::string spelling,
+		const EntityReplacements& replacements) const;
+	std::string OverloadName(const Analyzer& analyzer,
+		const SourceEvent::Drop& drop,
+		const EntityReplacements& replacements) const;
+	std::string FunctionContextName(
+		const Analyzer& analyzer, BindingId binding) const;
+	bool EntityHasTemplateContext(
+		const Analyzer& analyzer, EntityId entity) const;
+	bool IsTemplateMarker(const Analyzer& analyzer, EntityId entity) const;
+	syntax::NodeId GeneratedSourceNode(
+		const Analyzer& analyzer, EntityId entity) const;
+	bool GeneratedHasDeclarator(
+		const syntax::SyntaxArena& arena, syntax::NodeId node) const;
+	std::string GeneratedLabel(const Analyzer& analyzer,
+		const syntax::SyntaxArena& arena, EntityId entity,
+		syntax::NodeId node, bool location) const;
+	std::string ClassEntityName(const Analyzer& analyzer,
+		const syntax::SyntaxArena& arena, EntityId entity) const;
+	bool OwnerIsExplicitSpecialization(
+		const Analyzer& analyzer, EntityId owner) const;
+	bool IsTemplateFunction(
+		const Analyzer& analyzer, BindingId binding) const;
+	bool IsRequiredTemplateFunction(
+		const Analyzer& analyzer, BindingId binding) const;
+	std::string FunctionEntityName(
+		const Analyzer& analyzer, BindingId binding) const;
+	std::string SourceDistinguishedClassName(const Analyzer& analyzer,
+		const syntax::SyntaxArena& arena, EntityId entity) const;
+	void PrepareSourceEvents(
+		const Analyzer& analyzer, EntityReplacements* replacements);
+	void RenderSourceEvents(const Analyzer& analyzer,
+		const EntityReplacements& replacements);
+	std::string RenderSourceSelection(const Analyzer& analyzer,
+		const syntax::SyntaxArena& arena, const SourceEvent& event,
+		const EntityReplacements& replacements,
+		const std::vector<TemplateParameter>** parameters) const;
+	std::string RenderSourceBindings(const Analyzer& analyzer,
+		const syntax::SyntaxArena& arena, const SourceEvent& event,
+		const EntityReplacements& replacements,
+		const std::vector<TemplateParameter>* parameters) const;
+	std::string RenderSourceSpecializations(const Analyzer& analyzer,
+		const SourceEvent& event,
+		const EntityReplacements& replacements) const;
+	std::string RenderSourceDrops(const Analyzer& analyzer,
+		const SourceEvent& event,
+		const EntityReplacements& replacements) const;
+	void RenderClosureEvents(const Analyzer& analyzer,
+		const EntityReplacements& replacements);
 
 	void BeginTranslationUnit(const std::string& primary_source_file);
 	void RecordClassUse(syntax::NodeId syntax, std::uint32_t pattern,
@@ -166,6 +225,7 @@ private:
 		NameId source_name = 0);
 	void NoteDependentClassUse(syntax::NodeId syntax, std::uint32_t pattern);
 	void NoteDependentSourceUse(syntax::NodeId syntax);
+	void NoteRetainedFunctionCallSource(syntax::NodeId syntax);
 	void NoteResolvedSourceUse(syntax::NodeId syntax);
 	void RecordInstantiatedClassUse(syntax::NodeId syntax,
 		std::uint32_t pattern, BindingId binding,
@@ -173,7 +233,9 @@ private:
 	void RecordAliasUse(syntax::NodeId syntax, std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments,
 		std::size_t explicit_count);
-	void NoteDependentAliasUse(syntax::NodeId syntax, std::uint32_t pattern);
+	void NoteDependentAliasUse(syntax::NodeId syntax, std::uint32_t pattern,
+		const std::vector<TemplateArgument>& arguments,
+		std::size_t explicit_count);
 	void RecordFunctionSpecialization(BindingId binding, std::uint32_t pattern,
 		const std::vector<TemplateArgument>& arguments,
 		const std::vector<TemplateArgument>& requested_arguments,
@@ -186,6 +248,7 @@ private:
 		const std::vector<TemplateArgument>& arguments,
 		const std::vector<TemplateArgument>& specialization_arguments,
 		const std::vector<std::uint32_t>& specialization_offsets,
+		const std::vector<std::uint8_t>& specialization_packs,
 		std::uint8_t selection_kind);
 	void RecordVariableUse(syntax::NodeId syntax, BindingId binding,
 		std::size_t explicit_count);
@@ -227,6 +290,7 @@ private:
 	std::vector<std::pair<syntax::NodeId, std::uint32_t> >
 		dependent_alias_uses_;
 	std::vector<syntax::NodeId> dependent_source_uses_;
+	std::vector<syntax::NodeId> retained_function_call_sources_;
 	std::vector<syntax::NodeId> resolved_source_uses_;
 	std::vector<BindingId> function_instantiations_;
 	std::vector<BindingId> required_definitions_;

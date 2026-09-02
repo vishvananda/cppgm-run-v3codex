@@ -405,10 +405,11 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 							 FunctionTemplateTypeIsDependent(arguments[argument].type)))
 							dependent_arguments = true;
 					if (dependent_arguments)
-						template_witness_->NoteDependentAliasUse(structure,
-							static_cast<std::uint32_t>(alias));
+						template_witness_->NoteDependentAliasUse(component_node,
+							static_cast<std::uint32_t>(alias), arguments,
+							argument_syntax.size());
 					else if (TemplateWitnessSourceUseEnabled())
-						template_witness_->RecordAliasUse(structure,
+						template_witness_->RecordAliasUse(component_node,
 							static_cast<std::uint32_t>(alias), arguments,
 							argument_syntax.size());
 				}
@@ -441,7 +442,7 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 							 FunctionTemplateTypeIsDependent(arguments[argument].type)))
 							dependent_arguments = true;
 					if (dependent_arguments)
-						template_witness_->NoteDependentClassUse(structure,
+						template_witness_->NoteDependentClassUse(component_node,
 							static_cast<std::uint32_t>(pattern));
 					else
 					{
@@ -449,7 +450,7 @@ LookupResult Analyzer::LookupStructuredName(NodeId syntax,
 							program_->bindings[specialization].canonical,
 							arguments, argument_syntax.size());
 						if (TemplateWitnessSourceUseEnabled())
-							template_witness_->RecordClassUse(structure,
+							template_witness_->RecordClassUse(component_node,
 								static_cast<std::uint32_t>(pattern), specialization,
 								arguments, argument_syntax.size(), 0,
 								class_template_member_replay_depth_ != 0);

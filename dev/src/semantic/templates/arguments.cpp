@@ -961,7 +961,8 @@ BindingId Analyzer::InstantiateVariableTemplate(
 		if (template_witness_)
 		{
 			template_witness_->RecordVariableUse(
-				syntax, cached, argument_syntax.size());
+				arena_->TerminalNameComponent(syntax), cached,
+				argument_syntax.size());
 			template_witness_->RecordVariableInstantiation(cached);
 		}
 		return cached;
@@ -1175,9 +1176,12 @@ BindingId Analyzer::InstantiateVariableTemplate(
 	{
 		std::vector<TemplateArgument> specialization_arguments;
 		std::vector<std::uint32_t> specialization_offsets;
+		std::vector<std::uint8_t> specialization_packs;
 		for (std::size_t parameter = 0;
 			parameter < selected.parameters.size(); ++parameter)
 		{
+			specialization_packs.push_back(
+				selected.parameters[parameter].pack ? 1 : 0);
 			specialization_offsets.push_back(static_cast<std::uint32_t>(
 				specialization_arguments.size()));
 			if (selected.parameters[parameter].pack)
@@ -1194,9 +1198,11 @@ BindingId Analyzer::InstantiateVariableTemplate(
 			0 : selected.parameters.empty() ? 2 : 1;
 		template_witness_->RecordVariableSpecialization(binding,
 			static_cast<std::uint32_t>(primary_index), arguments,
-			specialization_arguments, specialization_offsets, selection_kind);
+			specialization_arguments, specialization_offsets,
+			specialization_packs, selection_kind);
 		template_witness_->RecordVariableUse(
-			syntax, binding, argument_syntax.size());
+			arena_->TerminalNameComponent(syntax), binding,
+			argument_syntax.size());
 		template_witness_->RecordVariableInstantiation(binding);
 	}
 	return binding;
