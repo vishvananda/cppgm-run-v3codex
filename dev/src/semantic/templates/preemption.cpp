@@ -159,6 +159,7 @@ void Analyzer::SetClassExplicitInstantiationSuppression(
 void Analyzer::EnsureStaticMemberStorage(
 	BindingId member, bool constant_storage)
 {
+	if (unevaluated_depth_ != 0) return;
 	member = program_->bindings[member].canonical;
 	BindingRecord& binding = program_->bindings[member];
 	if (binding.kind != BIND_VARIABLE ||
