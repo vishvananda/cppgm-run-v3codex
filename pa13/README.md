@@ -66,8 +66,10 @@ make test
 ```
 
 `make` builds `lowir2cy86`. `make test` runs the LowIR-to-CY86 suite
-under `tests/spec/`. If a `course/pa13` extension suite is present, the
-Makefile runs it after the local suite using the same harness contract.
+under `tests/spec/`, then the behavior suite under `tests/behavior/`, which
+assembles and runs each translation. If a `course/pa13` extension suite is
+present, the Makefile runs it after the local suite using the same harness
+contract.
 
 ### Required Driver Surface
 
@@ -354,6 +356,53 @@ Comparison rules:
 
 PA13 does not use the relaxed source-to-LowIR matcher used by later
 `cppgm++ --emit-lowir` assignments. PA13 compares generated CY86 text directly.
+
+The harness also discovers every `.t` file under `tests/behavior/`. Those cases
+translate, assemble, and run, so they check that a retained LowIR form still
+produces a working program and not only well-formed CY86 text. For each test
+case `x.t`, it runs:
+
+```sh
+lowir2cy86 -o x.my x.t
+cy86 -o x.my.program x.my
+x.my.program
+```
+
+and records `x.my.impl.exit_status` for the translate-and-assemble step and
+`x.my.program.exit_status` for the program itself.
+
+Comparison rules:
+
+- `x.my.impl.exit_status` must match `x.ref.impl.exit_status`.
+- If the reference implementation status is `EXIT_FAILURE`, the test passes
+  after that comparison.
+- Otherwise `x.my` must match `x.ref` exactly, and both
+  `x.my.program.exit_status` and `x.my.program.stdout` must match their
+  references.
+- A behavior case may supply `x.stdin`, which is fed to the program.
+
+Assembling with `cy86` is the only part of this path that is not PA13 work. It
+supplies the execution that CY86 text alone cannot, which is why a behavior
+case can state an expected exit status: `default-eh-unhandled` exits 23 through
+the default unhandled-exception path, while the remaining cases exit 0.
+
+Behavior cases cover the LowIR forms whose meaning is a runtime result rather
+than a spelling:
+
+- control flow that merges values, in `phi-control-flow` and
+  `switch-terminator`, where the returned value is only correct if the edge
+  transfers and the multi-way dispatch are
+- the default exception path, in `default-eh-caught` and
+  `default-eh-unhandled`
+- `unreachable` as a terminator on a branch that is never taken
+- an atomic read-modify-write and the value it leaves behind, in
+  `atomic-add-fetch`
+- the call-boundary, copy-elision, index-projection, object-extent,
+  stable-prefix-query, and global-section metadata, each of which must survive
+  translation and still produce a working program
+
+Each case returns a value that is wrong unless the mechanism under test worked,
+so the recorded exit status is the assertion.
 
 ### Design Notes (Non-Normative)
 

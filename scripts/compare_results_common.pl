@@ -3544,6 +3544,7 @@ my %patterns = (
 	text_t => qr/\.t$/,
 	lowir_t => qr/\.t$/,
 	text_t1 => qr/\.t\.1$/,
+	lowir_behavior_t => qr/\.t$/,
 	program_t1 => qr/\.t\.1$/,
 	mir_t => qr/\.t$/,
 	mir_behavior_t => qr/\.t$/,
@@ -3630,6 +3631,47 @@ for my $test (@tests)
 		{
 			($ok, $message) = compare_text(qr/\.t\.1$/, $ref_suffix, $my_suffix, $testbase, 1);
 			$hint = checked_output_hint("$testbase.$ref_suffix", "$testbase.$my_suffix");
+		}
+		elsif ($mode eq 'lowir_behavior_t')
+		{
+			my $ref = "$testbase.$ref_suffix";
+			my $my = "$testbase.$my_suffix";
+			my $ref_impl_raw = getdata("$ref.impl.exit_status");
+			my $my_impl_raw = getdata("$my.impl.exit_status");
+			my $ref_impl = canonical_exit_status($ref_impl_raw);
+			my $my_impl = canonical_exit_status($my_impl_raw);
+			($ok, $message) = (0, status_mismatch_message("implementation", $ref_impl_raw, $my_impl_raw))
+				if !defined($ref_impl) || !defined($my_impl) || $ref_impl ne $my_impl;
+			if (!defined($ok))
+			{
+				if ($ref_impl ne 'EXIT_SUCCESS')
+				{
+					($ok, $message) = (1, undef);
+				}
+				else
+				{
+					my $ref_text = getdata($ref);
+					my $my_text = getdata($my);
+					if (!defined($ref_text) || !defined($my_text))
+					{
+						($ok, $message) = (0,
+							"ERROR: missing generated CY86 translation");
+					}
+					elsif ($ref_text ne $my_text)
+					{
+						($ok, $message) = (0,
+							"ERROR: generated CY86 does not match reference");
+						$hint = checked_output_hint($ref, $my);
+					}
+					else
+					{
+						my ($prog_ok, $prog_message) =
+							compare_program_outputs($ref, $my, 'generated');
+						($ok, $message) = ($prog_ok, $prog_message);
+						$hint = program_output_hint($ref, $my);
+					}
+				}
+			}
 		}
 		elsif ($mode eq 'program_t1')
 		{

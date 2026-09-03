@@ -1,0 +1,57 @@
+start:
+	move64 bp sp;
+	call fn__main;
+	syscall1 t64 60 x64;
+
+fn__helper:
+	isub64 sp sp 8;
+	move64 [sp] bp;
+	move64 bp sp;
+	isub64 sp sp 32;
+	move64 [bp-8] x64;
+	move64 [bp-16] y64;
+	move64 [bp-24] z64;
+	move64 [bp-32] t64;
+fn__helper__entry:
+	move64 x64 [bp-32];
+	move64 y64 [bp-8];
+	move64 [y64] x64;
+	jump fn__helper__epilogue;
+fn__helper__epilogue:
+	move64 sp bp;
+	move64 bp [sp];
+	iadd64 sp sp 8;
+	ret;
+
+fn__main:
+	isub64 sp sp 8;
+	move64 [sp] bp;
+	move64 bp sp;
+	isub64 sp sp 32;
+fn__main__entry:
+	isub64 x64 bp 8;
+	move64 z64 0;
+	move64 [x64] z64;
+	isub64 x64 bp 8;
+	move64 [bp-16] x64;
+	move64 x64 [bp-16];
+	move64 y64 [bp-16];
+	move64 z64 [bp-16];
+	move64 t64 5;
+	call fn__helper;
+	move64 x64 [bp-8];
+	move64 [bp-24] x64;
+	move64 y64 [bp-24];
+	move64 x64 5;
+	ine64 z8 y64 x64;
+	move64 x64 0;
+	move8 x8 z8;
+	move64 [bp-32] x64;
+	move64 x64 [bp-32];
+	jump fn__main__epilogue;
+fn__main__epilogue:
+	move64 sp bp;
+	move64 bp [sp];
+	iadd64 sp sp 8;
+	ret;
+

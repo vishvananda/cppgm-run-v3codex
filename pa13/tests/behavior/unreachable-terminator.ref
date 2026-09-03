@@ -1,0 +1,24 @@
+start:
+	move64 bp sp;
+	call fn__main;
+	syscall1 t64 60 x64;
+
+fn__main:
+	isub64 sp sp 8;
+	move64 [sp] bp;
+	move64 bp sp;
+fn__main__entry:
+	move64 x64 0;
+	ieq64 z8 x64 0;
+	jumpif z8 fn__main__normal;
+	jump fn__main__impossible;
+fn__main__impossible:
+fn__main__normal:
+	move64 x64 0;
+	jump fn__main__epilogue;
+fn__main__epilogue:
+	move64 sp bp;
+	move64 bp [sp];
+	iadd64 sp sp 8;
+	ret;
+

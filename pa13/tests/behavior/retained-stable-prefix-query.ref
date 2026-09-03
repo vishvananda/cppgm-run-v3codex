@@ -1,0 +1,79 @@
+start:
+	move64 bp sp;
+	call fn__main;
+	syscall1 t64 60 x64;
+
+fn__prefix_query:
+	isub64 sp sp 8;
+	move64 [sp] bp;
+	move64 bp sp;
+	isub64 sp sp 40;
+	move64 [bp-8] x64;
+	move64 [bp-16] y64;
+fn__prefix_query__entry:
+	move64 y64 [bp-16];
+	move64 x64 8;
+	smul64 x64 y64 x64;
+	move64 [bp-24] x64;
+	move64 y64 [bp-8];
+	move64 x64 [bp-24];
+	iadd64 x64 y64 x64;
+	move64 [bp-32] x64;
+	move64 x64 [bp-32];
+	move64 x64 [x64];
+	move64 [bp-40] x64;
+	move64 x64 [bp-40];
+	jump fn__prefix_query__epilogue;
+fn__prefix_query__epilogue:
+	move64 sp bp;
+	move64 bp [sp];
+	iadd64 sp sp 8;
+	ret;
+
+fn__main:
+	isub64 sp sp 8;
+	move64 [sp] bp;
+	move64 bp sp;
+	isub64 sp sp 56;
+fn__main__entry:
+	move64 x64 g__values;
+	move64 [bp-8] x64;
+	move64 x64 [bp-8];
+	move64 y64 0;
+	call fn__prefix_query;
+	move64 [bp-16] x64;
+	move64 x64 [bp-8];
+	move64 y64 2;
+	call fn__prefix_query;
+	move64 [bp-24] x64;
+	move64 x64 [bp-8];
+	move64 y64 0;
+	call fn__prefix_query;
+	move64 [bp-32] x64;
+	move64 y64 [bp-16];
+	move64 x64 [bp-24];
+	iadd64 x64 y64 x64;
+	move64 [bp-40] x64;
+	move64 y64 [bp-40];
+	move64 x64 [bp-32];
+	iadd64 x64 y64 x64;
+	move64 [bp-48] x64;
+	move64 y64 [bp-48];
+	move64 x64 21;
+	ine64 z8 y64 x64;
+	move64 x64 0;
+	move8 x8 z8;
+	move64 [bp-56] x64;
+	move64 x64 [bp-56];
+	jump fn__main__epilogue;
+fn__main__epilogue:
+	move64 sp bp;
+	move64 bp [sp];
+	iadd64 sp sp 8;
+	ret;
+
+g__values:
+	data64 5;
+	data64 7;
+	data64 11;
+

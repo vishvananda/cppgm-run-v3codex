@@ -1,0 +1,125 @@
+start:
+	move64 bp sp;
+	call fn__main;
+	syscall1 t64 60 x64;
+
+fn__construct_left:
+	isub64 sp sp 8;
+	move64 [sp] bp;
+	move64 bp sp;
+	isub64 sp sp 8;
+	move64 [bp-8] x64;
+fn__construct_left__entry:
+	move64 x64 17;
+	move64 y64 [bp-8];
+	move64 [y64] x64;
+	jump fn__construct_left__epilogue;
+fn__construct_left__epilogue:
+	move64 sp bp;
+	move64 bp [sp];
+	iadd64 sp sp 8;
+	ret;
+
+fn__construct_right:
+	isub64 sp sp 8;
+	move64 [sp] bp;
+	move64 bp sp;
+	isub64 sp sp 8;
+	move64 [bp-8] x64;
+fn__construct_right__entry:
+	move64 x64 23;
+	move64 y64 [bp-8];
+	move64 [y64] x64;
+	jump fn__construct_right__epilogue;
+fn__construct_right__epilogue:
+	move64 sp bp;
+	move64 bp [sp];
+	iadd64 sp sp 8;
+	ret;
+
+fn__transfer:
+	isub64 sp sp 8;
+	move64 [sp] bp;
+	move64 bp sp;
+	isub64 sp sp 24;
+	move64 [bp-8] x64;
+	move64 [bp-16] y64;
+fn__transfer__entry:
+	move64 x64 [bp-16];
+	move64 x64 [x64];
+	move64 [bp-24] x64;
+	move64 x64 [bp-24];
+	move64 y64 [bp-8];
+	move64 [y64] x64;
+	jump fn__transfer__epilogue;
+fn__transfer__epilogue:
+	move64 sp bp;
+	move64 bp [sp];
+	iadd64 sp sp 8;
+	ret;
+
+fn__destroy:
+	isub64 sp sp 8;
+	move64 [sp] bp;
+	move64 bp sp;
+	isub64 sp sp 8;
+	move64 [bp-8] x64;
+fn__destroy__entry:
+	jump fn__destroy__epilogue;
+fn__destroy__epilogue:
+	move64 sp bp;
+	move64 bp [sp];
+	iadd64 sp sp 8;
+	ret;
+
+fn__main:
+	isub64 sp sp 8;
+	move64 [sp] bp;
+	move64 bp sp;
+	isub64 sp sp 56;
+fn__main__entry:
+	isub64 x64 bp 8;
+	move64 [bp-24] x64;
+	isub64 x64 bp 16;
+	move64 [bp-32] x64;
+	move64 y64 1;
+	move64 x64 1;
+	ieq64 z8 y64 x64;
+	move64 x64 0;
+	move8 x8 z8;
+	move64 [bp-40] x64;
+	move64 x64 [bp-40];
+	ieq64 z8 x64 0;
+	jumpif z8 fn__main__right;
+	jump fn__main__left;
+fn__main__left:
+	move64 x64 [bp-32];
+	call fn__construct_left;
+	jump fn__main__merge;
+fn__main__right:
+	move64 x64 [bp-32];
+	call fn__construct_right;
+	jump fn__main__merge;
+fn__main__merge:
+	move64 x64 [bp-24];
+	move64 y64 [bp-32];
+	call fn__transfer;
+	move64 x64 [bp-32];
+	call fn__destroy;
+	move64 x64 [bp-24];
+	move64 x64 [x64];
+	move64 [bp-48] x64;
+	move64 y64 [bp-48];
+	move64 x64 17;
+	ine64 z8 y64 x64;
+	move64 x64 0;
+	move8 x8 z8;
+	move64 [bp-56] x64;
+	move64 x64 [bp-56];
+	jump fn__main__epilogue;
+fn__main__epilogue:
+	move64 sp bp;
+	move64 bp [sp];
+	iadd64 sp sp 8;
+	ret;
+
