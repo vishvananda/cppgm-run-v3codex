@@ -4,6 +4,7 @@
 #include "support/exceptions.h"
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <vector>
 
@@ -110,8 +111,43 @@ std::string RenderEntityAt(const Program& program, EntityId entity,
 	return result;
 }
 
-std::string RenderTypeAt(const Program& program, TypeId type,
-	std::size_t depth)
+std::string CvSuffix(std::uint8_t cv)
+{
+	std::string result;
+	if ((cv & CV_CONST) != 0) result += "const";
+	if ((cv & CV_VOLATILE) != 0)
+	{
+		if (!result.empty()) result += ' ';
+		result += "volatile";
+	}
+	if ((cv & CV_ATOMIC) != 0)
+	{
+		if (!result.empty()) result += ' ';
+		result += "_Atomic";
+	}
+	return result;
+}
+
+std::string StripTypePrefix(std::string spelling)
+{
+	const char* prefixes[] = {"struct ", "class ", "union ", "enum "};
+	for (std::size_t i = 0; i < 4; ++i)
+	{
+		const std::size_t length = std::char_traits<char>::length(prefixes[i]);
+		if (spelling.compare(0, length, prefixes[i]) == 0)
+		{
+			spelling.erase(0, length);
+			break;
+		}
+	}
+	return spelling;
+}
+
+// Renders a type in declarator form so that pointer, reference, array,
+// function, and member-pointer operators compose in source order and
+// cv-qualifiers attach to the operator they qualify.
+std::string RenderDeclaratorType(const Program& program, TypeId type,
+	std::string declarator, std::size_t depth, std::uint8_t pointer_cv)
 {
 	if (type == kNoType || type >= program.types.Size())
 		ThrowInternalCompilerError("source identity type is invalid");
@@ -120,51 +156,92 @@ std::string RenderTypeAt(const Program& program, TypeId type,
 	const TypeRecord& record = program.types.Get(type);
 	switch (record.kind)
 	{
-	case TYPE_NAMED:
-		return RenderEntityAt(program, record.entity, depth + 1);
 	case TYPE_QUALIFIED:
 	{
-		std::string result;
-		if ((record.cv & CV_CONST) != 0) result += "const ";
-		if ((record.cv & CV_VOLATILE) != 0) result += "volatile ";
-		if ((record.cv & CV_ATOMIC) != 0) result += "_Atomic ";
-		return result + RenderTypeAt(program, record.child, depth + 1);
+		const TypeRecord& child = program.types.Get(record.child);
+		if (child.kind == TYPE_POINTER || child.kind == TYPE_BLOCK_POINTER ||
+			child.kind == TYPE_MEMBER_POINTER)
+			return RenderDeclaratorType(program, record.child, declarator,
+				depth + 1, static_cast<std::uint8_t>(pointer_cv | record.cv));
+		std::string prefix = CvSuffix(record.cv);
+		std::string result = RenderDeclaratorType(program, record.child,
+			declarator, depth + 1, pointer_cv);
+		return prefix.empty() ? result : prefix + ' ' + result;
 	}
 	case TYPE_POINTER:
-		return RenderTypeAt(program, record.child, depth + 1) + " *";
 	case TYPE_BLOCK_POINTER:
-		return RenderTypeAt(program, record.child, depth + 1) + " ^";
 	case TYPE_LVALUE_REFERENCE:
-		return RenderTypeAt(program, record.child, depth + 1) + " &";
 	case TYPE_RVALUE_REFERENCE:
-		return RenderTypeAt(program, record.child, depth + 1) + " &&";
+	{
+		std::string operation = record.kind == TYPE_POINTER ? "*" :
+			record.kind == TYPE_BLOCK_POINTER ? "^" :
+			record.kind == TYPE_LVALUE_REFERENCE ? "&" : "&&";
+		if (record.kind == TYPE_POINTER || record.kind == TYPE_BLOCK_POINTER)
+			operation += CvSuffix(pointer_cv);
+		if (!declarator.empty() && !operation.empty() &&
+			std::isalnum(static_cast<unsigned char>(operation.back())))
+			operation += ' ';
+		declarator = operation + declarator;
+		return RenderDeclaratorType(program, record.child, declarator,
+			depth + 1, 0);
+	}
 	case TYPE_ARRAY:
-		return RenderTypeAt(program, record.child, depth + 1) + '[' +
-			(record.dependent_bound_parameter == kNoTemplateParameter ?
-			 std::to_string(record.bound) : std::string("dependent")) + ']';
+		declarator += '[' + (record.dependent_bound_parameter ==
+			kNoTemplateParameter ? std::to_string(record.bound) :
+			std::string("dependent")) + ']';
+		return RenderDeclaratorType(program, record.child, declarator,
+			depth + 1, 0);
 	case TYPE_FUNCTION:
 	{
-		std::string result = RenderTypeAt(program, record.child, depth + 1) + '(';
+		if (!declarator.empty()) declarator = '(' + declarator + ')';
+		declarator += '(';
 		const TypeId* parameters = program.types.Parameters(type);
 		for (std::size_t i = 0; i < record.parameter_count; ++i)
 		{
-			if (i != 0) result += ", ";
-			result += RenderTypeAt(program, parameters[i], depth + 1);
+			if (i != 0) declarator += ", ";
+			declarator += RenderDeclaratorType(program, parameters[i],
+				std::string(), depth + 1, 0);
 		}
 		if (record.variadic)
 		{
-			if (record.parameter_count != 0) result += ", ";
-			result += "...";
+			if (record.parameter_count != 0) declarator += ", ";
+			declarator += "...";
 		}
-		return result + ')';
+		declarator += ')';
+		return RenderDeclaratorType(program, record.child, declarator,
+			depth + 1, 0);
 	}
 	case TYPE_MEMBER_POINTER:
-		return RenderTypeAt(program, record.child, depth + 1) + " " +
-			RenderTypeAt(program, static_cast<TypeId>(record.bound), depth + 1) +
-			"::*";
-	default:
-		return program.RenderType(type);
+	{
+		std::string operation = RenderDeclaratorType(program,
+			static_cast<TypeId>(record.bound), std::string(), depth + 1, 0) +
+			"::*" + CvSuffix(pointer_cv);
+		declarator = operation + declarator;
+		return RenderDeclaratorType(program, record.child, declarator,
+			depth + 1, 0);
 	}
+	case TYPE_NAMED:
+	{
+		const std::string base = RenderEntityAt(
+			program, record.entity, depth + 1);
+		return declarator.empty() ? base : base +
+			(declarator[0] == '[' ? std::string() : std::string(" ")) +
+			declarator;
+	}
+	default:
+	{
+		const std::string base = StripTypePrefix(program.RenderType(type));
+		return declarator.empty() ? base : base +
+			(declarator[0] == '[' ? std::string() : std::string(" ")) +
+			declarator;
+	}
+	}
+}
+
+std::string RenderTypeAt(const Program& program, TypeId type,
+	std::size_t depth)
+{
+	return RenderDeclaratorType(program, type, std::string(), depth, 0);
 }
 
 }
