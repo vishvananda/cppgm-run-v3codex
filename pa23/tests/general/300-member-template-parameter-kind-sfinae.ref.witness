@@ -1,6 +1,0 @@
-translation-unit
-  function-call at tests/general/300-member-template-parameter-kind-sfinae.t:6:22
-    callee check
-    selected instantiation
-    bind #1 = A source=explicit
-    drop check reason=substitution_failure

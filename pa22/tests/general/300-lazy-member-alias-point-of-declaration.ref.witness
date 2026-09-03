@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-lazy-member-alias-point-of-declaration.t:33:14
-    template n::view
-    selected primary
-    bind #1 = input source=explicit

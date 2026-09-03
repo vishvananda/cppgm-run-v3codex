@@ -1,7 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-qualified-function-type-partial-specialization.t:19:3
-    template Function
-    selected partial
-    bind #1 = N::Binding *(N::Binding *) source=explicit
-    specialize #1 = N::Binding * source=deduced
-    specialize #2 = N::Binding * source=deduced

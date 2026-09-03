@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/200-qualified-base-template-id-logical-argument-value-shadow-instantiation.t:14:4
-    template n::outer
-    selected primary
-    bind #1 = int source=explicit

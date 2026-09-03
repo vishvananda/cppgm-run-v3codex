@@ -1,7 +1,0 @@
-translation-unit
-  class-use at tests/general/300-common-type-recursive-declval-no-body-instantiation.t:22:9
-    template common_type3
-    selected primary
-    bind #1 = long long source=explicit
-    bind #2 = int source=explicit
-    bind #3 = long source=explicit

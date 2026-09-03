@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/200-template-template-parameter.t:7:14
-    template Holder
-    selected primary
-    bind #1 = Box source=explicit
-    bind #2 = int source=explicit

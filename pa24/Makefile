@@ -66,41 +66,20 @@ ifeq ($(COURSE_TEST_ROOT),)
 test: $(TEST_DEPS)
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my tests
 	@scripts/compare_results.pl ref my tests
-
-test-strict: $(TEST_DEPS)
-	@rm -f .test_failed
-	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my tests
-	@../scripts/run_witness_tests.pl $(CPPGM_TEST_APP) my tests
-	@scripts/compare_results.pl ref my tests
-	@../scripts/compare_witness_results.pl ref my tests
-	@test ! -f .test_failed
 else
 test: $(TEST_DEPS)
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my tests
 	@scripts/compare_results.pl ref my tests
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my $(COURSE_TEST_ROOT)
 	@scripts/compare_results.pl ref my $(COURSE_TEST_ROOT)
-
-test-strict: $(TEST_DEPS)
-	@rm -f .test_failed
-	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my tests
-	@../scripts/run_witness_tests.pl $(CPPGM_TEST_APP) my tests
-	@scripts/compare_results.pl ref my tests
-	@../scripts/compare_witness_results.pl ref my tests
-	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my $(COURSE_TEST_ROOT)
-	@scripts/compare_results.pl ref my $(COURSE_TEST_ROOT)
-	@test ! -f .test_failed
 endif
 
 ref-test:
 	@$(REF_TEST_RUN)
 
-ref-test-strict:
-	@../scripts/run_witness_tests.pl $(REF_TEST_APP) ref tests
-
 include ../scripts/pa_run_check_targets.mk
 
-.PHONY: dev-shared-target ref-test ref-test-strict
+.PHONY: dev-shared-target ref-test
 ../dev/$(TARGET):
 	$(MAKE) -C ../dev $(TARGET) CXX=$(CXX)
 

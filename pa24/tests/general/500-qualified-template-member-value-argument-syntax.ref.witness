@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/500-qualified-template-member-value-argument-syntax.t:24:10
-    template uses_member_value
-    selected primary
-    bind #1 = int source=explicit
-    bind #2 = int source=defaulted
-template-closure-events
-  variable-instantiation
-    entity trait<int>::value

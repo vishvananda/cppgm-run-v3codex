@@ -1,7 +1,0 @@
-translation-unit
-  function-call at tests/spec/300-function-rvalue-reference-call-is-lvalue.t:4:22
-    callee probe
-    selected instantiation
-    bind #1 = int () source=explicit
-    bind #2 = bool source=defaulted
-    drop probe reason=worse_conversion

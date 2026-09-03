@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-inline-namespace-qualified-class-template-member-typedef.t:25:6
-    template ns::match_any_but_newline
-    selected primary
-    bind #1 = char source=explicit

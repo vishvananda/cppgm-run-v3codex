@@ -1,9 +1,0 @@
-translation-unit
-  function-call at tests/general/100-local-class-declval-explicit-template-id.t:10:20
-    callee declval
-    selected instantiation
-    bind #1 = F & source=explicit
-  function-call at tests/general/100-local-class-declval-explicit-template-id.t:10:34
-    callee declval
-    selected instantiation
-    bind #1 = int source=explicit

@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-dependent-member-access-assignment.t:10:9
-    template Pair
-    selected primary
-    bind #1 = int source=explicit

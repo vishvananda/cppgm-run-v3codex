@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-reference-shell-current-specialization-alias.t:39:3
-    template Vec
-    selected primary
-    bind #1 = Alloc<int> source=explicit
-  class-use at tests/general/100-reference-shell-current-specialization-alias.t:39:7
-    template Alloc
-    selected primary
-    bind #1 = int source=explicit

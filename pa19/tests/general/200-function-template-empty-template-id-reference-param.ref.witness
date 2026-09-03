@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/200-function-template-empty-template-id-reference-param.t:5:40
-    template Less
-    selected primary
-    bind #1 = void source=defaulted

@@ -1,5 +1,0 @@
-translation-unit
-  function-call at tests/spec/100-explicit-specialization-conditional-result-type.t:51:19
-    callee get
-    selected explicit_specialization
-    bind #1 = 0 source=explicit

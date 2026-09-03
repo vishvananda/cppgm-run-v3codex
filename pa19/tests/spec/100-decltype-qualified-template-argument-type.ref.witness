@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-decltype-qualified-template-argument-type.t:20:3
-    template type_holder
-    selected primary
-    bind #1 = executor source=explicit

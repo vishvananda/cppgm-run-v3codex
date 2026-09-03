@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-qualified-template-id-rvalue-reference-argument.t:11:1
-    template holder
-    selected primary
-    bind #1 = library::box<int> && source=explicit
-  class-use at tests/general/100-qualified-template-id-rvalue-reference-argument.t:11:17
-    template library::box
-    selected primary
-    bind #1 = int source=explicit

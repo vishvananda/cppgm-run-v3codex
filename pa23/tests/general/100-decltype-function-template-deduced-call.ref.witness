@@ -1,9 +1,0 @@
-translation-unit
-  function-call at tests/general/100-decltype-function-template-deduced-call.t:7:27
-    callee g
-    selected instantiation
-    bind #1 = int source=deduced
-  function-call at tests/general/100-decltype-function-template-deduced-call.t:7:29
-    callee declval
-    selected instantiation
-    bind #1 = int & source=explicit

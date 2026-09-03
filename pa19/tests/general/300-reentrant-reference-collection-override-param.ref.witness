@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-reentrant-reference-collection-override-param.t:41:3
-    template pa18_reentrant_override_holder
-    selected primary
-    bind #1 = pa18_reentrant_override_derived source=explicit

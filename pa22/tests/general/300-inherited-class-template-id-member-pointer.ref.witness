@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-inherited-class-template-id-member-pointer.t:13:3
-    template any_executor
-    selected primary
-    bind #1 = int source=explicit

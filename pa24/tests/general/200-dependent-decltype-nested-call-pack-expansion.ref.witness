@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/200-dependent-decltype-nested-call-pack-expansion.t:17:3
-    template invoke_result
-    selected primary
-    bind #1 = Fun & source=explicit
-    bind #2 = <int, long> source=explicit

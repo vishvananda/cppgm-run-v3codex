@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/300-dependent-decltype-partial-rechecks-concrete-call.t:25:31
-    template helper
-    selected primary
-    bind #1 = iterator source=explicit
-    bind #2 = void source=defaulted

@@ -1,9 +1,0 @@
-translation-unit
-  alias-use at tests/general/300-dependent-type-resolution-cache-input-lifetime.t:10:19
-    template enable_t
-    bind #1 = fancy<P>::value source=explicit
-  function-call at tests/general/300-dependent-type-resolution-cache-input-lifetime.t:20:20
-    callee unwrap
-    selected instantiation
-    bind #1 = W source=deduced
-    bind #2 = unwrap_impl<W> source=defaulted

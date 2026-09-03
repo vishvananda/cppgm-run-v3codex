@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-dependent-member-alignas.t:9:18
-    template Aligned
-    selected primary
-    bind #1 = 8 source=explicit
-  class-use at tests/general/100-dependent-member-alignas.t:9:45
-    template Aligned
-    selected primary
-    bind #1 = 8 source=explicit

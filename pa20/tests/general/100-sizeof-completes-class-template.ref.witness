@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-sizeof-completes-class-template.t:2:22
-    template Box
-    selected primary
-    bind #1 = int source=explicit

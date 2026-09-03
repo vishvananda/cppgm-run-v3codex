@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-explicit-specialization-pointer-member-definition.t:16:6
-    template print_log_value
-    selected explicit
-    bind #1 = const char * source=explicit

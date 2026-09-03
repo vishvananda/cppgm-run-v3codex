@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-nonprimary-embedded-typedef-reprepare.t:3:1
-    template Box
-    selected primary
-    bind #1 = Node source=explicit

@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-static-member-explicit-specialization-char16.t:23:12
-    template char_traits
-    selected explicit
-    bind #1 = char16_t source=explicit
-  class-use at tests/spec/100-static-member-explicit-specialization-char16.t:30:10
-    template char_traits
-    selected explicit
-    bind #1 = char16_t source=explicit

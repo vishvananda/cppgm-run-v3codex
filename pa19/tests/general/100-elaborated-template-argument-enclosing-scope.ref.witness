@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-elaborated-template-argument-enclosing-scope.t:7:16
-    template wrapper
-    selected primary
-    bind #1 = ForwardInBase source=explicit

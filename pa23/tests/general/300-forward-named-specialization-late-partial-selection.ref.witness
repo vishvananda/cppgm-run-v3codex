@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/300-forward-named-specialization-late-partial-selection.t:8:9
-    template pick
-    selected partial
-    bind #1 = char * source=explicit
-    specialize #1 = char source=deduced
-template-closure-events
-  variable-instantiation
-    entity pick<char *>::value

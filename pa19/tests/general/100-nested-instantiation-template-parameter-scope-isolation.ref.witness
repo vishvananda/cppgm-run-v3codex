@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-nested-instantiation-template-parameter-scope-isolation.t:15:3
-    template inner
-    selected primary
-    bind #1 = int source=explicit
-  class-use at tests/general/100-nested-instantiation-template-parameter-scope-isolation.t:20:3
-    template outer
-    selected primary
-    bind #1 = long source=explicit

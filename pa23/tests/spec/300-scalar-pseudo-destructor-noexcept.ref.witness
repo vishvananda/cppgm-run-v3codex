@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-scalar-pseudo-destructor-noexcept.t:3:15
-    template trait
-    selected primary
-    bind #1 = int source=explicit
-template-closure-events
-  variable-instantiation
-    entity trait<int>::value

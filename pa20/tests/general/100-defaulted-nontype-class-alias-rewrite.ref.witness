@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/100-defaulted-nontype-class-alias-rewrite.t:33:1
-    template Deque
-    selected primary
-    bind #1 = int source=explicit
-template-closure-events
-  variable-instantiation
-    entity Block<int, long>::value

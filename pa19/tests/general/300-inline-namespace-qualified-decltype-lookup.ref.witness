@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-inline-namespace-qualified-decltype-lookup.t:13:6
-    template std::holder
-    selected primary
-    bind #1 = int source=explicit

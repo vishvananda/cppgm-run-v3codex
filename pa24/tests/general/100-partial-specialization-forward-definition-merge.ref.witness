@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/100-partial-specialization-forward-definition-merge.t:13:6
-    template vector
-    selected explicit
-    bind #1 = bool source=explicit
-    bind #2 = type-parameter-0-0 source=explicit

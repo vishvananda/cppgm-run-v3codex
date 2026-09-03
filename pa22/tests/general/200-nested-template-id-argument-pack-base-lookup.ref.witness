@@ -1,8 +1,0 @@
-translation-unit
-  alias-use at tests/general/200-nested-template-id-argument-pack-base-lookup.t:25:16
-    template meta::select
-    bind #1 = inherit<identity<T>...> source=explicit
-  class-use at tests/general/200-nested-template-id-argument-pack-base-lookup.t:34:22
-    template meta::make
-    selected primary
-    bind #1 = <name> source=explicit

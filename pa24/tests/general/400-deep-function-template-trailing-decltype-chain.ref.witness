@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/400-deep-function-template-trailing-decltype-chain.t:10:18
-    template step
-    selected primary
-    bind #1 = 9 source=explicit
-  function-call at tests/general/400-deep-function-template-trailing-decltype-chain.t:10:18
-    callee step<9>::operator()
-    selected instantiation
-    bind #1 = int source=deduced

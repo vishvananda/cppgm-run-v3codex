@@ -1,5 +1,0 @@
-translation-unit
-  function-call at tests/general/100-function-template-parameter-decltype-ref-array.t:14:17
-    callee dep_param_ref_array_helper
-    selected instantiation
-    bind #1 = int source=deduced

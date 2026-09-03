@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-explicit-specialization-redeclaration-keeps-definition.t:41:39
-    template fusion::extension::begin_impl
-    selected explicit
-    bind #1 = fusion::mpl_sequence_tag source=explicit
-  class-use at tests/general/100-explicit-specialization-redeclaration-keeps-definition.t:42:43
-    template fusion::extension::begin_impl<fusion::mpl_sequence_tag>::apply
-    selected primary
-    bind #1 = int source=explicit

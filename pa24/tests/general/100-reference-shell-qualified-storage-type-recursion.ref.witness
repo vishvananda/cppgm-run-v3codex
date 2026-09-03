@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-reference-shell-qualified-storage-type-recursion.t:41:1
-    template Bitset
-    selected primary
-    bind #1 = 0 source=explicit
-    bind #2 = 0 source=explicit
-template-closure-events
-  variable-instantiation
-    entity HasStorage<Bitset<0, 0>>::value

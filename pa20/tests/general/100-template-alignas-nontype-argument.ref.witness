@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-template-alignas-nontype-argument.t:6:1
-    template AlignedAsValue
-    selected primary
-    bind #1 = 16 source=explicit
-  class-use at tests/general/100-template-alignas-nontype-argument.t:9:18
-    template AlignedAsValue
-    selected primary
-    bind #1 = 16 source=explicit

@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-qualified-template-id-ignores-local-value-shadow.t:17:8
-    template api::function
-    selected primary
-    bind #1 = void (const Value &) source=explicit

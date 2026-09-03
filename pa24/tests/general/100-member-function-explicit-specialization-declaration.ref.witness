@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-member-function-explicit-specialization-declaration.t:7:6
-    template S
-    selected primary
-    bind #1 = int source=explicit

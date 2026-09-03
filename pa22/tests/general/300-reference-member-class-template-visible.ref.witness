@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/300-reference-member-class-template-visible.t:2:1
-    template Outer
-    selected primary
-    bind #1 = int source=explicit
-  class-use at tests/general/300-reference-member-class-template-visible.t:2:13
-    template Outer<int>::Inner
-    selected primary
-    bind #1 = float source=explicit

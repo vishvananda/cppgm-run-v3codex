@@ -1,6 +1,0 @@
-translation-unit
-template-closure-events
-  class-finalization
-    entity static_box
-  function-instantiation
-    entity static_box<int>::value

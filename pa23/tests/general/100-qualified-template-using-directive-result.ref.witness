@@ -1,5 +1,0 @@
-translation-unit
-  function-call at tests/general/100-qualified-template-using-directive-result.t:5:10
-    callee id
-    selected instantiation
-    bind #1 = int source=deduced

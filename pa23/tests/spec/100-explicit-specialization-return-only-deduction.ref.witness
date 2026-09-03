@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-explicit-specialization-return-only-deduction.t:19:1
-    template result
-    selected primary
-    bind #1 = long source=explicit
-  function-call at tests/spec/100-explicit-specialization-return-only-deduction.t:26:10
-    callee make_result
-    selected explicit_specialization
-    bind #1 = long source=explicit

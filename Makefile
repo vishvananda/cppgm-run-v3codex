@@ -42,8 +42,6 @@ SORTED_PAS = $(shell printf '%s\n' $(PAS) | sort -t a -k 2,2n)
 TEST_REPORT_PAS ?= $(SORTED_PAS)
 ACTIVE_TEST_REPORT_PAS ?= $(TEST_REPORT_PAS)
 REF_TEST_PAS ?= $(SORTED_PAS)
-STRICT_PAS ?= pa19 pa20 pa22 pa23 pa24
-STRICT_SUBTEST_JOBS ?= $(DEFAULT_BUILD_JOBS)
 # One assignment at a time gets the whole machine: there is nothing else to
 # share it with, unlike test-report where assignments run side by side.
 SINGLE_ASSIGNMENT_SUBTEST_JOBS ?= $(DEFAULT_BUILD_JOBS)
@@ -65,14 +63,14 @@ SUBMAKE_OBJ_ARG = $(if $(strip $(OBJ)),OBJ=$(OBJ))
 SUBMAKE_GENERATED_ARG = $(if $(strip $(GENERATED)),GENERATED=$(GENERATED))
 SUBMAKE_CC_FLAGS_ARG = $(if $(strip $(CC_FLAGS)),CC_FLAGS="$(CC_FLAGS)")
 
-.PHONY: all build build-telemetry-off test test-telemetry-off audit-lowir-contract audit-compiler-layout audit-compiler-rename-manifest audit-compiler-exceptions audit-frontend-source-sets audit-semantic-owners audit-lowering-owners audit-native-owners ref-test ref-test-strict ref-test-debuginfo \
-	test-strict test-strict-nobuild test-debuginfo test-debuginfo-nobuild \
+.PHONY: all build build-telemetry-off test test-telemetry-off audit-lowir-contract audit-compiler-layout audit-compiler-rename-manifest audit-compiler-exceptions audit-frontend-source-sets audit-semantic-owners audit-lowering-owners audit-native-owners ref-test ref-test-debuginfo \
+	test-debuginfo test-debuginfo-nobuild \
 	test-report inception clean run-cppgm run-cppgm-nobuild \
 	test-report-nobuild test-report-through-% test-report-through-%-nobuild \
 	ref-test-% \
 	test-% \
 	$(ALL_PAS)
-.NOTPARALLEL: ref-test ref-test-strict ref-test-debuginfo
+.NOTPARALLEL: ref-test ref-test-debuginfo
 
 all: build
 
@@ -148,25 +146,6 @@ ref-test:
 	done
 	@echo "===== ALL REFS REGENERATED SUCCESSFULLY! ====="
 
-ref-test-strict:
-	@if [ -z "$(strip $(STRICT_PAS))" ]; then \
-		echo "No strict assignments configured"; \
-		exit 0; \
-	fi
-	@for dir in $(STRICT_PAS); do \
-		echo "===== $$dir (ref-test-strict) ====="; \
-		$(MAKE) -C $$dir \
-			CXX=$(CXX) \
-			CPPGM_HOST_CXX=$(CPPGM_HOST_CXX) \
-			CPPGM_STDLIB_FLAGS=$(CPPGM_STDLIB_FLAGS) \
-			CPPGM_TEST_RUNNER=$(CPPGM_TEST_RUNNER) \
-			$(SUBMAKE_OBJ_ARG) \
-			$(SUBMAKE_GENERATED_ARG) \
-			$(SUBMAKE_CC_FLAGS_ARG) \
-			ref-test-strict || exit 1; \
-	done
-	@echo "===== ALL STRICT WITNESS REFS REGENERATED SUCCESSFULLY! ====="
-
 ref-test-debuginfo:
 	@if [ -z "$(strip $(DEBUGINFO_TEST_PAS))" ]; then \
 		echo "No debuginfo assignments configured"; \
@@ -185,44 +164,6 @@ ref-test-debuginfo:
 			ref-test-debuginfo || exit 1; \
 	done
 	@echo "===== ALL DEBUGINFO REFS REGENERATED SUCCESSFULLY! ====="
-
-test-strict: build
-	@$(MAKE) test-strict-nobuild \
-		STRICT_PAS='$(STRICT_PAS)'
-
-test-strict-nobuild:
-	@export KEEP_GOING=1; \
-	if [ "$(CPPGM_TEST_RUNNER)" = "1" ]; then \
-		export CPPGM_BATCH_TESTS=1; \
-		export WRAPPED_BATCH_STDIN=1; \
-	else \
-		unset CPPGM_BATCH_TESTS; \
-		unset WRAPPED_BATCH_STDIN; \
-	fi; \
-	export CPPGM_TEST_JOBS=$(STRICT_SUBTEST_JOBS); \
-	if [ -z "$(strip $(STRICT_PAS))" ]; then \
-		echo "===== NO STRICT TESTS CONFIGURED ====="; \
-		exit 0; \
-	fi; \
-	status=0; \
-	failed=''; \
-	for dir in $(STRICT_PAS); do \
-		echo "===== $$dir (strict) ====="; \
-		$(MAKE) -C $$dir \
-			CXX=$(CXX) \
-			CPPGM_HOST_CXX=$(CPPGM_HOST_CXX) \
-			CPPGM_STDLIB_FLAGS=$(CPPGM_STDLIB_FLAGS) \
-			CPPGM_TEST_RUNNER=$(CPPGM_TEST_RUNNER) \
-			$(SUBMAKE_OBJ_ARG) \
-			$(SUBMAKE_GENERATED_ARG) \
-			$(SUBMAKE_CC_FLAGS_ARG) \
-			CPPGM_SKIP_DEV_REBUILD=1 test-strict || { status=1; failed="$$failed $$dir"; }; \
-	done; \
-	if [ $$status -ne 0 ]; then \
-		echo "===== STRICT TESTS FAILED IN:$${failed} ====="; \
-		exit $$status; \
-	fi; \
-	echo "===== ALL STRICT TESTS PASSED SUCCESSFULLY! ====="
 
 test-debuginfo: build
 	@$(MAKE) test-debuginfo-nobuild \
@@ -470,30 +411,6 @@ clean:
 
 $(ALL_PAS):
 	@$(MAKE) test-$@
-
-test-strict-%:
-	@if [ ! -f "$*/Makefile" ]; then \
-		echo "unknown assignment: $*" >&2; \
-		exit 2; \
-	fi
-	@$(MAKE) build
-	@if [ "$(CPPGM_TEST_RUNNER)" = "1" ]; then \
-		export CPPGM_BATCH_TESTS=1; \
-		export WRAPPED_BATCH_STDIN=1; \
-	else \
-		unset CPPGM_BATCH_TESTS; \
-		unset WRAPPED_BATCH_STDIN; \
-	fi; \
-	export CPPGM_TEST_JOBS=$(STRICT_SUBTEST_JOBS); \
-	$(MAKE) -C $* \
-		CXX=$(CXX) \
-		CPPGM_HOST_CXX=$(CPPGM_HOST_CXX) \
-		CPPGM_STDLIB_FLAGS=$(CPPGM_STDLIB_FLAGS) \
-		CPPGM_TEST_RUNNER=$(CPPGM_TEST_RUNNER) \
-		$(SUBMAKE_OBJ_ARG) \
-		$(SUBMAKE_GENERATED_ARG) \
-		$(SUBMAKE_CC_FLAGS_ARG) \
-		CPPGM_SKIP_DEV_REBUILD=1 test-strict
 
 ref-test-%:
 	@if [ ! -f "$*/Makefile" ]; then \

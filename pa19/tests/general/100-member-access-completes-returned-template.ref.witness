@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-member-access-completes-returned-template.t:3:1
-    template Wrap
-    selected primary
-    bind #1 = int source=explicit
-  class-use at tests/general/100-member-access-completes-returned-template.t:4:3
-    template Wrap
-    selected primary
-    bind #1 = int source=explicit

@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-explicit-specialization-out-of-class-member-overrides-primary.t:30:18
-    template traits::identity_element
-    selected primary
-    bind #1 = lib::date source=explicit
-  class-use at tests/spec/300-explicit-specialization-out-of-class-member-overrides-primary.t:38:25
-    template traits::identity_element
-    selected primary
-    bind #1 = lib::date source=explicit

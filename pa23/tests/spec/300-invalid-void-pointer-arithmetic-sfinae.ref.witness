@@ -1,7 +1,0 @@
-translation-unit
-  function-call at tests/spec/300-invalid-void-pointer-arithmetic-sfinae.t:4:22
-    callee probe
-    selected instantiation
-    bind #1 = bool source=explicit
-    bind #2 = void * source=explicit
-    drop probe reason=substitution_failure

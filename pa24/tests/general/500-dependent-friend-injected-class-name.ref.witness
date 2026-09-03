@@ -1,9 +1,0 @@
-translation-unit
-  alias-use at tests/general/500-dependent-friend-injected-class-name.t:42:5
-    template mini::enable_hash_helper_imp
-    bind #1 = Type source=explicit
-    bind #2 = typename enable_if<all<has_enabled_hash<Keys>::value...>::value>::type source=explicit
-  alias-use at tests/general/500-dependent-friend-injected-class-name.t:47:13
-    template mini::enable_hash_helper
-    bind #1 = unique_ptr<T, D> source=explicit
-    bind #2 = typename unique_ptr<T, D>::pointer source=explicit

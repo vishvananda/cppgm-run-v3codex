@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/400-inherited-qualified-alias-template-type.t:27:3
-    template Holder
-    selected primary
-    bind #1 = int source=explicit

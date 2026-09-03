@@ -1,6 +1,0 @@
-translation-unit
-template-closure-events
-  function-instantiation
-    entity explicit_free
-  require-definition
-    entity explicit_free

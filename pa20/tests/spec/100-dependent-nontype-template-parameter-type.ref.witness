@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-dependent-nontype-template-parameter-type.t:12:10
-    template integral_constant
-    selected primary
-    bind #1 = int source=explicit
-    bind #2 = 7 source=explicit
-template-closure-events
-  variable-instantiation
-    entity integral_constant<int, 7>::value

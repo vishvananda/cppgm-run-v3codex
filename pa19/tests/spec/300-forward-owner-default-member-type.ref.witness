@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-forward-owner-default-member-type.t:10:9
-    template String
-    selected primary
-    bind #1 = int source=explicit
-    bind #2 = Alloc<int> source=defaulted

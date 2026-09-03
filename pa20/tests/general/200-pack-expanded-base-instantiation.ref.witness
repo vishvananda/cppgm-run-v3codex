@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/200-pack-expanded-base-instantiation.t:11:19
-    template N::MaxAlignImpl
-    selected primary
-    bind #1 = <N::S, int *> source=explicit

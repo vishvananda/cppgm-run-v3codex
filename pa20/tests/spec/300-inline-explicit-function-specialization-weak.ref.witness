@@ -1,9 +1,0 @@
-translation-unit
-  function-call at tests/spec/300-inline-explicit-function-specialization-weak.t:24:10
-    callee digits
-    selected explicit_specialization
-    bind #1 = unsigned int source=deduced
-  function-call at tests/spec/300-inline-explicit-function-specialization-weak.t:24:23
-    callee digits
-    selected explicit_specialization
-    bind #1 = unsigned long long source=deduced

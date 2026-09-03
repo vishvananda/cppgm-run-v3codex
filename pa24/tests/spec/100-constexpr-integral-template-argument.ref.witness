@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-constexpr-integral-template-argument.t:14:10
-    template box
-    selected primary
-    bind #1 = 4 source=explicit
-template-closure-events
-  variable-instantiation
-    entity box<4>::value

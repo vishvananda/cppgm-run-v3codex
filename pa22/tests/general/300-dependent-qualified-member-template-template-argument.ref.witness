@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-dependent-qualified-member-template-template-argument.t:9:4
-    template n::probe
-    selected primary
-    bind #1 = missing source=explicit

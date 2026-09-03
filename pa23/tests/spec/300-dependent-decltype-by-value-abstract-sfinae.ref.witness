@@ -1,7 +1,0 @@
-translation-unit
-  function-call at tests/spec/300-dependent-decltype-by-value-abstract-sfinae.t:6:22
-    callee probe
-    selected instantiation
-    bind #1 = A & source=explicit
-    bind #2 = A source=explicit
-    drop probe reason=substitution_failure

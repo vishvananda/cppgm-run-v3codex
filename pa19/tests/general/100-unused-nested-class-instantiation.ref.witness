@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-unused-nested-class-instantiation.t:12:3
-    template Holder
-    selected primary
-    bind #1 = Node source=explicit

@@ -1,6 +1,0 @@
-translation-unit
-  function-call at pa26/tests/general/300-qualified-template-member-type-sfinae.t:27:18
-    callee probe
-    selected instantiation
-    bind #1 = Functor source=explicit
-    drop probe reason=substitution_failure

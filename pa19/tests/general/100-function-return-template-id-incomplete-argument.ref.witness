@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-function-return-template-id-incomplete-argument.t:4:1
-    template pair
-    selected primary
-    bind #1 = object source=explicit
-  class-use at tests/general/100-function-return-template-id-incomplete-argument.t:6:1
-    template pair
-    selected primary
-    bind #1 = object source=explicit

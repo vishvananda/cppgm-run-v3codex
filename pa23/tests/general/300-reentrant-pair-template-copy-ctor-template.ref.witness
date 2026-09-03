@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/300-reentrant-pair-template-copy-ctor-template.t:7:1
-    template pair
-    selected primary
-    bind #1 = int source=explicit
-    bind #2 = int source=explicit

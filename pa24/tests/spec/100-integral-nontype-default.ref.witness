@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-integral-nontype-default.t:12:10
-    template box
-    selected primary
-    bind #1 = 0 source=defaulted
-template-closure-events
-  variable-instantiation
-    entity box<>::value

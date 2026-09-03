@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-unused-defaulted-move-assignment-dependency.t:23:1
-    template assignment_owner
-    selected primary
-    bind #1 = incomplete source=explicit

@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/200-template-alignas-gnu-alignof-instantiation.t:6:1
-    template AlignedAsT
-    selected primary
-    bind #1 = unsigned long long source=explicit
-  class-use at tests/general/200-template-alignas-gnu-alignof-instantiation.t:9:18
-    template AlignedAsT
-    selected primary
-    bind #1 = unsigned long long source=explicit

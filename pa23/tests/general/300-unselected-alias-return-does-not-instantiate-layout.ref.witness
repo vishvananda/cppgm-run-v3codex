@@ -1,4 +1,0 @@
-translation-unit
-  alias-use at tests/general/300-unselected-alias-return-does-not-instantiate-layout.t:15:1
-    template bomb_alias
-    bind #1 = T source=explicit

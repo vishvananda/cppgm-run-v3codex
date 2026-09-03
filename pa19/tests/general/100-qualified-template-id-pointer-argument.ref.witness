@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-qualified-template-id-pointer-argument.t:7:4
-    template Q::V
-    selected primary
-    bind #1 = Q::V<int> * source=explicit
-  class-use at tests/general/100-qualified-template-id-pointer-argument.t:7:9
-    template Q::V
-    selected primary
-    bind #1 = int source=explicit

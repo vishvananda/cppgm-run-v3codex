@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-reentrant-full-collection-abort-layout.t:25:3
-    template pa18_reentrant_layout_shared
-    selected primary
-    bind #1 = pa18_reentrant_layout_node source=explicit
-  class-use at tests/general/100-reentrant-full-collection-abort-layout.t:31:17
-    template pa18_reentrant_layout_shared
-    selected primary
-    bind #1 = pa18_reentrant_layout_node source=explicit

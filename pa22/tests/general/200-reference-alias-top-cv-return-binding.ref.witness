@@ -1,4 +1,0 @@
-translation-unit
-  alias-use at tests/general/200-reference-alias-top-cv-return-binding.t:10:1
-    template add_const_t
-    bind #1 = IntRef source=explicit

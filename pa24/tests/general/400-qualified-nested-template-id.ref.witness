@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/400-qualified-nested-template-id.t:11:20
-    template IfImpl
-    selected explicit
-    bind #1 = true source=explicit
-  alias-use at tests/general/400-qualified-nested-template-id.t:11:43
-    template IfImpl<true>::Select
-    bind #1 = int source=explicit
-    bind #2 = long source=explicit

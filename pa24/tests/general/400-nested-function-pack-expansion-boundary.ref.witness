@@ -1,5 +1,0 @@
-translation-unit
-  function-call at tests/general/400-nested-function-pack-expansion-boundary.t:7:22
-    callee call
-    selected instantiation
-    bind #1 = <int, int> source=deduced

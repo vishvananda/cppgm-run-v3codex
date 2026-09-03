@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-current-instantiation-qualified-detector-call.t:17:22
-    template detector
-    selected primary
-    bind #1 = const callable & source=explicit

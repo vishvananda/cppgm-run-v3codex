@@ -1,4 +1,0 @@
-translation-unit
-  alias-use at tests/general/300-alias-template-no-eager-member-body.t:3:1
-    template held_type
-    bind #1 = int source=explicit

@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-forward-named-specialization-definition-no-eager-instantiation.t:8:9
-    template holder
-    selected primary
-    bind #1 = int source=explicit

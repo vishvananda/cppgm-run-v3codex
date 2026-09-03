@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-static-constexpr-member-call-initializer.t:24:15
-    template integral_constant
-    selected primary
-    bind #1 = unsigned long source=explicit
-    bind #2 = 4611686018427387901 source=explicit
-template-closure-events
-  variable-instantiation
-    entity integral_constant<unsigned long, 4611686018427387901>::value

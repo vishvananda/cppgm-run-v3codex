@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-template-specialization-member-object-access.t:2:17
-    template Wrap
-    selected primary
-    bind #1 = int source=explicit

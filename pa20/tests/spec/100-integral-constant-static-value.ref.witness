@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-integral-constant-static-value.t:10:15
-    template integral_constant
-    selected primary
-    bind #1 = int source=explicit
-    bind #2 = 3 source=explicit
-template-closure-events
-  variable-instantiation
-    entity integral_constant<int, 3>::value

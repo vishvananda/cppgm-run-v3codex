@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-concrete-class-argument-not-rebound-by-template-parameter.t:23:3
-    template result_traits
-    selected primary
-    bind #1 = F source=explicit
-    bind #2 = F (*)() source=explicit

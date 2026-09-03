@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-qualified-unnamed-namespace-template-arg.t:9:3
-    template W
-    selected primary
-    bind #1 = const ns::E source=explicit

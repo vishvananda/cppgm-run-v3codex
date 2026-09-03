@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/400-template-template-pack-alias-expansion-order.t:5:27
-    template L
-    selected primary
-    bind #1 = <A, B> source=explicit
-  class-use at tests/general/400-template-template-pack-alias-expansion-order.t:5:39
-    template C
-    selected primary
-    bind #1 = <A, B> source=explicit

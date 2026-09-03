@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/200-explicit-template-argument-pack-expands-fixed-parameters.t:10:15
-    template check
-    selected primary
-    bind #1 = <int, long> source=explicit
-template-closure-events
-  variable-instantiation
-    entity check<int, long>::value

@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/100-dependent-static-constant-member-comparison.t:7:10
-    template X
-    selected primary
-    bind #1 = long long source=explicit
-template-closure-events
-  variable-instantiation
-    entity X<long long>::is_signed

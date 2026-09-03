@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/300-lazy-nested-class-in-member-template.t:7:1
-    template outer
-    selected primary
-    bind #1 = int source=explicit
-  class-use at tests/general/300-lazy-nested-class-in-member-template.t:7:13
-    template outer<int>::inner
-    selected primary
-    bind #1 = true source=explicit

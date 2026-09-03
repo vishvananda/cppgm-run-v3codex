@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/100-nontype-function-parameter-adjustment.t:17:10
-    template tester
-    selected primary
-    bind #1 = &target source=explicit
-template-closure-events
-  variable-instantiation
-    entity tester<&target>::value

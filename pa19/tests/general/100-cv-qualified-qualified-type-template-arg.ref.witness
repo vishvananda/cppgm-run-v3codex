@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-cv-qualified-qualified-type-template-arg.t:15:7
-    template ns::box
-    selected primary
-    bind #1 = const ns::S source=explicit

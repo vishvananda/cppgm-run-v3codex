@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-typedef-template-argument-witness-normalization.t:16:1
-    template box
-    selected primary
-    bind #1 = unsigned int source=explicit
-  class-use at tests/spec/100-typedef-template-argument-witness-normalization.t:17:1
-    template box
-    selected primary
-    bind #1 = node source=explicit

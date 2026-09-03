@@ -1,5 +1,0 @@
-translation-unit
-  alias-use at tests/spec/300-unnamed-enable-if-default-template-id-return.t:19:37
-    template enable_if_t
-    bind #1 = true source=explicit
-    bind #2 = int source=explicit

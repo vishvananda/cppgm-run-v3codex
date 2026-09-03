@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/100-type-template-less-than-expression-argument.t:4:1
-    template Box
-    selected primary
-    bind #1 = 1 source=explicit
-    bind #2 = int source=explicit

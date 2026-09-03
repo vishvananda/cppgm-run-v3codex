@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/200-template-template-inner-pack-scope.t:18:3
-    template apply
-    selected primary
-    bind #1 = list source=explicit
-    bind #2 = int source=explicit

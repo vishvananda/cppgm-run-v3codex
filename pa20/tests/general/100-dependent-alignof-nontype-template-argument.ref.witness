@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/100-dependent-alignof-nontype-template-argument.t:21:10
-    template alignment_of
-    selected primary
-    bind #1 = Payload source=explicit
-template-closure-events
-  variable-instantiation
-    entity constant<unsigned long, 1>::value

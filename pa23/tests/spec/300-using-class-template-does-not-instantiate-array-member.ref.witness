@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-using-class-template-does-not-instantiate-array-member.t:9:25
-    template lazy_box
-    selected primary
-    bind #1 = int[] source=explicit
-  class-use at tests/spec/300-using-class-template-does-not-instantiate-array-member.t:13:23
-    template lazy_box
-    selected primary
-    bind #1 = int[] source=explicit

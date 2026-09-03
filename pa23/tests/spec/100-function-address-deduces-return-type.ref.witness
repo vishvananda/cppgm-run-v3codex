@@ -1,6 +1,0 @@
-translation-unit
-template-closure-events
-  function-instantiation
-    entity make_value
-  require-definition
-    entity make_value

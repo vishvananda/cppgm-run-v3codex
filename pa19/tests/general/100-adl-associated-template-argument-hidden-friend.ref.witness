@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-adl-associated-template-argument-hidden-friend.t:5:22
-    template box
-    selected primary
-    bind #1 = item source=explicit
-  class-use at tests/general/100-adl-associated-template-argument-hidden-friend.t:9:18
-    template box
-    selected primary
-    bind #1 = item source=explicit

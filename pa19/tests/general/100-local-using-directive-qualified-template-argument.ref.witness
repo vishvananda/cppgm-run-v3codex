@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-local-using-directive-qualified-template-argument.t:22:13
-    template holder
-    selected primary
-    bind #1 = policy_impl::sign::return_sign source=explicit
-  class-use at tests/general/100-local-using-directive-qualified-template-argument.t:23:3
-    template holder
-    selected primary
-    bind #1 = policy_impl::sign::return_sign source=deduced

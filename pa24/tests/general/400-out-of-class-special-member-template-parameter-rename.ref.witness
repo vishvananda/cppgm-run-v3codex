@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/400-out-of-class-special-member-template-parameter-rename.t:12:1
-    template promise
-    selected explicit
-    bind #1 = type-parameter-0-0 & source=explicit

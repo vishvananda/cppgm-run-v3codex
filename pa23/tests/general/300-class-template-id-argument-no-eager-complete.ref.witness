@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-class-template-id-argument-no-eager-complete.t:22:9
-    template use
-    selected primary
-    bind #1 = no_next source=explicit

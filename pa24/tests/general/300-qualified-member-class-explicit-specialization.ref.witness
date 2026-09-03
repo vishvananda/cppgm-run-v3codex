@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/300-qualified-member-class-explicit-specialization.t:33:58
-    template fusion::extension::access::struct_member
-    selected explicit
-    bind #1 = test_detail::adapted_sequence source=explicit
-    bind #2 = 0 source=explicit

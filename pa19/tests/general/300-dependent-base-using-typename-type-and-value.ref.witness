@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-dependent-base-using-typename-type-and-value.t:13:3
-    template box
-    selected primary
-    bind #1 = char source=explicit

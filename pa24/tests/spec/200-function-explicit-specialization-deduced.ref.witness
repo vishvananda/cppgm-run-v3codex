@@ -1,5 +1,0 @@
-translation-unit
-  function-call at tests/spec/200-function-explicit-specialization-deduced.t:18:10
-    callee f
-    selected explicit_specialization
-    bind #1 = int source=deduced

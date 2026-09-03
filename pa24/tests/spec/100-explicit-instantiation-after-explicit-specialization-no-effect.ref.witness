@@ -1,5 +1,0 @@
-translation-unit
-  function-call at tests/spec/100-explicit-instantiation-after-explicit-specialization-no-effect.t:20:10
-    callee value
-    selected explicit_specialization
-    bind #1 = int source=deduced

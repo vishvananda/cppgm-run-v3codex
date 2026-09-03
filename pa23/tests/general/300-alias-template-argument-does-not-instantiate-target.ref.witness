@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/300-alias-template-argument-does-not-instantiate-target.t:12:18
-    template consumer
-    selected primary
-    bind #1 = target<int, incomplete> source=explicit
-  alias-use at tests/general/300-alias-template-argument-does-not-instantiate-target.t:12:27
-    template alias
-    bind #1 = int source=explicit

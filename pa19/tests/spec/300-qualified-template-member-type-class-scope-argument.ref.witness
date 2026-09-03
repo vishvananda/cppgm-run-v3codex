@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-qualified-template-member-type-class-scope-argument.t:16:17
-    template meta::holder
-    selected primary
-    bind #1 = owner::token source=explicit

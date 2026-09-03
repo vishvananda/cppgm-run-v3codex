@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-alias-class-template-does-not-instantiate.t:12:20
-    template lazy_tuple
-    selected primary
-    bind #1 = <int[]> source=explicit

@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-sizeof-class-with-deleted-default-ctor-member.t:12:17
-    template Pad
-    selected primary
-    bind #1 = D source=explicit

@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-unused-conversion-function-body-not-instantiated.t:16:1
-    template deferred_conversion
-    selected primary
-    bind #1 = incomplete source=explicit

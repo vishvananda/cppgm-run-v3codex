@@ -1,8 +1,0 @@
-translation-unit
-  class-use at pa26/tests/general/300-member-function-pointer-type-arg-qualified-void.t:28:13
-    template has_member_size
-    selected primary
-    bind #1 = const string_like source=explicit
-template-closure-events
-  variable-instantiation
-    entity has_member_size<const string_like>::value

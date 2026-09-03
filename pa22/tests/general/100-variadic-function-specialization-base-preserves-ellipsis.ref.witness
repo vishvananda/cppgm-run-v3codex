@@ -1,7 +1,0 @@
-translation-unit
-  class-use at tests/general/100-variadic-function-specialization-base-preserves-ellipsis.t:6:9
-    template outer
-    selected partial
-    bind #1 = int (char, ...) source=explicit
-    specialize #1 = int source=deduced
-    specialize #2 = char source=deduced

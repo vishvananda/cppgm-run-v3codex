@@ -1,5 +1,0 @@
-translation-unit
-  function-call at tests/spec/300-extern-template-deduced-function-declaration.t:14:10
-    callee plus_one
-    selected instantiation
-    bind #1 = int source=deduced

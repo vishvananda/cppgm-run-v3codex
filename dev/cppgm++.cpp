@@ -304,11 +304,6 @@ SourceOutputInvocation parse_source_output_invocation(
       invocation.line_tables = args[i] != "-g0";
       continue;
     }
-    if(allow_lowir_options &&
-       (args[i] == "--witness" || args[i] == "--witness-debug")) {
-      consume_required_option_argument(args, i, args[i], "output file");
-      continue;
-    }
     if(allow_lowir_options && args[i] == "-I") {
       consume_required_option_argument(args, i, "-I", "include path");
       invocation.include_paths.push_back(args[i]);

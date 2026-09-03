@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-long-long-nontype-template-argument.t:7:9
-    template r
-    selected primary
-    bind #1 = 1 source=explicit

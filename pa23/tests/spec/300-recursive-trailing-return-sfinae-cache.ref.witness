@@ -1,6 +1,0 @@
-translation-unit
-  function-call at tests/spec/300-recursive-trailing-return-sfinae-cache.t:14:20
-    callee probe
-    selected instantiation
-    bind #1 = int source=deduced
-    drop probe reason=worse_conversion

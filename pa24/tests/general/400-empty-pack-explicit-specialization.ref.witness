@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/400-empty-pack-explicit-specialization.t:11:3
-    template Box
-    selected explicit
-    bind #1 = <> source=deduced

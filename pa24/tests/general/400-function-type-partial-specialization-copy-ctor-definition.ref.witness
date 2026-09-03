@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/400-function-type-partial-specialization-copy-ctor-definition.t:11:1
-    template Box
-    selected explicit
-    bind #1 = type-parameter-0-0 (type-parameter-0-1...) source=explicit

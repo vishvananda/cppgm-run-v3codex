@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-partial-specialization-preserves-template-identity.t:7:19
-    template b::trait
-    selected primary
-    bind #1 = a::item<0> source=explicit
-  class-use at tests/general/100-partial-specialization-preserves-template-identity.t:7:28
-    template a::item
-    selected primary
-    bind #1 = 0 source=explicit

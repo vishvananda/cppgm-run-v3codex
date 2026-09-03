@@ -3356,48 +3356,6 @@ sub compare_lowir_text
 	        lowir_compare_failure_hint($ref_compare, $my_compare, $diff_path));
 }
 
-sub compare_witness_text
-{
-	my ($ref_suffix, $my_suffix, $testbase) = @_;
-	my $ref = "$testbase.$ref_suffix";
-	my $my = "$testbase.$my_suffix";
-	my $ref_witness = "$ref.witness";
-	my $my_witness = "$my.witness";
-
-	return ('skip', undef) if !-e $ref_witness;
-
-	my $ref_status = getdata("$ref.exit_status");
-	return ('skip', undef)
-		if defined($ref_status) && $ref_status ne 'EXIT_SUCCESS';
-
-	my $my_status = getdata("$my.exit_status");
-	return ('fail', "ERROR: missing generated exit status ($my.exit_status)")
-		if !defined($my_status);
-	return ('fail', "ERROR: witness exited $my_status")
-		if $my_status ne 'EXIT_SUCCESS';
-
-	my $ref_data = getrawdata($ref_witness);
-	my $my_data = getrawdata($my_witness);
-	my @missing_output = ();
-	push @missing_output, $ref_witness if !defined($ref_data);
-	push @missing_output, $my_witness if !defined($my_data);
-	return ('fail', "ERROR: missing witness output file (" . join(', ', @missing_output) . ")")
-		if scalar(@missing_output) != 0;
-
-	return ('ok', undef) if $ref_data eq $my_data;
-
-	my $diff_path = "$my_witness.diff";
-	my $diff_data = '';
-	if (open(my $diff_fh, '-|', 'diff', '-u', $ref_witness, $my_witness))
-	{
-		local $/;
-		$diff_data = <$diff_fh>;
-		close($diff_fh);
-	}
-	putrawdata($diff_path, defined($diff_data) ? $diff_data : '');
-	return ('fail', "ERROR: witness output does not match reference");
-}
-
 sub canonical_exit_status
 {
 	my ($status) = @_;
@@ -3585,7 +3543,6 @@ my $host_tag = host_platform_tag();
 my %patterns = (
 	text_t => qr/\.t$/,
 	lowir_t => qr/\.t$/,
-	witness_t => qr/\.t$/,
 	text_t1 => qr/\.t\.1$/,
 	program_t1 => qr/\.t\.1$/,
 	mir_t => qr/\.t$/,
@@ -3603,9 +3560,6 @@ my $suite_total = scalar(@tests);
 my $keep_going = $requested_keep_going || ($auto_check_keep_going && $suite_total > 1);
 my $npass = 0;
 my $failed = 0;
-my $witness_compared = 0;
-my $witness_failures = 0;
-my $witness_skipped = 0;
 
 sub compare_label
 {
@@ -3638,14 +3592,6 @@ sub checked_output_hint
 		rooted_path($ref_path) . " " . rooted_path($my_path) . "\n\n";
 }
 
-sub witness_output_hint
-{
-	my ($ref_path, $my_path) = @_;
-	return "To inspect this witness output:\n\n    \$ diff " .
-		rooted_path($ref_path) . " " . rooted_path($my_path) .
-		"\n    \$ cat " . rooted_path("$my_path.diff") . "\n\n";
-}
-
 sub program_output_hint
 {
 	my ($ref_prefix, $my_prefix) = @_;
@@ -3665,45 +3611,6 @@ for my $test (@tests)
 	my $testbase = $test;
 	$testbase =~ s/\.t$//;
 	$testbase =~ s/\.t\.1$//;
-
-	if ($mode eq 'witness_t')
-	{
-		my ($state, $message) =
-			compare_witness_text($ref_suffix, $my_suffix, $testbase);
-		if ($state eq 'skip')
-		{
-			++$witness_skipped;
-			print "SKIP\n\n" if $verbose;
-			next;
-		}
-
-		++$witness_compared;
-		if ($state eq 'ok')
-		{
-			++$npass;
-			print "PASS\n\n" if $verbose;
-			next;
-		}
-
-		++$witness_failures;
-		if ($keep_going)
-		{
-			print "$display_test: $message\n";
-			print witness_output_hint("$testbase.$ref_suffix.witness",
-			                          "$testbase.$my_suffix.witness")
-				if $check_mode && $auto_check_keep_going;
-			$failed = 1;
-			next;
-		}
-
-		print fail_prefix();
-		print "$test: $message\n\n";
-		print rerun_hint();
-		print witness_output_hint("$testbase.$ref_suffix.witness",
-		                          "$testbase.$my_suffix.witness");
-		print "TEST FAIL\n";
-		exit(1);
-	}
 
 	my ($ok, $message, $hint);
 	eval {
@@ -3970,24 +3877,6 @@ for my $test (@tests)
 	print $hint if defined($hint);
 	print "TEST FAIL\n";
 	exit(1);
-}
-
-if ($mode eq 'witness_t')
-{
-	if ($check_mode)
-	{
-		print compare_label() . ": " . ($failed ? "FAIL" : "PASS") .
-			" ($npass/$witness_compared compared";
-		print ", $witness_skipped skipped" if $witness_skipped != 0;
-		print ")\n";
-	}
-	else
-	{
-		print "SUMMARY compared=$witness_compared failures=$witness_failures skipped=$witness_skipped\n";
-	}
-	append_keep_going_summary($repo_root, $cwd, $npass, $witness_compared, $failed)
-		if $keep_going && !$check_mode;
-	exit($failed && (!$keep_going || $auto_check_keep_going) ? 1 : 0);
 }
 
 if ($keep_going && $check_mode)

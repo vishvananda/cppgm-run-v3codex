@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/100-using-directive-template-member-type-typedef.t:36:16
-    template boost::move_detail::aligned_storage
-    selected primary
-    bind #1 = 4 source=explicit
-template-closure-events
-  class-instantiation
-    entity boost::move_detail::aligned_storage<4>::type

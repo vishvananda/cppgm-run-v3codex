@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/200-empty-base-pack-expansion-sizeof.t:21:11
-    template tuple
-    selected primary
-    bind #1 = <> source=deduced
-  class-use at tests/general/200-empty-base-pack-expansion-sizeof.t:22:11
-    template tuple
-    selected primary
-    bind #1 = <tuple<>> source=explicit

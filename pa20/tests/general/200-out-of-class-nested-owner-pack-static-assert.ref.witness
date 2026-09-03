@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/200-out-of-class-nested-owner-pack-static-assert.t:13:17
-    template owner
-    selected primary
-    bind #1 = <int, long> source=explicit
-template-closure-events
-  class-instantiation
-    entity owner<int, long>::nested

@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/300-array-pointee-cv-void-conversion-sfinae.t:7:21
-    template convertible
-    selected primary
-    bind #1 = const X[] source=explicit
-    bind #2 = void source=explicit

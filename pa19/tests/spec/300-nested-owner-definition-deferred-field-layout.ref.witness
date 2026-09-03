@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-nested-owner-definition-deferred-field-layout.t:3:12
-    template A
-    selected primary
-    bind #1 = int source=explicit
-template-closure-events
-  class-instantiation
-    entity A<int>::B

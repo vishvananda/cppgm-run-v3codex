@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/100-nontype-functional-cast-binary-expression.t:21:15
-    template pool
-    selected primary
-    bind #1 = 1 source=explicit
-template-closure-events
-  variable-instantiation
-    entity impl<6>::value

@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-dependent-base-using-implicit-copy-assignment.t:22:3
-    template filtering_slot
-    selected primary
-    bind #1 = slot source=explicit

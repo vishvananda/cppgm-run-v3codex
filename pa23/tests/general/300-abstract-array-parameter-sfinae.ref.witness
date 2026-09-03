@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/300-abstract-array-parameter-sfinae.t:30:6
-    template abstract_array_probe
-    selected primary
-    bind #1 = abstract_array_concrete source=explicit
-  class-use at tests/general/300-abstract-array-parameter-sfinae.t:34:10
-    template abstract_array_probe
-    selected primary
-    bind #1 = abstract_array_abstract source=explicit

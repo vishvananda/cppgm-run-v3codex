@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-local-const-integral-nontype-argument.t:12:17
-    template Pick
-    selected primary
-    bind #1 = true source=explicit

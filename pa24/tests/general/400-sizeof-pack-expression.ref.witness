@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/400-sizeof-pack-expression.t:7:21
-    template X
-    selected primary
-    bind #1 = <int, char> source=explicit

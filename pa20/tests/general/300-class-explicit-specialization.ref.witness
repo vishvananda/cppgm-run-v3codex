@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-class-explicit-specialization.t:12:3
-    template Box
-    selected explicit
-    bind #1 = int source=explicit

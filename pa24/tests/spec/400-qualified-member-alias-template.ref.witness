@@ -1,4 +1,0 @@
-translation-unit
-  alias-use at tests/spec/400-qualified-member-alias-template.t:14:11
-    template z
-    bind #1 = int source=explicit

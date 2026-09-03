@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-class-template-alias-array-member.t:12:3
-    template Box
-    selected primary
-    bind #1 = Item source=explicit

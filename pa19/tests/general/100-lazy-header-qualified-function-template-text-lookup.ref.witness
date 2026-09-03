@@ -1,6 +1,0 @@
-translation-unit
-template-closure-events
-  function-instantiation
-    entity lazy_lookup_lib::min_value
-  require-definition
-    entity lazy_lookup_lib::min_value

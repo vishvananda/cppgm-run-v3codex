@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-explicit-specialization-qualified-static-member-type.t:6:1
-    template box
-    selected explicit
-    bind #1 = char source=explicit
-  class-use at tests/spec/100-explicit-specialization-qualified-static-member-type.t:6:17
-    template box
-    selected explicit
-    bind #1 = char source=explicit

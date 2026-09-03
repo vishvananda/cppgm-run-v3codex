@@ -1,4 +1,0 @@
-translation-unit
-  alias-use at tests/general/400-dependent-typeid-template-argument.t:6:11
-    template X
-    bind #1 = int source=explicit

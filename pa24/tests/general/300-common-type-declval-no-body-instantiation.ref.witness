@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/300-common-type-declval-no-body-instantiation.t:17:9
-    template common_type
-    selected primary
-    bind #1 = long long source=explicit
-    bind #2 = int source=explicit

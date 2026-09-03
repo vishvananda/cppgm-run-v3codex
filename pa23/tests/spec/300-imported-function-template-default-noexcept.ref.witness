@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/spec/300-imported-function-template-default-noexcept.t:17:25
-    template detector::trait
-    selected primary
-    bind #1 = int source=explicit
-    bind #2 = true source=defaulted
-template-closure-events
-  variable-instantiation
-    entity detector::trait<int>::value

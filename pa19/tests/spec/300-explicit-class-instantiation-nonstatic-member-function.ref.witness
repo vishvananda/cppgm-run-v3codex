@@ -1,6 +1,0 @@
-translation-unit
-template-closure-events
-  class-finalization
-    entity box
-  function-instantiation
-    entity box<int>::value

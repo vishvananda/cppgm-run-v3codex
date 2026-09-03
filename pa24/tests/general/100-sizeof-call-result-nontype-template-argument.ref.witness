@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/100-sizeof-call-result-nontype-template-argument.t:38:20
-    template is_complete
-    selected primary
-    bind #1 = sequence source=explicit
-template-closure-events
-  variable-instantiation
-    entity integral_constant<bool, true>::value

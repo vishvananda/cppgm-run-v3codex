@@ -1,8 +1,0 @@
-translation-unit
-  alias-use at tests/general/400-dependent-less-than-enable-if-alias-type-id.t:13:20
-    template enable_if_t
-    bind #1 = Count < 2 source=explicit
-    bind #2 = int source=explicit
-  alias-use at tests/general/400-dependent-less-than-enable-if-alias-type-id.t:15:1
-    template selected_t
-    bind #1 = 1 source=explicit

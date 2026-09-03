@@ -1,6 +1,0 @@
-translation-unit
-  function-call at tests/spec/400-enum-qualified-operator-new-nttp-sfinae.t:5:22
-    callee probe
-    selected instantiation
-    bind #1 = E source=explicit
-    drop probe reason=substitution_failure

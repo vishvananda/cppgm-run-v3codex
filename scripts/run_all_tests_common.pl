@@ -496,22 +496,6 @@ sub build_wrapped_text_request
 		        $test);
 	}
 
-	if ($mode eq "witness_t")
-	{
-		my $test_out = $test;
-		$test_out =~ s/\.t$/\.$suffix/;
-		my $test_input = abs_path($test) || $test;
-		return ("$test_out.witness.stdout",
-		        "$test_out.witness.stderr",
-		        "-",
-		        {},
-		        "-o",
-		        "$test_out.witness.lowir",
-		        "--witness",
-		        "$test_out.witness",
-		        $test_input);
-	}
-
 	if ($mode eq "text_t1")
 	{
 		my $test_out = $test;
@@ -747,7 +731,7 @@ sub run_batch_sharded
 sub run_batch
 {
 	my ($mode, $app, $suffix, $tests, $jobs, $verbose, $assignment) = @_;
-	if ($mode eq "text_t" || $mode eq "text_t1" || $mode eq "witness_t")
+	if ($mode eq "text_t" || $mode eq "text_t1")
 	{
 		run_batch_sharded(sub {
 			my ($shard) = @_;
@@ -766,36 +750,12 @@ sub run_batch
 	die "Unsupported wrapped batch mode $mode";
 }
 
-sub witness_test_has_successful_reference
-{
-	my ($test) = @_;
-	my $test_out = $test;
-	$test_out =~ s/\.t$/.ref/;
-	my $status = read_status_file("$test_out.exit_status");
-	return 1 if !defined($status);
-	return $status eq "EXIT_SUCCESS";
-}
-
-sub witness_test_has_reference
-{
-	my ($test) = @_;
-	my $reference = $test;
-	$reference =~ s/\.t$/.ref.witness/;
-	return -f $reference;
-}
-
-sub filter_witness_tests
-{
-	my ($tests) = @_;
-	return [grep { witness_test_has_successful_reference($_) } @{$tests}];
-}
-
 sub run_single
 {
 	my ($mode, $app, $suffix, $tests, $jobs, $verbose, $assignment) = @_;
 	run_tests($tests, $jobs, sub {
 		my ($test) = @_;
-		if ($mode eq "text_t" || $mode eq "text_t1" || $mode eq "witness_t")
+		if ($mode eq "text_t" || $mode eq "text_t1")
 		{
 			run_single_wrapped_text($mode, $app, $suffix, $test, $assignment);
 			return;
@@ -826,7 +786,6 @@ my $assignment = basename(getcwd());
 
 my %patterns = (
 	text_t => qr/\.t$/,
-	witness_t => qr/\.t$/,
 	text_t1 => qr/\.t\.1$/,
 	driver_t1 => qr/\.t\.1$/,
 );
@@ -835,14 +794,6 @@ die "Unsupported run_all_tests mode $mode" if !exists($patterns{$mode});
 ensure_test_app_available($app, $suffix, $tests);
 
 my @tests = collect_tests($tests, $patterns{$mode});
-if ($mode eq 'witness_t' && $suffix eq 'ref')
-{
-	@tests = @{filter_witness_tests(\@tests)};
-}
-elsif ($mode eq 'witness_t')
-{
-	@tests = grep { witness_test_has_reference($_) } @tests;
-}
 my $ntests = scalar(@tests);
 if (!$verbose && !$keep_going)
 {

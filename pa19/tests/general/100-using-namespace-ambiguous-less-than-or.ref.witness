@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/100-using-namespace-ambiguous-less-than-or.t:15:7
-    template ns::pair
-    selected primary
-    bind #1 = int source=explicit
-    bind #2 = int source=explicit

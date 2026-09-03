@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/200-template-parameter-pack-collection.t:5:1
-    template Box
-    selected primary
-    bind #1 = <int, long> source=explicit

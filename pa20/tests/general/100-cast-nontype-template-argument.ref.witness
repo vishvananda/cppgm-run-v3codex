@@ -1,7 +1,0 @@
-translation-unit
-  class-use at tests/general/100-cast-nontype-template-argument.t:4:11
-    template X
-    selected primary
-    bind #1 = char16_t source=explicit
-    bind #2 = unsigned short source=explicit
-    bind #3 = (unsigned short)65535 source=explicit

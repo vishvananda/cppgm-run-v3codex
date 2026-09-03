@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/100-specialization-signed-builtin-types.t:6:5
-    template type_list
-    selected primary
-    bind #1 = signed char source=explicit
-    bind #2 = short source=explicit
-    bind #3 = int source=explicit
-    bind #4 = long source=explicit
-    bind #5 = long long source=explicit

@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/300-inherited-enclosing-member-template-argument.t:4:48
-    template list
-    selected primary
-    bind #1 = base::row<int> source=explicit
-  class-use at tests/general/300-inherited-enclosing-member-template-argument.t:4:53
-    template base::row
-    selected primary
-    bind #1 = int source=explicit

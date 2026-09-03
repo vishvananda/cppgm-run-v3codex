@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-alias-class-template-static-member-hides-base.t:4:9
-    template derived
-    selected primary
-    bind #1 = int source=explicit
-template-closure-events
-  variable-instantiation
-    entity derived<int>::value

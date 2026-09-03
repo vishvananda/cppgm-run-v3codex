@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-forward-template-typedef-no-output-shell.t:2:9
-    template Box
-    selected primary
-    bind #1 = int source=explicit

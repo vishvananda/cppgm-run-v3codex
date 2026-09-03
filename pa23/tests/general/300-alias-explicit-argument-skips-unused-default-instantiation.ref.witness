@@ -1,9 +1,0 @@
-translation-unit
-  alias-use at tests/general/300-alias-explicit-argument-skips-unused-default-instantiation.t:25:18
-    template eval_default_t
-    bind #1 = int source=explicit
-    bind #2 = invalid_default<int> source=explicit
-  class-use at tests/general/300-alias-explicit-argument-skips-unused-default-instantiation.t:25:38
-    template invalid_default
-    selected primary
-    bind #1 = int source=explicit

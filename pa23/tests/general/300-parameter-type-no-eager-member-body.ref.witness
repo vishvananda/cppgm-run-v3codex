@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-parameter-type-no-eager-member-body.t:2:8
-    template Box
-    selected primary
-    bind #1 = int source=explicit

@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/400-stale-class-specialization-default-argument-refresh.t:13:9
-    template holder
-    selected primary
-    bind #1 = char source=explicit
-    bind #2 = traits<char> source=defaulted

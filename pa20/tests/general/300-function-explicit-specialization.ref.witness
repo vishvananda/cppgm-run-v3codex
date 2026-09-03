@@ -1,5 +1,0 @@
-translation-unit
-  function-call at tests/general/300-function-explicit-specialization.t:7:21
-    callee f
-    selected explicit_specialization
-    bind #1 = int source=explicit

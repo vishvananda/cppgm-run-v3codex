@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-class-template-field.t:4:14
-    template Box
-    selected primary
-    bind #1 = int source=explicit

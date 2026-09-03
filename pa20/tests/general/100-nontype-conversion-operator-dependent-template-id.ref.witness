@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/100-nontype-conversion-operator-dependent-template-id.t:34:8
-    template boost::integral_constant
-    selected primary
-    bind #1 = int source=explicit
-    bind #2 = 7 source=explicit

@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-reopened-enclosing-namespace-using-directive-template-type.t:4:44
-    template n::d::x
-    selected primary
-    bind #1 = int source=explicit

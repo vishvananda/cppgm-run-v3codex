@@ -1,8 +1,0 @@
-translation-unit
-  function-call at tests/spec/200-function-pointer-inner-pack-partial-ordering.t:11:22
-    callee choose
-    selected instantiation
-    bind #1 = int source=deduced
-    bind #2 = <int> source=deduced
-    bind #3 = <int> source=deduced
-    drop choose reason=better_candidate_selected

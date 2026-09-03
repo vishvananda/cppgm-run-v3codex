@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/general/300-reference-shell-nested-class-reuse.t:17:3
-    template User
-    selected primary
-    bind #1 = int source=explicit
-  class-use at tests/general/300-reference-shell-nested-class-reuse.t:18:3
-    template Box
-    selected primary
-    bind #1 = int source=explicit

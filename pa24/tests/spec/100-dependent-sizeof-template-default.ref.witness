@@ -1,9 +1,0 @@
-translation-unit
-  class-use at tests/spec/100-dependent-sizeof-template-default.t:12:10
-    template sized
-    selected primary
-    bind #1 = int source=explicit
-    bind #2 = 4 source=defaulted
-template-closure-events
-  variable-instantiation
-    entity sized<int>::value

@@ -1,6 +1,0 @@
-translation-unit
-  class-use at tests/general/300-friend-type-template-id-nontype-expression.t:7:1
-    template iterator
-    selected primary
-    bind #1 = true source=explicit
-    bind #2 = int source=explicit

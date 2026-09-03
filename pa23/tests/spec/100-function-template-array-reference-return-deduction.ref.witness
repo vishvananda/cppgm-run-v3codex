@@ -1,5 +1,0 @@
-translation-unit
-  function-call at tests/spec/100-function-template-array-reference-return-deduction.t:9:22
-    callee array_reference_probe
-    selected instantiation
-    bind #1 = int source=deduced

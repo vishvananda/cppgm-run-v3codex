@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/100-alias-base-member-type-forward-upgrade.t:2:15
-    template Base
-    selected primary
-    bind #1 = int source=explicit

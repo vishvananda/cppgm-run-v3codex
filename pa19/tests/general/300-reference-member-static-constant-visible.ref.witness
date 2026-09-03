@@ -1,8 +1,0 @@
-translation-unit
-  class-use at tests/general/300-reference-member-static-constant-visible.t:3:1
-    template User
-    selected primary
-    bind #1 = int source=explicit
-template-closure-events
-  variable-instantiation
-    entity Traits<int>::size

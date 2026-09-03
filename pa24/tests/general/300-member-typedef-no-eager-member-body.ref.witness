@@ -1,5 +1,0 @@
-translation-unit
-  class-use at tests/general/300-member-typedef-no-eager-member-body.t:2:1
-    template Trap
-    selected primary
-    bind #1 = int source=explicit
