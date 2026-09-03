@@ -1219,6 +1219,13 @@ before another witness event is added:
    within the 0.2% paired-CPU threshold.  Only a following W5N-O commit may
    consume one foundation, and its manifest must be confined to the semantic
    category that foundation owns.
+6. Treat every mismatch as a possible semantic or lowering defect before
+   changing the observer.  Trace the final typed decision and compare ordinary
+   LowIR/object structure and executable behavior with the cppgm reference and,
+   where the language boundary is relevant, GCC and Clang.  If the compiler is
+   correct only because a later phase compensates for a wrong semantic fact,
+   repair the earliest owning PA and add ordinary behavioral/structural
+   coverage; do not hide the defect with witness filtering.
 
 The first public test for this machinery is the PA19 observer property test,
 not a dump of private fields.  It checks that source positions follow the
@@ -1250,6 +1257,17 @@ witness distinction.  Therefore this delta is diagnostic classification, not
 a filter hiding a missing or invalid definition.  GCC and Clang both fold the
 trivial assignment without an out-of-line symbol at `-O0`, which is a separate
 lowering optimization opportunity and is not claimed as witness convergence.
+
+Variable closure work follows the same foundation/consumer split.  The
+observer now retains a 12-byte source occurrence consisting of exact syntax and
+binding identity, evaluated/constant-evaluated/unevaluated role, final-demand
+versus deferred/replay phase, and whether the use is in its owning class
+context.  The ordinary path computes none of this unless the observer exists.
+A debug census separates three formerly conflated cases: the lazy-header
+constant is constant-evaluated outside the primary file, the formatter
+operands are all unevaluated, and `table<>::call` member uses occur during final
+definition demand.  Existing witness output deliberately remains unchanged
+until a consumer can state its rule in those typed roles.
 
 ## Phase W6: Performance and repository closure
 
@@ -1324,6 +1342,7 @@ lowering optimization opportunity and is not claimed as witness convergence.
 | W5N-O nondependent replay source | Consumed the occurrence role and dependency bit at the final call boundary: a retained specialization replay becomes a public source event only when the declaration-time occurrence was nondependent | exactly 1 PA22 witness changes and becomes exact (259 -> 260); every PA19/20/23/24 witness and all 1,532 LowIR artifacts remain identical; PA19/20 strict, PA22 ordinary 311/311, semantic relationship controls, frozen O0/O1/O3, and audits exact; four-block paired user -0.540%, wall -0.482%, RSS +0.389% | retain the typed consumer; the PA22 relationship test observes one concrete replay while its dependent counterpart remains deferred, without matching fixture text or private role values |
 | W5N-F function lifecycle snapshot | Added a 16-byte typed snapshot in semantic lifetime analysis for canonical function/owner identity, template-context roles, explicit-specialization and explicit-instantiation state, completion state, and final emission demand | all 3,064 PA19--PA24 witness/LowIR pairs byte-identical to `5f1c03bc`; PA19/20 strict, PA22 ordinary, relationship tests, frozen O0/O1/O3, and audits exact; four-block paired user -0.238%, wall -0.211%, RSS -0.209% | retain as output-inert machinery; a following consumer may use final owner/function state to distinguish validation, requirement, and instantiation, while the renderer must stop reading lifecycle storage directly |
 | W5N-O function lifecycle | Rebased function-instantiation and require-definition classification on the typed semantic snapshot; an extern-instantiated class's completed inline defaulted member remains required but is not reported as newly instantiated | exactly 1 PA22 witness changes and becomes exact (260 -> 261); every PA19/20/23/24 witness and all 1,532 LowIR artifacts remain identical; the new relationship test fails on the foundation and passes on the consumer; PA19/20 strict, PA22 ordinary 311/311, frozen O0/O1/O3, and audits exact; four-block paired user -0.612%, wall +0.001%, RSS -0.077% | retain; cppgm++, GCC, and Clang agree behaviorally on a non-empty copy, while the cppgm reference emits the same LowIR definition but makes the same requirement/instantiation distinction; track GCC/Clang's symbol-free trivial-copy lowering separately rather than disguising it as a witness fix |
+| W5N-F variable occurrence provenance | Retained a 12-byte observer-only fact for exact syntax/binding, evaluated versus constant-evaluated versus unevaluated role, source/deferred/final-demand/replay phase, and owning-class context at the existing member-value decision | debug controls distinguish the lazy-header constant, eight unevaluated formatter operands, and six final-demand table-member uses; all 3,064 PA19--PA24 witness/LowIR pairs remain identical to `179435e6`; PA19/20 strict, PA22 ordinary, relationship tests, frozen O0/O1/O3, and audits exact; four-block paired user +0.061%, wall -0.000%, RSS -0.073% | retain output-inert; consumers may publish evaluated final-demand/header constant transitions and suppress unevaluated-only transitions, but must separately verify binding lifecycle and presentation instead of scanning source paths or names |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

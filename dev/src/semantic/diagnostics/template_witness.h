@@ -74,6 +74,37 @@ private:
 	};
 	static_assert(sizeof(SourceOccurrenceFact) == 8,
 		"source occurrence roles must remain compact");
+	enum VariableOccurrenceEvaluation
+	{
+		VARIABLE_OCCURRENCE_EVALUATED,
+		VARIABLE_OCCURRENCE_CONSTANT_EVALUATED,
+		VARIABLE_OCCURRENCE_UNEVALUATED
+	};
+	enum VariableOccurrencePhase
+	{
+		VARIABLE_OCCURRENCE_SOURCE,
+		VARIABLE_OCCURRENCE_DEFERRED_DEFINITION,
+		VARIABLE_OCCURRENCE_DEFINITION_DEMAND,
+		VARIABLE_OCCURRENCE_SPECIALIZATION_REPLAY
+	};
+	struct VariableOccurrenceFact
+	{
+		syntax::NodeId syntax;
+		BindingId binding;
+		std::uint8_t evaluation;
+		std::uint8_t phase;
+		std::uint8_t owning_class_context;
+
+		VariableOccurrenceFact(syntax::NodeId syntax_value,
+			BindingId binding_value, VariableOccurrenceEvaluation evaluation_value,
+			VariableOccurrencePhase phase_value, bool owning_class_context_value)
+			: syntax(syntax_value), binding(binding_value),
+			  evaluation(static_cast<std::uint8_t>(evaluation_value)),
+			  phase(static_cast<std::uint8_t>(phase_value)),
+			  owning_class_context(owning_class_context_value ? 1 : 0) {}
+	};
+	static_assert(sizeof(VariableOccurrenceFact) == 12,
+		"variable occurrence fact grew");
 	struct SemanticSourceFact
 	{
 		syntax::NodeId owner;
@@ -444,7 +475,8 @@ private:
 	void RecordVariableInstantiation(BindingId binding);
 	void RecordSourceVariableInstantiation(const syntax::SyntaxArena& arena,
 		syntax::NodeId syntax, BindingId binding,
-		bool owning_class_context);
+		bool owning_class_context, VariableOccurrenceEvaluation evaluation,
+		VariableOccurrencePhase phase);
 	std::size_t SourceEventMark() const;
 	void DiscardSourceEvents(std::size_t mark);
 	std::size_t ClosureEventMark() const;
@@ -473,6 +505,7 @@ private:
 		dependent_alias_uses_;
 	std::vector<syntax::NodeId> dependent_source_uses_;
 	std::vector<SourceOccurrenceFact> source_occurrences_;
+	std::vector<VariableOccurrenceFact> variable_occurrences_;
 	std::vector<syntax::NodeId> resolved_source_uses_;
 	std::vector<BindingId> function_instantiations_;
 	std::vector<BindingId> required_definitions_;

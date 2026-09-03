@@ -626,7 +626,7 @@ TemplateWitnessObserver::TemplateWitnessObserver(bool debug)
 	  entity_argument_limits_(), variable_specializations_(),
 	  overload_selections_(), deduction_drops_(), dependent_class_uses_(),
 	  dependent_alias_uses_(), dependent_source_uses_(),
-	  source_occurrences_(), resolved_source_uses_(),
+	  source_occurrences_(), variable_occurrences_(), resolved_source_uses_(),
 	  function_instantiations_(),
 	  required_definitions_(), class_instantiations_(), class_finalizations_(),
 	  variable_instantiations_(), next_insertion_ordinal_(0) {}
@@ -821,6 +821,7 @@ void TemplateWitnessObserver::BeginTranslationUnit(
 	dependent_alias_uses_.clear();
 	dependent_source_uses_.clear();
 	source_occurrences_.clear();
+	variable_occurrences_.clear();
 	resolved_source_uses_.clear();
 	function_instantiations_.clear();
 	required_definitions_.clear();
@@ -1453,9 +1454,20 @@ void TemplateWitnessObserver::RecordVariableInstantiation(BindingId binding)
 
 void TemplateWitnessObserver::RecordSourceVariableInstantiation(
 	const syntax::SyntaxArena& arena, syntax::NodeId syntax, BindingId binding,
-	bool owning_class_context)
+	bool owning_class_context, VariableOccurrenceEvaluation evaluation,
+	VariableOccurrencePhase phase)
 {
 	if (syntax == syntax::kNoNode) return;
+	bool duplicate = false;
+	for (std::size_t i = 0; i < variable_occurrences_.size(); ++i)
+		if (variable_occurrences_[i].syntax == syntax &&
+			variable_occurrences_[i].binding == binding &&
+			variable_occurrences_[i].evaluation == evaluation &&
+			variable_occurrences_[i].phase == phase &&
+			variable_occurrences_[i].owning_class_context ==
+				(owning_class_context ? 1 : 0)) duplicate = true;
+	if (!duplicate) variable_occurrences_.push_back(VariableOccurrenceFact(
+		syntax, binding, evaluation, phase, owning_class_context));
 	const std::size_t token = arena.TokenFirst(syntax);
 	if (token >= arena.TokenCount() ||
 		arena.TokenSourceFile(token) != primary_source_file_ ||
@@ -2136,6 +2148,7 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 			<< " dependent-alias-uses=" << dependent_alias_uses_.size()
 			<< " dependent-source-uses=" << dependent_source_uses_.size()
 			<< " source-occurrences=" << source_occurrences_.size()
+			<< " variable-occurrences=" << variable_occurrences_.size()
 			<< '\n';
 		for (std::size_t i = 0; i < source_occurrences_.size(); ++i)
 		{
@@ -2147,6 +2160,18 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 				<< " payload=" << arena.Payload(node)
 				<< " line=" << arena.SourceLine(node)
 				<< " column=" << arena.SourceColumn(node) << '\n';
+		}
+		for (std::size_t i = 0; i < variable_occurrences_.size(); ++i)
+		{
+			const VariableOccurrenceFact& fact = variable_occurrences_[i];
+			trace << "    variable-occurrence syntax=" << fact.syntax
+				<< " binding=" << fact.binding
+				<< " evaluation=" << static_cast<unsigned>(fact.evaluation)
+				<< " phase=" << static_cast<unsigned>(fact.phase)
+				<< " owning=" << static_cast<unsigned>(
+					fact.owning_class_context)
+				<< " line=" << arena.SourceLine(fact.syntax)
+				<< " column=" << arena.SourceColumn(fact.syntax) << '\n';
 		}
 		for (std::size_t i = 0; i < dependent_class_uses_.size(); ++i)
 			trace << "    dependent-class syntax=" <<
@@ -2838,6 +2863,7 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 	dependent_alias_uses_.clear();
 	dependent_source_uses_.clear();
 	source_occurrences_.clear();
+	variable_occurrences_.clear();
 	resolved_source_uses_.clear();
 	function_instantiations_.clear();
 	required_definitions_.clear();
