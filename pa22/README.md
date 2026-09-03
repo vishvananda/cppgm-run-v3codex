@@ -59,6 +59,27 @@ the same source-file ordering and `-o` relaxations as the earlier source-to-LowI
 milestones. Other `--emit-*` modes, driver mode, and optimized LowIR output are
 not part of PA22.
 
+### Dependent qualified types
+
+Within a retained template definition, a qualified member type whose qualifier
+depends on a template parameter requires the C++11 `typename` introducer.  This
+is checked when the template is defined, even if no specialization is requested.
+A type member already established in the current instantiation retains the
+standard exception; a different specialization of the same class template does
+not.  The exception applies to parameter types after an out-of-class member's
+qualified declarator, but not to a dependent return type written before that
+declarator.  A dependent template name used as a template-template
+argument uses the `template` introducer and is not misclassified as a member
+type requiring `typename`.  In a type position, a dependent member template-id
+requires both introducers: `typename` establishes that the result is a type,
+while `template` establishes that the qualified member is a template.  A
+template-id whose argument contains a pack expression such as
+`sizeof...(Pack)` is dependent even when a later substitution gives it the
+same specialization as a fixed template-id.  Because a dependent
+qualified-id without `typename` does not name a type, a declarator whose
+parenthesized operand is only such a name declares a variable with a
+direct-initializer rather than a function with an unnamed parameter.
+
 ### Qualified template-name hiding
 
 Function and variable templates declared directly in a class participate in

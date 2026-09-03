@@ -1,0 +1,52 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $first : i32
+  slot $second : obj<4x4>
+  slot $third : obj<1x1>
+  slot $fourth : i32
+  slot $cond__1 : i32
+
+  block ^entry:
+    store i32 2, $first
+    %t1 = addr $second
+    %t2 = addr $second
+    %t3 = index i8 [projection=field] %t2, 0
+    store i32 3, %t3
+    %t4 = addr $third
+    %t5 = addr $first
+    call void @external_owner_int___external_owner_int_(%t4, %t5)
+    store i32 0, $fourth
+    %t6 = addr $third
+    %t7 = load i32 $first
+    %t8 = addr $second
+    %t9 = index i8 [projection=field] %t8, 0
+    %t10 = load i32 %t9
+    %t11 = binary add i32 %t7, %t10
+    %t12 = load i32 $fourth
+    %t13 = binary add i32 %t11, %t12
+    %t14 = cmp eq i32 %t13, 5
+    branch %t14, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t15 = load i32 $cond__1
+    return i32 %t15
+}
+function @external_owner_int___external_owner_int_(%this : ptr [object_bytes=1], %value : ptr [pass=by_address, object_bytes=4]) -> void [binding=weak, object=_ZN14external_ownerIiEC1ERKi, inline_hint=yes] {
+  slot $this : ptr
+  slot $value : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %value, $value
+    %t1 = load ptr $value
+    %t2 = load i32 %t1
+    return void
+}
+alias object _ZN14external_ownerIiEC2ERKi = @external_owner_int___external_owner_int_

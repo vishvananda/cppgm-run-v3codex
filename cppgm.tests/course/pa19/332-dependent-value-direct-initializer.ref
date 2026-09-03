@@ -1,0 +1,50 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $r : obj<1x1>
+
+  block ^entry:
+    %t1 = addr $r
+    %t2 = addr $r
+    %t3 = call i32 @runner_policy___run(%t2)
+    return i32 %t3
+}
+function @runner_policy___run(%this : ptr [object_bytes=1]) -> i32 [binding=weak, object=_ZN6runnerI6policyE3runEv, inline_hint=yes] {
+  slot $this : ptr
+  slot $after : obj<4x4>
+  slot $cond__1 : i32
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = addr $after
+    call void @policy__task__task(%t1, 1)
+    %t2 = addr $after
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = load i32 %t3
+    %t5 = cmp eq i32 %t4, 1
+    branch %t5, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t6 = load i32 $cond__1
+    return i32 %t6
+}
+function @policy__task__task(%this : ptr [object_bytes=4], %v : i32) -> void [binding=weak, object=_ZN6policy4taskC1ENS_4kindE, inline_hint=yes] {
+  slot $this : ptr
+  slot $v : i32
+
+  block ^entry:
+    store ptr %this, $this
+    store i32 %v, $v
+    %t1 = load i32 $v
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    store i32 %t1, %t3
+    return void
+}
+alias object _ZN6policy4taskC2ENS_4kindE = @policy__task__task
