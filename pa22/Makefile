@@ -77,6 +77,14 @@ test-strict: $(TEST_DEPS)
 		$(CPPGM_TEST_APP) tests/properties/320-template-witness-lifecycle.cpp
 	@perl ../scripts/check_template_witness_variable_occurrences.pl \
 		$(CPPGM_TEST_APP) tests/properties/330-template-witness-variable-occurrences.cpp
+	@perl ../scripts/check_template_witness_pack_dependency.pl \
+		$(CPPGM_TEST_APP) tests/properties/340-template-witness-pack-dependency.cpp
+	@perl ../scripts/check_dependent_typename.pl $(CPPGM_TEST_APP) \
+		tests/properties/345-dependent-qualified-pack-type-requires-typename.cpp \
+		tests/properties/347-noncurrent-specialization-requires-typename.cpp \
+		tests/properties/348-dependent-member-template-type-requires-typename.cpp \
+		tests/properties/349-out-of-class-return-requires-typename.cpp \
+		tests/properties/346-dependent-typename-valid.cpp
 	@scripts/compare_results.pl ref my tests
 	@../scripts/compare_witness_results.pl ref my tests
 	@test ! -f .test_failed
@@ -97,6 +105,14 @@ test-strict: $(TEST_DEPS)
 		$(CPPGM_TEST_APP) tests/properties/320-template-witness-lifecycle.cpp
 	@perl ../scripts/check_template_witness_variable_occurrences.pl \
 		$(CPPGM_TEST_APP) tests/properties/330-template-witness-variable-occurrences.cpp
+	@perl ../scripts/check_template_witness_pack_dependency.pl \
+		$(CPPGM_TEST_APP) tests/properties/340-template-witness-pack-dependency.cpp
+	@perl ../scripts/check_dependent_typename.pl $(CPPGM_TEST_APP) \
+		tests/properties/345-dependent-qualified-pack-type-requires-typename.cpp \
+		tests/properties/347-noncurrent-specialization-requires-typename.cpp \
+		tests/properties/348-dependent-member-template-type-requires-typename.cpp \
+		tests/properties/349-out-of-class-return-requires-typename.cpp \
+		tests/properties/346-dependent-typename-valid.cpp
 	@scripts/compare_results.pl ref my tests
 	@../scripts/compare_witness_results.pl ref my tests
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my $(COURSE_TEST_ROOT)

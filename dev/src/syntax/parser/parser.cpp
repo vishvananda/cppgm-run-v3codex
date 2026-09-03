@@ -320,9 +320,16 @@ private:
 		const bool global = allow_qualified && Match(OP_COLON2);
 		struct ParsedNameComponent
 		{
-			TextId name; NodeId arguments; std::size_t first, last;
-			ParsedNameComponent(TextId name_value, NodeId arguments_value, std::size_t first_value, std::size_t last_value)
-				: name(name_value), arguments(arguments_value), first(first_value), last(last_value) {}
+			TextId name; NodeId arguments;
+			std::uint32_t first, last;
+			bool template_introducer;
+			ParsedNameComponent(TextId name_value, NodeId arguments_value,
+				std::size_t first_value, std::size_t last_value,
+				bool template_introducer_value)
+				: name(name_value), arguments(arguments_value),
+				  first(static_cast<std::uint32_t>(first_value)),
+				  last(static_cast<std::uint32_t>(last_value)),
+				  template_introducer(template_introducer_value) {}
 		};
 		std::vector<ParsedNameComponent> components;
 		bool retained_arguments = false;
@@ -331,6 +338,7 @@ private:
 		if (conversion_type) *conversion_type = kNoNode;
 		if (terminal_name) *terminal_name = 0;
 		bool operator_component = false; NodeId operator_arguments = kNoNode;
+		bool operator_template_introducer = false;
 		std::size_t operator_component_first = first, operator_component_last = first;
 		if (At(KW_OPERATOR) && allow_operator)
 		{
@@ -366,7 +374,7 @@ private:
 			if (terminal_name) *terminal_name = component;
 			if (structure)
 				components.push_back(ParsedNameComponent(
-					component, kNoNode, identifier_position, position_));
+					component, kNoNode, identifier_position, position_, false));
 		}
 		if (allow_template_arguments)
 		{
@@ -385,11 +393,12 @@ private:
 		{
 			while (Match(OP_COLON2))
 			{
-				Match(KW_TEMPLATE);
+				const bool template_introducer = Match(KW_TEMPLATE);
 				const bool destructor = Match(OP_COMPL);
 				if (At(KW_OPERATOR) && allow_operator)
 				{
 					operator_component = true;
+					operator_template_introducer = template_introducer;
 					operator_component_first = position_;
 					++position_;
 					if (!ParseOperatorFunctionSuffix() &&
@@ -406,7 +415,8 @@ private:
 							"~" + strings_.Get(identifier)) : identifier;
 					if (terminal_name) *terminal_name = component;
 					if (structure) components.push_back(ParsedNameComponent(
-						component, kNoNode, identifier_position, position_));
+						component, kNoNode, identifier_position, position_,
+						template_introducer));
 				}
 				else
 				{ Rollback(mark); return false; }
@@ -448,7 +458,8 @@ private:
 			if (operator_component_last <= operator_component_first) operator_component_last = position_;
 			if (terminal_name) *terminal_name = component;
 			if (structure) components.push_back(ParsedNameComponent(component,
-				operator_arguments, operator_component_first, operator_component_last));
+				operator_arguments, operator_component_first, operator_component_last,
+				operator_template_introducer));
 		}
 		// Keep one semantic component when a conversion target type is qualified.
 		if (terminal_name && text->compare(0, 8, "operator") == 0 &&
@@ -471,6 +482,9 @@ private:
 					strings_.Get(components[i].name));
 				arena_.SetSemanticPayload(component, components[i].name);
 				arena_.SetTokenRange(component, components[i].first, components[i].last);
+				if (components[i].template_introducer)
+					arena_.AddFlags(component,
+						SYNTAX_FLAG_TEMPLATE_INTRODUCER);
 				if (components[i].arguments != kNoNode) arena_.Add(component, components[i].arguments);
 				arena_.Add(name, component);
 			}

@@ -90,6 +90,27 @@ does not produce a variable-instantiation transition.  This does not suppress a
 constant binding or variable-template specialization whose value must be formed
 to determine a compile-time template result.
 
+Source-use dependency is decided from the retained template declaration before
+substitution.  A fixed class-template-id is reported as a source use, while a
+template-id whose argument contains a pack expression remains deferred even if
+substitution later gives it the same specialization as a fixed use.  The
+optional witness must not alter the emitted LowIR.
+
+#### Dependent qualified types
+
+Within a retained template definition, a qualified member type whose qualifier
+depends on a template parameter requires the C++11 `typename` introducer.  This
+is checked when the template is defined, even if no specialization is requested.
+A type member already established in the current instantiation retains the
+standard exception; a different specialization of the same class template does
+not.  The exception applies to parameter types after an out-of-class member's
+qualified declarator, but not to a dependent return type written before that
+declarator.  A dependent template name used as a template-template
+argument uses the `template` introducer and is not misclassified as a member
+type requiring `typename`.  In a type position, a dependent member template-id
+requires both introducers: `typename` establishes that the result is a type,
+while `template` establishes that the qualified member is a template.
+
 ### Output Format
 
 On success, `cppgm++` shall write LowIR text to `<outfile>` and exit

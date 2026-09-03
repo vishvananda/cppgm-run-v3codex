@@ -1348,6 +1348,57 @@ freshly regenerated from immutable compiler copies.  Frozen O0/O1/O3 objects
 are exact, the ordinary through-PA24 report is 3,566/3,566, and four ABBA blocks
 measure -0.062% paired user, -0.482% wall, and -0.398% RSS.
 
+The next class-use discrepancy exposed another ordinary semantic defect before
+any observer filter was added.  The retained-template dependency walker checked
+template-parameter names only on a whitelist of syntax tags, unlike the two
+canonical dependency walkers, so it classified `sizeof...(Pack)` inside a
+template-id as declaration-complete.  Substitution could then report the
+resulting concrete specialization as a fresh source use.  The same missed
+dependency allowed an unused declaration such as
+`selected<sizeof...(Pack)>::type` to omit the C++11 `typename` introducer while
+still emitting plausible `main` LowIR.  The immutable pre-fix compiler and the
+PA22 reference both accept that invalid definition; GCC and pedantic Clang
+reject it.  Because the checked reference cannot be the oracle for this case,
+the backfill is a documented strict semantic relationship test rather than a
+forged failing `.ref`.
+
+The repair makes the retained walker use semantic payload identity at every
+node, as the canonical walkers already do, and retains the parser's written
+`template` introducer as a typed syntax flag.  Definition-time `typename`
+validation is confined to actual declaration type-specifier boundaries; it
+does not mistake qualified value arguments or dependent template-template
+names for member types.  Current-instantiation recognition compares the
+written specialization arguments, and models the out-of-class member boundary:
+parameter types after a qualified declarator see the current instantiation,
+while a return type before it does not.  A semantic review found that the first
+repair still accepted a dependent member template-id in a type position with
+`template` but without `typename`; that broad exception was removed before
+commit.  The final strict controls prove four invalid boundaries fail with and
+without witness: a pack-dependent member, a noncurrent specialization, a
+dependent member-template type, and an out-of-class return type.  A corrected
+pack type, an in-class current type, an out-of-class constructor parameter, a
+dependent template-template name, and
+`typename T::template rebind<int>::type` all succeed with identical LowIR.  The
+pre-fix compiler accepts the invalid definitions; GCC and Clang agree with
+every final positive/negative outcome.
+
+On the witness corpus, exactly 12 files change.  PA22 moves 263 -> 267 exact,
+PA23 241 -> 243, and PA24 284 -> 285; the five changed files that are not newly
+exact all have smaller line-edit distance to their references.  PA19 and PA20
+remain exact, no previously exact witness regresses, every status is unchanged,
+and all 1,532 witness-mode LowIR artifacts are byte-identical.  Frozen
+no-witness O0/O1/O3 LowIR is byte-identical, the timed O0 object retains hash
+`cf9745db...`, through-PA24 passes 3,566/3,566, and all architecture audits
+pass.  The first parser representation grew each temporary name component from
+24 to 32 bytes and a longer sample measured +0.486% paired user, so it was
+rejected.  The final layout compares interned semantic identities without
+mutating the name table, stores validator context in flat typed ranges, and
+packs the temporary parser component into 20 bytes.  Six clean ABBA blocks then
+measure -0.245% paired user, -0.000% wall, and -0.021% RSS after the final
+semantic control was added; all 24 objects have the same `cf9745db...` hash.
+The report is
+`/tmp/v3codex-w5n-pack-dependency-semantic-final6-ab.json`.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1430,6 +1481,7 @@ measure -0.062% paired user, -0.482% wall, and -0.398% RSS.
 | W5N rejected broad unevaluated variable suppression | Suppressed closure publication for every occurrence classified as unevaluated | 25 witnesses changed; PA22 formatter improved, but 10 exact PA22--PA24 trait/SFINAE fixtures regressed and 14 other later fixtures changed; LowIR remained exact | reject; an unevaluated outer expression may still require a constant binding or variable-template specialization to form its compile-time result |
 | W5N-O rejected occurrence-local reference gate | Suppressed an unevaluated ordinary nonconstant reference only at the occurrence publication hook | the relationship test passed, but a fresh successful strict refresh changed no corpus witness because storage demand had already published the binding; the earlier two-file claim came from stale outputs after a runner invocation omitted `--emit-lowir -O0` | reject the incomplete boundary and its timing result; a lifecycle decision must account for all publishers after all occurrence facts are known |
 | W5N-O final unevaluated reference lifecycle | Suppressed a binding only when all recorded occurrences are unevaluated ordinary nonconstant reference designators, preserving any evaluated, constant, or variable-template occurrence | exactly 2 witnesses change and become exact (PA22 262 -> 263, PA24 283 -> 284), no regression, all 1,532 successful strict LowIR artifacts and frozen objects exact; relationship test fails on foundation and passes on consumer; cppgm++/GCC/Clang behavior and native-symbol checks agree; through-PA24 3,566/3,566; paired user -0.062%, wall -0.482%, RSS -0.398% | retain the final typed lifecycle consumer; reference/evaluation/lifecycle roles jointly own the decision |
+| W5N semantic pack dependency and dependent-type provenance | Unified retained `sizeof...(Pack)` dependency with the canonical recursive classifier, retained the written `template` introducer as a typed syntax flag, and diagnosed missing `typename` at definition-time type boundaries with exact current-instantiation context | pre-fix and PA22 reference accept invalid unused templates while GCC and pedantic Clang reject them; the final semantic property covers pack-dependent, same-template/noncurrent, dependent member-template type, and out-of-class return errors, plus five valid contexts; a broad `template`-alone exception found by semantic review was rejected; 12 witness changes yield PA22 +4, PA23 +2, PA24 +1 exact with every residual diff smaller, zero exact regression, and all 1,532 statuses/LowIR unchanged; frozen O0/O1/O3 exact; through-PA24 3,566/3,566; audits exact; a rejected 32-byte parser temporary measured +0.486% user, while the final 20-byte/direct-ID/flat-range layout measures -0.245% user, -0.000% wall, and -0.021% RSS over six ABBA blocks with exact objects | retain the ordinary semantic repair and compact provenance layout before further witness convergence; never use substituted success or plausible LowIR to excuse a wrong definition-time dependency decision |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
