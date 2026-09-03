@@ -1515,10 +1515,6 @@ void TemplateWitnessObserver::RecordVariableOccurrence(
 				(owning_class_context ? 1 : 0)) duplicate = true;
 	if (!duplicate) variable_occurrences_.push_back(VariableOccurrenceFact(
 		syntax, binding, evaluation, phase, owning_class_context, properties));
-	if (evaluation == VARIABLE_OCCURRENCE_UNEVALUATED &&
-		(properties & VARIABLE_OCCURRENCE_REFERENCE_TYPE) != 0 &&
-		(properties & (VARIABLE_OCCURRENCE_CONSTANT_BINDING |
-			VARIABLE_OCCURRENCE_VARIABLE_TEMPLATE)) == 0) return;
 	if (!filter_publication_to_source)
 	{
 		RecordVariableInstantiation(binding);
@@ -2868,6 +2864,25 @@ void TemplateWitnessObserver::RenderClosureEvents(const Analyzer& analyzer,
 		BindingId binding = variable_instantiations_[i];
 		if (binding >= analyzer.program_->bindings.size()) continue;
 		binding = analyzer.program_->bindings[binding].canonical;
+		bool only_unevaluated_reference_occurrences = false;
+		for (std::size_t occurrence_index = 0;
+			occurrence_index < variable_occurrences_.size(); ++occurrence_index)
+		{
+			const VariableOccurrenceFact& occurrence =
+				variable_occurrences_[occurrence_index];
+			if (occurrence.binding != binding) continue;
+			if (occurrence.evaluation == VARIABLE_OCCURRENCE_UNEVALUATED &&
+				(occurrence.properties & VARIABLE_OCCURRENCE_REFERENCE_TYPE) != 0 &&
+				(occurrence.properties & (VARIABLE_OCCURRENCE_CONSTANT_BINDING |
+					VARIABLE_OCCURRENCE_VARIABLE_TEMPLATE)) == 0)
+			{
+				only_unevaluated_reference_occurrences = true;
+				continue;
+			}
+			only_unevaluated_reference_occurrences = false;
+			break;
+		}
+		if (only_unevaluated_reference_occurrences) continue;
 		const BindingRecord& record = analyzer.program_->bindings[binding];
 		if (OwnerIsExplicitSpecialization(analyzer, record.member_owner)) continue;
 		std::string entity;

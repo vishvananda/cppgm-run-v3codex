@@ -1326,16 +1326,27 @@ showed that their final lifecycle depends on how the resulting value is used.
 A second broad prototype suppressed every unevaluated occurrence.  It changed
 25 witnesses: the formatter improved, but 10 previously exact trait/SFINAE
 fixtures regressed and 14 unresolved later fixtures also lost constant-value
-instantiations.  The retained consumer instead suppresses only an unevaluated,
-nonconstant, non-variable-template reference designator.  Exactly two
-witnesses change and both become exact: the three PA22 formatter references and
-PA24's `is_convertible_impl::from`; the neighboring compile-time `value`
+instantiations.  A first narrow consumer put the lifecycle gate only at the
+occurrence publication hook.  Its relationship test passed, but a fresh strict
+refresh showed that it changed no corpus witness: storage-demand machinery had
+already published the formatter bindings before the occurrence was recorded.
+The initial bulk comparison had left stale outputs after invoking the runner
+without its required `--emit-lowir -O0` arguments, so its claimed gains and
+timing are rejected.
+
+The corrected consumer makes the typed decision after all occurrences are
+known.  It suppresses a binding only when every recorded occurrence is an
+unevaluated, nonconstant, non-variable-template reference designator.  Exactly
+two witnesses change and both become exact: the three PA22 formatter references
+and PA24's `is_convertible_impl::from`; the neighboring compile-time `value`
 binding remains instantiated.  The extended PA22 relationship test fails on
 the lifecycle foundation and passes on the consumer without matching fixture
-text or private flags.  Both affected programs have byte-identical LowIR and
-matching exit behavior under cppgm++, GCC, and Clang.  Frozen O0/O1/O3 objects
+text or private flags.  Both affected programs have byte-identical LowIR,
+matching exit behavior under cppgm++, GCC, and Clang, and no corresponding
+native symbols.  All 1,532 successful strict outputs and LowIR artifacts were
+freshly regenerated from immutable compiler copies.  Frozen O0/O1/O3 objects
 are exact, the ordinary through-PA24 report is 3,566/3,566, and four ABBA blocks
-measure -0.118% paired user, -0.480% wall, and +0.154% RSS.
+measure -0.062% paired user, -0.482% wall, and -0.398% RSS.
 
 ## Phase W6: Performance and repository closure
 
@@ -1417,7 +1428,8 @@ measure -0.118% paired user, -0.480% wall, and +0.154% RSS.
 | W5N semantic unevaluated static storage | Prevented an unevaluated static-member use from replaying a retained definition or entering the common storage-demand path | the new PA19 course control changes from an emitted global/startup call/undefined initializer dependency to `main` only, matching GCC and Clang; every pre-existing PA19--PA24 witness/LowIR artifact and frozen O0/O1/O3 object is exact; four-block paired user -0.857%, wall -0.874%, RSS +0.330% | retain as PA19 semantic correctness; the later formatter witness suppression must remain a separate observer consumer |
 | W5N-F variable binding lifecycle | Used the final padding byte in the 12-byte occurrence fact for constant-binding, variable-template-specialization, and reference-type properties | formatter facts are reference-only while sampled exact trait/SFINAE facts are constant bindings; all 7,660 artifacts and frozen O0/O1/O3 objects are exact; four-block paired user -0.243%, wall -0.432%, RSS +0.439% | retain output-inert; consume lifecycle properties with evaluation role, never names or fixture identity |
 | W5N rejected broad unevaluated variable suppression | Suppressed closure publication for every occurrence classified as unevaluated | 25 witnesses changed; PA22 formatter improved, but 10 exact PA22--PA24 trait/SFINAE fixtures regressed and 14 other later fixtures changed; LowIR remained exact | reject; an unevaluated outer expression may still require a constant binding or variable-template specialization to form its compile-time result |
-| W5N-O unevaluated reference occurrence | Suppressed only an unevaluated ordinary nonconstant reference designator, preserving constant and variable-template lifecycle transitions | exactly 2 witnesses change and become exact (PA22 262 -> 263, PA24 283 -> 284), no regression, all 1,532 LowIR artifacts and frozen objects exact; relationship test fails on foundation and passes on consumer; through-PA24 3,566/3,566; paired user -0.118%, wall -0.480%, RSS +0.154% | retain the typed consumer; reference/evaluation/lifecycle roles jointly own the decision |
+| W5N-O rejected occurrence-local reference gate | Suppressed an unevaluated ordinary nonconstant reference only at the occurrence publication hook | the relationship test passed, but a fresh successful strict refresh changed no corpus witness because storage demand had already published the binding; the earlier two-file claim came from stale outputs after a runner invocation omitted `--emit-lowir -O0` | reject the incomplete boundary and its timing result; a lifecycle decision must account for all publishers after all occurrence facts are known |
+| W5N-O final unevaluated reference lifecycle | Suppressed a binding only when all recorded occurrences are unevaluated ordinary nonconstant reference designators, preserving any evaluated, constant, or variable-template occurrence | exactly 2 witnesses change and become exact (PA22 262 -> 263, PA24 283 -> 284), no regression, all 1,532 successful strict LowIR artifacts and frozen objects exact; relationship test fails on foundation and passes on consumer; cppgm++/GCC/Clang behavior and native-symbol checks agree; through-PA24 3,566/3,566; paired user -0.062%, wall -0.482%, RSS -0.398% | retain the final typed lifecycle consumer; reference/evaluation/lifecycle roles jointly own the decision |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
