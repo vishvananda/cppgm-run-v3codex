@@ -69,6 +69,16 @@ members remain distinct even when the compact presentation gives them the same
 name.  A retry or substitution of the declaration that was ultimately selected
 does not also appear as a rejected declaration.
 
+#### Template witness lifecycle
+
+The optional witness also distinguishes requiring a template-owned function's
+definition from instantiating that function.  In particular, an explicit
+instantiation declaration for a class specialization does not turn a locally
+used inline defaulted member into a new function-instantiation event.  The use
+still produces a definition requirement, because the call must remain valid.
+Ordinary function-template specializations continue to report both transitions
+when their definitions are instantiated and required.
+
 ### Output Format
 
 On success, `cppgm++` shall write LowIR text to `<outfile>` and exit

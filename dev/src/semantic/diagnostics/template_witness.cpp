@@ -1718,58 +1718,42 @@ bool TemplateWitnessObserver::OwnerIsExplicitSpecialization(
 bool TemplateWitnessObserver::IsTemplateFunction(
 	const Analyzer& analyzer, BindingId binding) const
 {
-	if (binding == kNoBinding || binding >= analyzer.program_->bindings.size())
-		return false;
-	binding = analyzer.program_->bindings[binding].canonical;
-	const FunctionInfo& function = analyzer.GetFunction(binding);
-	const BindingRecord& record = analyzer.program_->bindings[binding];
-	const EntityId owner = record.member_owner;
-	if (record.explicit_instantiation_suppressed) return false;
-	if (function.explicit_specialization ||
-		(OwnerIsExplicitSpecialization(analyzer, owner) &&
-		 !function.template_specialization)) return false;
-	const bool local_template_context = owner != kNoEntity &&
-		analyzer.program_->entities[owner].local_context != kNoBinding &&
-		analyzer.GetFunction(
-			analyzer.program_->entities[owner].local_context).template_specialization;
-	if ((record.compiler_generated ||
-		function.inherited_constructor_source != kNoBinding) &&
-		!local_template_context) return false;
-	return function.template_specialization ||
-		EntityHasTemplateContext(analyzer, owner) ||
-		EntityHasTemplateContext(analyzer, function.friend_of);
+	const TemplateFunctionLifecycleFact lifecycle =
+		analyzer.InspectTemplateFunctionLifecycle(binding);
+	if (lifecycle.binding == kNoBinding ||
+		lifecycle.Has(TEMPLATE_FUNCTION_EXPLICIT_INSTANTIATION_SUPPRESSED) ||
+		lifecycle.Has(TEMPLATE_FUNCTION_EXPLICIT_SPECIALIZATION) ||
+		(lifecycle.Has(TEMPLATE_FUNCTION_OWNER_EXPLICIT_SPECIALIZATION) &&
+		 !lifecycle.Has(TEMPLATE_FUNCTION_DIRECT_SPECIALIZATION))) return false;
+	if ((lifecycle.Has(TEMPLATE_FUNCTION_COMPILER_GENERATED) ||
+		 lifecycle.Has(TEMPLATE_FUNCTION_INHERITED_CONSTRUCTOR)) &&
+		!lifecycle.Has(TEMPLATE_FUNCTION_LOCAL_CONTEXT)) return false;
+	if (lifecycle.owner_explicit_instantiation_state == 1 &&
+		lifecycle.definition_state == FUNCTION_DEFINITION_COMPLETE &&
+		lifecycle.Has(TEMPLATE_FUNCTION_INLINE) &&
+		lifecycle.Has(TEMPLATE_FUNCTION_DEFAULTED) &&
+		!lifecycle.Has(TEMPLATE_FUNCTION_OBJECT_OUTPUT_ROOT)) return false;
+	return lifecycle.Has(TEMPLATE_FUNCTION_DIRECT_SPECIALIZATION) ||
+		lifecycle.Has(TEMPLATE_FUNCTION_OWNER_CONTEXT) ||
+		lifecycle.Has(TEMPLATE_FUNCTION_FRIEND_CONTEXT);
 }
 
 bool TemplateWitnessObserver::IsRequiredTemplateFunction(
 	const Analyzer& analyzer, BindingId binding) const
 {
-	if (binding == kNoBinding || binding >= analyzer.program_->bindings.size())
-		return false;
-	binding = analyzer.program_->bindings[binding].canonical;
-	const FunctionInfo& function = analyzer.GetFunction(binding);
-	const BindingRecord& record = analyzer.program_->bindings[binding];
-	if (record.explicit_instantiation_suppressed) return false;
-	if (function.explicit_specialization ||
-		(OwnerIsExplicitSpecialization(analyzer, record.member_owner) &&
-		 !function.template_specialization) || record.compiler_generated ||
-		function.inherited_constructor_source != kNoBinding) return false;
-	if (function.template_specialization ||
-		EntityHasTemplateContext(analyzer, function.friend_of)) return true;
-	if (record.member_owner != kNoEntity)
-	{
-		const BindingId owner =
-			analyzer.program_->entities[record.member_owner].declaration;
-		if (owner < analyzer.class_template_explicit_instantiation_states_.size() &&
-			(analyzer.class_template_explicit_instantiation_states_[owner] & 2) != 0)
-			return false;
-	}
-	for (EntityId owner = record.member_owner; owner != kNoEntity; )
-	{
-		const EntityRecord& entity = analyzer.program_->entities[owner];
-		if (entity.template_argument_begin != kNoBinding) return true;
-		owner = entity.enclosing_class;
-	}
-	return false;
+	const TemplateFunctionLifecycleFact lifecycle =
+		analyzer.InspectTemplateFunctionLifecycle(binding);
+	if (lifecycle.binding == kNoBinding ||
+		lifecycle.Has(TEMPLATE_FUNCTION_EXPLICIT_INSTANTIATION_SUPPRESSED) ||
+		lifecycle.Has(TEMPLATE_FUNCTION_EXPLICIT_SPECIALIZATION) ||
+		(lifecycle.Has(TEMPLATE_FUNCTION_OWNER_EXPLICIT_SPECIALIZATION) &&
+		 !lifecycle.Has(TEMPLATE_FUNCTION_DIRECT_SPECIALIZATION)) ||
+		lifecycle.Has(TEMPLATE_FUNCTION_COMPILER_GENERATED) ||
+		lifecycle.Has(TEMPLATE_FUNCTION_INHERITED_CONSTRUCTOR)) return false;
+	if (lifecycle.Has(TEMPLATE_FUNCTION_DIRECT_SPECIALIZATION) ||
+		lifecycle.Has(TEMPLATE_FUNCTION_FRIEND_CONTEXT)) return true;
+	if ((lifecycle.owner_explicit_instantiation_state & 2) != 0) return false;
+	return lifecycle.Has(TEMPLATE_FUNCTION_OWNER_ARGUMENT_CONTEXT);
 }
 
 std::string TemplateWitnessObserver::FunctionEntityName(

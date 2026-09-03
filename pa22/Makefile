@@ -73,6 +73,8 @@ test-strict: $(TEST_DEPS)
 	@../scripts/run_witness_tests.pl $(CPPGM_TEST_APP) my tests
 	@perl ../scripts/check_template_witness_candidate_origins.pl \
 		$(CPPGM_TEST_APP) tests/properties/310-template-witness-candidate-origins.cpp
+	@perl ../scripts/check_template_witness_lifecycle.pl \
+		$(CPPGM_TEST_APP) tests/properties/320-template-witness-lifecycle.cpp
 	@scripts/compare_results.pl ref my tests
 	@../scripts/compare_witness_results.pl ref my tests
 	@test ! -f .test_failed
@@ -89,6 +91,8 @@ test-strict: $(TEST_DEPS)
 	@../scripts/run_witness_tests.pl $(CPPGM_TEST_APP) my tests
 	@perl ../scripts/check_template_witness_candidate_origins.pl \
 		$(CPPGM_TEST_APP) tests/properties/310-template-witness-candidate-origins.cpp
+	@perl ../scripts/check_template_witness_lifecycle.pl \
+		$(CPPGM_TEST_APP) tests/properties/320-template-witness-lifecycle.cpp
 	@scripts/compare_results.pl ref my tests
 	@../scripts/compare_witness_results.pl ref my tests
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my $(COURSE_TEST_ROOT)

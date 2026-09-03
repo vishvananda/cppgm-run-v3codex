@@ -77,14 +77,15 @@ enum TemplateFunctionLifecycleProperty
 	TEMPLATE_FUNCTION_OBJECT_OUTPUT_ROOT = 1u << 12,
 	TEMPLATE_FUNCTION_DEFAULTED = 1u << 13,
 	TEMPLATE_FUNCTION_DEFINITION_IN_CLASS = 1u << 14,
-	TEMPLATE_FUNCTION_DEFINED = 1u << 15
+	TEMPLATE_FUNCTION_DEFINED = 1u << 15,
+	TEMPLATE_FUNCTION_OWNER_ARGUMENT_CONTEXT = 1u << 16
 };
 
 struct TemplateFunctionLifecycleFact
 {
 	BindingId binding;
 	EntityId member_owner;
-	std::uint16_t properties;
+	std::uint32_t properties;
 	std::uint8_t explicit_instantiation_state;
 	std::uint8_t owner_explicit_instantiation_state;
 	std::uint8_t definition_state;
@@ -95,7 +96,7 @@ struct TemplateFunctionLifecycleFact
 		  owner_explicit_instantiation_state(0), definition_state(0) {}
 	bool Has(TemplateFunctionLifecycleProperty property) const
 	{
-		return (properties & static_cast<std::uint16_t>(property)) != 0;
+		return (properties & static_cast<std::uint32_t>(property)) != 0;
 	}
 };
 static_assert(sizeof(TemplateFunctionLifecycleFact) == 16,

@@ -125,7 +125,7 @@ TemplateFunctionLifecycleFact Analyzer::InspectTemplateFunctionLifecycle(
 		static_cast<std::uint8_t>(function.definition_state);
 	const auto note = [&result](bool present,
 		TemplateFunctionLifecycleProperty property) {
-		if (present) result.properties |= static_cast<std::uint16_t>(property);
+		if (present) result.properties |= static_cast<std::uint32_t>(property);
 	};
 	note(function.template_specialization,
 		TEMPLATE_FUNCTION_DIRECT_SPECIALIZATION);
@@ -163,6 +163,16 @@ TemplateFunctionLifecycleFact Analyzer::InspectTemplateFunctionLifecycle(
 		function.defaulted_special_member, TEMPLATE_FUNCTION_DEFAULTED);
 	note(function.definition_in_class, TEMPLATE_FUNCTION_DEFINITION_IN_CLASS);
 	note(function.defined, TEMPLATE_FUNCTION_DEFINED);
+	bool owner_argument_context = false;
+	for (EntityId context = record.member_owner; context != kNoEntity;
+		context = program_->entities[context].enclosing_class)
+		if (program_->entities[context].template_argument_begin != kNoBinding)
+		{
+			owner_argument_context = true;
+			break;
+		}
+	note(owner_argument_context,
+		TEMPLATE_FUNCTION_OWNER_ARGUMENT_CONTEXT);
 	if (binding < function_explicit_instantiation_states_.size())
 		result.explicit_instantiation_state =
 			function_explicit_instantiation_states_[binding];

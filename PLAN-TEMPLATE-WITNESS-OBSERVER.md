@@ -1239,6 +1239,18 @@ declaration plus an inline defaulted completed function with no object-output
 root.  That is a final semantic distinction; the renderer no longer needs to
 reconstruct it from the order in which demand and suppression occurred.
 
+The first lifecycle consumer removes the observer's direct reads of function,
+binding, owner, and explicit-instantiation tables.  The snapshot now makes the
+two public decisions: whether completion is a template instantiation and
+whether a use requires a template definition.  An inline defaulted member of
+an extern-instantiated class remains in the second set but not the first.  A
+non-empty behavioral control passes under cppgm++, GCC, and Clang; the cppgm
+reference emits the same callable assignment LowIR shape while making the same
+witness distinction.  Therefore this delta is diagnostic classification, not
+a filter hiding a missing or invalid definition.  GCC and Clang both fold the
+trivial assignment without an out-of-line symbol at `-O0`, which is a separate
+lowering optimization opportunity and is not claimed as witness convergence.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1311,6 +1323,7 @@ reconstruct it from the order in which demand and suppression occurred.
 | W5N-F source dependency role | Added an occurrence-local dependent bit at the retained validator's existing syntax/type/value dependency decisions | nondependent `h.get<int>` records deferred+replay without dependent (12), while `v.template get<I>()` records deferred+replay+dependent (28); all 3,064 PA19--PA24 witness/LowIR pairs unchanged; PA19/20 strict, PA22 ordinary, property tests, frozen O0/O1/O3, and audits exact; paired user +0.123%, wall -0.107%, RSS +0.233% | retain output-inert; this typed distinction, not explicit syntax alone, is the gate for evaluating the missing retained member-template call |
 | W5N-O nondependent replay source | Consumed the occurrence role and dependency bit at the final call boundary: a retained specialization replay becomes a public source event only when the declaration-time occurrence was nondependent | exactly 1 PA22 witness changes and becomes exact (259 -> 260); every PA19/20/23/24 witness and all 1,532 LowIR artifacts remain identical; PA19/20 strict, PA22 ordinary 311/311, semantic relationship controls, frozen O0/O1/O3, and audits exact; four-block paired user -0.540%, wall -0.482%, RSS +0.389% | retain the typed consumer; the PA22 relationship test observes one concrete replay while its dependent counterpart remains deferred, without matching fixture text or private role values |
 | W5N-F function lifecycle snapshot | Added a 16-byte typed snapshot in semantic lifetime analysis for canonical function/owner identity, template-context roles, explicit-specialization and explicit-instantiation state, completion state, and final emission demand | all 3,064 PA19--PA24 witness/LowIR pairs byte-identical to `5f1c03bc`; PA19/20 strict, PA22 ordinary, relationship tests, frozen O0/O1/O3, and audits exact; four-block paired user -0.238%, wall -0.211%, RSS -0.209% | retain as output-inert machinery; a following consumer may use final owner/function state to distinguish validation, requirement, and instantiation, while the renderer must stop reading lifecycle storage directly |
+| W5N-O function lifecycle | Rebased function-instantiation and require-definition classification on the typed semantic snapshot; an extern-instantiated class's completed inline defaulted member remains required but is not reported as newly instantiated | exactly 1 PA22 witness changes and becomes exact (260 -> 261); every PA19/20/23/24 witness and all 1,532 LowIR artifacts remain identical; the new relationship test fails on the foundation and passes on the consumer; PA19/20 strict, PA22 ordinary 311/311, frozen O0/O1/O3, and audits exact; four-block paired user -0.612%, wall +0.001%, RSS -0.077% | retain; cppgm++, GCC, and Clang agree behaviorally on a non-empty copy, while the cppgm reference emits the same LowIR definition but makes the same requirement/instantiation distinction; track GCC/Clang's symbol-free trivial-copy lowering separately rather than disguising it as a witness fix |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
