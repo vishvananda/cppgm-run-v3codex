@@ -1564,8 +1564,11 @@ std::string TemplateWitnessObserver::ElideEntities(std::string spelling,
 	{
 		const std::string before = spelling;
 		for (std::size_t i = 0; i < replacements.size(); ++i)
+		{
+			if (replacements[i].cross_entity_conflict) continue;
 			ReplaceAll(&spelling, replacements[i].canonical,
 				replacements[i].presented);
+		}
 		if (before == spelling) break;
 	}
 	return spelling;
@@ -2070,6 +2073,19 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 			entity_replacements.push_back(
 				EntityReplacement(entity, full, presented));
 	}
+	for (std::size_t left = 0; left < entity_replacements.size(); ++left)
+		for (std::size_t right = left + 1;
+			right < entity_replacements.size(); ++right)
+			if (entity_replacements[left].entity !=
+					entity_replacements[right].entity &&
+				entity_replacements[left].canonical ==
+					entity_replacements[right].canonical &&
+				entity_replacements[left].presented !=
+					entity_replacements[right].presented)
+			{
+				entity_replacements[left].cross_entity_conflict = true;
+				entity_replacements[right].cross_entity_conflict = true;
+			}
 	std::sort(entity_replacements.begin(), entity_replacements.end(),
 		[](const EntityReplacement& left,
 			const EntityReplacement& right) {

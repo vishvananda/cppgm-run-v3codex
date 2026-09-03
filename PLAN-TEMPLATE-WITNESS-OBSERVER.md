@@ -1422,6 +1422,21 @@ paired user, -0.430% wall, and +0.002% RSS.  The report is
 consumer may reject a replacement only when its typed entity conflicts; it
 must continue applying unambiguous nested presentation facts.
 
+The contained consumer marks a replacement globally unsafe only when the same
+canonical spelling is claimed by different typed entities with different
+presentations.  It does not bypass or delete the facts, so unambiguous nested
+enum, character, default-argument, and incomplete-array normalization is
+unchanged.  Exactly the two PA22 function-type fixtures change and both become
+exact, moving PA22 from 267 to 269; every PA19, PA20, PA23, and PA24 witness and
+all 1,532 statuses/LowIR artifacts remain byte-identical.  The new PA22
+relationship test checks that the explicit source identities and closure
+identities preserve the same three ordinary/const/ref-qualified function-type
+specializations, and that witness-off/on LowIR is identical.  It fails on the
+foundation and passes on the consumer; cppgm++, GCC, and Clang all run the
+control successfully.  Four exact-object ABBA blocks measure +0.181% paired
+user, -0.215% wall, and +0.328% RSS, within the 0.2% CPU gate.  The report is
+`/tmp/v3codex-w5n-entity-presentation-consumer-ab.json`.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1507,6 +1522,7 @@ must continue applying unambiguous nested presentation facts.
 | W5N semantic pack dependency and dependent-type provenance | Unified retained `sizeof...(Pack)` dependency with the canonical recursive classifier, retained the written `template` introducer as a typed syntax flag, and diagnosed missing `typename` at definition-time type boundaries with exact current-instantiation context | pre-fix and PA22 reference accept invalid unused templates while GCC and pedantic Clang reject them; the final semantic property covers pack-dependent, same-template/noncurrent, dependent member-template type, and out-of-class return errors, plus five valid contexts; a broad `template`-alone exception found by semantic review was rejected; 12 witness changes yield PA22 +4, PA23 +2, PA24 +1 exact with every residual diff smaller, zero exact regression, and all 1,532 statuses/LowIR unchanged; frozen O0/O1/O3 exact; through-PA24 3,566/3,566; audits exact; a rejected 32-byte parser temporary measured +0.486% user, while the final 20-byte/direct-ID/flat-range layout measures -0.245% user, -0.000% wall, and -0.021% RSS over six ABBA blocks with exact objects | retain the ordinary semantic repair and compact provenance layout before further witness convergence; never use substituted success or plausible LowIR to excuse a wrong definition-time dependency decision |
 | W5N rejected broad closure presentation bypass | Stopped applying every entity replacement to member-variable closure names | both function-type PA22 fixtures become exact, but three PA23 and three PA24 witnesses change; one exact incomplete-array fixture regresses and valid enum/character/nested spellings are lost; all LowIR remains exact | reject; source-distinguished outer identity does not eliminate legitimate typed normalization of nested entities |
 | W5N-F typed entity presentation origin | Replaced anonymous canonical/presented string pairs with facts keyed by the exact semantic entity that produced them | all 1,532 PA19--PA24 witnesses, statuses, and LowIR artifacts are exact to `207f44e5`; +2,012 compiler text bytes; six-block exact-object A/B -0.360% user, -0.430% wall, +0.002% RSS | retain output-inert; the consumer may suppress only cross-entity conflicts while preserving unambiguous nested replacements |
+| W5N-O cross-entity presentation conflict | Prevented a source presentation chosen for one typed entity from globally rewriting a distinct entity with the same canonical text | exactly 2 PA22 witnesses become exact (267 -> 269); PA19/20/23/24 and all statuses/LowIR remain exact; relationship test fails on the foundation and preserves three source/closure identities on the consumer; cppgm++/GCC/Clang behavior agrees; four-block exact-object A/B +0.181% user, -0.215% wall, +0.328% RSS | retain the typed conflict gate; keep valid unambiguous nested replacements and never deduplicate semantic entities by rendered text |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

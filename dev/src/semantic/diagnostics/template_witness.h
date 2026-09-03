@@ -344,13 +344,15 @@ private:
 	struct EntityReplacement
 	{
 		EntityId entity;
+		bool cross_entity_conflict;
 		std::string canonical;
 		std::string presented;
 
 		EntityReplacement(EntityId entity_value,
 			const std::string& canonical_value,
 			const std::string& presented_value)
-			: entity(entity_value), canonical(canonical_value),
+			: entity(entity_value), cross_entity_conflict(false),
+			  canonical(canonical_value),
 			  presented(presented_value) {}
 	};
 	typedef std::vector<EntityReplacement> EntityReplacements;

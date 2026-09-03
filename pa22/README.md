@@ -111,6 +111,16 @@ type requiring `typename`.  In a type position, a dependent member template-id
 requires both introducers: `typename` establishes that the result is a type,
 while `template` establishes that the qualified member is a template.
 
+#### Entity-scoped presentation
+
+Witness presentation remains attached to the semantic entity that supplied its
+source spelling.  Distinct class-template specializations remain distinct even
+when their canonical type text overlaps, including function types that differ
+only by cv- or reference-qualification.  Presentation chosen for one entity
+must not rewrite or deduplicate another entity's closure transition.  This
+diagnostic distinction does not require storage when a static constant is used
+only as a constant expression, and witness mode must not change LowIR.
+
 ### Output Format
 
 On success, `cppgm++` shall write LowIR text to `<outfile>` and exit

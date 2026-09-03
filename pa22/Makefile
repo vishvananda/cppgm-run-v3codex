@@ -85,6 +85,9 @@ test-strict: $(TEST_DEPS)
 		tests/properties/348-dependent-member-template-type-requires-typename.cpp \
 		tests/properties/349-out-of-class-return-requires-typename.cpp \
 		tests/properties/346-dependent-typename-valid.cpp
+	@perl ../scripts/check_template_witness_entity_presentation.pl \
+		$(CPPGM_TEST_APP) \
+		tests/properties/350-template-witness-entity-presentation.cpp
 	@scripts/compare_results.pl ref my tests
 	@../scripts/compare_witness_results.pl ref my tests
 	@test ! -f .test_failed
@@ -113,6 +116,9 @@ test-strict: $(TEST_DEPS)
 		tests/properties/348-dependent-member-template-type-requires-typename.cpp \
 		tests/properties/349-out-of-class-return-requires-typename.cpp \
 		tests/properties/346-dependent-typename-valid.cpp
+	@perl ../scripts/check_template_witness_entity_presentation.pl \
+		$(CPPGM_TEST_APP) \
+		tests/properties/350-template-witness-entity-presentation.cpp
 	@scripts/compare_results.pl ref my tests
 	@../scripts/compare_witness_results.pl ref my tests
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my $(COURSE_TEST_ROOT)
