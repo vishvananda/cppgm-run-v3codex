@@ -2152,7 +2152,18 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 			event.suppressed = true;
 			continue;
 		}
-		event.source_token = arena.TokenFirst(event.syntax);
+		// A qualified-id for an implicit-object member call is located at the
+		// selected member component.  Expression calls (including operator())
+		// and free/static qualified calls retain their expression boundary.
+		const syntax::NodeId source_anchor =
+			event.kind == SOURCE_FUNCTION_CALL &&
+			event.binding != kNoBinding &&
+			analyzer.GetFunction(event.binding).member_owner != kNoType &&
+			arena.IsTag(event.syntax, ::cppgm::syntax::STAG_ID_EXPRESSION) &&
+			event.component_syntax != syntax::kNoNode &&
+			arena.HasTokenRange(event.component_syntax) ?
+				event.component_syntax : event.syntax;
+		event.source_token = arena.TokenFirst(source_anchor);
 		if (event.source_token >= arena.TokenCount() ||
 			arena.TokenSourceFile(event.source_token) != primary_source_file_ ||
 			arena.TokenSourceLine(event.source_token) == 0)

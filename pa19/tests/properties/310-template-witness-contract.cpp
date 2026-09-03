@@ -25,6 +25,20 @@ int shadowed(int)
   return 0;
 }
 
+struct qualified_calls
+{
+  template<class T>
+  int inspect_member(T)
+  {
+    return sizeof(T);
+  }
+
+  int run()
+  {
+    return qualified_calls::inspect_member(0);
+  }
+};
+
 int main()
 {
   box<int> first;
@@ -32,7 +46,9 @@ int main()
   second.value = 0;
   int one = inspect(first);
   int two = inspect(first);
+  qualified_calls qualified;
   int ordinary = shadowed(0);
   return one == sizeof(int) && two == sizeof(int) &&
+    qualified.run() == sizeof(int) &&
     second.value == 0 && ordinary == 0 ? 0 : 1;
 }

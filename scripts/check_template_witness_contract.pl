@@ -138,10 +138,15 @@ for my $source_event (@events)
 my @source_lines = split /\n/, slurp($source);
 for my $source_event (@events)
 {
-  next unless grep { $_ eq 'template box' || $_ eq 'callee inspect' }
+  next unless grep {
+    $_ eq 'template box' || $_ eq 'callee inspect' ||
+      $_ eq 'callee qualified_calls::inspect_member'
+  }
     @{$source_event->{fields}};
-  my $needle = (grep { $_ eq 'callee inspect' }
-    @{$source_event->{fields}}) ? 'inspect' : 'box';
+  my $needle = (grep { $_ eq 'callee qualified_calls::inspect_member' }
+    @{$source_event->{fields}}) ? 'inspect_member' :
+    (grep { $_ eq 'callee inspect' }
+      @{$source_event->{fields}}) ? 'inspect' : 'box';
   my $source_line = $source_lines[$source_event->{line} - 1];
   die "reported source line is outside the fixture\n"
     if !defined($source_line);
@@ -203,6 +208,15 @@ for my $call (@inspect_calls)
 }
 die "non-template overload selection was published as a template call\n"
   if grep { has_field($_, 'callee shadowed') } @events;
+
+my @qualified_member_calls = grep {
+  $_->{kind} eq 'function-call' &&
+    has_field($_, 'callee qualified_calls::inspect_member')
+} @events;
+die "qualified non-static member template call was not published once\n"
+  if @qualified_member_calls != 1;
+die "qualified non-static member call did not select an instantiation\n"
+  if !has_field($qualified_member_calls[0], 'selected instantiation');
 
 my $closure_text = join("\n", @closure);
 my $inspect_instantiations = () =

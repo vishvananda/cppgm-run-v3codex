@@ -1463,6 +1463,30 @@ status or LowIR movement across all 1,532 cases.  Compiler text grows by only
 -0.162% wall, and +0.040% RSS.  The report is
 `/tmp/v3codex-w5n-template-name-hiding-final-ab.json`.
 
+The remaining source-anchor difference was isolated from that lookup defect.
+cppgm++, GCC, and Clang all compile and execute the corrected hidden-base
+fixture identically.  The observer already retained both the qualified-id
+expression and its exact terminal component, but finalization always replaced
+that choice with the expression's first token.  A broad terminal-component
+consumer is wrong: it changes 16 PA22 witnesses, regresses 13 exact files, and
+misanchors free/static qualified calls and a parenthesized call operator.  The
+typed distinction is the selected call shape.  Only a non-static member
+selected through an `id-expression` with an implicit object uses its terminal
+member component; expression calls and free/static qualified calls keep their
+expression boundary.
+
+The PA19 relationship control now includes a qualified non-static member
+template call and computes its expected terminal column from the source line.
+It fails on the immutable pre-consumer compiler and passes after the typed
+gate, without exact witness matching; cppgm++, GCC, and Clang all execute the
+expanded control successfully.  Exactly one PA22 witness changes and becomes
+exact (270 -> 271).  PA19/20/23/24 remain exact to the previous compiler, and
+all 1,532 statuses and witness-mode LowIR artifacts are byte-identical.  Frozen
+O0/O1/O3 objects and all architecture audits are exact.  Compiler text grows
+by 368 bytes, while four exact-object ABBA blocks measure -0.780% paired user,
+-0.690% wall, and +0.476% RSS.  The report is
+`/tmp/v3codex-w5n-member-anchor-final-ab.json`.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1550,6 +1574,8 @@ status or LowIR movement across all 1,532 cases.  Compiler text grows by only
 | W5N-F typed entity presentation origin | Replaced anonymous canonical/presented string pairs with facts keyed by the exact semantic entity that produced them | all 1,532 PA19--PA24 witnesses, statuses, and LowIR artifacts are exact to `207f44e5`; +2,012 compiler text bytes; six-block exact-object A/B -0.360% user, -0.430% wall, +0.002% RSS | retain output-inert; the consumer may suppress only cross-entity conflicts while preserving unambiguous nested replacements |
 | W5N-O cross-entity presentation conflict | Prevented a source presentation chosen for one typed entity from globally rewriting a distinct entity with the same canonical text | exactly 2 PA22 witnesses become exact (267 -> 269); PA19/20/23/24 and all statuses/LowIR remain exact; relationship test fails on the foundation and preserves three source/closure identities on the consumer; cppgm++/GCC/Clang behavior agrees; four-block exact-object A/B +0.181% user, -0.215% wall, +0.328% RSS | retain the typed conflict gate; keep valid unambiguous nested replacements and never deduplicate semantic entities by rendered text |
 | W5N semantic template-name hiding | Made local function- and variable-template names stop the ordinary lookup walk before hidden base/enclosing declarations are considered | static-function reducer changes pre-fix wrong exit 1 to exit 0, agreeing with GCC/Clang; variable reducer changes an incorrect success to the same rejection as GCC/Clang; relationship test verifies behavior, LowIR observer invariance, selected template, no base drop, and invalid argument-less variable-template use; exactly 2 PA22 witnesses improve, one becomes exact (269 -> 270), with every PA19/20/23/24 witness and all 1,532 corpus statuses/LowIR unchanged; compiler text +24 bytes; four-block exact-object A/B -0.601% user, -0.162% wall, +0.040% RSS | retain as ordinary lookup correctness; the remaining terminal source anchor is independent and must use component provenance rather than candidate filtering |
+| W5N rejected broad terminal-call anchor | Located every function-template call at its retained terminal name component | 16 PA22 witnesses change; only the intended implicit-object qualified-id becomes exact, while 13 exact files regress, including free/static qualified calls and a parenthesized call operator | reject; syntax containment is not call-source identity, so combine selected function kind with the authoritative syntax role |
+| W5N-O implicit-object qualified-id anchor | Used the retained terminal component only for a non-static member selected through an `id-expression`; preserved expression boundaries for operator calls and free/static qualified calls | PA19 relationship control fails before and passes after without exact matching; cppgm++/GCC/Clang behavior agrees; exactly 1 PA22 witness changes and becomes exact (270 -> 271); PA19/20/23/24 and all 1,532 statuses/LowIR exact; frozen objects/audits exact; compiler text +368 bytes; four-block exact-object A/B -0.780% user, -0.690% wall, +0.476% RSS | retain the typed source-role consumer; do not infer anchors from terminal syntax alone |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
