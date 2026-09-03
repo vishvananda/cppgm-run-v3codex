@@ -1,0 +1,117 @@
+function @pick(%v : i32) -> i32 [binding=strong, object=_Z4picki] {
+  slot $v : i32
+
+  block ^entry:
+    store i32 %v, $v
+    %t1 = load i32 $v
+    %t2 = binary add i32 %t1, 1
+    return i32 %t2
+}
+function @pick__ov2(%v : i32, %w : i32) -> i32 [binding=strong, object=_Z4pickii] {
+  slot $v : i32
+  slot $w : i32
+
+  block ^entry:
+    store i32 %v, $v
+    store i32 %w, $w
+    %t1 = load i32 $v
+    %t2 = load i32 $w
+    %t3 = binary add i32 %t1, %t2
+    return i32 %t3
+}
+function @scale(%v : i64) -> i64 [binding=strong, object=_Z5scalel] {
+  slot $v : i64
+
+  block ^entry:
+    store i64 %v, $v
+    %t1 = load i64 $v
+    %t2 = convert sext i64 i32 3
+    %t3 = binary mul i64 %t1, %t2
+    return i64 %t3
+}
+function @scale__ov2(%v : i64, %w : i64) -> i64 [binding=strong, object=_Z5scalell] {
+  slot $v : i64
+  slot $w : i64
+
+  block ^entry:
+    store i64 %v, $v
+    store i64 %w, $w
+    %t1 = load i64 $v
+    %t2 = load i64 $w
+    %t3 = binary mul i64 %t1, %t2
+    return i64 %t3
+}
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $first : i32
+  slot $argobj__1 : obj<1x1>
+  slot $second : i64
+  slot $argobj__2 : obj<1x1>
+  slot $cond__3 : i32
+  slot $land__4 : i64
+
+  block ^entry:
+    %t1 = addr $argobj__1
+    %t2 = addr @pick
+    %t3 = call i32 @ns__apply($argobj__1, %t2, 2)
+    store i32 %t3, $first
+    %t4 = addr $argobj__2
+    %t5 = addr @scale
+    %t6 = call i64 @ns__apply__ov2($argobj__2, %t5, 5)
+    store i64 %t6, $second
+    %t7 = load i32 $first
+    %t8 = cmp eq i32 %t7, 3
+    branch %t8, ^land_rhs_4, ^land_short_5
+
+  block ^land_rhs_4:
+    %t9 = load i64 $second
+    %t10 = cmp eq i64 %t9, 15
+    %t11 = cmp ne i64 %t10, 0
+    store i64 %t11, $land__4
+    jump ^land_end_6
+
+  block ^land_short_5:
+    store i64 0, $land__4
+    jump ^land_end_6
+
+  block ^land_end_6:
+    %t12 = load i64 $land__4
+    branch %t12, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__3
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__3
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t13 = load i32 $cond__3
+    return i32 %t13
+}
+function @ns__apply(%__param0 : obj<1x1>, %f : ptr, %seed : i32) -> i32 [binding=weak, object=_ZN2ns5applyIiEET_NS_3tagEPFS1_S1_ES1_] {
+  slot $__param0 : obj<1x1>
+  slot $f : ptr
+  slot $seed : i32
+
+  block ^entry:
+    store ptr %f, $f
+    store i32 %seed, $seed
+    %t1 = load i32 $seed
+    %t2 = load ptr $f
+    %t3 = call i32 %t2(%t1) as (%arg0 : i32) -> i32
+    return i32 %t3
+}
+function @ns__apply__ov2(%__param0 : obj<1x1>, %f : ptr, %seed : i64) -> i64 [binding=weak, object=_ZN2ns5applyIlEET_NS_3tagEPFS1_S1_ES1_] {
+  slot $__param0 : obj<1x1>
+  slot $f : ptr
+  slot $seed : i64
+
+  block ^entry:
+    store ptr %f, $f
+    store i64 %seed, $seed
+    %t1 = load i64 $seed
+    %t2 = load ptr $f
+    %t3 = call i64 %t2(%t1) as (%arg0 : i64) -> i64
+    return i64 %t3
+}

@@ -153,6 +153,9 @@ the implemented surface, including:
 - template deduction from arguments whose types come from already-resolved
   member-function calls, including the implicit-object overload selection from
   PA16/PA17
+- an argument that names a set of overloaded functions participates in
+  deduction the same way whether the called template was found by ordinary
+  lookup or only by argument-dependent lookup
 - dependent-call, dependent-alias, and no-eager-instantiation behavior when the
   primary assertion is a single PA23-owned feature rather than a broad
   multi-feature composition

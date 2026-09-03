@@ -273,7 +273,19 @@ void Analyzer::AppendHiddenFriendCandidates(EntityId owner,
 			arguments, *explicit_syntax, use_scope, &specializations,
 			argument_syntax);
 	}
-	else DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
+	else
+	{
+		// Only an argument that carries no type, such as an overload set, needs
+		// the use scope and argument syntax an ordinary call supplies for
+		// N3485 14.8.2.1/6 trial deduction.  Typed arguments keep the cheaper
+		// syntax-free deduction.
+		bool untyped_argument = false;
+		for (std::size_t i = 0; i < arguments.size(); ++i)
+			if (arguments[i].type == kNoType) untyped_argument = true;
+		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
+			0, 0, untyped_argument ? use_scope : kNoScope,
+			untyped_argument ? argument_syntax : 0);
+	}
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const BindingId binding = specializations[i];
@@ -294,9 +306,16 @@ void Analyzer::AppendArgumentDependentCandidates(NameId name,
 		(use_scope == kNoScope || !argument_syntax))
 		ThrowInternalCompilerError(
 			"explicit ADL deduction has no use context");
+	// An argument that carries no type, such as an overload set, is the only
+	// reason deduction needs source syntax here; see AppendHiddenFriendCandidates.
+	bool untyped_argument = false;
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		if (arguments[i].type != kNoType)
 			EnsureClassDefinition(EffectiveType(arguments[i].type));
+		else untyped_argument = true;
+	const ScopeId deduction_scope = untyped_argument ? use_scope : kNoScope;
+	const std::vector<NodeId>* deduction_syntax =
+		untyped_argument ? argument_syntax : 0;
 	BeginAssociatedLookup();
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		if (arguments[i].type != kNoType)
@@ -374,7 +393,7 @@ void Analyzer::AppendArgumentDependentCandidates(NameId name,
 					arguments, *explicit_syntax, use_scope, &specializations,
 					argument_syntax);
 			else DeduceFunctionTemplatePatterns(patterns, arguments,
-				&specializations);
+				&specializations, 0, 0, deduction_scope, deduction_syntax);
 			for (std::size_t specialization = 0;
 				specialization < specializations.size(); ++specialization)
 				if (!enum_operator_only || MatchesEnumOnlyOperatorCandidate(
