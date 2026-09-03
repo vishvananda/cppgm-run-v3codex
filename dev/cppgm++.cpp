@@ -2210,6 +2210,9 @@ int run_emit_lowir_mode(const vector<string> & args)
 			invocation.collect_stats, invocation.inline_limits);
 		output << lowir_model::serialize_lowir_program(program);
 	}
+	if(!output)
+		cppgm::driver_errors::ThrowInputOutput(
+			"unable to write output file: " + invocation.output);
 	if(invocation.collect_stats) {
 		report_lowir_semantic_stats(stats);
 		report_lowir_lowering_stats(stats);
