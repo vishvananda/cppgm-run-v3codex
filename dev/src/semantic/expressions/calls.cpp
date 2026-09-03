@@ -2158,20 +2158,8 @@ ExpressionInfo Analyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	}
 	const BindingRecord& member_binding =
 		program_->bindings[found.ordinary];
-	if (template_witness_ && member_binding.kind == BIND_VARIABLE &&
-		member_binding.member_owner != kNoEntity &&
-		!member_binding.non_static_data_member)
-	{
-		for (EntityId owner = member_binding.member_owner; owner != kNoEntity;
-			owner = program_->entities[owner].enclosing_class)
-			if (owner < class_template_pattern_by_entity_.size() &&
-				class_template_pattern_by_entity_[owner] != kNoDumpEdge)
-			{
-				template_witness_->RecordVariableInstantiation(
-					program_->bindings[found.ordinary].canonical);
-				break;
-			}
-	}
+	if (template_witness_)
+		RecordTemplateVariableOccurrence(identifier, found.ordinary, false);
 	const BindingLayoutFact& member_layout =
 		program_->BindingLayout(member_binding);
 	TypeId type = member_binding.type;

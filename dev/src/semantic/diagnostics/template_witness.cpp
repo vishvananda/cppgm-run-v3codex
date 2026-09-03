@@ -802,6 +802,41 @@ void Analyzer::RecordStaticMemberTemplateWitness(BindingId binding)
 	}
 }
 
+void Analyzer::RecordTemplateVariableOccurrence(NodeId syntax,
+	BindingId binding, bool filter_publication_to_source)
+{
+	if (!template_witness_ || syntax == kNoNode || binding == kNoBinding ||
+		binding >= program_->bindings.size()) return;
+	const BindingRecord& variable = program_->bindings[binding];
+	if (variable.kind != BIND_VARIABLE || variable.member_owner == kNoEntity ||
+		variable.non_static_data_member) return;
+	EntityId owner = variable.member_owner;
+	for (; owner != kNoEntity; owner = program_->entities[owner].enclosing_class)
+		if (owner < class_template_pattern_by_entity_.size() &&
+			class_template_pattern_by_entity_[owner] != kNoDumpEdge) break;
+	if (owner == kNoEntity) return;
+	const TemplateWitnessObserver::VariableOccurrenceEvaluation evaluation =
+		unevaluated_depth_ != 0 ?
+			TemplateWitnessObserver::VARIABLE_OCCURRENCE_UNEVALUATED :
+			constant_expression_required_depth_ != 0 ?
+			TemplateWitnessObserver::VARIABLE_OCCURRENCE_CONSTANT_EVALUATED :
+			TemplateWitnessObserver::VARIABLE_OCCURRENCE_EVALUATED;
+	const bool replayed = class_template_member_replay_depth_ != 0 ||
+		explicit_member_template_replay_depth_ != 0 ||
+		(current_function_context_ != kNoBinding &&
+		 GetFunction(current_function_context_).template_specialization);
+	TemplateWitnessObserver::VariableOccurrencePhase phase = replayed ?
+		TemplateWitnessObserver::VARIABLE_OCCURRENCE_SPECIALIZATION_REPLAY :
+		TemplateWitnessObserver::VARIABLE_OCCURRENCE_SOURCE;
+	if (!replayed && current_function_context_ != kNoBinding)
+		phase = FunctionObjectDefinitionRequired(current_function_context_) ?
+			TemplateWitnessObserver::VARIABLE_OCCURRENCE_DEFINITION_DEMAND :
+			TemplateWitnessObserver::VARIABLE_OCCURRENCE_DEFERRED_DEFINITION;
+	template_witness_->RecordVariableOccurrence(*arena_, syntax,
+		variable.canonical, variable.member_owner == current_class_context_,
+		evaluation, phase, filter_publication_to_source);
+}
+
 void TemplateWitnessObserver::BeginTranslationUnit(
 	const std::string& primary_source_file)
 {
@@ -1452,10 +1487,10 @@ void TemplateWitnessObserver::RecordVariableInstantiation(BindingId binding)
 		variable_instantiations_.push_back(binding);
 }
 
-void TemplateWitnessObserver::RecordSourceVariableInstantiation(
+void TemplateWitnessObserver::RecordVariableOccurrence(
 	const syntax::SyntaxArena& arena, syntax::NodeId syntax, BindingId binding,
 	bool owning_class_context, VariableOccurrenceEvaluation evaluation,
-	VariableOccurrencePhase phase)
+	VariableOccurrencePhase phase, bool filter_publication_to_source)
 {
 	if (syntax == syntax::kNoNode) return;
 	bool duplicate = false;
@@ -1468,6 +1503,11 @@ void TemplateWitnessObserver::RecordSourceVariableInstantiation(
 				(owning_class_context ? 1 : 0)) duplicate = true;
 	if (!duplicate) variable_occurrences_.push_back(VariableOccurrenceFact(
 		syntax, binding, evaluation, phase, owning_class_context));
+	if (!filter_publication_to_source)
+	{
+		RecordVariableInstantiation(binding);
+		return;
+	}
 	const std::size_t token = arena.TokenFirst(syntax);
 	if (token >= arena.TokenCount() ||
 		arena.TokenSourceFile(token) != primary_source_file_ ||

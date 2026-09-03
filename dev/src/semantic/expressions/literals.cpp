@@ -836,39 +836,7 @@ ExpressionInfo Analyzer::AnalyzeNamedValue(
 		binding.member_owner != kNoEntity && !binding.non_static_data_member)
 	{
 		RecordStaticMemberTemplateWitness(found.ordinary);
-		for (EntityId owner = binding.member_owner; owner != kNoEntity;
-			owner = program_->entities[owner].enclosing_class)
-			if (owner < class_template_pattern_by_entity_.size() &&
-				class_template_pattern_by_entity_[owner] != kNoDumpEdge)
-			{
-				const TemplateWitnessObserver::VariableOccurrenceEvaluation
-					evaluation = unevaluated_depth_ != 0 ?
-						TemplateWitnessObserver::VARIABLE_OCCURRENCE_UNEVALUATED :
-						constant_expression_required_depth_ != 0 ?
-						TemplateWitnessObserver::
-							VARIABLE_OCCURRENCE_CONSTANT_EVALUATED :
-						TemplateWitnessObserver::VARIABLE_OCCURRENCE_EVALUATED;
-				const bool replayed = class_template_member_replay_depth_ != 0 ||
-					explicit_member_template_replay_depth_ != 0 ||
-					(current_function_context_ != kNoBinding &&
-					 GetFunction(current_function_context_).template_specialization);
-				TemplateWitnessObserver::VariableOccurrencePhase phase =
-					replayed ? TemplateWitnessObserver::
-						VARIABLE_OCCURRENCE_SPECIALIZATION_REPLAY :
-						TemplateWitnessObserver::VARIABLE_OCCURRENCE_SOURCE;
-				if (!replayed && current_function_context_ != kNoBinding)
-					phase = FunctionObjectDefinitionRequired(
-						current_function_context_) ? TemplateWitnessObserver::
-							VARIABLE_OCCURRENCE_DEFINITION_DEMAND :
-							TemplateWitnessObserver::
-								VARIABLE_OCCURRENCE_DEFERRED_DEFINITION;
-				template_witness_->RecordSourceVariableInstantiation(
-					*arena_, syntax,
-					program_->bindings[found.ordinary].canonical,
-					binding.member_owner == current_class_context_, evaluation,
-					phase);
-				break;
-			}
+		RecordTemplateVariableOccurrence(syntax, found.ordinary, true);
 	}
 	if (found.ordinary < variable_template_bindings_.size() &&
 		variable_template_bindings_[found.ordinary] != 0 && binding.constant &&

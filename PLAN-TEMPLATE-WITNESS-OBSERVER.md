@@ -1269,6 +1269,18 @@ operands are all unevaluated, and `table<>::call` member uses occur during final
 definition demand.  Existing witness output deliberately remains unchanged
 until a consumer can state its rule in those typed roles.
 
+The second static-member access path now records the same occurrence fact at
+the exact member identifier.  Eligibility, owning-class context, evaluation,
+and replay/demand phase are computed by one cold observer-only helper rather
+than independently in the two expression analyzers.  The formatter control
+records all eight operands as unevaluated while preserving the legacy witness
+publication policy.  All 7,660 PA19--PA24 generated artifacts and frozen
+O0/O1/O3 objects remain byte-identical.  An initial shared-helper shape grew
+hot expression code and was rejected after six blocks measured +0.364% paired
+user time.  Moving the complete eligibility walk behind the cold boundary
+shrinks both hot analyzers; the retained four-block result is -0.180% paired
+user, +0.107% wall, and +0.092% RSS.
+
 The first broad consumer prototype replaced the legacy primary-file/function
 filter with every non-deferred evaluated or constant-evaluated fact.  It was
 rejected: 36 witnesses changed and 12 previously exact files regressed because
@@ -1359,6 +1371,7 @@ showed that their final lifecycle depends on how the resulting value is used.
 | W5N-F variable occurrence provenance | Retained a 12-byte observer-only fact for exact syntax/binding, evaluated versus constant-evaluated versus unevaluated role, source/deferred/final-demand/replay phase, and owning-class context at the existing member-value decision | debug controls distinguish the lazy-header constant, eight unevaluated formatter operands, and six final-demand table-member uses; all 3,064 PA19--PA24 witness/LowIR pairs remain identical to `179435e6`; PA19/20 strict, PA22 ordinary, relationship tests, frozen O0/O1/O3, and audits exact; four-block paired user +0.061%, wall -0.000%, RSS -0.073% | retain output-inert; consumers may publish evaluated final-demand/header constant transitions and suppress unevaluated-only transitions, but must separately verify binding lifecycle and presentation instead of scanning source paths or names |
 | W5N rejected broad variable occurrence consumer | Replaced source filtering with every non-deferred evaluated or constant-evaluated variable occurrence | 36 witnesses changed: PA20 lost 2 exact files, PA22 had one gain and one regression, PA23 lost 6 exact files, and PA24 had 3 gains and 3 regressions; LowIR stayed exact | reject; constant substitution and final runtime evaluation are distinct lifecycle inputs, so occurrence alone cannot declare every referenced binding instantiated |
 | W5N-O evaluated demanded variable occurrences | Preserved existing publication and added only ordinary evaluated static-member uses in an owning class function whose definition is finally demanded | exactly 2 witnesses change and become exact: PA22 261 -> 262 and PA24 282 -> 283; every other witness and all 1,532 LowIR artifacts remain identical; the relationship test fails on the foundation and passes on the consumer; cppgm++/GCC/Clang behavior agrees; PA19/20 strict, PA22 ordinary, frozen O0/O1/O3, and audits exact; four-block paired user +0.060%, wall +0.053%, RSS +0.368% | retain the narrow typed consumer; do not generalize constant/header or unevaluated handling until binding lifecycle says whether semantic instantiation actually occurred |
+| W5N-F complete variable access provenance | Routed the member-object access path through the same exact-node variable occurrence fact and centralized eligibility/context computation behind a cold observer-only boundary | formatter debug census records all 8 operands as unevaluated; all 7,660 PA19--PA24 generated artifacts and frozen O0/O1/O3 objects are exact; the first layout measured +0.364% paired user and was rejected, while the compact cold layout measures -0.180% user, +0.107% wall, +0.092% RSS | retain the output-inert foundation; a following consumer may suppress legacy publication only for occurrence facts proven unevaluated, after ordinary semantic/lowering validation |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

@@ -473,10 +473,10 @@ private:
 	void RecordClassInstantiation(EntityId entity);
 	void RecordClassFinalization(EntityId entity);
 	void RecordVariableInstantiation(BindingId binding);
-	void RecordSourceVariableInstantiation(const syntax::SyntaxArena& arena,
+	void RecordVariableOccurrence(const syntax::SyntaxArena& arena,
 		syntax::NodeId syntax, BindingId binding,
 		bool owning_class_context, VariableOccurrenceEvaluation evaluation,
-		VariableOccurrencePhase phase);
+		VariableOccurrencePhase phase, bool filter_publication_to_source);
 	std::size_t SourceEventMark() const;
 	void DiscardSourceEvents(std::size_t mark);
 	std::size_t ClosureEventMark() const;

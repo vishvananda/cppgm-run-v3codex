@@ -276,6 +276,9 @@ private:
 	bool TemplateWitnessSourceUseEnabled() const;
 	void RecordDeducedClassObjectUse(NodeId specifiers, TypeId type);
 	void RecordStaticMemberTemplateWitness(BindingId binding);
+	__attribute__((cold, noinline))
+	void RecordTemplateVariableOccurrence(NodeId syntax, BindingId binding,
+		bool filter_publication_to_source);
 	NamePath StructuredNamePath(NodeId syntax);
 	NamePath SyntaxNamePath(NodeId syntax);
 	LookupResult LookupSyntaxName(NodeId syntax, ScopeId scope,
