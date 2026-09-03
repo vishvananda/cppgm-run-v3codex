@@ -1296,8 +1296,11 @@ void TemplateWitnessObserver::RecordFunctionCall(syntax::NodeId syntax,
 	const bool retained = HasSourceOccurrenceRole(component_syntax,
 		SOURCE_OCCURRENCE_UNEVALUATED_DECLARATION |
 		SOURCE_OCCURRENCE_DEFERRED_DEFINITION);
+	const bool dependent = HasSourceOccurrenceRole(
+		component_syntax, SOURCE_OCCURRENCE_DEPENDENT);
 	NoteSourceOccurrence(component_syntax, role);
-	if (retained) return;
+	if (retained && (role != SOURCE_OCCURRENCE_SPECIALIZATION_REPLAY ||
+		dependent)) return;
 	source_events_.push_back(SourceEvent(SOURCE_FUNCTION_CALL, syntax, pattern,
 		binding, arguments, 0, 0, next_insertion_ordinal_++));
 	SourceEvent& event = source_events_.back();

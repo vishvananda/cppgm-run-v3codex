@@ -66,4 +66,13 @@ die "one selected declaration was also reported as rejected\n"
      $assignment->{drops}[0] ne
        'drop box<int>::operator= reason=bad_conversion';
 
+my @reader_calls;
+for my $candidate (@events)
+{
+  push @reader_calls, $candidate
+    if grep { $_ eq 'callee reader<int>::get' } @{$candidate->{fields}};
+}
+die "nondependent replay was lost or dependent replay was published\n"
+  if @reader_calls != 1;
+
 print "template witness candidate origins: PASS\n";

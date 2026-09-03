@@ -30,6 +30,26 @@ struct box
   }
 };
 
+template<class T>
+struct reader
+{
+  template<class U>
+  U get(U value) { return value; }
+};
+
+template<class T>
+int concrete_replay()
+{
+  reader<int> value;
+  return value.get<int>(4);
+}
+
+template<class T>
+int dependent_replay(T& value)
+{
+  return value.template get<int>(5);
+}
+
 int main()
 {
   pairish<int> pair(1, 2);
@@ -37,5 +57,7 @@ int main()
   box<long> source;
   source.value = 7;
   target = source;
-  return target.value == 7 ? 0 : 1;
+  reader<int> value;
+  return target.value == 7 && concrete_replay<void>() == 4 &&
+    dependent_replay(value) == 5 ? 0 : 1;
 }
