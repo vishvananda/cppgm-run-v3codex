@@ -59,6 +59,16 @@ the same source-file ordering and `-o` relaxations as the earlier source-to-LowI
 milestones. Other `--emit-*` modes, driver mode, and optimized LowIR output are
 not part of PA22.
 
+### Qualified template-name hiding
+
+Function and variable templates declared directly in a class participate in
+the ordinary member-name lookup namespace and hide same-named declarations
+inherited from a base class.  This lookup rule applies before overload ranking:
+a hidden base non-template must not be admitted merely because the derived
+declaration has no concrete binding until template deduction.  Naming a
+variable template without its required template arguments is invalid; lookup
+does not fall through to a hidden base data member.
+
 ### Output Format
 
 On success, `cppgm++` shall write LowIR text to `<outfile>` and exit

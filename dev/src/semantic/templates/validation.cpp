@@ -1909,6 +1909,26 @@ std::vector<BindingId> Analyzer::RetainedFunctionCallCandidates(
 		return FunctionCallCandidates(
 			scope, spelling, naming_class, callee, true);
 	}
+	// Several class-template specializations can publish the same replayed
+	// callee, each with its own naming class, and a template-only lookup
+	// records the last publisher.  A retained template candidate whose owner
+	// is unreachable from the recorded naming class belongs to another
+	// specialization, so rebuild that call from the active scope as well.
+	const CompactIndexSequence* retained_templates =
+		*naming_class == kNoEntity ? 0 :
+		retained_call_template_sets_.Find(callee);
+	for (std::size_t i = 0; retained_templates &&
+		i < retained_templates->Size(); ++i)
+	{
+		const FunctionTemplatePattern& pattern =
+			function_templates_[(*retained_templates)[i]];
+		const EntityId owner = program_->EntityForScope(pattern.owner);
+		if (owner == kNoEntity || program_->QueryBasePath(
+			*naming_class, owner, 0, 0, 0, 0)) continue;
+		*retained_lookup = false;
+		return FunctionCallCandidates(
+			scope, spelling, naming_class, callee, true);
+	}
 	return result;
 }
 

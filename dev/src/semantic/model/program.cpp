@@ -1859,6 +1859,14 @@ LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 		result.ordinary = entry->ordinary;
 		result.ordinary_declaration = entry->ordinary == kNoBinding ?
 			kNoBinding : bindings[entry->ordinary].canonical;
+		// Function and variable templates occupy the ordinary lookup namespace.
+		// A local template-only entry therefore hides ordinary declarations in
+		// base or enclosing scopes even though it has no concrete binding to
+		// return from this half of lookup.
+		if (entry->function_template)
+			result.BeginFunctionTemplateLookup();
+		if (entry->variable_template)
+			result.BeginVariableTemplateLookup();
 	}
 	if (kind == LOOKUP_FUNCTION_TEMPLATE &&
 		(entry->ordinary != kNoBinding || entry->type != kNoType ||
