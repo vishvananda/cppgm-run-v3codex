@@ -93,6 +93,86 @@ bool Analyzer::FunctionObjectDefinitionRequired(
 		 record.object_output_root);
 }
 
+bool Analyzer::EntityHasTemplateLifecycleContext(EntityId entity) const
+{
+	for (std::size_t depth = 0; entity != kNoEntity &&
+		depth < program_->entities.size(); ++depth)
+	{
+		const EntityRecord& record = program_->entities[entity];
+		if (record.template_argument_begin != kNoBinding) return true;
+		if (record.local_context != kNoBinding &&
+			GetFunction(record.local_context).template_specialization)
+			return true;
+		entity = record.enclosing_class;
+	}
+	return false;
+}
+
+TemplateFunctionLifecycleFact Analyzer::InspectTemplateFunctionLifecycle(
+	BindingId binding) const
+{
+	TemplateFunctionLifecycleFact result;
+	if (binding == kNoBinding || binding >= program_->bindings.size())
+		return result;
+	binding = program_->bindings[binding].canonical;
+	if (binding >= program_->bindings.size() ||
+		program_->bindings[binding].kind != BIND_FUNCTION) return result;
+	const BindingRecord& record = program_->bindings[binding];
+	const FunctionInfo& function = GetFunction(binding);
+	result.binding = binding;
+	result.member_owner = record.member_owner;
+	result.definition_state =
+		static_cast<std::uint8_t>(function.definition_state);
+	const auto note = [&result](bool present,
+		TemplateFunctionLifecycleProperty property) {
+		if (present) result.properties |= static_cast<std::uint16_t>(property);
+	};
+	note(function.template_specialization,
+		TEMPLATE_FUNCTION_DIRECT_SPECIALIZATION);
+	note(EntityHasTemplateLifecycleContext(record.member_owner),
+		TEMPLATE_FUNCTION_OWNER_CONTEXT);
+	note(EntityHasTemplateLifecycleContext(function.friend_of),
+		TEMPLATE_FUNCTION_FRIEND_CONTEXT);
+	const bool local_context = record.member_owner != kNoEntity &&
+		program_->entities[record.member_owner].local_context != kNoBinding &&
+		GetFunction(program_->entities[record.member_owner].local_context).
+			template_specialization;
+	note(local_context, TEMPLATE_FUNCTION_LOCAL_CONTEXT);
+	note(function.explicit_specialization,
+		TEMPLATE_FUNCTION_EXPLICIT_SPECIALIZATION);
+	const EntityId owner = record.member_owner;
+	const BindingId owner_declaration = owner == kNoEntity ? kNoBinding :
+		program_->entities[owner].declaration;
+	const bool owner_explicit_specialization = owner_declaration != kNoBinding &&
+		owner_declaration <
+			class_template_explicit_specialization_states_.size() &&
+		class_template_explicit_specialization_states_[owner_declaration] != 0;
+	note(owner_explicit_specialization,
+		TEMPLATE_FUNCTION_OWNER_EXPLICIT_SPECIALIZATION);
+	note(record.compiler_generated, TEMPLATE_FUNCTION_COMPILER_GENERATED);
+	note(function.inherited_constructor_source != kNoBinding,
+		TEMPLATE_FUNCTION_INHERITED_CONSTRUCTOR);
+	note(record.explicit_instantiation_suppressed,
+		TEMPLATE_FUNCTION_EXPLICIT_INSTANTIATION_SUPPRESSED);
+	note(FunctionObjectDefinitionRequired(binding),
+		TEMPLATE_FUNCTION_OBJECT_DEFINITION_REQUIRED);
+	note(record.inline_function, TEMPLATE_FUNCTION_INLINE);
+	note(record.emission_demanded, TEMPLATE_FUNCTION_EMISSION_DEMANDED);
+	note(record.object_output_root, TEMPLATE_FUNCTION_OBJECT_OUTPUT_ROOT);
+	note(function.defaulted_constructor || function.defaulted_destructor ||
+		function.defaulted_special_member, TEMPLATE_FUNCTION_DEFAULTED);
+	note(function.definition_in_class, TEMPLATE_FUNCTION_DEFINITION_IN_CLASS);
+	note(function.defined, TEMPLATE_FUNCTION_DEFINED);
+	if (binding < function_explicit_instantiation_states_.size())
+		result.explicit_instantiation_state =
+			function_explicit_instantiation_states_[binding];
+	if (owner_declaration <
+		class_template_explicit_instantiation_states_.size())
+		result.owner_explicit_instantiation_state =
+			class_template_explicit_instantiation_states_[owner_declaration];
+	return result;
+}
+
 void Analyzer::ReplayFunctionDemandEdges(BindingId binding)
 {
 	binding = program_->bindings[binding].canonical;

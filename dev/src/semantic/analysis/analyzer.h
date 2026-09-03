@@ -60,6 +60,47 @@ bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 	Program* program = 0, ScopeId left_scope = kNoScope,
 	ScopeId right_scope = kNoScope);
 
+enum TemplateFunctionLifecycleProperty
+{
+	TEMPLATE_FUNCTION_DIRECT_SPECIALIZATION = 1u << 0,
+	TEMPLATE_FUNCTION_OWNER_CONTEXT = 1u << 1,
+	TEMPLATE_FUNCTION_FRIEND_CONTEXT = 1u << 2,
+	TEMPLATE_FUNCTION_LOCAL_CONTEXT = 1u << 3,
+	TEMPLATE_FUNCTION_EXPLICIT_SPECIALIZATION = 1u << 4,
+	TEMPLATE_FUNCTION_OWNER_EXPLICIT_SPECIALIZATION = 1u << 5,
+	TEMPLATE_FUNCTION_COMPILER_GENERATED = 1u << 6,
+	TEMPLATE_FUNCTION_INHERITED_CONSTRUCTOR = 1u << 7,
+	TEMPLATE_FUNCTION_EXPLICIT_INSTANTIATION_SUPPRESSED = 1u << 8,
+	TEMPLATE_FUNCTION_OBJECT_DEFINITION_REQUIRED = 1u << 9,
+	TEMPLATE_FUNCTION_INLINE = 1u << 10,
+	TEMPLATE_FUNCTION_EMISSION_DEMANDED = 1u << 11,
+	TEMPLATE_FUNCTION_OBJECT_OUTPUT_ROOT = 1u << 12,
+	TEMPLATE_FUNCTION_DEFAULTED = 1u << 13,
+	TEMPLATE_FUNCTION_DEFINITION_IN_CLASS = 1u << 14,
+	TEMPLATE_FUNCTION_DEFINED = 1u << 15
+};
+
+struct TemplateFunctionLifecycleFact
+{
+	BindingId binding;
+	EntityId member_owner;
+	std::uint16_t properties;
+	std::uint8_t explicit_instantiation_state;
+	std::uint8_t owner_explicit_instantiation_state;
+	std::uint8_t definition_state;
+
+	TemplateFunctionLifecycleFact()
+		: binding(kNoBinding), member_owner(kNoEntity), properties(0),
+		  explicit_instantiation_state(0),
+		  owner_explicit_instantiation_state(0), definition_state(0) {}
+	bool Has(TemplateFunctionLifecycleProperty property) const
+	{
+		return (properties & static_cast<std::uint16_t>(property)) != 0;
+	}
+};
+static_assert(sizeof(TemplateFunctionLifecycleFact) == 16,
+	"template function lifecycle fact grew");
+
 struct GraphStorage
 {
 	InternedStringTable strings;
@@ -1040,6 +1081,9 @@ private:
 	void MarkFunctionObjectOutputRoot(BindingId binding);
 	void RecordFunctionDemand(BindingId binding, FunctionDemandReason reason);
 	bool FunctionObjectDefinitionRequired(BindingId binding) const;
+	bool EntityHasTemplateLifecycleContext(EntityId entity) const;
+	TemplateFunctionLifecycleFact InspectTemplateFunctionLifecycle(
+		BindingId binding) const;
 	void ReplayFunctionDemandEdges(BindingId binding);
 	void ReplayRequiredFunctionDemandEdges();
 	void CompleteTranslationUnitDemand();

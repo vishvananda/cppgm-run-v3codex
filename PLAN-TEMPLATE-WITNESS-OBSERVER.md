@@ -1228,6 +1228,17 @@ transition.  PA22 adds the candidate-origin control: two distinct declarations
 with the same displayed constructor name remain distinguishable, while two
 instantiated candidates from one declaration do not become duplicate drops.
 
+The first lifecycle foundation is a 16-byte typed function snapshot owned by
+semantic lifetime analysis.  It combines canonical binding and owner identity,
+direct/owner/friend template context, explicit-specialization and
+explicit-instantiation state, completion state, and final object-emission
+demand.  It adds no production-record field and the observer does not consume
+it yet.  A temporary debug probe confirmed that the remaining extern-class
+defaulted-assignment mismatch is represented as an owner explicit-instantiation
+declaration plus an inline defaulted completed function with no object-output
+root.  That is a final semantic distinction; the renderer no longer needs to
+reconstruct it from the order in which demand and suppression occurred.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1299,6 +1310,7 @@ instantiated candidates from one declaration do not become duplicate drops.
 | W5N-F source occurrence roles | Replaced the retained-call boolean set with an 8-byte observer-only node fact whose role mask distinguishes evaluated source, unevaluated declaration, deferred definition, and specialization replay; the validator and final call boundary publish roles during their existing walks | all 3,064 PA19--PA24 witness/LowIR artifact pairs byte-identical to the pre-foundation compiler; PA19/20 strict, PA22 ordinary, both relationship tests, frozen O0/O1/O3, and audits exact; four-block paired user -0.839%, wall -0.748%, RSS +0.066% | retain as output-inert machinery; preserve the legacy suppression decision until a following consumer can state its evaluated/replay rule entirely in typed roles |
 | W5N-F source dependency role | Added an occurrence-local dependent bit at the retained validator's existing syntax/type/value dependency decisions | nondependent `h.get<int>` records deferred+replay without dependent (12), while `v.template get<I>()` records deferred+replay+dependent (28); all 3,064 PA19--PA24 witness/LowIR pairs unchanged; PA19/20 strict, PA22 ordinary, property tests, frozen O0/O1/O3, and audits exact; paired user +0.123%, wall -0.107%, RSS +0.233% | retain output-inert; this typed distinction, not explicit syntax alone, is the gate for evaluating the missing retained member-template call |
 | W5N-O nondependent replay source | Consumed the occurrence role and dependency bit at the final call boundary: a retained specialization replay becomes a public source event only when the declaration-time occurrence was nondependent | exactly 1 PA22 witness changes and becomes exact (259 -> 260); every PA19/20/23/24 witness and all 1,532 LowIR artifacts remain identical; PA19/20 strict, PA22 ordinary 311/311, semantic relationship controls, frozen O0/O1/O3, and audits exact; four-block paired user -0.540%, wall -0.482%, RSS +0.389% | retain the typed consumer; the PA22 relationship test observes one concrete replay while its dependent counterpart remains deferred, without matching fixture text or private role values |
+| W5N-F function lifecycle snapshot | Added a 16-byte typed snapshot in semantic lifetime analysis for canonical function/owner identity, template-context roles, explicit-specialization and explicit-instantiation state, completion state, and final emission demand | all 3,064 PA19--PA24 witness/LowIR pairs byte-identical to `5f1c03bc`; PA19/20 strict, PA22 ordinary, relationship tests, frozen O0/O1/O3, and audits exact; four-block paired user -0.238%, wall -0.211%, RSS -0.209% | retain as output-inert machinery; a following consumer may use final owner/function state to distinguish validation, requirement, and instantiation, while the renderer must stop reading lifecycle storage directly |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria
