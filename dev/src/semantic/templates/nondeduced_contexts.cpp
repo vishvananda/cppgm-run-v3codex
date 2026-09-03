@@ -119,6 +119,101 @@ LookupResult Analyzer::ResolveClassDirectBase(
 	return result;
 }
 
+bool Analyzer::RequireCompleteClassDirectBase(
+	const LookupResult& base_lookup, EntityId* base)
+{
+	*base = EntityOf(base_lookup.type);
+	if (*base == kNoEntity || !program_->entities[*base].complete ||
+		IsInitializerListType(base_lookup.type))
+	{
+		EnsureClassDefinition(base_lookup.type);
+		*base = EntityOf(base_lookup.type);
+	}
+	if (*base == kNoEntity || !program_->entities[*base].complete ||
+		program_->entities[*base].flavor == NAMED_UNION ||
+		program_->entities[*base].final_class)
+	{
+		if (*base != kNoEntity &&
+			(FunctionTemplateTypeIsDependent(base_lookup.type) ||
+			 (program_->entities[*base].flavor == NAMED_TYPENAME_PARAMETER &&
+			  program_->entities[*base].deferred_template_completion)))
+			return false;
+		ThrowSemanticError(
+			"direct base must name a complete non-union class");
+	}
+	if (base_lookup.type_declaration != kNoBinding &&
+		!CanAccessMember(base_lookup.type_declaration,
+			base_lookup.naming_class))
+		ThrowSemanticError("inaccessible direct base type");
+	return true;
+}
+
+void Analyzer::ValidateRetainedClassDirectBase(NodeId name, ScopeId scope)
+{
+	const LookupResult base_lookup = ResolveClassDirectBase(name, scope);
+	if (base_lookup.type == kNoType)
+		ThrowSemanticError("direct base type was not found");
+	EntityId base = kNoEntity;
+	RequireCompleteClassDirectBase(base_lookup, &base);
+}
+
+EntityId Analyzer::RetainedClassTemplateAccessPrincipal(
+	NodeId target, ScopeId lexical_scope)
+{
+	if (!arena_->IsTag(target, ::cppgm::syntax::STAG_CLASS_SPECIFIER) &&
+		!arena_->IsTag(
+			target, ::cppgm::syntax::STAG_CLASS_FORWARD_DECLARATION))
+		return current_class_template_access_principal_;
+	NamePath path;
+	const NodeId structure = FindChild(
+		target, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
+	if (structure != kNoNode) path = StructuredNamePath(structure);
+	else if (!arena_->Payload(target).empty())
+		path.Push(program_->names.Intern(arena_->Payload(target)));
+	const std::size_t pattern = path.Empty() ? class_templates_.size() :
+		FindClassTemplate(lexical_scope, path);
+	return pattern < class_templates_.size() ?
+		class_templates_[pattern].marker_entity :
+		current_class_template_access_principal_;
+}
+
+bool Analyzer::ClassTemplateSpecializationArgumentsComplete(
+	EntityId entity) const
+{
+	if (entity >= class_template_pattern_by_entity_.size() ||
+		class_template_pattern_by_entity_[entity] == kNoDumpEdge ||
+		program_->entities[entity].template_argument_begin == kNoBinding)
+		return true;
+	const std::size_t index = class_template_pattern_by_entity_[entity];
+	if (index >= class_templates_.size())
+		ThrowInternalCompilerError("invalid class specialization owner index");
+	const EntityRecord& specialization = program_->entities[entity];
+	const std::size_t first = specialization.template_argument_begin;
+	const ClassTemplatePattern& pattern = class_templates_[index];
+	const std::size_t count = specialization.template_argument_count;
+	if ((!HasTrailingTemplateParameterPack(pattern.parameters) &&
+		 count != pattern.parameters.size()) ||
+		(HasTrailingTemplateParameterPack(pattern.parameters) &&
+		 count < FixedTemplateParameterCount(pattern.parameters)) ||
+		first > program_->template_arguments.size() ||
+		count > program_->template_arguments.size() - first)
+		ThrowInternalCompilerError("class specialization arguments are truncated");
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		if (first + i < program_->canonical_template_arguments.size() &&
+			program_->canonical_template_arguments[first + i].kind !=
+				TEMPLATE_ARGUMENT_TYPE)
+			continue;
+		const TypeId argument = program_->types.RemoveTopCv(
+			program_->template_arguments[first + i]);
+		const TypeRecord& record = program_->types.Get(argument);
+		if (record.kind == TYPE_NAMED &&
+			!program_->entities[record.entity].complete)
+			return false;
+	}
+	return true;
+}
+
 bool Analyzer::HasDependentQualifiedType(NodeId node,
 	const std::unordered_set<NameId>& names, ScopeId scope,
 	std::size_t alias_depth)

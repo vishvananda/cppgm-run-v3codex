@@ -1,0 +1,101 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $direct : obj<1x1>
+  slot $dependent : obj<1x1>
+  slot $comparison : obj<1x1>
+  slot $privileged : obj<1x1>
+  slot $cond__1 : i32
+  slot $land__2 : i64
+  slot $land__3 : i64
+
+  block ^entry:
+    %t1 = addr $direct
+    %t2 = addr $dependent
+    %t3 = addr $comparison
+    %t4 = addr $privileged
+    %t5 = addr $privileged
+    %t6 = call i32 @fixed_base_true___read()
+    %t7 = cmp eq i32 %t6, 3
+    branch %t7, ^land_rhs_7, ^land_short_8
+
+  block ^land_rhs_7:
+    %t8 = call i32 @concrete__dependent_read()
+    %t9 = cmp eq i32 %t8, 11
+    %t10 = cmp ne i64 %t9, 0
+    store i64 %t10, $land__3
+    jump ^land_end_9
+
+  block ^land_short_8:
+    store i64 0, $land__3
+    jump ^land_end_9
+
+  block ^land_end_9:
+    %t11 = load i64 $land__3
+    branch %t11, ^land_rhs_4, ^land_short_5
+
+  block ^land_rhs_4:
+    %t12 = call i32 @relation_base_true___compare()
+    %t13 = cmp eq i32 %t12, 13
+    %t14 = cmp ne i64 %t13, 0
+    store i64 %t14, $land__2
+    jump ^land_end_6
+
+  block ^land_short_5:
+    store i64 0, $land__2
+    jump ^land_end_6
+
+  block ^land_end_6:
+    %t15 = load i64 $land__2
+    branch %t15, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t16 = load i32 $cond__1
+    return i32 %t16
+}
+function @fixed_base_true___read() -> i32 [binding=weak, object=_ZN10fixed_baseILb1EE4readEv, inline_hint=yes] {
+  slot $cond__1 : i32
+
+  block ^entry:
+    branch 1, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 3, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 7, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t1 = load i32 $cond__1
+    return i32 %t1
+}
+function @concrete__dependent_read() -> i32 [binding=weak, object=_ZN8concrete14dependent_readEv, inline_hint=yes] {
+  block ^entry:
+    return i32 11
+}
+function @relation_base_true___compare() -> i32 [binding=weak, object=_ZN13relation_baseILb1EE7compareEv, inline_hint=yes] {
+  slot $cond__1 : i32
+
+  block ^entry:
+    branch 1, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 13, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 17, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t1 = load i32 $cond__1
+    return i32 %t1
+}

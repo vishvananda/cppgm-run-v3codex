@@ -366,23 +366,8 @@ bool Analyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 				return false;
 			if (base_lookup.type == kNoType)
 				ThrowSemanticError("direct base type was not found");
-			EnsureClassDefinition(base_lookup.type);
-			const EntityId base = EntityOf(base_lookup.type);
-			if (base == kNoEntity || !program_->entities[base].complete ||
-				program_->entities[base].flavor == NAMED_UNION || program_->entities[base].final_class)
-			{
-				if (base != kNoEntity &&
-					(FunctionTemplateTypeIsDependent(base_lookup.type) ||
-					 (program_->entities[base].flavor == NAMED_TYPENAME_PARAMETER &&
-					  program_->entities[base].deferred_template_completion)))
-					return false;
-				ThrowSemanticError(
-					"direct base must name a complete non-union class");
-			}
-			if (base_lookup.type_declaration != kNoBinding &&
-				!CanAccessMember(base_lookup.type_declaration,
-					base_lookup.naming_class))
-				ThrowSemanticError("inaccessible direct base type");
+			EntityId base = kNoEntity;
+			if (!RequireCompleteClassDirectBase(base_lookup, &base)) return false;
 			direct_bases->push_back(DirectBaseEdge(
 				base, base_access, virtual_base));
 		}

@@ -961,6 +961,11 @@ void Analyzer::RegisterClassTemplateFriend(
 	if (std::find(pattern.friend_owners.begin(), pattern.friend_owners.end(),
 		owner) == pattern.friend_owners.end())
 		pattern.friend_owners.push_back(owner);
+	const std::uint64_t marker_key =
+		(static_cast<std::uint64_t>(owner) << 32) | pattern.marker_entity;
+	CompactIndexSequence& marker_grants =
+		friend_class_grants_.Ensure(marker_key);
+	if (marker_grants.Size() == 0) marker_grants.Push(0);
 	for (std::size_t i = 0; i < pattern.specialization_bindings.size(); ++i)
 	{
 		const EntityId specialization = EntityOf(
@@ -1635,10 +1640,15 @@ void Analyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		TemplateArgumentsNeedInternalEmission(*program_, arguments) ?
 			program_->bindings[binding].name :
 			program_->names.Intern(specialization_name);
-	const TypeId completed = AnalyzeClass(declaration, template_scope,
-		std::string(), false, specialization_name, pattern.owner,
-		pattern.name, true, program_->bindings[binding].name,
-		specialization_emission_name);
+	TypeId completed = kNoType;
+	{
+		ScopedEntitySlot access_principal(
+			&current_class_template_access_principal_, pattern.marker_entity);
+		completed = AnalyzeClass(declaration, template_scope,
+			std::string(), false, specialization_name, pattern.owner,
+			pattern.name, true, program_->bindings[binding].name,
+			specialization_emission_name);
+	}
 	const EntityId entity = EntityOf(completed);
 	MarkClassTemplatePresentation(entity);
 	if (entity != kNoEntity)
@@ -2585,10 +2595,15 @@ BindingId Analyzer::InstantiateClassTemplate(std::size_t index,
 	const NameId specialization_lookup_name = program_->names.Intern(
 		ClassTemplateSpecializationScopeName(
 			index, pattern.specialization_bindings.size(), stats_));
-	const TypeId shell = AnalyzeClass(selected_declaration, template_scope,
-		std::string(), false, specialization_name, pattern.owner,
-		pattern.name, false,
-		specialization_lookup_name);
+	TypeId shell = kNoType;
+	{
+		ScopedEntitySlot access_principal(
+			&current_class_template_access_principal_, pattern.marker_entity);
+		shell = AnalyzeClass(selected_declaration, template_scope,
+			std::string(), false, specialization_name, pattern.owner,
+			pattern.name, false,
+			specialization_lookup_name);
+	}
 	const EntityId entity = EntityOf(shell);
 	MarkClassTemplatePresentation(entity);
 	if (entity == kNoEntity || program_->entities[entity].declaration == kNoBinding)

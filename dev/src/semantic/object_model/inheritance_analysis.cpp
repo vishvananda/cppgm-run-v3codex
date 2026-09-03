@@ -33,6 +33,14 @@ bool Analyzer::HasClassPrivilege(EntityId owner) const
 		++access_grant_probes_;
 		if (friend_class_grants_.Find(key)) return true;
 	}
+	if (current_class_template_access_principal_ != kNoEntity)
+	{
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(owner) << 32) |
+			current_class_template_access_principal_;
+		++access_grant_probes_;
+		if (friend_class_grants_.Find(key)) return true;
+	}
 	for (BindingId function = current_function_context_;
 		function != kNoBinding;)
 	{
