@@ -91,7 +91,8 @@ private:
 	{
 		VARIABLE_OCCURRENCE_CONSTANT_BINDING = 1,
 		VARIABLE_OCCURRENCE_VARIABLE_TEMPLATE = 2,
-		VARIABLE_OCCURRENCE_REFERENCE_TYPE = 4
+		VARIABLE_OCCURRENCE_REFERENCE_TYPE = 4,
+		VARIABLE_OCCURRENCE_DEPENDENT_INITIALIZER = 8
 	};
 	struct VariableOccurrenceFact
 	{
@@ -441,6 +442,8 @@ private:
 		NameId source_name = 0);
 	void NoteDependentClassUse(syntax::NodeId syntax, std::uint32_t pattern);
 	void NoteDependentSourceUse(syntax::NodeId syntax);
+	void NoteDependentVariableInitializer(syntax::NodeId syntax);
+	bool IsDependentVariableInitializer(syntax::NodeId syntax) const;
 	void NoteSourceOccurrence(syntax::NodeId syntax, SourceOccurrenceRole role);
 	bool HasSourceOccurrenceRole(syntax::NodeId syntax,
 		std::uint8_t roles) const;
@@ -531,6 +534,7 @@ private:
 	std::vector<std::pair<syntax::NodeId, std::uint32_t> >
 		dependent_alias_uses_;
 	std::vector<syntax::NodeId> dependent_source_uses_;
+	std::vector<syntax::NodeId> dependent_variable_initializers_;
 	std::vector<SourceOccurrenceFact> source_occurrences_;
 	std::vector<VariableOccurrenceFact> variable_occurrences_;
 	std::vector<syntax::NodeId> resolved_source_uses_;

@@ -73,6 +73,21 @@ Behaviour is undefined unless the command-line arguments match that shape, with
 the same source-file ordering and `-o` relaxations as PA18. Other `--emit-*`
 modes, driver mode, and optimized LowIR output are not part of PA19.
 
+### Nondependent template bases
+
+A base class that does not depend on a template parameter is resolved and
+validated when the class template is defined, even if no specialization of the
+derived template is ever used.  It must already name a complete, non-union,
+non-final class that is accessible from the class-template definition.  A
+friend class-template declaration grants that access before any concrete
+specialization exists.  Selecting a class-template specialization as a fixed
+base also instantiates and validates that specialization's definition; an
+error in its body cannot be hidden merely because no derived specialization is
+used.  A genuinely dependent base remains deferred until a concrete
+specialization is formed.  When template witness output is requested, a
+nondependent class-template specialization written as a base is an ordinary
+source use; observing it must not change acceptance or LowIR.
+
 ### Optional Template Witness
 
 PA19 also defines an optional semantic diagnostic for inspecting template

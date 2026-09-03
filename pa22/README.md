@@ -83,7 +83,11 @@ For template-owned static data, an ordinary evaluated use in a member body
 whose definition is finally demanded reports a variable-instantiation
 transition.  Constant-evaluated, unevaluated, deferred, and replayed uses remain
 distinct inputs to the final lifecycle decision; source placement alone does
-not decide whether a transition occurred.
+not decide whether a transition occurred.  A constant-evaluated static member
+whose initializer depends on template parameters is instantiated when its
+specialized value is required; a nondependent initializer that was already
+formed at the template definition does not acquire a specialization lifecycle
+transition merely because that value is reused.
 
 An ordinary nonconstant static reference named only in an unevaluated operand
 does not produce a variable-instantiation transition.  This does not suppress a

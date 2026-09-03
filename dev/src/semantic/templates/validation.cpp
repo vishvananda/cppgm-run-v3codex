@@ -152,6 +152,8 @@ private:
 	bool IsQualifiedMemberDefinition(NodeId node) const;
 	bool IsTypedef(NodeId specifiers) const;
 	bool HasBaseClass(NodeId node) const;
+	bool BaseSyntaxIsDependent(
+		NodeId node, std::size_t scope, NameId injected);
 	bool SyntaxUsesTemplateParameter(NodeId node) const;
 	bool IsCurrentInstantiationQualifier(
 		NodeId component, std::size_t scope) const;
@@ -422,6 +424,29 @@ bool RetainedTemplateValidator::HasBaseClass(NodeId node) const
 {
 	const NodeId clause = analyzer_.FindChild(node, ::cppgm::syntax::STAG_BASE_CLAUSE);
 	return clause != kNoNode;
+}
+
+bool RetainedTemplateValidator::BaseSyntaxIsDependent(
+	NodeId node, std::size_t scope, NameId injected)
+{
+	if (!analyzer_.arena_->HasTokenRange(node)) return false;
+	const std::size_t first = analyzer_.arena_->TokenFirst(node);
+	const std::size_t last = analyzer_.arena_->TokenLast(node);
+	for (std::size_t token = first; token < last; ++token)
+	{
+		if (analyzer_.arena_->TokenKind(token) != kIdentifierToken) continue;
+		const std::uint16_t previous = token == first ?
+			kEofToken : analyzer_.arena_->TokenKind(token - 1);
+		const std::uint16_t qualifier =
+			previous == KW_TEMPLATE && token > first + 1 ?
+				analyzer_.arena_->TokenKind(token - 2) : previous;
+		if (qualifier == OP_COLON2 || qualifier == OP_DOT ||
+			qualifier == OP_ARROW) continue;
+		const NameId name = analyzer_.arena_->TokenSpellingId(token);
+		if (parameter_names_.count(name) != 0 || name == injected ||
+			(LookupLocal(scope, name) & RETAINED_TYPE_NAME) != 0) return true;
+	}
+	return false;
 }
 
 bool RetainedTemplateValidator::SyntaxUsesTemplateParameter(NodeId node) const
@@ -1265,25 +1290,6 @@ void RetainedTemplateValidator::PredeclareClassMembers(NodeId node,
 
 void RetainedTemplateValidator::VisitClass(NodeId node, std::size_t scope)
 {
-	bool dependent_base = false;
-	const NodeId base_clause = analyzer_.FindChild(node, ::cppgm::syntax::STAG_BASE_CLAUSE);
-	if (base_clause != kNoNode)
-		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(base_clause);
-			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
-		{
-			const NodeId base = analyzer_.arena_->EdgeChild(edge);
-			if (!analyzer_.arena_->IsTag(base, ::cppgm::syntax::STAG_BASE_SPECIFIER)) continue;
-			const NodeId name = analyzer_.FindChild(base, ::cppgm::syntax::STAG_BASE_NAME);
-			if (name != kNoNode && SyntaxUsesTemplateParameter(name))
-				dependent_base = true;
-		}
-	const std::size_t class_scope = AddChildScope(
-		scope, SCOPE_CLASS, HasBaseClass(node));
-	if (HasBaseClass(node) && !dependent_base)
-		scopes_[class_scope].unmodeled_fixed_base = true;
-	PredeclareClassMembers(node, class_scope);
-	// Retained class scopes have no concrete EntityId, but still own the
-	// injected class name as a dependent type.
 	NameId injected = 0;
 	const NodeId injected_structure = analyzer_.FindChild(
 		node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME);
@@ -1296,6 +1302,35 @@ void RetainedTemplateValidator::VisitClass(NodeId node, std::size_t scope)
 	else if (!analyzer_.arena_->Payload(node).empty())
 		injected = analyzer_.program_->names.Intern(
 			analyzer_.arena_->Payload(node));
+	bool dependent_base = false;
+	const NodeId base_clause = analyzer_.FindChild(
+		node, ::cppgm::syntax::STAG_BASE_CLAUSE);
+	if (base_clause != kNoNode)
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(base_clause);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId base = analyzer_.arena_->EdgeChild(edge);
+			if (!analyzer_.arena_->IsTag(
+					base, ::cppgm::syntax::STAG_BASE_SPECIFIER)) continue;
+			const NodeId name = analyzer_.FindChild(
+				base, ::cppgm::syntax::STAG_BASE_NAME);
+			if (name == kNoNode)
+				ThrowSemanticError("base specifier has no base name");
+			if (BaseSyntaxIsDependent(name, scope, injected))
+			{
+				dependent_base = true;
+				continue;
+			}
+			analyzer_.ValidateRetainedClassDirectBase(
+				name, scopes_[scope].semantic_scope);
+		}
+	const std::size_t class_scope = AddChildScope(
+		scope, SCOPE_CLASS, HasBaseClass(node));
+	if (HasBaseClass(node) && !dependent_base)
+		scopes_[class_scope].unmodeled_fixed_base = true;
+	PredeclareClassMembers(node, class_scope);
+	// Retained class scopes have no concrete EntityId, but still own the
+	// injected class name as a dependent type.
 	if (injected != 0)
 	{
 		scopes_[class_scope].current_class.name = injected;
@@ -1461,13 +1496,20 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 				item, ::cppgm::syntax::STAG_DECLARATOR);
 			if (declarator == kNoNode ||
 				FindParameterClause(declarator) != kNoNode) continue;
-			if (SyntaxUsesTemplateParameter(specifiers) ||
+			const bool dependent_initializer =
+				SyntaxUsesTemplateParameter(specifiers) ||
 				SyntaxUsesDependentType(specifiers, scope) ||
 				SyntaxUsesTemplateParameter(item) ||
 				SyntaxUsesDependentType(item, scope) ||
-				SyntaxUsesDependentValue(item, scope))
+				SyntaxUsesDependentValue(item, scope);
+			if (dependent_initializer)
+			{
 				scopes_[scope].dependent_values.insert(
 					analyzer_.DeclaratorName(declarator));
+				analyzer_.template_witness_->NoteDependentVariableInitializer(
+					analyzer_.FindChild(
+						item, ::cppgm::syntax::STAG_INITIALIZER));
+			}
 		}
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
@@ -2417,6 +2459,9 @@ void RetainedTemplateValidator::ValidateSpecialMemberExceptionSpecification()
 
 void RetainedTemplateValidator::Run()
 {
+	const EntityId template_access_principal =
+		analyzer_.RetainedClassTemplateAccessPrincipal(
+			target_, lexical_scope_);
 	EntityId class_context = analyzer_.current_class_context_;
 	for (ScopeId owner = lexical_scope_; owner != kNoScope;
 		owner = analyzer_.program_->ParentScope(owner))
@@ -2427,6 +2472,9 @@ void RetainedTemplateValidator::Run()
 		}
 	ScopedRetainedClassContext retained_class_context(
 		&analyzer_.current_class_context_, class_context);
+	ScopedRetainedClassContext retained_template_access_principal(
+		&analyzer_.current_class_template_access_principal_,
+		template_access_principal);
 	const bool definition =
 		(analyzer_.arena_->Flags(target_) & SYNTAX_FLAG_DEFINITION) != 0 ||
 		analyzer_.arena_->IsTag(target_, ::cppgm::syntax::STAG_FUNCTION_DEFINITION) ||
@@ -2937,43 +2985,6 @@ bool Analyzer::RetainedCallAllowsArgumentDependentLookup(
 	return callee < retained_call_lookup_states_.size() &&
 		(retained_call_lookup_states_[callee] &
 			RETAINED_CALL_ADL_ELIGIBLE) != 0;
-}
-
-bool Analyzer::ClassTemplateSpecializationArgumentsComplete(
-	EntityId entity) const
-{
-	if (entity >= class_template_pattern_by_entity_.size() ||
-		class_template_pattern_by_entity_[entity] == kNoDumpEdge ||
-		program_->entities[entity].template_argument_begin == kNoBinding)
-		return true;
-	const std::size_t index = class_template_pattern_by_entity_[entity];
-	if (index >= class_templates_.size())
-		ThrowInternalCompilerError("invalid class specialization owner index");
-	const EntityRecord& specialization = program_->entities[entity];
-	const std::size_t first = specialization.template_argument_begin;
-	const ClassTemplatePattern& pattern = class_templates_[index];
-	const std::size_t count = specialization.template_argument_count;
-	if ((!HasTrailingTemplateParameterPack(pattern.parameters) &&
-		 count != pattern.parameters.size()) ||
-		(HasTrailingTemplateParameterPack(pattern.parameters) &&
-		 count < FixedTemplateParameterCount(pattern.parameters)) ||
-		first > program_->template_arguments.size() ||
-		count > program_->template_arguments.size() - first)
-		ThrowInternalCompilerError("class specialization arguments are truncated");
-	for (std::size_t i = 0; i < count; ++i)
-	{
-		if (first + i < program_->canonical_template_arguments.size() &&
-			program_->canonical_template_arguments[first + i].kind !=
-				TEMPLATE_ARGUMENT_TYPE)
-			continue;
-		const TypeId argument = program_->types.RemoveTopCv(
-			program_->template_arguments[first + i]);
-		const TypeRecord& record = program_->types.Get(argument);
-		if (record.kind == TYPE_NAMED &&
-			!program_->entities[record.entity].complete)
-			return false;
-	}
-	return true;
 }
 
 }

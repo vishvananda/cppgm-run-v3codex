@@ -366,23 +366,8 @@ bool Analyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 				return false;
 			if (base_lookup.type == kNoType)
 				ThrowSemanticError("direct base type was not found");
-			EnsureClassDefinition(base_lookup.type);
-			const EntityId base = EntityOf(base_lookup.type);
-			if (base == kNoEntity || !program_->entities[base].complete ||
-				program_->entities[base].flavor == NAMED_UNION || program_->entities[base].final_class)
-			{
-				if (base != kNoEntity &&
-					(FunctionTemplateTypeIsDependent(base_lookup.type) ||
-					 (program_->entities[base].flavor == NAMED_TYPENAME_PARAMETER &&
-					  program_->entities[base].deferred_template_completion)))
-					return false;
-				ThrowSemanticError(
-					"direct base must name a complete non-union class");
-			}
-			if (base_lookup.type_declaration != kNoBinding &&
-				!CanAccessMember(base_lookup.type_declaration,
-					base_lookup.naming_class))
-				ThrowSemanticError("inaccessible direct base type");
+			EntityId base = kNoEntity;
+			if (!RequireCompleteClassDirectBase(base_lookup, &base)) return false;
 			direct_bases->push_back(DirectBaseEdge(
 				base, base_access, virtual_base));
 		}
@@ -1146,9 +1131,10 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				RequestedAlignment(node, scope);
 			const bool non_static_data_member =
 				spec.storage_class == STORAGE_CLASS_NONE;
+			const NodeId source_initializer =
+				FindChild(item, ::cppgm::syntax::STAG_INITIALIZER);
 			const bool has_default_member_initializer =
-				non_static_data_member &&
-				FindChild(item, ::cppgm::syntax::STAG_INITIALIZER) != kNoNode;
+				non_static_data_member && source_initializer != kNoNode;
 			{
 				BindingRecord& binding = program_->bindings[member];
 				binding.storage_class = spec.storage_class;
@@ -1164,8 +1150,7 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				binding.has_default_member_initializer =
 					has_default_member_initializer;
 			}
-			if (!non_static_data_member &&
-				FindChild(item, ::cppgm::syntax::STAG_INITIALIZER) != kNoNode)
+			if (!non_static_data_member && source_initializer != kNoNode)
 			{
 				if (!spec.is_constexpr &&
 					!(IsConst(member_type) && IsIntegral(member_type, true)))
@@ -1173,7 +1158,7 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 						strings_.Get(parsed.name));
 				const ExpressionInfo value = spec.placeholder_auto ? placeholder_initializer :
 					AnalyzeInClassStaticInitializer(
-						FindChild(item, ::cppgm::syntax::STAG_INITIALIZER), scope, member_type);
+						source_initializer, scope, member_type);
 				if (!HasConstantInitializerFact(value))
 					ThrowSemanticError(
 						"nonconstant in-class static data member initializer");
@@ -1192,7 +1177,7 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				}
 				PublishConstantVariableInitializer(member, member_type, spec, value);
 				PublishInClassStaticDefinitionPolicy(member, member_type, spec,
-					FindChild(item, ::cppgm::syntax::STAG_INITIALIZER));
+					source_initializer);
 			}
 			else if (!non_static_data_member && spec.is_constexpr)
 				ThrowSemanticError(
@@ -1200,9 +1185,8 @@ void Analyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			if (member_initializer_by_binding_.size() <= member)
 				member_initializer_by_binding_.resize(
 					static_cast<std::size_t>(member) + 1, kNoNode);
-			if (has_default_member_initializer)
-				member_initializer_by_binding_[member] =
-					FindChild(item, ::cppgm::syntax::STAG_INITIALIZER);
+			if (source_initializer != kNoNode)
+				member_initializer_by_binding_[member] = source_initializer;
 			const EntityId entity = EntityOf(owner_type);
 			if (non_static_data_member)
 				RegisterClassDataMember(entity, member, member_type);

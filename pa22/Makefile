@@ -76,7 +76,9 @@ test-strict: $(TEST_DEPS)
 	@perl ../scripts/check_template_witness_lifecycle.pl \
 		$(CPPGM_TEST_APP) tests/properties/320-template-witness-lifecycle.cpp
 	@perl ../scripts/check_template_witness_variable_occurrences.pl \
-		$(CPPGM_TEST_APP) tests/properties/330-template-witness-variable-occurrences.cpp
+		$(CPPGM_TEST_APP) \
+		tests/properties/330-template-witness-variable-occurrences.cpp \
+		tests/properties/331-invalid-dependent-static-initializer.cpp
 	@perl ../scripts/check_template_witness_pack_dependency.pl \
 		$(CPPGM_TEST_APP) tests/properties/340-template-witness-pack-dependency.cpp
 	@perl ../scripts/check_dependent_typename.pl $(CPPGM_TEST_APP) \
@@ -111,7 +113,9 @@ test-strict: $(TEST_DEPS)
 	@perl ../scripts/check_template_witness_lifecycle.pl \
 		$(CPPGM_TEST_APP) tests/properties/320-template-witness-lifecycle.cpp
 	@perl ../scripts/check_template_witness_variable_occurrences.pl \
-		$(CPPGM_TEST_APP) tests/properties/330-template-witness-variable-occurrences.cpp
+		$(CPPGM_TEST_APP) \
+		tests/properties/330-template-witness-variable-occurrences.cpp \
+		tests/properties/331-invalid-dependent-static-initializer.cpp
 	@perl ../scripts/check_template_witness_pack_dependency.pl \
 		$(CPPGM_TEST_APP) tests/properties/340-template-witness-pack-dependency.cpp
 	@perl ../scripts/check_dependent_typename.pl $(CPPGM_TEST_APP) \

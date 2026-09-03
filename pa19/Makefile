@@ -75,6 +75,19 @@ test-strict: $(TEST_DEPS)
 	@../scripts/compare_witness_results.pl ref my tests
 	@perl ../scripts/check_template_witness_contract.pl $(CPPGM_TEST_APP) \
 		tests/properties/310-template-witness-contract.cpp
+	@perl ../scripts/check_nondependent_template_base.pl $(CPPGM_TEST_APP) \
+		tests/properties/320-nondependent-template-base.cpp \
+		tests/properties/321-incomplete-nondependent-template-base.cpp \
+		tests/properties/322-inaccessible-nondependent-template-base.cpp \
+		tests/properties/323-qualified-template-parameter-name-collision.cpp \
+		tests/properties/324-final-nondependent-template-base.cpp \
+		tests/properties/325-union-nondependent-template-base.cpp \
+		tests/properties/326-member-template-parameter-name-collision.cpp \
+		tests/properties/327-final-class-template-base.cpp \
+		tests/properties/328-union-class-template-base.cpp \
+		tests/properties/329-forward-class-template-base.cpp \
+		tests/properties/330-forward-partial-template-base.cpp \
+		tests/properties/331-invalid-nondependent-template-base-body.cpp
 	@test ! -f .test_failed
 else
 test: $(TEST_DEPS)
@@ -91,6 +104,19 @@ test-strict: $(TEST_DEPS)
 	@../scripts/compare_witness_results.pl ref my tests
 	@perl ../scripts/check_template_witness_contract.pl $(CPPGM_TEST_APP) \
 		tests/properties/310-template-witness-contract.cpp
+	@perl ../scripts/check_nondependent_template_base.pl $(CPPGM_TEST_APP) \
+		tests/properties/320-nondependent-template-base.cpp \
+		tests/properties/321-incomplete-nondependent-template-base.cpp \
+		tests/properties/322-inaccessible-nondependent-template-base.cpp \
+		tests/properties/323-qualified-template-parameter-name-collision.cpp \
+		tests/properties/324-final-nondependent-template-base.cpp \
+		tests/properties/325-union-nondependent-template-base.cpp \
+		tests/properties/326-member-template-parameter-name-collision.cpp \
+		tests/properties/327-final-class-template-base.cpp \
+		tests/properties/328-union-class-template-base.cpp \
+		tests/properties/329-forward-class-template-base.cpp \
+		tests/properties/330-forward-partial-template-base.cpp \
+		tests/properties/331-invalid-nondependent-template-base-body.cpp
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my $(COURSE_TEST_ROOT)
 	@scripts/compare_results.pl ref my $(COURSE_TEST_ROOT)
 	@test ! -f .test_failed

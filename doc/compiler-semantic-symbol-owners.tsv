@@ -804,14 +804,18 @@ dev/src/semantic/templates/integration.cpp	ConstructorSubobjectsAreEmpty	1	dev/s
 dev/src/semantic/templates/integration.cpp	MatchingInjectedClassTemplateSpecialization	1	dev/src/semantic/templates/integration.cpp	keep
 dev/src/semantic/templates/integration.cpp	MergeFunctionRedeclarationParameters	1	dev/src/semantic/templates/integration.cpp	keep
 dev/src/semantic/templates/integration.cpp	ResolveStructuredDeclaratorOwner	1	dev/src/semantic/templates/integration.cpp	keep
+dev/src/semantic/templates/nondeduced_contexts.cpp	ClassTemplateSpecializationArgumentsComplete	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/nondeduced_contexts.cpp	FindFunctionTemplateResultLookup	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/nondeduced_contexts.cpp	FunctionTemplateNondeducedTypeShape	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/nondeduced_contexts.cpp	FunctionTemplateResultUsesDependentParameter	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/nondeduced_contexts.cpp	HasDependentQualifiedType	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/nondeduced_contexts.cpp	IsDirectTemplateParameterExpression	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
+dev/src/semantic/templates/nondeduced_contexts.cpp	RequireCompleteClassDirectBase	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/nondeduced_contexts.cpp	ResolveClassDirectBase	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
+dev/src/semantic/templates/nondeduced_contexts.cpp	RetainedClassTemplateAccessPrincipal	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/nondeduced_contexts.cpp	SyntaxUsesAnyTemplateParameter	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/nondeduced_contexts.cpp	SyntaxUsesUnqualifiedValueName	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
+dev/src/semantic/templates/nondeduced_contexts.cpp	ValidateRetainedClassDirectBase	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/nondeduced_contexts.cpp	ValidateDeferredFunctionTemplateResult	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/nondeduced_contexts.cpp	ValidateFunctionTemplatePatternResults	1	dev/src/semantic/templates/nondeduced_contexts.cpp	keep
 dev/src/semantic/templates/packs.cpp	AnalyzeFoldExpression	1	dev/src/semantic/templates/packs.cpp	keep
@@ -849,7 +853,6 @@ dev/src/semantic/templates/preemption.cpp	RegisterClassStaticDataMember	1	dev/sr
 dev/src/semantic/templates/preemption.cpp	SetClassExplicitInstantiationSuppression	1	dev/src/semantic/templates/preemption.cpp	keep
 dev/src/semantic/templates/result_identity.cpp	EquivalentExpandedFunctionTemplateResults	1	dev/src/semantic/templates/result_identity.cpp	keep
 dev/src/semantic/templates/result_identity.cpp	InternExpandedFunctionTemplateResult	1	dev/src/semantic/templates/result_identity.cpp	keep
-dev/src/semantic/templates/validation.cpp	ClassTemplateSpecializationArgumentsComplete	1	dev/src/semantic/templates/validation.cpp	keep
 dev/src/semantic/templates/validation.cpp	CompleteFunctionCallTemplateCandidates	1	dev/src/semantic/templates/validation.cpp	keep
 dev/src/semantic/templates/validation.cpp	CopyRetainedCallLookup	1	dev/src/semantic/templates/validation.cpp	keep
 dev/src/semantic/templates/validation.cpp	PublishRetainedCallLookup	1	dev/src/semantic/templates/validation.cpp	keep

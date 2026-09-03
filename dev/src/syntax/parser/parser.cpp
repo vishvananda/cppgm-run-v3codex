@@ -2501,6 +2501,7 @@ NodeId SyntaxParser::ParseClass(bool require_semicolon)
 			}
 			if (Match(KW_VIRTUAL))
 				arena_.Add(base, arena_.Make("virtual", "KW_VIRTUAL:virtual"));
+			const std::size_t base_name_first = position_;
 			std::string base_name;
 			NodeId base_structure = kNoNode;
 			NodeId decltype_expression = kNoNode;
@@ -2518,6 +2519,7 @@ NodeId SyntaxParser::ParseClass(bool require_semicolon)
 				throw Error("expected base name");
 			const NodeId base_name_node =
 				MakeStructuredNode("base-name", base_name, base_structure);
+			arena_.SetTokenRange(base_name_node, base_name_first, position_);
 			if (decltype_expression != kNoNode)
 			{
 				// Retain the parsed dependent expression for specialization replay

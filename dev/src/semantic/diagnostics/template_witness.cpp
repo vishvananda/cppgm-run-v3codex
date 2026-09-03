@@ -842,6 +842,9 @@ void Analyzer::RecordTemplateVariableOccurrence(NodeId syntax,
 	if (program_->types.IsReference(variable.type))
 		properties |= TemplateWitnessObserver::
 			VARIABLE_OCCURRENCE_REFERENCE_TYPE;
+	const NodeId initializer = binding < member_initializer_by_binding_.size() ? member_initializer_by_binding_[binding] : kNoNode;
+	if (variable.template_parameter_constant || template_witness_->IsDependentVariableInitializer(initializer))
+		properties |= TemplateWitnessObserver::VARIABLE_OCCURRENCE_DEPENDENT_INITIALIZER;
 	template_witness_->RecordVariableOccurrence(*arena_, syntax,
 		variable.canonical, variable.member_owner == current_class_context_,
 		evaluation, phase, properties, filter_publication_to_source);
@@ -865,6 +868,7 @@ void TemplateWitnessObserver::BeginTranslationUnit(
 	dependent_class_uses_.clear();
 	dependent_alias_uses_.clear();
 	dependent_source_uses_.clear();
+	dependent_variable_initializers_.clear();
 	source_occurrences_.clear();
 	variable_occurrences_.clear();
 	resolved_source_uses_.clear();
@@ -1063,6 +1067,17 @@ void TemplateWitnessObserver::NoteDependentSourceUse(syntax::NodeId syntax)
 			source_events_[i].suppressed = true;
 }
 
+void TemplateWitnessObserver::NoteDependentVariableInitializer(syntax::NodeId syntax) {
+	if (syntax == syntax::kNoNode) return;
+	if (std::find(dependent_variable_initializers_.begin(),
+		dependent_variable_initializers_.end(), syntax) == dependent_variable_initializers_.end())
+		dependent_variable_initializers_.push_back(syntax);
+}
+bool TemplateWitnessObserver::IsDependentVariableInitializer(syntax::NodeId syntax) const {
+	return syntax != syntax::kNoNode &&
+		std::find(dependent_variable_initializers_.begin(),
+			dependent_variable_initializers_.end(), syntax) != dependent_variable_initializers_.end();
+}
 void TemplateWitnessObserver::NoteSourceOccurrence(
 	syntax::NodeId syntax, SourceOccurrenceRole role)
 {
@@ -2187,14 +2202,13 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 		});
 	if (debug_)
 	{
-		std::ostringstream trace;
-		trace << text_ << "witness-debug-source-events\n";
+		std::ostringstream trace; trace << text_ << "witness-debug-source-events\n";
 		for (std::size_t i = 0; i < source_events_.size(); ++i)
 		{
 			const SourceEvent& event = source_events_[i];
 			const std::size_t token = event.source_token ==
 				std::numeric_limits<std::size_t>::max() ?
-				arena.TokenFirst(event.syntax) : event.source_token;
+					arena.TokenFirst(event.syntax) : event.source_token;
 			trace << "  event kind=" << static_cast<unsigned>(event.kind)
 				<< " syntax=" << event.syntax << " pattern=" << event.pattern
 				<< " component=" << event.component_syntax
@@ -2214,8 +2228,7 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 		}
 		for (std::size_t i = 0; i < class_template_source_facts_.size(); ++i)
 		{
-			const ClassTemplateSourceFact& fact =
-				class_template_source_facts_[i];
+			const ClassTemplateSourceFact& fact = class_template_source_facts_[i];
 			trace << "  class-template-source syntax=" << fact.syntax
 				<< " pattern=" << fact.pattern << " binding=" << fact.binding
 				<< " partial=" << fact.selected_partial
@@ -2226,19 +2239,16 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 				<< " column=" << arena.SourceColumn(fact.syntax) << '\n';
 		}
 		trace << "  dependent-class-uses=" << dependent_class_uses_.size()
-			<< " dependent-alias-uses=" << dependent_alias_uses_.size()
-			<< " dependent-source-uses=" << dependent_source_uses_.size()
+			<< " dependent-alias-uses=" << dependent_alias_uses_.size() << " dependent-source-uses="
+			<< dependent_source_uses_.size()
 			<< " source-occurrences=" << source_occurrences_.size()
-			<< " variable-occurrences=" << variable_occurrences_.size()
-			<< '\n';
+			<< " variable-occurrences=" << variable_occurrences_.size() << '\n';
 		for (std::size_t i = 0; i < source_occurrences_.size(); ++i)
 		{
 			const syntax::NodeId node = source_occurrences_[i].syntax;
-			trace << "    source-occurrence syntax=" << node
-				<< " roles=" << static_cast<unsigned>(
-					source_occurrences_[i].roles)
-				<< " tag=" << arena.Tag(node)
-				<< " payload=" << arena.Payload(node)
+			trace << "    source-occurrence syntax=" << node << " roles="
+				<< static_cast<unsigned>(source_occurrences_[i].roles)
+				<< " tag=" << arena.Tag(node) << " payload=" << arena.Payload(node)
 				<< " line=" << arena.SourceLine(node)
 				<< " column=" << arena.SourceColumn(node) << '\n';
 		}
@@ -2251,19 +2261,17 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 				<< " phase=" << static_cast<unsigned>(fact.phase)
 				<< " owning=" << static_cast<unsigned>(
 					fact.owning_class_context)
-				<< " properties=" << static_cast<unsigned>(fact.properties)
-				<< " line=" << arena.SourceLine(fact.syntax)
+				<< " properties=" << static_cast<unsigned>(fact.properties) << " line="
+				<< arena.SourceLine(fact.syntax)
 				<< " column=" << arena.SourceColumn(fact.syntax) << '\n';
 		}
 		for (std::size_t i = 0; i < dependent_class_uses_.size(); ++i)
-			trace << "    dependent-class syntax=" <<
-				dependent_class_uses_[i].first << " pattern=" <<
-				dependent_class_uses_[i].second << '\n';
+			trace << "    dependent-class syntax=" << dependent_class_uses_[i].first
+				<< " pattern=" << dependent_class_uses_[i].second << '\n';
 		for (std::size_t i = 0; i < dependent_source_uses_.size(); ++i)
 		{
 			const syntax::NodeId node = dependent_source_uses_[i];
-			trace << "    dependent-source syntax=" << node
-				<< " tag=" << arena.Tag(node)
+			trace << "    dependent-source syntax=" << node << " tag=" << arena.Tag(node)
 				<< " payload=" << arena.Payload(node)
 				<< " line=" << arena.SourceLine(node)
 				<< " column=" << arena.SourceColumn(node) << '\n';
@@ -2882,9 +2890,15 @@ void TemplateWitnessObserver::RenderClosureEvents(const Analyzer& analyzer,
 	for (std::size_t i = 0; i < variable_occurrences_.size(); ++i)
 	{
 		const VariableOccurrenceFact& occurrence = variable_occurrences_[i];
-		if (occurrence.evaluation == VARIABLE_OCCURRENCE_EVALUATED &&
-			occurrence.phase == VARIABLE_OCCURRENCE_DEFINITION_DEMAND &&
-			occurrence.owning_class_context != 0)
+		const BindingRecord& binding = analyzer.program_->bindings[occurrence.binding];
+		const bool instantiated_class_constant =
+			occurrence.evaluation == VARIABLE_OCCURRENCE_CONSTANT_EVALUATED &&
+			occurrence.owning_class_context != 0 &&
+			(occurrence.properties & VARIABLE_OCCURRENCE_DEPENDENT_INITIALIZER) != 0 &&
+			analyzer.EntityHasTemplateLifecycleContext(binding.member_owner);
+		if ((occurrence.evaluation == VARIABLE_OCCURRENCE_EVALUATED &&
+			 occurrence.phase == VARIABLE_OCCURRENCE_DEFINITION_DEMAND &&
+			 occurrence.owning_class_context != 0) || instantiated_class_constant)
 			RecordVariableInstantiation(occurrence.binding);
 	}
 	std::vector<std::string> rendered_variables;
@@ -2971,6 +2985,7 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 	dependent_class_uses_.clear();
 	dependent_alias_uses_.clear();
 	dependent_source_uses_.clear();
+	dependent_variable_initializers_.clear();
 	source_occurrences_.clear();
 	variable_occurrences_.clear();
 	resolved_source_uses_.clear();

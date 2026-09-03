@@ -49,10 +49,16 @@ the translation unit actually instantiates, finalizes, or requires.
 9. Output-file failures use the driver's typed input/output exception path.
    Semantic failures remain semantic failures and must not leave a plausible
    successful witness artifact.
-10. Use 32-way outer, inner, and object parallelism for self/inception builds.
+10. Treat every newly exposed semantic error as a possible hidden analyzer
+    defect.  Pair negative controls with a nearby valid or forced-instantiation
+    case, compare the language decision with GCC and Clang, and verify the
+    compiler did not merely produce plausible LowIR/native output by accident.
+    A successful backend artifact is never evidence that lookup, dependency,
+    access, substitution, or required definition completion was correct.
+11. Use 32-way outer, inner, and object parallelism for self/inception builds.
     Before timing, verify that no stale Cachegrind, Valgrind, `perf`, benchmark,
     or inception process is consuming the host.
-11. Run focused checks after every bounded increment, commit each retained
+12. Run focused checks after every bounded increment, commit each retained
     increment, and push after no more than three retained commits and after
     each high-risk observer or driver milestone.
 
@@ -1487,6 +1493,113 @@ by 368 bytes, while four exact-object ABBA blocks measure -0.780% paired user,
 -0.690% wall, and +0.476% RSS.  The report is
 `/tmp/v3codex-w5n-member-anchor-final-ab.json`.
 
+The next missing class-use event again exposed an ordinary semantic failure,
+not a safe observer omission.  The retained validator treated every base as
+deferred, so an unused class template derived from the known incomplete
+`base<false>` specialization was accepted and emitted plausible `main` LowIR.
+GCC and Clang reject the definition immediately.  The inverse defect appeared
+for access: a class template declared as a friend could name its owner's
+private class as a base while retained, but a concrete specialization lost the
+template's privilege and was rejected later; GCC and Clang accept it.  Thus the
+old compiler happened to produce reasonable output on one invalid definition
+and happened to accept the corresponding valid definition only while it
+remained unused.  Neither outcome is accepted as witness evidence.
+
+The repair gives each `base-name` its already available exact token range and
+classifies only unqualified identifiers within that range.  The retained
+validator compares those identities with its typed
+template-parameter, injected-class, and dependent-type environments.  It
+validates proven nondependent bases at definition time through the same
+complete, non-union, non-final, and access checks used for concrete classes;
+dependent bases remain deferred.  The friend table also records a grant for
+the class-template pattern's typed marker, and that principal is scoped only
+while validating or constructing its class, so friendship is neither lost
+before specialization nor broadened by spelling.  A recursive syntax-only
+classifier was rejected after the frozen translation unit exposed a flattened
+`integral_constant<bool, _R1::num < _R2::num>` base whose dependency lived only
+in the exact token range.  Broader token/name classifiers were likewise
+rejected because qualified `external::T`, `external::invalid_derived`, and
+`object.T` must not be confused with a local template parameter or injected
+class of the same spelling.  A shell-only completion prototype was also
+rejected: it diagnosed incomplete/final/union structure but accepted an unused
+`checked_base<false>` whose selected specialization body contains a failing
+`static_assert`.  That prototype emitted a plausible 106-byte `main` LowIR;
+the retained completion path, GCC, and Clang all reject the program.  Fixed
+base validation therefore completes the selected definition body rather than
+accepting its shell.
+
+The PA19 relationship test covers an unused complete specialization, an
+instantiated specialization, a dependent base, a dependent comparison inside
+a template argument, and an instantiated friend-template/private-base case.
+Eleven separate unused negative definitions cover incomplete, inaccessible,
+final, union, qualified-template-parameter collision, qualified-injected-name
+collision, member-expression/template-parameter collision, fixed class-
+template specializations, a selected incomplete partial specialization, and a
+failing selected specialization body, both with and without witness.  The
+member-expression case was added after the first qualification filter still
+treated `object.T` as the local template parameter `T`; the final classifier
+excludes names selected by `.`, `->`, and `::`.
+The test runs the valid native program, requires witness-off/on LowIR identity,
+and checks only the structural occurrence count and typed bindings of the two
+fixed-base source uses.  It does not compare whole output or recognize source
+text.  Every negative must also leave no nonempty LowIR or witness artifact.
+The immutable boundary accepts the invalid unused incomplete definition
+and rejects the valid instantiated friend case.  Clang diagnoses all eleven
+negative definitions at definition time.  GCC diagnoses seven immediately and
+defers the access, concrete/class-template `final`, and member-expression
+checks; N3485 [temp.res]/8 permits those template errors to be diagnosed at
+instantiation.  Both host compilers accept and execute the valid
+dependent/friend control.
+
+The next PA22 mismatch exposed the same validation hazard in a different
+shape.  The analyzer correctly substitutes a template-dependent static data
+member initializer, but the observer could not distinguish that lifecycle
+from a nondependent initializer formed at template definition.  The retained
+validator now records the exact initializer node at its existing typed
+syntax/type/value dependency decision, and the class-member binding keeps that
+initializer node for static as well as non-static members.  The existing
+12-byte variable occurrence fact uses a spare property bit to carry the result;
+no production semantic record grows and the normal path allocates no observer
+storage.  The consumer publishes a constant-evaluated class-template member
+only when that exact initializer is dependent.  Broad constant-evaluation and
+phase-only prototypes were rejected because they regressed nondependent PA20
+constants or missed a PA24 type-dependent initializer.
+
+The PA22 relationship test now also forces `sizeof(typename T::missing)` in a
+constant-evaluated static member.  cppgm++, GCC, and Clang reject it with and
+without observation and cppgm++ leaves no nonempty LowIR or witness artifact,
+proving that the expected lifecycle event is backed by real substitution rather
+than an accidentally plausible surrounding program.
+This makes the lazy-header `integral_constant<bool, true>::value` witness exact
+while preserving nondependent initializer controls.
+
+Fresh strict manifests finish at PA19 279/279, PA20 158/158, PA22 274/294,
+PA23 247/386, and PA24 293/415 exact.  Relative to the preceding member-anchor
+compiler, PA22 gains 3, PA23 gains 4, and PA24 gains 8 exact witnesses; no
+previously exact witness regresses and every residual changed witness has a smaller line-edit
+distance.  All statuses are unchanged.  Against the immutable compiler, only
+two successful LowIR files change, both because the required earlier semantic
+specialization allocation advances a private generated identity from
+`2_1_0` to `2_2_0`; their ABI names and native objects are byte-identical.
+The ordinary PA23/PA24 harness continues to accept both through its documented
+validated LowIR canonicalization; this is distinct from raw equality with the
+older reference presentation.  Witness-off/on LowIR is exact for both cases,
+and frozen O0/O1/O3 outputs are byte-identical at SHA-256
+`cf9745dbcbcbd6880df79793aed569dbec9f03036dcbb205e25b62a7fa6ba2b6`,
+`798c90a3f0d8d6f5573bd6a990cdb7cce53c516f23bca02c686f243c3417239b`,
+and `5b33eeb8aa11d9fc1e650e209e5eb9c9a4066304a655bdfa9fbb66ba70764cfb`.
+Through-PA24 passes 3,566/3,566 and all architecture audits pass.  The touched
+observer/validator files stay at or below the 3,000-line file limit and improve
+the two inherited function-size findings; the repository-wide file audit
+retains its eleven pre-existing fatal categories and adds none.
+Four exact-output A/B blocks measure -0.117% paired user, +0.053% wall, and
++0.470% RSS, with compiler text growing by 4,544 bytes.  The final executable
+is byte-identical to that measurement (`0a51ce0c...`).  Two later file-split
+layouts measured +0.606% and +1.045% user time and were rejected; restoring
+the original translation-unit layout reproduced the measured executable hash.
+The retained report is
+`/tmp/v3codex-w5n-base-fast-complete-final4-ab.json`.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1576,6 +1689,8 @@ by 368 bytes, while four exact-object ABBA blocks measure -0.780% paired user,
 | W5N semantic template-name hiding | Made local function- and variable-template names stop the ordinary lookup walk before hidden base/enclosing declarations are considered | static-function reducer changes pre-fix wrong exit 1 to exit 0, agreeing with GCC/Clang; variable reducer changes an incorrect success to the same rejection as GCC/Clang; relationship test verifies behavior, LowIR observer invariance, selected template, no base drop, and invalid argument-less variable-template use; exactly 2 PA22 witnesses improve, one becomes exact (269 -> 270), with every PA19/20/23/24 witness and all 1,532 corpus statuses/LowIR unchanged; compiler text +24 bytes; four-block exact-object A/B -0.601% user, -0.162% wall, +0.040% RSS | retain as ordinary lookup correctness; the remaining terminal source anchor is independent and must use component provenance rather than candidate filtering |
 | W5N rejected broad terminal-call anchor | Located every function-template call at its retained terminal name component | 16 PA22 witnesses change; only the intended implicit-object qualified-id becomes exact, while 13 exact files regress, including free/static qualified calls and a parenthesized call operator | reject; syntax containment is not call-source identity, so combine selected function kind with the authoritative syntax role |
 | W5N-O implicit-object qualified-id anchor | Used the retained terminal component only for a non-static member selected through an `id-expression`; preserved expression boundaries for operator calls and free/static qualified calls | PA19 relationship control fails before and passes after without exact matching; cppgm++/GCC/Clang behavior agrees; exactly 1 PA22 witness changes and becomes exact (270 -> 271); PA19/20/23/24 and all 1,532 statuses/LowIR exact; frozen objects/audits exact; compiler text +368 bytes; four-block exact-object A/B -0.780% user, -0.690% wall, +0.476% RSS | retain the typed source-role consumer; do not infer anchors from terminal syntax alone |
+| W5N semantic nondependent class bases | Added exact base-name ranges, qualification-aware dependency classification, definition-time validation through the concrete base checker, and typed class-template friendship before concrete specialization | immutable compiler accepts an invalid unused incomplete base and rejects a valid instantiated friend/private-base case; the property audit caught `object.T`, fixed template specializations, an incomplete selected partial, and a selected specialization body whose failing `static_assert` was hidden by a rejected shell-only prototype; Clang diagnoses all 11 unused negatives, while GCC diagnoses 7 immediately and defers access/`final`/member-expression checks as N3485 [temp.res]/8 permits; PA22 +2, PA23 +4, PA24 +7 exact with no regression; only 2 private LowIR ordinals move and native objects remain exact | retain as ordinary semantic correctness and PA19's stronger early-diagnostic contract; plausible output from an invalid accepted definition is not evidence, and dependency/access decisions must use typed scope plus exact source provenance rather than spelling |
+| W5N dependent variable initializer provenance | Retained each static member's exact initializer node and marked that node at the retained validator's existing typed dependency decision; consumed one spare bit in the 12-byte observer-only occurrence fact | forced-invalid dependent initializer is rejected by cppgm++, GCC, and Clang with/without witness; broad constant and phase-only consumers rejected; lazy-header PA22 and a PA24 type-dependent constant become exact, PA23 has two local improvements, and nondependent PA20 constants remain exact; final counts 279/158/274/247/293, all statuses and witness-off/on LowIR exact; frozen O0/O1/O3 exact; through-PA24 3,566/3,566; paired user -0.117%, wall +0.053%, RSS +0.470% for the combined base/provenance increment | retain typed exact-node machinery; semantic rejection is a required oracle so a plausible LowIR program cannot substitute for actual initializer substitution or selected-base completion |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

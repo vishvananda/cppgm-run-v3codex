@@ -149,6 +149,7 @@ public:
 		  current_language_linkage_(LANGUAGE_LINKAGE_CPP),
 		  direct_linkage_declaration_depth_(0),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
+		  current_class_template_access_principal_(kNoEntity),
 		  current_function_context_(kNoBinding),
 		  braced_initialization_context_(0),
 		  current_pack_alignment_(0),
@@ -612,6 +613,11 @@ private:
 	bool CollectClassDirectBases(NodeId clause, ScopeId scope,
 		EntityId entity, NamedFlavor flavor,
 		std::vector<DirectBaseEdge>* direct_bases);
+	bool RequireCompleteClassDirectBase(
+		const LookupResult& base_lookup, EntityId* base);
+	void ValidateRetainedClassDirectBase(NodeId name, ScopeId scope);
+	EntityId RetainedClassTemplateAccessPrincipal(
+		NodeId target, ScopeId lexical_scope);
 	TypeId AnalyzeEnum(NodeId node, ScopeId scope,
 		const std::string& hint, bool elaborated);
 	SpecInfo BuildSpecifiers(NodeId node, ScopeId scope,
@@ -2300,6 +2306,7 @@ private:
 	std::size_t direct_linkage_declaration_depth_;
 	TypeId current_return_type_;
 	EntityId current_class_context_;
+	EntityId current_class_template_access_principal_;
 	BindingId current_function_context_;
 	BracedInitializationContext* braced_initialization_context_;
 	std::size_t current_pack_alignment_;
