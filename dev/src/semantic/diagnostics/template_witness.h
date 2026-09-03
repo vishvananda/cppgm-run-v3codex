@@ -341,8 +341,19 @@ private:
 			  specialization_packs(specialization_pack_values),
 			  selection_kind(selection_kind_value) {}
 	};
-	typedef std::vector<std::pair<std::string, std::string> >
-		EntityReplacements;
+	struct EntityReplacement
+	{
+		EntityId entity;
+		std::string canonical;
+		std::string presented;
+
+		EntityReplacement(EntityId entity_value,
+			const std::string& canonical_value,
+			const std::string& presented_value)
+			: entity(entity_value), canonical(canonical_value),
+			  presented(presented_value) {}
+	};
+	typedef std::vector<EntityReplacement> EntityReplacements;
 
 	std::string ElideEntities(std::string spelling,
 		const EntityReplacements& replacements) const;

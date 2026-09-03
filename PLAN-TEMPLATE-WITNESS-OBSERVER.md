@@ -1399,6 +1399,29 @@ semantic control was added; all 24 objects have the same `cf9745db...` hash.
 The report is
 `/tmp/v3codex-w5n-pack-dependency-semantic-final6-ab.json`.
 
+The following variable-closure residue is not a missing semantic transition.
+For the function-type partial-specialization controls, the observer records
+all three constant bindings and both the constant-evaluated and evaluated
+occurrences of `holder<void()>::value`.  cppgm++, GCC, and Clang all run the
+program successfully and correctly emit no storage symbol.  The loss happens
+only during presentation: a translation-unit-wide string replacement for the
+distinct `holder<void() const>` entity rewrites the already typed
+`holder<void()>` closure name, after which string deduplication removes it.
+
+A broad prototype bypassed all presentation replacements for member variables.
+It made the two PA22 function-type fixtures exact, but changed three PA23 and
+three PA24 witnesses, including a previously exact incomplete-array fixture;
+enum names, character literals, and incomplete-array spelling lost legitimate
+nested normalization.  That consumer is rejected.  The output-inert foundation
+instead replaces each anonymous string pair with a typed presentation fact
+keyed by its exact `EntityId`.  All 1,532 PA19--PA24 witness files, statuses,
+and LowIR artifacts remain byte-identical.  The custom typed vector adds 2,012
+bytes of compiler text, but six output-verified ABBA blocks measure -0.360%
+paired user, -0.430% wall, and +0.002% RSS.  The report is
+`/tmp/v3codex-w5n-entity-presentation-foundation-final6-ab.json`.  A following
+consumer may reject a replacement only when its typed entity conflicts; it
+must continue applying unambiguous nested presentation facts.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1482,6 +1505,8 @@ The report is
 | W5N-O rejected occurrence-local reference gate | Suppressed an unevaluated ordinary nonconstant reference only at the occurrence publication hook | the relationship test passed, but a fresh successful strict refresh changed no corpus witness because storage demand had already published the binding; the earlier two-file claim came from stale outputs after a runner invocation omitted `--emit-lowir -O0` | reject the incomplete boundary and its timing result; a lifecycle decision must account for all publishers after all occurrence facts are known |
 | W5N-O final unevaluated reference lifecycle | Suppressed a binding only when all recorded occurrences are unevaluated ordinary nonconstant reference designators, preserving any evaluated, constant, or variable-template occurrence | exactly 2 witnesses change and become exact (PA22 262 -> 263, PA24 283 -> 284), no regression, all 1,532 successful strict LowIR artifacts and frozen objects exact; relationship test fails on foundation and passes on consumer; cppgm++/GCC/Clang behavior and native-symbol checks agree; through-PA24 3,566/3,566; paired user -0.062%, wall -0.482%, RSS -0.398% | retain the final typed lifecycle consumer; reference/evaluation/lifecycle roles jointly own the decision |
 | W5N semantic pack dependency and dependent-type provenance | Unified retained `sizeof...(Pack)` dependency with the canonical recursive classifier, retained the written `template` introducer as a typed syntax flag, and diagnosed missing `typename` at definition-time type boundaries with exact current-instantiation context | pre-fix and PA22 reference accept invalid unused templates while GCC and pedantic Clang reject them; the final semantic property covers pack-dependent, same-template/noncurrent, dependent member-template type, and out-of-class return errors, plus five valid contexts; a broad `template`-alone exception found by semantic review was rejected; 12 witness changes yield PA22 +4, PA23 +2, PA24 +1 exact with every residual diff smaller, zero exact regression, and all 1,532 statuses/LowIR unchanged; frozen O0/O1/O3 exact; through-PA24 3,566/3,566; audits exact; a rejected 32-byte parser temporary measured +0.486% user, while the final 20-byte/direct-ID/flat-range layout measures -0.245% user, -0.000% wall, and -0.021% RSS over six ABBA blocks with exact objects | retain the ordinary semantic repair and compact provenance layout before further witness convergence; never use substituted success or plausible LowIR to excuse a wrong definition-time dependency decision |
+| W5N rejected broad closure presentation bypass | Stopped applying every entity replacement to member-variable closure names | both function-type PA22 fixtures become exact, but three PA23 and three PA24 witnesses change; one exact incomplete-array fixture regresses and valid enum/character/nested spellings are lost; all LowIR remains exact | reject; source-distinguished outer identity does not eliminate legitimate typed normalization of nested entities |
+| W5N-F typed entity presentation origin | Replaced anonymous canonical/presented string pairs with facts keyed by the exact semantic entity that produced them | all 1,532 PA19--PA24 witnesses, statuses, and LowIR artifacts are exact to `207f44e5`; +2,012 compiler text bytes; six-block exact-object A/B -0.360% user, -0.430% wall, +0.002% RSS | retain output-inert; the consumer may suppress only cross-entity conflicts while preserving unambiguous nested replacements |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

@@ -1564,7 +1564,8 @@ std::string TemplateWitnessObserver::ElideEntities(std::string spelling,
 	{
 		const std::string before = spelling;
 		for (std::size_t i = 0; i < replacements.size(); ++i)
-			ReplaceAll(&spelling, replacements[i].first, replacements[i].second);
+			ReplaceAll(&spelling, replacements[i].canonical,
+				replacements[i].presented);
 		if (before == spelling) break;
 	}
 	return spelling;
@@ -2038,7 +2039,7 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 		elided += '>';
 		if (full != elided)
 			entity_replacements.push_back(
-				std::make_pair(full, elided));
+				EntityReplacement(entity, full, elided));
 	}
 	for (std::size_t i = 0; i < source_events_.size(); ++i)
 	{
@@ -2066,12 +2067,13 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 		}
 		presented += '>';
 		if (full != presented)
-			entity_replacements.push_back(std::make_pair(full, presented));
+			entity_replacements.push_back(
+				EntityReplacement(entity, full, presented));
 	}
 	std::sort(entity_replacements.begin(), entity_replacements.end(),
-		[](const std::pair<std::string, std::string>& left,
-			const std::pair<std::string, std::string>& right) {
-			return left.first.size() > right.first.size();
+		[](const EntityReplacement& left,
+			const EntityReplacement& right) {
+			return left.canonical.size() > right.canonical.size();
 		});
 	for (std::size_t event = 0; event < source_events_.size(); ++event)
 		if (source_events_[event].kind == SOURCE_CLASS_USE &&
