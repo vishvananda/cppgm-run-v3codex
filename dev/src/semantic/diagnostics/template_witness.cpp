@@ -832,9 +832,19 @@ void Analyzer::RecordTemplateVariableOccurrence(NodeId syntax,
 		phase = FunctionObjectDefinitionRequired(current_function_context_) ?
 			TemplateWitnessObserver::VARIABLE_OCCURRENCE_DEFINITION_DEMAND :
 			TemplateWitnessObserver::VARIABLE_OCCURRENCE_DEFERRED_DEFINITION;
+	std::uint8_t properties = 0;
+	if (variable.constant)
+		properties |= TemplateWitnessObserver::
+			VARIABLE_OCCURRENCE_CONSTANT_BINDING;
+	if (variable.variable_template_specialization)
+		properties |= TemplateWitnessObserver::
+			VARIABLE_OCCURRENCE_VARIABLE_TEMPLATE;
+	if (program_->types.IsReference(variable.type))
+		properties |= TemplateWitnessObserver::
+			VARIABLE_OCCURRENCE_REFERENCE_TYPE;
 	template_witness_->RecordVariableOccurrence(*arena_, syntax,
 		variable.canonical, variable.member_owner == current_class_context_,
-		evaluation, phase, filter_publication_to_source);
+		evaluation, phase, properties, filter_publication_to_source);
 }
 
 void TemplateWitnessObserver::BeginTranslationUnit(
@@ -1490,7 +1500,8 @@ void TemplateWitnessObserver::RecordVariableInstantiation(BindingId binding)
 void TemplateWitnessObserver::RecordVariableOccurrence(
 	const syntax::SyntaxArena& arena, syntax::NodeId syntax, BindingId binding,
 	bool owning_class_context, VariableOccurrenceEvaluation evaluation,
-	VariableOccurrencePhase phase, bool filter_publication_to_source)
+	VariableOccurrencePhase phase, std::uint8_t properties,
+	bool filter_publication_to_source)
 {
 	if (syntax == syntax::kNoNode) return;
 	bool duplicate = false;
@@ -1499,10 +1510,11 @@ void TemplateWitnessObserver::RecordVariableOccurrence(
 			variable_occurrences_[i].binding == binding &&
 			variable_occurrences_[i].evaluation == evaluation &&
 			variable_occurrences_[i].phase == phase &&
+			variable_occurrences_[i].properties == properties &&
 			variable_occurrences_[i].owning_class_context ==
 				(owning_class_context ? 1 : 0)) duplicate = true;
 	if (!duplicate) variable_occurrences_.push_back(VariableOccurrenceFact(
-		syntax, binding, evaluation, phase, owning_class_context));
+		syntax, binding, evaluation, phase, owning_class_context, properties));
 	if (!filter_publication_to_source)
 	{
 		RecordVariableInstantiation(binding);
@@ -2210,6 +2222,7 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 				<< " phase=" << static_cast<unsigned>(fact.phase)
 				<< " owning=" << static_cast<unsigned>(
 					fact.owning_class_context)
+				<< " properties=" << static_cast<unsigned>(fact.properties)
 				<< " line=" << arena.SourceLine(fact.syntax)
 				<< " column=" << arena.SourceColumn(fact.syntax) << '\n';
 		}

@@ -1297,6 +1297,18 @@ artifacts and frozen O0/O1/O3 objects remain exact; four ABBA blocks measure
 surplus remains unchanged at this boundary, proving that its following repair
 is an independent observer classification change.
 
+The observer's next output-inert foundation uses the remaining byte in the
+12-byte occurrence record for typed binding lifecycle properties: constant
+binding, variable-template specialization, and reference type.  This is not a
+name or fixture classification.  The formatter's eight facts are nonconstant
+reference members, while the previously exact trait/SFINAE controls examined
+after the broad suppression are constant bindings whose values must be formed
+to determine the surrounding compile-time result.  All 7,660 PA19--PA24
+artifacts and frozen O0/O1/O3 objects remain exact; four ABBA blocks measure
+-0.243% paired user, -0.432% wall, and +0.439% RSS.  A following consumer may
+now distinguish an unevaluated reference designator from an unevaluated
+constant-value computation without consulting spelling or source placement.
+
 The first broad consumer prototype replaced the legacy primary-file/function
 filter with every non-deferred evaluated or constant-evaluated fact.  It was
 rejected: 36 witnesses changed and 12 previously exact files regressed because
@@ -1389,6 +1401,7 @@ showed that their final lifecycle depends on how the resulting value is used.
 | W5N-O evaluated demanded variable occurrences | Preserved existing publication and added only ordinary evaluated static-member uses in an owning class function whose definition is finally demanded | exactly 2 witnesses change and become exact: PA22 261 -> 262 and PA24 282 -> 283; every other witness and all 1,532 LowIR artifacts remain identical; the relationship test fails on the foundation and passes on the consumer; cppgm++/GCC/Clang behavior agrees; PA19/20 strict, PA22 ordinary, frozen O0/O1/O3, and audits exact; four-block paired user +0.060%, wall +0.053%, RSS +0.368% | retain the narrow typed consumer; do not generalize constant/header or unevaluated handling until binding lifecycle says whether semantic instantiation actually occurred |
 | W5N-F complete variable access provenance | Routed the member-object access path through the same exact-node variable occurrence fact and centralized eligibility/context computation behind a cold observer-only boundary | formatter debug census records all 8 operands as unevaluated; all 7,660 PA19--PA24 generated artifacts and frozen O0/O1/O3 objects are exact; the first layout measured +0.364% paired user and was rejected, while the compact cold layout measures -0.180% user, +0.107% wall, +0.092% RSS | retain the output-inert foundation; a following consumer may suppress legacy publication only for occurrence facts proven unevaluated, after ordinary semantic/lowering validation |
 | W5N semantic unevaluated static storage | Prevented an unevaluated static-member use from replaying a retained definition or entering the common storage-demand path | the new PA19 course control changes from an emitted global/startup call/undefined initializer dependency to `main` only, matching GCC and Clang; every pre-existing PA19--PA24 witness/LowIR artifact and frozen O0/O1/O3 object is exact; four-block paired user -0.857%, wall -0.874%, RSS +0.330% | retain as PA19 semantic correctness; the later formatter witness suppression must remain a separate observer consumer |
+| W5N-F variable binding lifecycle | Used the final padding byte in the 12-byte occurrence fact for constant-binding, variable-template-specialization, and reference-type properties | formatter facts are reference-only while sampled exact trait/SFINAE facts are constant bindings; all 7,660 artifacts and frozen O0/O1/O3 objects are exact; four-block paired user -0.243%, wall -0.432%, RSS +0.439% | retain output-inert; consume lifecycle properties with evaluation role, never names or fixture identity |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

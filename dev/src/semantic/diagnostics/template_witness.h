@@ -87,6 +87,12 @@ private:
 		VARIABLE_OCCURRENCE_DEFINITION_DEMAND,
 		VARIABLE_OCCURRENCE_SPECIALIZATION_REPLAY
 	};
+	enum VariableOccurrenceProperty
+	{
+		VARIABLE_OCCURRENCE_CONSTANT_BINDING = 1,
+		VARIABLE_OCCURRENCE_VARIABLE_TEMPLATE = 2,
+		VARIABLE_OCCURRENCE_REFERENCE_TYPE = 4
+	};
 	struct VariableOccurrenceFact
 	{
 		syntax::NodeId syntax;
@@ -94,14 +100,21 @@ private:
 		std::uint8_t evaluation;
 		std::uint8_t phase;
 		std::uint8_t owning_class_context;
+		std::uint8_t properties;
 
 		VariableOccurrenceFact(syntax::NodeId syntax_value,
 			BindingId binding_value, VariableOccurrenceEvaluation evaluation_value,
-			VariableOccurrencePhase phase_value, bool owning_class_context_value)
+			VariableOccurrencePhase phase_value, bool owning_class_context_value,
+			std::uint8_t properties_value)
 			: syntax(syntax_value), binding(binding_value),
 			  evaluation(static_cast<std::uint8_t>(evaluation_value)),
 			  phase(static_cast<std::uint8_t>(phase_value)),
-			  owning_class_context(owning_class_context_value ? 1 : 0) {}
+			  owning_class_context(owning_class_context_value ? 1 : 0),
+			  properties(properties_value) {}
+		bool Has(VariableOccurrenceProperty property) const
+		{
+			return (properties & static_cast<std::uint8_t>(property)) != 0;
+		}
 	};
 	static_assert(sizeof(VariableOccurrenceFact) == 12,
 		"variable occurrence fact grew");
@@ -476,7 +489,8 @@ private:
 	void RecordVariableOccurrence(const syntax::SyntaxArena& arena,
 		syntax::NodeId syntax, BindingId binding,
 		bool owning_class_context, VariableOccurrenceEvaluation evaluation,
-		VariableOccurrencePhase phase, bool filter_publication_to_source);
+		VariableOccurrencePhase phase, std::uint8_t properties,
+		bool filter_publication_to_source);
 	std::size_t SourceEventMark() const;
 	void DiscardSourceEvents(std::size_t mark);
 	std::size_t ClosureEventMark() const;
