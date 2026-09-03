@@ -55,6 +55,24 @@ private:
 		SEMANTIC_SOURCE_CURRENT_PARTIAL,
 		SEMANTIC_SOURCE_DECLARATION_COMPLETE
 	};
+	enum SourceOccurrenceRole
+	{
+		SOURCE_OCCURRENCE_EVALUATED = 1,
+		SOURCE_OCCURRENCE_UNEVALUATED_DECLARATION = 2,
+		SOURCE_OCCURRENCE_DEFERRED_DEFINITION = 4,
+		SOURCE_OCCURRENCE_SPECIALIZATION_REPLAY = 8
+	};
+	struct SourceOccurrenceFact
+	{
+		syntax::NodeId syntax;
+		std::uint8_t roles;
+
+		SourceOccurrenceFact(syntax::NodeId syntax_value,
+			SourceOccurrenceRole role)
+			: syntax(syntax_value), roles(static_cast<std::uint8_t>(role)) {}
+	};
+	static_assert(sizeof(SourceOccurrenceFact) == 8,
+		"source occurrence roles must remain compact");
 	struct SemanticSourceFact
 	{
 		syntax::NodeId owner;
@@ -365,7 +383,9 @@ private:
 		NameId source_name = 0);
 	void NoteDependentClassUse(syntax::NodeId syntax, std::uint32_t pattern);
 	void NoteDependentSourceUse(syntax::NodeId syntax);
-	void NoteRetainedFunctionCallSource(syntax::NodeId syntax);
+	void NoteSourceOccurrence(syntax::NodeId syntax, SourceOccurrenceRole role);
+	bool HasSourceOccurrenceRole(syntax::NodeId syntax,
+		std::uint8_t roles) const;
 	void NoteResolvedSourceUse(syntax::NodeId syntax);
 	void RecordInstantiatedClassUse(syntax::NodeId syntax,
 		std::uint32_t pattern, BindingId binding,
@@ -409,7 +429,7 @@ private:
 	void RecordFunctionCall(syntax::NodeId syntax,
 		syntax::NodeId component_syntax, std::uint32_t pattern,
 		BindingId binding, const std::vector<TemplateArgument>& arguments,
-		std::size_t explicit_count);
+		std::size_t explicit_count, SourceOccurrenceRole role);
 	void RecordOverloadSelection(const Analyzer& analyzer, BindingId selected,
 		const std::vector<BindingId>& candidates,
 		const std::vector<std::uint8_t>& reasons);
@@ -451,7 +471,7 @@ private:
 	std::vector<std::pair<syntax::NodeId, std::uint32_t> >
 		dependent_alias_uses_;
 	std::vector<syntax::NodeId> dependent_source_uses_;
-	std::vector<syntax::NodeId> retained_function_call_sources_;
+	std::vector<SourceOccurrenceFact> source_occurrences_;
 	std::vector<syntax::NodeId> resolved_source_uses_;
 	std::vector<BindingId> function_instantiations_;
 	std::vector<BindingId> required_definitions_;

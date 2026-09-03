@@ -131,7 +131,7 @@ private:
 	bool SyntaxUsesDependentValue(NodeId node, std::size_t scope) const;
 	bool TemplateArgumentResolvesLocalValue(
 		NodeId node, std::size_t scope) const;
-	void PublishRetainedSourceProvenance(NodeId node, bool definition);
+	void PublishRetainedSourceProvenance(NodeId node, bool declaration_only);
 	void PublishTemplateParameterSourceProvenance(
 		const TemplateParameter& parameter);
 	void NoteDependentSourceUse(NodeId node, std::size_t scope);
@@ -1589,16 +1589,19 @@ void RetainedTemplateValidator::NoteDependentSourceUse(
 }
 
 void RetainedTemplateValidator::PublishRetainedSourceProvenance(
-	NodeId node, bool definition)
+	NodeId node, bool declaration_only)
 {
 	if (!analyzer_.template_witness_ || node == kNoNode) return;
 	if (analyzer_.arena_->IsTag(
 		node, ::cppgm::syntax::STAG_CALL_EXPRESSION) &&
-		(definition || SyntaxUsesTemplateParameter(node)))
+		(declaration_only || SyntaxUsesTemplateParameter(node)))
 	{
 		const NodeId source = analyzer_.arena_->OverloadSourceAnchor(node);
 		if (source != kNoNode)
-			analyzer_.template_witness_->NoteRetainedFunctionCallSource(source);
+			analyzer_.template_witness_->NoteSourceOccurrence(source,
+				declaration_only ? TemplateWitnessObserver::
+					SOURCE_OCCURRENCE_UNEVALUATED_DECLARATION :
+					TemplateWitnessObserver::SOURCE_OCCURRENCE_DEFERRED_DEFINITION);
 	}
 	if (analyzer_.arena_->IsTag(
 		node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME))
@@ -1629,7 +1632,7 @@ void RetainedTemplateValidator::PublishRetainedSourceProvenance(
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		PublishRetainedSourceProvenance(
-			analyzer_.arena_->EdgeChild(edge), definition);
+			analyzer_.arena_->EdgeChild(edge), declaration_only);
 }
 
 void RetainedTemplateValidator::PublishTemplateParameterSourceProvenance(
@@ -1655,8 +1658,9 @@ void RetainedTemplateValidator::ScanDependentSourceUses(
 			(SyntaxUsesTemplateParameter(node) ||
 			 SyntaxUsesRetainedType(node, scope) ||
 			 SyntaxUsesRetainedValue(node, scope)))
-			analyzer_.template_witness_->NoteRetainedFunctionCallSource(
-				overload_source);
+			analyzer_.template_witness_->NoteSourceOccurrence(overload_source,
+				TemplateWitnessObserver::
+					SOURCE_OCCURRENCE_UNEVALUATED_DECLARATION);
 	}
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
@@ -1675,8 +1679,9 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 			(SyntaxUsesTemplateParameter(node) ||
 			 SyntaxUsesRetainedType(node, scope) ||
 			 SyntaxUsesRetainedValue(node, scope)))
-			analyzer_.template_witness_->NoteRetainedFunctionCallSource(
-				overload_source);
+			analyzer_.template_witness_->NoteSourceOccurrence(overload_source,
+				TemplateWitnessObserver::
+					SOURCE_OCCURRENCE_DEFERRED_DEFINITION);
 	}
 	NoteDependentSourceUse(node, scope);
 	if (VisitSwitchLabel(node, scope)) return;

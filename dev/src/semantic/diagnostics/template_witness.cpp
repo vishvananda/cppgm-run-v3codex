@@ -626,7 +626,7 @@ TemplateWitnessObserver::TemplateWitnessObserver(bool debug)
 	  entity_argument_limits_(), variable_specializations_(),
 	  overload_selections_(), deduction_drops_(), dependent_class_uses_(),
 	  dependent_alias_uses_(), dependent_source_uses_(),
-	  retained_function_call_sources_(), resolved_source_uses_(),
+	  source_occurrences_(), resolved_source_uses_(),
 	  function_instantiations_(),
 	  required_definitions_(), class_instantiations_(), class_finalizations_(),
 	  variable_instantiations_(), next_insertion_ordinal_(0) {}
@@ -741,8 +741,16 @@ void Analyzer::RecordFunctionTemplateSourceCall(NodeId syntax,
 	if (record.template_argument_begin == kNoBinding) return;
 	const std::vector<TemplateArgument> arguments = StoredTemplateArguments(
 		record.template_argument_begin, record.template_argument_count);
+	TemplateWitnessObserver::SourceOccurrenceRole occurrence =
+		TemplateWitnessObserver::SOURCE_OCCURRENCE_EVALUATED;
+	if (class_template_member_replay_depth_ != 0 ||
+		explicit_member_template_replay_depth_ != 0 ||
+		(current_function_context_ != kNoBinding &&
+		 GetFunction(current_function_context_).template_specialization))
+		occurrence =
+			TemplateWitnessObserver::SOURCE_OCCURRENCE_SPECIALIZATION_REPLAY;
 	template_witness_->RecordFunctionCall(syntax, component_syntax, pattern,
-		selected, arguments, explicit_count);
+		selected, arguments, explicit_count, occurrence);
 }
 
 void Analyzer::RecordFunctionTemplateSourceAction(
@@ -812,7 +820,7 @@ void TemplateWitnessObserver::BeginTranslationUnit(
 	dependent_class_uses_.clear();
 	dependent_alias_uses_.clear();
 	dependent_source_uses_.clear();
-	retained_function_call_sources_.clear();
+	source_occurrences_.clear();
 	resolved_source_uses_.clear();
 	function_instantiations_.clear();
 	required_definitions_.clear();
@@ -1009,14 +1017,26 @@ void TemplateWitnessObserver::NoteDependentSourceUse(syntax::NodeId syntax)
 			source_events_[i].suppressed = true;
 }
 
-void TemplateWitnessObserver::NoteRetainedFunctionCallSource(
-	syntax::NodeId syntax)
+void TemplateWitnessObserver::NoteSourceOccurrence(
+	syntax::NodeId syntax, SourceOccurrenceRole role)
 {
 	if (syntax == syntax::kNoNode) return;
-	if (std::find(retained_function_call_sources_.begin(),
-		retained_function_call_sources_.end(), syntax) ==
-		retained_function_call_sources_.end())
-		retained_function_call_sources_.push_back(syntax);
+	for (std::size_t i = 0; i < source_occurrences_.size(); ++i)
+		if (source_occurrences_[i].syntax == syntax)
+		{
+			source_occurrences_[i].roles |= static_cast<std::uint8_t>(role);
+			return;
+		}
+	source_occurrences_.push_back(SourceOccurrenceFact(syntax, role));
+}
+
+bool TemplateWitnessObserver::HasSourceOccurrenceRole(
+	syntax::NodeId syntax, std::uint8_t roles) const
+{
+	for (std::size_t i = 0; i < source_occurrences_.size(); ++i)
+		if (source_occurrences_[i].syntax == syntax)
+			return (source_occurrences_[i].roles & roles) != 0;
+	return false;
 }
 
 void TemplateWitnessObserver::NoteResolvedSourceUse(syntax::NodeId syntax)
@@ -1270,11 +1290,14 @@ void TemplateWitnessObserver::RecordVariableUse(syntax::NodeId syntax,
 
 void TemplateWitnessObserver::RecordFunctionCall(syntax::NodeId syntax,
 	syntax::NodeId component_syntax, std::uint32_t pattern, BindingId binding,
-	const std::vector<TemplateArgument>& arguments, std::size_t explicit_count)
+	const std::vector<TemplateArgument>& arguments, std::size_t explicit_count,
+	SourceOccurrenceRole role)
 {
-	if (std::find(retained_function_call_sources_.begin(),
-		retained_function_call_sources_.end(), component_syntax) !=
-		retained_function_call_sources_.end()) return;
+	const bool retained = HasSourceOccurrenceRole(component_syntax,
+		SOURCE_OCCURRENCE_UNEVALUATED_DECLARATION |
+		SOURCE_OCCURRENCE_DEFERRED_DEFINITION);
+	NoteSourceOccurrence(component_syntax, role);
+	if (retained) return;
 	source_events_.push_back(SourceEvent(SOURCE_FUNCTION_CALL, syntax, pattern,
 		binding, arguments, 0, 0, next_insertion_ordinal_++));
 	SourceEvent& event = source_events_.back();
@@ -2125,12 +2148,14 @@ void TemplateWitnessObserver::PrepareSourceEvents(const Analyzer& analyzer,
 		trace << "  dependent-class-uses=" << dependent_class_uses_.size()
 			<< " dependent-alias-uses=" << dependent_alias_uses_.size()
 			<< " dependent-source-uses=" << dependent_source_uses_.size()
-			<< " retained-call-sources=" << retained_function_call_sources_.size()
+			<< " source-occurrences=" << source_occurrences_.size()
 			<< '\n';
-		for (std::size_t i = 0; i < retained_function_call_sources_.size(); ++i)
+		for (std::size_t i = 0; i < source_occurrences_.size(); ++i)
 		{
-			const syntax::NodeId node = retained_function_call_sources_[i];
-			trace << "    retained-call-source syntax=" << node
+			const syntax::NodeId node = source_occurrences_[i].syntax;
+			trace << "    source-occurrence syntax=" << node
+				<< " roles=" << static_cast<unsigned>(
+					source_occurrences_[i].roles)
 				<< " tag=" << arena.Tag(node)
 				<< " payload=" << arena.Payload(node)
 				<< " line=" << arena.SourceLine(node)
@@ -2825,7 +2850,7 @@ void TemplateWitnessObserver::FinishTranslationUnit(const Analyzer& analyzer)
 	dependent_class_uses_.clear();
 	dependent_alias_uses_.clear();
 	dependent_source_uses_.clear();
-	retained_function_call_sources_.clear();
+	source_occurrences_.clear();
 	resolved_source_uses_.clear();
 	function_instantiations_.clear();
 	required_definitions_.clear();
