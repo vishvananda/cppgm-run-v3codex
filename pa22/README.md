@@ -85,6 +85,11 @@ transition.  Constant-evaluated, unevaluated, deferred, and replayed uses remain
 distinct inputs to the final lifecycle decision; source placement alone does
 not decide whether a transition occurred.
 
+An ordinary nonconstant static reference named only in an unevaluated operand
+does not produce a variable-instantiation transition.  This does not suppress a
+constant binding or variable-template specialization whose value must be formed
+to determine a compile-time template result.
+
 ### Output Format
 
 On success, `cppgm++` shall write LowIR text to `<outfile>` and exit

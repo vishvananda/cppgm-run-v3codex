@@ -1515,6 +1515,10 @@ void TemplateWitnessObserver::RecordVariableOccurrence(
 				(owning_class_context ? 1 : 0)) duplicate = true;
 	if (!duplicate) variable_occurrences_.push_back(VariableOccurrenceFact(
 		syntax, binding, evaluation, phase, owning_class_context, properties));
+	if (evaluation == VARIABLE_OCCURRENCE_UNEVALUATED &&
+		(properties & VARIABLE_OCCURRENCE_REFERENCE_TYPE) != 0 &&
+		(properties & (VARIABLE_OCCURRENCE_CONSTANT_BINDING |
+			VARIABLE_OCCURRENCE_VARIABLE_TEMPLATE)) == 0) return;
 	if (!filter_publication_to_source)
 	{
 		RecordVariableInstantiation(binding);

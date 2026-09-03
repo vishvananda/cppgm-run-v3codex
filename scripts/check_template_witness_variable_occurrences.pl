@@ -50,5 +50,7 @@ die "evaluated demanded member value was not instantiated once\n"
   unless ($variables{'observed<int>::runtime_value'} || 0) == 1;
 die "an unused member value became a variable instantiation\n"
   unless ($variables{'observed<int>::unused_value'} || 0) == 0;
+die "an unevaluated reference became a variable instantiation\n"
+  unless ($variables{'observed<int>::unevaluated_reference'} || 0) == 0;
 
 print "template witness variable occurrences: PASS\n";
