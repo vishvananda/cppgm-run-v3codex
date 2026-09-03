@@ -401,34 +401,6 @@ ExpressionInfo Analyzer::ApplyClassObjectTarget(
 	return ApplyCallArgument(value, target, &conversion);
 }
 
-void Analyzer::ValidateStaticAssertionsInBlock(NodeId block,
-	ScopeId scope, std::uint32_t detached_output)
-{
-	const ScopeId local = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefixId(scope));
-	for (std::uint32_t edge = arena_->FirstEdge(block); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-	{
-		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, ::cppgm::syntax::STAG_STATIC_ASSERT_DECLARATION))
-			AnalyzeStaticAssert(child, local);
-		else if (arena_->IsTag(child, ::cppgm::syntax::STAG_SIMPLE_DECLARATION) ||
-			arena_->IsTag(child, ::cppgm::syntax::STAG_ALIAS_DECLARATION) ||
-			arena_->IsTag(child, ::cppgm::syntax::STAG_USING_DECLARATION))
-			AnalyzeDeclaration(child, local, detached_output, true);
-		else if (arena_->IsTag(child, ::cppgm::syntax::STAG_COMPOUND_STATEMENT))
-			ValidateStaticAssertionsInBlock(child, local, detached_output);
-		else
-			for (std::uint32_t nested = arena_->FirstEdge(child);
-				nested != kNoEdge; nested = arena_->NextEdge(nested))
-			{
-				const NodeId statement = arena_->EdgeChild(nested);
-				if (arena_->IsTag(statement, ::cppgm::syntax::STAG_COMPOUND_STATEMENT))
-					ValidateStaticAssertionsInBlock(
-						statement, local, detached_output);
-			}
-	}
-}
-
 void Analyzer::ValidateOrdinaryMemberFunctionBody(BindingId function)
 {
 	FunctionInfo& info = GetMutableFunction(function);
@@ -438,40 +410,7 @@ void Analyzer::ValidateOrdinaryMemberFunctionBody(BindingId function)
 		AnalyzeRetainedPlaceholderFunctionBody(function);
 		return;
 	}
-	std::unordered_set<NodeId> visited;
-	if (!SyntaxContainsTag(*arena_, info.definition_body,
-		"static-assert-declaration", &visited)) return;
-	const TypeId output_type = AdaptMemberFunctionType(info.binding);
-	const ScopeId function_scope = NewScope(info.lexical_scope, SCOPE_FUNCTION,
-		program_->bindings[info.binding].name, ScopePrefixId(info.owner));
-	BindFunctionParameterPackElement(
-		function_scope, info.parameter_pack_name, kNoBinding);
-	if (info.member_owner != kNoType)
-	{
-		const TypeId this_type = program_->types.Parameters(output_type)[0];
-		program_->AddBinding(function_scope, BIND_PARAMETER,
-			program_->names.Intern("this"), this_type);
-	}
-	for (std::size_t i = 0; i < info.parameters.size(); ++i)
-	{
-		const ParameterInfo& parameter = info.parameters[i];
-		const BindingId binding = program_->AddBinding(function_scope,
-			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
-		BindFunctionParameterPackElement(
-			function_scope, parameter.pack_name, binding);
-	}
-	{
-		ScopedValueRestore<TypeId> return_type(&current_return_type_,
-			program_->types.Get(info.type).child);
-		ScopedValueRestore<EntityId> class_context(&current_class_context_,
-			program_->bindings[info.binding].member_owner);
-		ScopedValueRestore<BindingId> function_context(&current_function_context_,
-			program_->bindings[info.binding].canonical);
-		const std::uint32_t detached = MakeDump(DUMP_COMPOUND_STATEMENT);
-		ScopedCounterIncrement unevaluated(&unevaluated_depth_);
-		ValidateStaticAssertionsInBlock(
-			info.definition_body, function_scope, detached);
-	}
+	QueueFunctionDefinitionValidation(function);
 }
 
 void Analyzer::ValidateOrdinaryMemberFunctionBodies(EntityId entity)

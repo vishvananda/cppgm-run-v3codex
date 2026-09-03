@@ -78,7 +78,11 @@ void Analyzer::DemandRuntimeFunction(BindingId binding,
 	RecordFunctionDemand(binding, reason);
 	EnsureFunctionExceptionSpecification(binding);
 	if (current_function_context_ != kNoBinding &&
-		!FunctionObjectDefinitionRequired(current_function_context_)) return;
+		!FunctionObjectDefinitionRequired(current_function_context_))
+	{
+		QueueFunctionDefinitionValidation(binding);
+		return;
+	}
 	DemandRuntimeDefinition(binding);
 }
 

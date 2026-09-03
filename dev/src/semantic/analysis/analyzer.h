@@ -1546,8 +1546,6 @@ private:
 	bool IsCallableDeclaration(NodeId node) const;
 	void ValidateOrdinaryMemberFunctionBodies(EntityId entity);
 	void ValidateOrdinaryMemberFunctionBody(BindingId function);
-	void ValidateStaticAssertionsInBlock(NodeId block, ScopeId scope,
-		std::uint32_t detached_output);
 	void RegisterClassMemberFunction(EntityId entity, BindingId function);
 	void AnalyzeBitField(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
