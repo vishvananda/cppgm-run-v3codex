@@ -2102,6 +2102,22 @@ void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				ResolveOwner(scope, declared_path) : scope;
 		if (declaration_scope == kNoScope)
 			ThrowSemanticError("variable owner not found");
+		// N3485 7.3.1.2/2: a member of a named namespace may be defined
+		// outside it only in a namespace that encloses its own, and 9.4/2
+		// says the same for a static data member's class.
+		if (!local && !qualified_lexical_scope &&
+			(declared_path.global || declared_path.Size() > 1) &&
+			declaration_scope != scope)
+		{
+			bool encloses = false;
+			for (ScopeId owner_scope = declaration_scope;
+				owner_scope != kNoScope && !encloses;
+				owner_scope = program_->ParentScope(owner_scope))
+				encloses = owner_scope == scope;
+			if (!encloses)
+				ThrowSemanticError(
+					"qualified declaration is outside an enclosing scope");
+		}
 		const ScopeId semantic_scope = qualified_lexical_scope ?
 			scope : declaration_scope;
 		ExpressionInfo placeholder_initializer;
@@ -2132,6 +2148,19 @@ void Analyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			DemandClassTemplateMemberDefinitions(
 				DestructedEntity(parsed.type));
 		}
+		// N3485 3.9.1/9: void is an incomplete type that can never be
+		// completed, so no object may be declared with it.
+		if (IsVoid(parsed.type))
+			ThrowSemanticError("variable has type void");
+		// N3485 8.3.2/5: an initializer may be omitted for a reference only
+		// in a parameter, a function return type, a class member declaration,
+		// or where extern is used explicitly.
+		const TypeKind declared_kind = program_->types.Get(parsed.type).kind;
+		if ((declared_kind == TYPE_LVALUE_REFERENCE ||
+			 declared_kind == TYPE_RVALUE_REFERENCE) &&
+			initializer_node == kNoNode &&
+			spec.storage_class != STORAGE_CLASS_EXTERN)
+			ThrowSemanticError("reference requires an initializer");
 		if (spec.is_constexpr && !IsConstexprLiteralType(parsed.type))
 			ThrowSemanticError(
 				"constexpr variable does not have literal type");

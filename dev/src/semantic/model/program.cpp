@@ -791,12 +791,16 @@ struct Program::NameEntry
 	BindingId ordinary;
 	std::uint32_t next_in_scope;
 	bool function_template, variable_template;
+	// A namespace-alias and a namespace definition share name_space, so the
+	// alias must be distinguishable: N3485 7.3.2/3 forbids reopening one.
+	bool namespace_alias;
 
 	NameEntry()
 		: scope(kNoScope), name(0), name_space(kNoScope), type(kNoType),
 		  type_declaration(kNoBinding), ordinary(kNoBinding),
 		  next_in_scope(std::numeric_limits<std::uint32_t>::max()),
-		  function_template(false), variable_template(false) {}
+		  function_template(false), variable_template(false),
+		  namespace_alias(false) {}
 };
 
 struct Program::UsingEdge
@@ -1023,6 +1027,10 @@ ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline,
 	NameEntry* entry = EnsureEntry(parent, name);
 	if (entry->ordinary != kNoBinding || entry->type != kNoType)
 		ThrowSemanticError("namespace conflicts with existing binding");
+	// N3485 7.3.2/3: a namespace-alias names an existing namespace; it is not
+	// itself a namespace and cannot be extended by a namespace-definition.
+	if (entry->namespace_alias)
+		ThrowSemanticError("namespace definition reopens a namespace alias");
 	if (entry->name_space == kNoScope)
 	{
 		entry->name_space = NewScope(parent, SCOPE_NAMESPACE, name);
@@ -1072,6 +1080,7 @@ void Program::AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target)
 		(entry->name_space != kNoScope && entry->name_space != target))
 		ThrowSemanticError("invalid namespace alias binding");
 	entry->name_space = target;
+	entry->namespace_alias = true;
 }
 
 void Program::AddUsingEdge(ScopeId owner, ScopeId target)

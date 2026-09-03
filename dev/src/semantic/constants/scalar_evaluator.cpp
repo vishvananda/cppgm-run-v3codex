@@ -437,7 +437,25 @@ void Analyzer::SetExpressionBindingConstant(
 	if (address != kNoConstexprAddress)
 	{
 		if (program_->types.IsReference(program_->bindings[binding].type))
+		{
 			SetExpressionLvalueAddress(expression, address);
+			// N3485 5.19/2: an id-expression naming a reference initialized
+			// with a constant expression is itself a constant expression, and
+			// the lvalue-to-rvalue conversion reads the referent's value when
+			// that referent is a const object with a constant initializer.
+			const ConstexprAddressValue* referent = ConstexprAddressAt(address);
+			if (referent && referent->kind == CONSTEXPR_ADDRESS_BINDING &&
+				referent->offset == 0 &&
+				referent->identity < program_->bindings.size())
+			{
+				const BindingId target =
+					static_cast<BindingId>(referent->identity);
+				if (program_->bindings[target].constant &&
+					BindingAddress(target) == kNoConstexprAddress &&
+					BindingObject(target) == kNoConstexprObject)
+					SetExpressionScalar(expression, BindingScalar(target));
+			}
+		}
 		else SetExpressionAddress(expression, address);
 	}
 	else if (object != kNoConstexprObject) SetExpressionObject(expression, object);

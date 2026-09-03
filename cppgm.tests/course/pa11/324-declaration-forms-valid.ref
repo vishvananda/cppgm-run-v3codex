@@ -1,0 +1,40 @@
+1 translation units
+start translation unit 1
+translation-unit
+  scope namespace <global>
+    function returns_nothing function of () returning void
+    variable pointer_to_void pointer to void
+    variable subject int
+    variable external_reference lvalue-reference to int
+    type holder struct holder
+    function returns_reference function of () returning lvalue-reference to int
+    function takes_reference function of (lvalue-reference to int) returning int
+    variable extent const unsigned long int
+    variable extent_reference lvalue-reference to const unsigned long int
+    variable chained_reference lvalue-reference to const unsigned long int
+    variable sized_by_reference array of 3 int
+    variable sized_by_chain array of 3 int
+    function main function of () returning int
+    scope class holder
+      variable member lvalue-reference to int
+      function holder function of (lvalue-reference to int) returning void
+      scope function holder
+        parameter bound lvalue-reference to int
+        scope block
+    scope namespace outer
+      variable direct int
+      type owner struct owner
+      variable direct int
+      scope namespace inner
+        variable nested int
+        variable nested int
+      scope class owner
+        variable member int
+        variable member int
+    scope namespace alias_target
+      variable value int
+      variable second int
+    scope function main
+      scope block
+        variable local struct holder
+end translation unit

@@ -228,6 +228,20 @@ PA11 must support:
 - the supported `decltype(...)` forms listed in the tests and reference output
 - deterministic scope-tree output
 
+PA11 also rejects the following declaration forms:
+
+- an object declared with type `void`, which is an incomplete type that can
+  never be completed; `void` return types and pointers to `void` remain valid
+- a reference declared without an initializer, except as a parameter, a
+  function return type, a class member, or where `extern` is used explicitly
+- a qualified definition of a namespace or class member written outside a
+  scope that encloses the member's own scope
+- a namespace-definition that names an existing namespace-alias, since an alias
+  is another name for a namespace rather than a namespace that can be extended
+
+A reference initialized with a constant expression is itself usable as a
+constant expression, so reading through one may supply an array bound.
+
 The PA11 output should preserve enough declaration and type information for PA12
 to add expression and call semantics without reparsing the source.
 
