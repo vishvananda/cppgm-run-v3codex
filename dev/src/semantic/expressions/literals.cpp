@@ -762,7 +762,7 @@ ExpressionInfo Analyzer::AnalyzeNamedValue(
 		program_->bindings[found.ordinary].member_owner != kNoEntity &&
 		!program_->bindings[found.ordinary].non_static_data_member &&
 		!program_->bindings[found.ordinary].constant &&
-		(constant_expression_required_depth_ != 0 || unevaluated_depth_ != 0) &&
+		constant_expression_required_depth_ != 0 && unevaluated_depth_ == 0 &&
 		(IsIntegral(program_->bindings[found.ordinary].type, true) ||
 		 IsFloating(program_->bindings[found.ordinary].type)))
 	{
