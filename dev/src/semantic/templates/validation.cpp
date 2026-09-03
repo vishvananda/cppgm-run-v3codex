@@ -1598,10 +1598,15 @@ void RetainedTemplateValidator::PublishRetainedSourceProvenance(
 	{
 		const NodeId source = analyzer_.arena_->OverloadSourceAnchor(node);
 		if (source != kNoNode)
+		{
 			analyzer_.template_witness_->NoteSourceOccurrence(source,
 				declaration_only ? TemplateWitnessObserver::
 					SOURCE_OCCURRENCE_UNEVALUATED_DECLARATION :
 					TemplateWitnessObserver::SOURCE_OCCURRENCE_DEFERRED_DEFINITION);
+			if (SyntaxUsesTemplateParameter(node))
+				analyzer_.template_witness_->NoteSourceOccurrence(source,
+					TemplateWitnessObserver::SOURCE_OCCURRENCE_DEPENDENT);
+		}
 	}
 	if (analyzer_.arena_->IsTag(
 		node, ::cppgm::syntax::STAG_STRUCTURED_TYPE_NAME))
@@ -1661,6 +1666,12 @@ void RetainedTemplateValidator::ScanDependentSourceUses(
 			analyzer_.template_witness_->NoteSourceOccurrence(overload_source,
 				TemplateWitnessObserver::
 					SOURCE_OCCURRENCE_UNEVALUATED_DECLARATION);
+		if (overload_source != kNoNode &&
+			(SyntaxUsesTemplateParameter(node) ||
+			 SyntaxUsesDependentType(node, scope) ||
+			 SyntaxUsesDependentValue(node, scope)))
+			analyzer_.template_witness_->NoteSourceOccurrence(overload_source,
+				TemplateWitnessObserver::SOURCE_OCCURRENCE_DEPENDENT);
 	}
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
@@ -1682,6 +1693,12 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 			analyzer_.template_witness_->NoteSourceOccurrence(overload_source,
 				TemplateWitnessObserver::
 					SOURCE_OCCURRENCE_DEFERRED_DEFINITION);
+		if (overload_source != kNoNode &&
+			(SyntaxUsesTemplateParameter(node) ||
+			 SyntaxUsesDependentType(node, scope) ||
+			 SyntaxUsesDependentValue(node, scope)))
+			analyzer_.template_witness_->NoteSourceOccurrence(overload_source,
+				TemplateWitnessObserver::SOURCE_OCCURRENCE_DEPENDENT);
 	}
 	NoteDependentSourceUse(node, scope);
 	if (VisitSwitchLabel(node, scope)) return;
