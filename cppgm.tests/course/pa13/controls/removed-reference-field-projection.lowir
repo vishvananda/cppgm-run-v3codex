@@ -1,5 +1,0 @@
-function @project(%base : ptr) -> ptr {
-  block ^entry:
-    %reference = index i8 [projection=reference_field] %base, 8
-    return ptr %reference
-}

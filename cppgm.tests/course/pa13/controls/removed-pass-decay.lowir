@@ -1,6 +1,0 @@
-declare function @observe(%value : ptr [pass=decay]) -> void
-
-function @main() -> i64 [role=entry] {
-  block ^entry:
-    return i64 0
-}

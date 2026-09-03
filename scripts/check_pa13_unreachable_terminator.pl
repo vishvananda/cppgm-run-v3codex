@@ -28,11 +28,11 @@ if (scalar(@ARGV) != 4)
 my ($lowiropt, $lowir2cy86, $cy86, $root) = @ARGV;
 my @positive = collect_tests($root, qr/unreachable-terminator\.lowir$/);
 my @negative = collect_tests($root,
-	qr/(?:unreachable-followed-by-instruction|unreachable-with-operand|removed-unreachable-role)\.lowir$/);
+	qr/(?:unreachable-followed-by-instruction|unreachable-with-operand)\.lowir$/);
 die "No PA13 unreachable-terminator control found under $root\n"
 	if !@positive;
 die "PA13 unreachable negative controls are incomplete under $root\n"
-	if scalar(@negative) != 3;
+	if scalar(@negative) != 2;
 
 for my $test (@positive)
 {

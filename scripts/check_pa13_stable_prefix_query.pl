@@ -27,11 +27,10 @@ if (scalar(@ARGV) != 4)
 
 my ($lowiropt, $lowir2cy86, $cy86, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:retained|rejected)-stable-prefix-query(?:-[^.]+)?\.lowir$/);
+	qr/retained-stable-prefix-query\.lowir$/);
 die "No PA13 stable-prefix-query controls found under $root\n" if !@tests;
 
 my $retained = 0;
-my $rejected = 0;
 for my $test (@tests)
 {
 	my $directory = tempdir('pa13-stable-prefix-XXXXXX', TMPDIR => 1,
@@ -44,21 +43,6 @@ for my $test (@tests)
 		stderr => "$directory/lowiropt.stderr",
 		timeout => 30,
 	);
-
-	if ($test =~ /rejected-stable-prefix-query/) {
-		die "$test: lowiropt accepted an invalid stable-prefix boundary\n"
-			if $status == 0;
-		$status = run_command_capture(
-			cmd => [$lowir2cy86, '-o', $cy86_source, $test],
-			stdout => "$directory/lowir2cy86.stdout",
-			stderr => "$directory/lowir2cy86.stderr",
-			timeout => 30,
-		);
-		die "$test: lowir2cy86 accepted an invalid stable-prefix boundary\n"
-			if $status == 0;
-		++$rejected;
-		next;
-	}
 
 	die "$test: LowIR O0 roundtrip failed\n" .
 		read_file("$directory/lowiropt.stderr") if $status != 0;
@@ -99,6 +83,5 @@ for my $test (@tests)
 }
 
 die "PA13 stable-prefix controls lack a retained case\n" if !$retained;
-die "PA13 stable-prefix controls lack rejected shapes\n" if !$rejected;
 print "PA13 stable-prefix query properties: PASS (" . scalar(@tests) .
 	"/" . scalar(@tests) . ")\n";

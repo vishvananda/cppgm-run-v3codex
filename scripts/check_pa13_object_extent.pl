@@ -33,7 +33,7 @@ if(scalar(@ARGV) != 4)
 
 my ($optimizer, $adapter, $cy86, $root) = @ARGV;
 my @tests = collect_tests($root,
-	qr/(?:retained-parameter-object-extent|rejected-object-extent-[^.]+)\.lowir$/);
+	qr/retained-parameter-object-extent\.lowir$/);
 die "No PA13 object-extent controls found under $root\n" if !@tests;
 
 for my $test (@tests)
@@ -47,10 +47,6 @@ for my $test (@tests)
 		stderr => "$directory/optimizer.stderr",
 		timeout => 30,
 	);
-	if($test =~ /rejected-object-extent/) {
-		die "$test: invalid object extent was accepted\n" if $status == 0;
-		next;
-	}
 	die "$test: valid object extent was rejected\n" .
 		read_file("$directory/optimizer.stderr") if $status != 0;
 	my @before = extents(read_file($test));

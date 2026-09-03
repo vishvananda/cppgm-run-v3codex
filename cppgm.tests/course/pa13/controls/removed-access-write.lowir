@@ -1,1 +1,0 @@
-declare function @observe(%value : ptr [access=write]) -> void

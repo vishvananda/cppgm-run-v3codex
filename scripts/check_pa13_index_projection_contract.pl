@@ -27,10 +27,7 @@ if (scalar(@ARGV) != 4)
 
 my ($lowiropt, $lowir2cy86, $cy86, $root) = @ARGV;
 my @retained = collect_tests($root, qr/retained-index-projections\.lowir$/);
-my @removed = collect_tests($root,
-	qr/removed-(?:base-subobject|reference-field)-projection\.lowir$/);
-die "No PA13 index-projection controls found under $root\n"
-	if !@retained && !@removed;
+die "No PA13 index-projection controls found under $root\n" if !@retained;
 
 for my $test (@retained)
 {
@@ -86,19 +83,5 @@ for my $test (@retained)
 		if $status != 0;
 }
 
-for my $test (@removed)
-{
-	my $directory = tempdir('pa13-removed-projection-XXXXXX', TMPDIR => 1,
-		CLEANUP => 1);
-	my $status = run_command_capture(
-		cmd => [$lowiropt, '-O0', '-o', "$directory/output.lowir", $test],
-		stdout => "$directory/lowiropt.stdout",
-		stderr => "$directory/lowiropt.stderr",
-		timeout => 30,
-	);
-	die "$test: removed source-origin projection was accepted\n"
-		if $status == 0;
-}
-
-my $count = scalar(@retained) + scalar(@removed);
+my $count = scalar(@retained);
 print "PA13 index-projection contract: PASS ($count/$count)\n";

@@ -967,7 +967,6 @@ Required PA13 unary operators:
 - `neg`
 - `not`
 - `bitnot`
-- `decay` for `ptr`
 - `bswap` for `i16`, `i32`, and `i64`
 
 Required PA13 binary operators:

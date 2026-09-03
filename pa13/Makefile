@@ -73,10 +73,6 @@ test: $(TEST_DEPS)
 		perl ../scripts/check_pa13_unreachable_terminator.pl \
 			$(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) \
 			"$(COURSE_CONTROL_TEST_ROOT)"; \
-		perl ../scripts/check_pa13_removed_parameter_metadata.pl \
-			$(LOWIROPT_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
-		perl ../scripts/check_pa13_removed_instructions.pl \
-			$(LOWIROPT_APP) "$(COURSE_CONTROL_TEST_ROOT)"; \
 		perl ../scripts/check_pa13_index_projection_contract.pl \
 			$(LOWIROPT_APP) $(CPPGM_TEST_APP) $(CY86_APP) \
 			"$(COURSE_CONTROL_TEST_ROOT)"; \

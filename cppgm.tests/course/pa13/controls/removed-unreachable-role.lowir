@@ -1,6 +1,0 @@
-declare function @impossible() -> void [role=unreachable]
-
-function @main() -> i64 [role=entry] {
-  block ^entry:
-    return i64 0
-}

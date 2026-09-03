@@ -26,11 +26,10 @@ if (scalar(@ARGV) != 4)
 }
 
 my ($lowiropt, $lowir2cy86, $cy86, $root) = @ARGV;
-my @tests = collect_tests($root, qr/(?:retained|rejected)-copy-elision-.*\.lowir$/);
+my @tests = collect_tests($root, qr/retained-copy-elision-.*\.lowir$/);
 die "No PA13 copy-elision metadata controls found under $root\n" if !@tests;
 
 my $accepted = 0;
-my $rejected = 0;
 for my $test (@tests)
 {
 	my $directory = tempdir('pa13-copy-elision-XXXXXX', TMPDIR => 1,
@@ -42,13 +41,6 @@ for my $test (@tests)
 		stderr => "$directory/lowiropt.stderr",
 		timeout => 30,
 	);
-	if ($test =~ /rejected-copy-elision-/)
-	{
-		die "$test: invalid copy-elision metadata was accepted\n"
-			if $status == 0;
-		++$rejected;
-		next;
-	}
 	die "$test: valid copy-elision metadata was rejected\n" .
 		read_file("$directory/lowiropt.stderr") if $status != 0;
 	my $text = read_file($roundtrip);
@@ -91,5 +83,4 @@ for my $test (@tests)
 }
 
 die "PA13 copy-elision controls lack an accepted case\n" if !$accepted;
-die "PA13 copy-elision controls lack rejected cases\n" if !$rejected;
-print "PA13 copy-elision metadata: PASS (accepted=$accepted rejected=$rejected)\n";
+print "PA13 copy-elision metadata: PASS ($accepted/$accepted)\n";

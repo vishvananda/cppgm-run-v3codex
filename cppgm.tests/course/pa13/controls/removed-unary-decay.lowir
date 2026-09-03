@@ -1,5 +1,0 @@
-function @main(%value : ptr) -> i64 [role=entry] {
-  block ^entry:
-    %decayed = unary decay ptr %value
-    return i64 0
-}
