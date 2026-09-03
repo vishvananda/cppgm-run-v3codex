@@ -79,6 +79,12 @@ still produces a definition requirement, because the call must remain valid.
 Ordinary function-template specializations continue to report both transitions
 when their definitions are instantiated and required.
 
+For template-owned static data, an ordinary evaluated use in a member body
+whose definition is finally demanded reports a variable-instantiation
+transition.  Constant-evaluated, unevaluated, deferred, and replayed uses remain
+distinct inputs to the final lifecycle decision; source placement alone does
+not decide whether a transition occurred.
+
 ### Output Format
 
 On success, `cppgm++` shall write LowIR text to `<outfile>` and exit

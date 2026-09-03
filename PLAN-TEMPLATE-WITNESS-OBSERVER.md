@@ -1269,6 +1269,20 @@ operands are all unevaluated, and `table<>::call` member uses occur during final
 definition demand.  Existing witness output deliberately remains unchanged
 until a consumer can state its rule in those typed roles.
 
+The first broad consumer prototype replaced the legacy primary-file/function
+filter with every non-deferred evaluated or constant-evaluated fact.  It was
+rejected: 36 witnesses changed and 12 previously exact files regressed because
+specialization-substituted constants were incorrectly promoted to variable
+instantiations.  The contained consumer retains the old behavior and adds only
+ordinary evaluated static members encountered in the owning class's finally
+demanded function body.  This changes only `table<>::inv_sizes32_len`,
+`table<>::positions`, and `holder<unsigned, int>::digits`; the two affected
+witness files become exact.  Their LowIR is unchanged, and both programs have
+the same exit behavior under cppgm++, GCC, and Clang.  The relationship test
+also checks that an unused member is not published; it deliberately makes no
+blanket claim about constant template-argument uses after a reference probe
+showed that their final lifecycle depends on how the resulting value is used.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1343,6 +1357,8 @@ until a consumer can state its rule in those typed roles.
 | W5N-F function lifecycle snapshot | Added a 16-byte typed snapshot in semantic lifetime analysis for canonical function/owner identity, template-context roles, explicit-specialization and explicit-instantiation state, completion state, and final emission demand | all 3,064 PA19--PA24 witness/LowIR pairs byte-identical to `5f1c03bc`; PA19/20 strict, PA22 ordinary, relationship tests, frozen O0/O1/O3, and audits exact; four-block paired user -0.238%, wall -0.211%, RSS -0.209% | retain as output-inert machinery; a following consumer may use final owner/function state to distinguish validation, requirement, and instantiation, while the renderer must stop reading lifecycle storage directly |
 | W5N-O function lifecycle | Rebased function-instantiation and require-definition classification on the typed semantic snapshot; an extern-instantiated class's completed inline defaulted member remains required but is not reported as newly instantiated | exactly 1 PA22 witness changes and becomes exact (260 -> 261); every PA19/20/23/24 witness and all 1,532 LowIR artifacts remain identical; the new relationship test fails on the foundation and passes on the consumer; PA19/20 strict, PA22 ordinary 311/311, frozen O0/O1/O3, and audits exact; four-block paired user -0.612%, wall +0.001%, RSS -0.077% | retain; cppgm++, GCC, and Clang agree behaviorally on a non-empty copy, while the cppgm reference emits the same LowIR definition but makes the same requirement/instantiation distinction; track GCC/Clang's symbol-free trivial-copy lowering separately rather than disguising it as a witness fix |
 | W5N-F variable occurrence provenance | Retained a 12-byte observer-only fact for exact syntax/binding, evaluated versus constant-evaluated versus unevaluated role, source/deferred/final-demand/replay phase, and owning-class context at the existing member-value decision | debug controls distinguish the lazy-header constant, eight unevaluated formatter operands, and six final-demand table-member uses; all 3,064 PA19--PA24 witness/LowIR pairs remain identical to `179435e6`; PA19/20 strict, PA22 ordinary, relationship tests, frozen O0/O1/O3, and audits exact; four-block paired user +0.061%, wall -0.000%, RSS -0.073% | retain output-inert; consumers may publish evaluated final-demand/header constant transitions and suppress unevaluated-only transitions, but must separately verify binding lifecycle and presentation instead of scanning source paths or names |
+| W5N rejected broad variable occurrence consumer | Replaced source filtering with every non-deferred evaluated or constant-evaluated variable occurrence | 36 witnesses changed: PA20 lost 2 exact files, PA22 had one gain and one regression, PA23 lost 6 exact files, and PA24 had 3 gains and 3 regressions; LowIR stayed exact | reject; constant substitution and final runtime evaluation are distinct lifecycle inputs, so occurrence alone cannot declare every referenced binding instantiated |
+| W5N-O evaluated demanded variable occurrences | Preserved existing publication and added only ordinary evaluated static-member uses in an owning class function whose definition is finally demanded | exactly 2 witnesses change and become exact: PA22 261 -> 262 and PA24 282 -> 283; every other witness and all 1,532 LowIR artifacts remain identical; the relationship test fails on the foundation and passes on the consumer; cppgm++/GCC/Clang behavior agrees; PA19/20 strict, PA22 ordinary, frozen O0/O1/O3, and audits exact; four-block paired user +0.060%, wall +0.053%, RSS +0.368% | retain the narrow typed consumer; do not generalize constant/header or unevaluated handling until binding lifecycle says whether semantic instantiation actually occurred |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

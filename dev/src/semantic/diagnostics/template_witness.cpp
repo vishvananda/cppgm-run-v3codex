@@ -2797,6 +2797,14 @@ void TemplateWitnessObserver::RenderClosureEvents(const Analyzer& analyzer,
 		rendered_class_instantiations.end());
 	std::sort(rendered_instantiations.begin(), rendered_instantiations.end());
 	std::sort(rendered_requirements.begin(), rendered_requirements.end());
+	for (std::size_t i = 0; i < variable_occurrences_.size(); ++i)
+	{
+		const VariableOccurrenceFact& occurrence = variable_occurrences_[i];
+		if (occurrence.evaluation == VARIABLE_OCCURRENCE_EVALUATED &&
+			occurrence.phase == VARIABLE_OCCURRENCE_DEFINITION_DEMAND &&
+			occurrence.owning_class_context != 0)
+			RecordVariableInstantiation(occurrence.binding);
+	}
 	std::vector<std::string> rendered_variables;
 	for (std::size_t i = 0; i < variable_instantiations_.size(); ++i)
 	{
