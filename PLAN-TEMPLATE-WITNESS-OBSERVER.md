@@ -1437,6 +1437,32 @@ control successfully.  Four exact-object ABBA blocks measure +0.181% paired
 user, -0.215% wall, and +0.328% RSS, within the 0.2% CPU gate.  The report is
 `/tmp/v3codex-w5n-entity-presentation-consumer-ab.json`.
 
+The next hidden-base drop exposed wrong ordinary semantics rather than an
+observer surplus.  Core ordinary lookup treated a class entry containing only
+a function or variable template as empty and continued into base scopes.  For
+calls, it then combined a hidden base non-template with the separately found
+local template set.  The existing fixture happened to select the right derived
+template because the base member's implicit-object conversion was worse.  A
+static-function reducer removes that accidental advantage: the pre-fix compiler
+calls the hidden non-template and exits 1, while the corrected compiler, GCC,
+and Clang select the derived template and exit 0.  The analogous variable
+reducer proves the pre-fix compiler also accepts `derived::value` by silently
+selecting a hidden base object even though the local variable template requires
+arguments; GCC and Clang reject it.
+
+The semantic repair makes either local template entry a lookup barrier for the
+ordinary lookup query without manufacturing a concrete binding.  Its PA22
+relationship test checks executable function behavior, witness-off/on LowIR
+identity, the selected derived template call, absence of a hidden-base drop,
+and rejection of the argument-less variable-template name.  Exactly two
+existing PA22 witnesses lose hidden-base drops; one becomes exact and the other
+retains only an independent terminal-source anchor difference, moving PA22
+from 269 to 270.  PA19/20/23/24 remain exact to the prior compiler, with no
+status or LowIR movement across all 1,532 cases.  Compiler text grows by only
+24 bytes, and four exact-object ABBA blocks measure -0.601% paired user,
+-0.162% wall, and +0.040% RSS.  The report is
+`/tmp/v3codex-w5n-template-name-hiding-final-ab.json`.
+
 ## Phase W6: Performance and repository closure
 
 1. Build matched before/after GCC-O3, Clang-O3, self-O1, and self-O3 compilers
@@ -1523,6 +1549,7 @@ user, -0.215% wall, and +0.328% RSS, within the 0.2% CPU gate.  The report is
 | W5N rejected broad closure presentation bypass | Stopped applying every entity replacement to member-variable closure names | both function-type PA22 fixtures become exact, but three PA23 and three PA24 witnesses change; one exact incomplete-array fixture regresses and valid enum/character/nested spellings are lost; all LowIR remains exact | reject; source-distinguished outer identity does not eliminate legitimate typed normalization of nested entities |
 | W5N-F typed entity presentation origin | Replaced anonymous canonical/presented string pairs with facts keyed by the exact semantic entity that produced them | all 1,532 PA19--PA24 witnesses, statuses, and LowIR artifacts are exact to `207f44e5`; +2,012 compiler text bytes; six-block exact-object A/B -0.360% user, -0.430% wall, +0.002% RSS | retain output-inert; the consumer may suppress only cross-entity conflicts while preserving unambiguous nested replacements |
 | W5N-O cross-entity presentation conflict | Prevented a source presentation chosen for one typed entity from globally rewriting a distinct entity with the same canonical text | exactly 2 PA22 witnesses become exact (267 -> 269); PA19/20/23/24 and all statuses/LowIR remain exact; relationship test fails on the foundation and preserves three source/closure identities on the consumer; cppgm++/GCC/Clang behavior agrees; four-block exact-object A/B +0.181% user, -0.215% wall, +0.328% RSS | retain the typed conflict gate; keep valid unambiguous nested replacements and never deduplicate semantic entities by rendered text |
+| W5N semantic template-name hiding | Made local function- and variable-template names stop the ordinary lookup walk before hidden base/enclosing declarations are considered | static-function reducer changes pre-fix wrong exit 1 to exit 0, agreeing with GCC/Clang; variable reducer changes an incorrect success to the same rejection as GCC/Clang; relationship test verifies behavior, LowIR observer invariance, selected template, no base drop, and invalid argument-less variable-template use; exactly 2 PA22 witnesses improve, one becomes exact (269 -> 270), with every PA19/20/23/24 witness and all 1,532 corpus statuses/LowIR unchanged; compiler text +24 bytes; four-block exact-object A/B -0.601% user, -0.162% wall, +0.040% RSS | retain as ordinary lookup correctness; the remaining terminal source anchor is independent and must use component provenance rather than candidate filtering |
 | W5M-O | Publish retained owners, dependent aliases, operators, and constructors only from final semantic decisions using W5M-F/W5M-S provenance | PA22 convergence in progress from a stable 68 mismatches; require PA19/20 exactness, improved PA22 exact count, exact no-witness objects, and repeated A/B timing | prefer declaration-owned semantic source facts over any observer-side syntax recovery |
 
 ## Exit criteria

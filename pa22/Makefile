@@ -88,6 +88,10 @@ test-strict: $(TEST_DEPS)
 	@perl ../scripts/check_template_witness_entity_presentation.pl \
 		$(CPPGM_TEST_APP) \
 		tests/properties/350-template-witness-entity-presentation.cpp
+	@perl ../scripts/check_qualified_member_template_hiding.pl \
+		$(CPPGM_TEST_APP) \
+		tests/properties/360-qualified-member-template-hiding.cpp \
+		tests/properties/361-qualified-variable-template-hiding.cpp
 	@scripts/compare_results.pl ref my tests
 	@../scripts/compare_witness_results.pl ref my tests
 	@test ! -f .test_failed
@@ -119,6 +123,10 @@ test-strict: $(TEST_DEPS)
 	@perl ../scripts/check_template_witness_entity_presentation.pl \
 		$(CPPGM_TEST_APP) \
 		tests/properties/350-template-witness-entity-presentation.cpp
+	@perl ../scripts/check_qualified_member_template_hiding.pl \
+		$(CPPGM_TEST_APP) \
+		tests/properties/360-qualified-member-template-hiding.cpp \
+		tests/properties/361-qualified-variable-template-hiding.cpp
 	@scripts/compare_results.pl ref my tests
 	@../scripts/compare_witness_results.pl ref my tests
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my $(COURSE_TEST_ROOT)
