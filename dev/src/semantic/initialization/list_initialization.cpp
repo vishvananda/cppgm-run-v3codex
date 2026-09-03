@@ -1,5 +1,4 @@
 #include "semantic/analysis/analyzer.h"
-#include "support/exception_types.h"
 
 #include <unordered_set>
 
@@ -827,8 +826,8 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 	const std::size_t arity = argument_syntax.size();
 	if (arity != 0 && candidates.size() >
 		std::numeric_limits<std::size_t>::max() / arity)
-		throw ResourceLimitError("constructor conversion table is too large",
-			CompilerErrorDomain::SEMANTIC);
+		ThrowSemanticResourceLimit(
+			"constructor conversion table is too large");
 	std::vector<CallConversionFact> conversions(candidates.size() * arity);
 	std::vector<TypeId> braced_sources(candidates.size() * arity, kNoType);
 	CallConversionTable conversion_cache;
@@ -981,7 +980,7 @@ BindingId Analyzer::SelectConstructor(ScopeId scope,
 	if (viable_count == 0)
 	{
 		if (quiet) return kNoBinding;
-		throw SemanticError("no viable constructor for " +
+		ThrowSemanticError("no viable constructor for " +
 			std::to_string(arity) + " argument(s) from " +
 			std::to_string(candidates.size()) + " candidate(s)");
 	}
