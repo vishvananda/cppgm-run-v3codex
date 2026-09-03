@@ -174,21 +174,11 @@ private:
 	bool ParseOperatorFunctionSuffix()
 	{
 		if (At(KW_NEW) || At(KW_DELETE))
-		{
-			++position_;
-			if (Match(OP_LSQUARE)) Expect(OP_RSQUARE);
-			return true;
-		}
+		{ ++position_; if (Match(OP_LSQUARE)) Expect(OP_RSQUARE); return true; }
 		if (Match(OP_LPAREN))
-		{
-			Expect(OP_RPAREN);
-			return true;
-		}
+		{ Expect(OP_RPAREN); return true; }
 		if (Match(OP_LSQUARE))
-		{
-			Expect(OP_RSQUARE);
-			return true;
-		}
+		{ Expect(OP_RSQUARE); return true; }
 		if (position_ + 1 < tokens_.size() &&
 			tokens_[position_].Kind() == kRShiftFirstToken &&
 			tokens_[position_ + 1].Kind() == kRShiftSecondToken)
@@ -328,17 +318,28 @@ private:
 		const Mark mark = Checkpoint();
 		const std::size_t first = position_;
 		const bool global = allow_qualified && Match(OP_COLON2);
-		std::vector<TextId> component_names;
-		std::vector<NodeId> component_arguments;
+		struct ParsedNameComponent
+		{
+			TextId name; NodeId arguments;
+			std::uint32_t first, last;
+			ParsedNameComponent(TextId name_value, NodeId arguments_value,
+				std::size_t first_value, std::size_t last_value)
+				: name(name_value), arguments(arguments_value),
+				  first(static_cast<std::uint32_t>(first_value)),
+				  last(static_cast<std::uint32_t>(last_value)) {}
+		};
+		std::vector<ParsedNameComponent> components;
 		bool retained_arguments = false;
 		if (structure) *structure = kNoNode;
 		if (terminal_identifier) *terminal_identifier = 0;
 		if (conversion_type) *conversion_type = kNoNode;
 		if (terminal_name) *terminal_name = 0;
 		bool operator_component = false; NodeId operator_arguments = kNoNode;
+		std::size_t operator_component_first = first, operator_component_last = first;
 		if (At(KW_OPERATOR) && allow_operator)
 		{
 			operator_component = true;
+			operator_component_first = position_;
 			++position_;
 			if (AtLiteral())
 			{
@@ -353,40 +354,36 @@ private:
 			else if (!ParseOperatorFunctionSuffix())
 			{
 				if (!ParseConversionTypeName(conversion_type))
-				{
-					Rollback(mark);
-					return false;
-				}
+				{ Rollback(mark); return false; }
 			}
 		}
 		else
 		{
 			const bool destructor = Match(OP_COMPL);
 			if (!AtIdentifier())
-			{
-				Rollback(mark);
-				return false;
-			}
+			{ Rollback(mark); return false; }
+			const std::size_t identifier_position = position_;
 			const TextId identifier = tokens_[position_++].spelling;
 			if (terminal_identifier) *terminal_identifier = identifier;
 			const TextId component = destructor && (structure || terminal_name) ?
 				strings_.Intern("~" + strings_.Get(identifier)) : identifier;
 			if (terminal_name) *terminal_name = component;
 			if (structure)
-			{
-				component_names.push_back(component);
-				component_arguments.push_back(kNoNode);
-			}
+				components.push_back(ParsedNameComponent(
+					component, kNoNode, identifier_position, position_));
 		}
 		if (allow_template_arguments)
 		{
 			const NodeId arguments = TryConsumeTemplateArguments(structure != 0);
 			if (structure && arguments != kNoNode)
 			{
-				if (operator_component) operator_arguments = arguments;
-				else if (!component_arguments.empty()) component_arguments.back() = arguments;
+				if (operator_component)
+				{ operator_arguments = arguments; operator_component_last = position_; }
+				else if (!components.empty())
+				{ components.back().arguments = arguments; components.back().last = position_; }
 				retained_arguments = true;
 			}
+			else if (operator_component) operator_component_last = position_;
 		}
 		if (allow_qualified)
 		{
@@ -397,43 +394,39 @@ private:
 				if (At(KW_OPERATOR) && allow_operator)
 				{
 					operator_component = true;
+					operator_component_first = position_;
 					++position_;
 					if (!ParseOperatorFunctionSuffix() &&
 						!ParseConversionTypeName(conversion_type))
-					{
-						Rollback(mark);
-						return false;
-					}
+					{ Rollback(mark); return false; }
 				}
 				else if (AtIdentifier())
 				{
+					const std::size_t identifier_position = position_;
 					const TextId identifier = tokens_[position_++].spelling;
 					if (terminal_identifier) *terminal_identifier = identifier;
 					const TextId component = destructor &&
 						(structure || terminal_name) ? strings_.Intern(
 							"~" + strings_.Get(identifier)) : identifier;
 					if (terminal_name) *terminal_name = component;
-					if (structure)
-					{
-						component_names.push_back(component);
-						component_arguments.push_back(kNoNode);
-					}
+					if (structure) components.push_back(ParsedNameComponent(
+						component, kNoNode, identifier_position, position_));
 				}
 				else
-				{
-					Rollback(mark);
-					return false;
-				}
+				{ Rollback(mark); return false; }
 				if (allow_template_arguments)
 				{
 					const NodeId arguments =
 						TryConsumeTemplateArguments(structure != 0);
 					if (structure && arguments != kNoNode)
 					{
-						if (operator_component) operator_arguments = arguments;
-						else if (!component_arguments.empty()) component_arguments.back() = arguments;
+						if (operator_component)
+						{ operator_arguments = arguments; operator_component_last = position_; }
+						else if (!components.empty())
+						{ components.back().arguments = arguments; components.back().last = position_; }
 						retained_arguments = true;
 					}
+					else if (operator_component) operator_component_last = position_;
 				}
 			}
 		}
@@ -456,17 +449,12 @@ private:
 			for (std::size_t i = 0; i < terminal.size() && (operator_arguments == kNoNode || terminal[i] != '<'); ++i)
 				if (!std::isspace(static_cast<unsigned char>(terminal[i]))) canonical += terminal[i];
 			const TextId component = strings_.Intern(canonical);
+			if (operator_component_last <= operator_component_first) operator_component_last = position_;
 			if (terminal_name) *terminal_name = component;
-			if (structure)
-			{
-				component_names.push_back(component);
-				component_arguments.push_back(operator_arguments);
-			}
+			if (structure) components.push_back(ParsedNameComponent(component,
+				operator_arguments, operator_component_first, operator_component_last));
 		}
-		// Preserve the established semantic component for an unqualified
-		// conversion operator whose target type is qualified.  The source
-		// spelling remains the syntax payload; semantic consumers receive the
-		// component once instead of splitting that payload repeatedly.
+		// Keep one semantic component when a conversion target type is qualified.
 		if (terminal_name && text->compare(0, 8, "operator") == 0 &&
 			text->compare(0, 9, "operator ") != 0)
 		{
@@ -475,19 +463,19 @@ private:
 				*terminal_name = strings_.InternRange(*text, separator + 2,
 					text->size() - separator - 2);
 		}
-		if (structure && (retained_arguments || global ||
-			component_names.size() > 1))
+		if (structure && (retained_arguments || global || components.size() > 1))
 		{
 			const NodeId name = arena_.Make("structured-type-name");
+			arena_.SetTokenRange(name, first, position_);
 			arena_.AddFlags(name, SYNTAX_FLAG_SEMANTIC_ONLY);
 			if (global) arena_.Add(name, arena_.Make("global-qualifier"));
-			for (std::size_t i = 0; i < component_names.size(); ++i)
+			for (std::size_t i = 0; i < components.size(); ++i)
 			{
 				const NodeId component = arena_.Make("name-component",
-					strings_.Get(component_names[i]));
-				arena_.SetSemanticPayload(component, component_names[i]);
-				if (component_arguments[i] != kNoNode)
-					arena_.Add(component, component_arguments[i]);
+					strings_.Get(components[i].name));
+				arena_.SetSemanticPayload(component, components[i].name);
+				arena_.SetTokenRange(component, components[i].first, components[i].last);
+				if (components[i].arguments != kNoNode) arena_.Add(component, components[i].arguments);
 				arena_.Add(name, component);
 			}
 			*structure = name;
@@ -624,6 +612,7 @@ private:
 			position_ = saved;
 			return kNoNode;
 		}
+		arena_.SetTokenRange(list, opener, after);
 		position_ = saved;
 		return list;
 	}
@@ -780,6 +769,7 @@ NodeId SyntaxParser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_
 		}
 		if (!saw_type && Match(KW_TYPENAME))
 		{
+			const std::size_t first = token_position;
 			std::string name;
 			NodeId structure = kNoNode;
 			if (!ParseName(&name, true, true, true, &structure))
@@ -789,6 +779,7 @@ NodeId SyntaxParser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_
 			}
 			const NodeId dependent_type = MakeStructuredNode(for_type_id ?
 				"type-name" : "decl-specifier", name, structure);
+			arena_.SetTokenRange(dependent_type, first, position_);
 			arena_.AddFlags(dependent_type, SYNTAX_FLAG_TYPENAME);
 			arena_.Add(sequence, dependent_type);
 			if (first_type && first_type->empty()) *first_type = name;
@@ -833,6 +824,7 @@ NodeId SyntaxParser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_
 			const NodeId name_node = arena_.Make(for_type_id ? "type-name" :
 				"decl-specifier", for_type_id || decorated ? name :
 				"TT_IDENTIFIER:" + name);
+			arena_.SetTokenRange(name_node, name_mark.position, position_);
 			arena_.SetSemanticPayload(name_node, strings_.Intern(name));
 			if (structure != kNoNode) arena_.Add(name_node, structure);
 			arena_.Add(sequence, name_node);
@@ -868,6 +860,7 @@ bool SyntaxParser::ParseTypeId(NodeId parent, bool attach)
 	const NodeId declarator = ParseDeclarator(true, 0, true);
 	if (declarator != kNoNode) arena_.Add(type_id, declarator);
 	else Rollback(declarator_mark);
+	arena_.SetTokenRange(type_id, mark.position, position_);
 	if (attach) arena_.Add(parent, type_id);
 	return true;
 }
@@ -1048,6 +1041,8 @@ NodeId SyntaxParser::ParseDeclarator(bool abstract, TextId* name, bool speculati
 				arena_.Add(result, conversion_type);
 			const NodeId identifier = MakeStructuredNode(
 				"identifier", parsed_name, name_structure);
+			arena_.SetTokenRange(
+				identifier, name_mark.position, position_);
 			arena_.SetSemanticPayload(identifier, terminal_name);
 			if (name) *name = arena_.PayloadId(identifier);
 			arena_.Add(result, identifier);
@@ -1273,6 +1268,8 @@ NodeId SyntaxParser::ParseExpression(int minimum_precedence)
 				Spelling(operator_position);
 		const NodeId expression = arena_.Make(right_associative ?
 			"assignment-expression" : "binary-expression", description);
+		arena_.SetTokenRange(expression, operator_position,
+			operator_position + (kind == kRShiftFirstToken ? 2 : 1));
 		arena_.SetSemanticPayload(expression, strings_.Intern(
 			kind == kRShiftFirstToken ? ">>" : Spelling(operator_position)));
 		arena_.Add(expression, left);
@@ -1312,7 +1309,7 @@ NodeId SyntaxParser::ParsePrimaryExpression()
 	if (AtLiteral()) {
 		const std::size_t token = position_++;
 		const NodeId literal = arena_.Make("literal", Spelling(token));
-		arena_.SetLiteralFact(literal, tokens_[token].LiteralFact()); return literal;
+		arena_.SetLiteralFact(literal, tokens_[token].LiteralFact(), token); return literal;
 	}
 	if (At(KW_TRUE) || At(KW_FALSE) || At(KW_NULLPTR) || At(KW_THIS))
 	{
@@ -1320,6 +1317,7 @@ NodeId SyntaxParser::ParsePrimaryExpression()
 		return MakeTokenNode("keyword-literal", token);
 	}
 	if (At(OP_LBRACE)) return ParseBracedInitList();
+	const std::size_t typename_first = position_;
 	if (Match(KW_TYPENAME))
 	{
 		std::string name;
@@ -1328,6 +1326,7 @@ NodeId SyntaxParser::ParsePrimaryExpression()
 			throw Error("expected dependent type name");
 		const NodeId result = MakeStructuredNode(
 			"id-expression", name, structure);
+		arena_.SetTokenRange(result, typename_first, position_);
 		arena_.AddFlags(result, SYNTAX_FLAG_TYPENAME);
 		return result;
 	}
@@ -1374,7 +1373,7 @@ NodeId SyntaxParser::ParsePrimaryExpression()
 		if (nested_template_argument) ++angle_stop_depth_;
 		if (expression == kNoNode) throw Error("expected parenthesized expression");
 		Expect(OP_RPAREN);
-		const NodeId parenthesized = arena_.Make("parenthesized-expression");
+		const NodeId parenthesized = arena_.MakeRanged("parenthesized-expression", cast_mark.position, position_);
 		arena_.Add(parenthesized, expression);
 		return parenthesized;
 	}
@@ -1406,9 +1405,13 @@ NodeId SyntaxParser::ParsePrimaryExpression()
 		{
 			NodeId structure = kNoNode;
 			if (!ParseName(&name, true, true, true, &structure)) return kNoNode;
-			return MakeStructuredNode("id-expression", name, structure);
+			const NodeId expression =
+				MakeStructuredNode("id-expression", name, structure);
+			arena_.SetTokenRange(expression, first, position_);
+			return expression;
 		}
 		const NodeId expression = arena_.Make("id-expression", name);
+		arena_.SetTokenRange(expression, first, position_);
 		const TextId semantic_name = position_ == first + 1 ?
 			tokens_[first].spelling : strings_.Intern(name);
 		arena_.SetSemanticPayload(expression, semantic_name);
@@ -1429,11 +1432,11 @@ NodeId SyntaxParser::ParsePostfixSuffixes(NodeId value) {
 			 arena_.FirstEdge(value) != kNoEdge ||
 			 (arena_.Flags(value) & SYNTAX_FLAG_TYPENAME) != 0)) {
 			const NodeId call = arena_.Make("call-expression");
-			arena_.Add(call, value); arena_.Add(call, ParseBracedInitList());
+			arena_.Add(call, value); arena_.Add(call, ParseBracedInitList()); if (arena_.HasTokenRange(value)) arena_.SetTokenRange(call, arena_.TokenFirst(value), position_);
 			value = call; continue;
 		}
 		if (Match(OP_LPAREN)) {
-			const NodeId call = arena_.Make("call-expression");
+			const NodeId call = arena_.HasTokenRange(value) ? arena_.MakeRanged("call-expression", arena_.TokenFirst(value), position_) : arena_.Make("call-expression");
 			arena_.Add(call, value);
 			const std::string callee = arena_.IsTag(value, ::cppgm::syntax::STAG_ID_EXPRESSION) ?
 				arena_.Payload(value) : std::string();
@@ -1470,7 +1473,7 @@ NodeId SyntaxParser::ParsePostfixSuffixes(NodeId value) {
 			const NodeId index = ParseExpression();
 			if (index == kNoNode) throw Error("expected subscript");
 			Expect(OP_RSQUARE);
-			const NodeId subscript = arena_.Make("subscript-expression");
+			const NodeId subscript = arena_.HasTokenRange(value) ? arena_.MakeRanged("subscript-expression", arena_.TokenFirst(value), position_) : arena_.Make("subscript-expression");
 			arena_.Add(subscript, value);
 			arena_.Add(subscript, index);
 			value = subscript;
@@ -1481,6 +1484,7 @@ NodeId SyntaxParser::ParsePostfixSuffixes(NodeId value) {
 			const std::size_t operation = position_++;
 			const bool dependent_template = Match(KW_TEMPLATE);
 			const bool destructor_member = At(OP_COMPL);
+			const std::size_t member_first = position_;
 			std::string member;
 			NodeId structure = kNoNode;
 			const bool qualified_member = AtIdentifier() && AtOffset(1, OP_COLON2);
@@ -1492,8 +1496,10 @@ NodeId SyntaxParser::ParsePostfixSuffixes(NodeId value) {
 			if (dependent_template) member = "template " + member;
 			const NodeId expression = MakeTokenNode("member-expression", operation);
 			arena_.Add(expression, value);
-			arena_.Add(expression, MakeStructuredNode(
-				"identifier", member, structure));
+			const NodeId identifier = MakeStructuredNode(
+				"identifier", member, structure);
+			arena_.SetTokenRange(identifier, member_first, position_);
+			arena_.Add(expression, identifier);
 			value = expression;
 			continue;
 		}
@@ -2170,7 +2176,7 @@ NodeId SyntaxParser::ParseNonTypeTemplateParameter()
 		if (bare_int_parameter && parameter_name == 0 && AtLiteral()) {
 			const std::size_t token = position_++;
 			value = arena_.Make("literal", "TT_LITERAL:" + Spelling(token));
-			arena_.SetLiteralFact(value, tokens_[token].LiteralFact());
+			arena_.SetLiteralFact(value, tokens_[token].LiteralFact(), token);
 		}
 		else value = ParseExpression(2);
 		if (value == kNoNode) throw Error("expected non-type default");
@@ -2188,6 +2194,7 @@ NodeId SyntaxParser::ParseTemplateParameter()
 }
 NodeId SyntaxParser::ParseTemplate(bool in_class)
 {
+	const std::size_t first = position_;
 	if (!Match(KW_TEMPLATE)) return kNoNode;
 	const std::size_t parameter_mark = active_non_type_parameter_names_.size();
 	const NodeId declaration = arena_.Make("template-declaration");
@@ -2225,6 +2232,7 @@ NodeId SyntaxParser::ParseTemplate(bool in_class)
 		SetNameFact(last_declared_names_[i], kKnownTemplate);
 		SetNameFact(last_declared_names_[i], kKnownNonTemplate, false);
 	}
+	arena_.SetTokenRange(declaration, first, position_);
 	return declaration;
 }
 NodeId SyntaxParser::ParseCtorInitializer()
@@ -2483,6 +2491,7 @@ NodeId SyntaxParser::ParseClass(bool require_semicolon)
 			}
 			if (Match(KW_VIRTUAL))
 				arena_.Add(base, arena_.Make("virtual", "KW_VIRTUAL:virtual"));
+			const std::size_t base_name_first = position_;
 			std::string base_name;
 			NodeId base_structure = kNoNode;
 			NodeId decltype_expression = kNoNode;
@@ -2500,6 +2509,7 @@ NodeId SyntaxParser::ParseClass(bool require_semicolon)
 				throw Error("expected base name");
 			const NodeId base_name_node =
 				MakeStructuredNode("base-name", base_name, base_structure);
+			arena_.SetTokenRange(base_name_node, base_name_first, position_);
 			if (decltype_expression != kNoNode)
 			{
 				// Retain the parsed dependent expression for specialization replay
@@ -2927,7 +2937,6 @@ NodeId SyntaxParser::ParseDeclarationCore(bool in_class)
 }
 namespace
 {
-
 class InternStatsAttachment
 {
 public:

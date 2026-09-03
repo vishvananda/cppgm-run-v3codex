@@ -156,6 +156,7 @@ public:
 		InterningStats* stats);
 	NodeId Make(const char* tag);
 	NodeId Make(const char* tag, const std::string& payload);
+	NodeId MakeRanged(const char* tag, std::size_t first, std::size_t last);
 	void Add(NodeId parent, NodeId child);
 	void Prepend(NodeId parent, NodeId child);
 	std::size_t NodeMark() const;
@@ -185,7 +186,8 @@ public:
 	TextId SemanticPayloadId(NodeId node) const;
 	bool HasSemanticPayload(NodeId node) const;
 	void SetSemanticPayload(NodeId node, TextId payload);
-	void SetLiteralFact(NodeId node, std::uint32_t fact);
+	void SetLiteralFact(NodeId node, std::uint32_t fact,
+		std::size_t source_token);
 	bool ScalarLiteralFact(NodeId node, FundamentalType* type,
 		std::uint64_t* value) const;
 	void AppendImmediateParameterNames(NodeId declarator,
@@ -203,6 +205,8 @@ public:
 		}
 		return kNoNode;
 	}
+	NodeId TerminalNameComponent(NodeId node) const;
+	NodeId DeclaratorIdentifier(NodeId node) const;
 	bool HasDirectChildTag(NodeId node, const char* tag) const;
 	bool HasDirectChildTag(NodeId node, SyntaxTagCode tag) const;
 	bool HasDescendantTag(NodeId node, const char* tag) const;
@@ -220,8 +224,16 @@ public:
 		return edges_[edge].child;
 	}
 	void SetTokenRange(NodeId node, std::size_t first, std::size_t last);
+	bool HasTokenRange(NodeId node) const;
 	std::size_t TokenFirst(NodeId node) const;
 	std::size_t TokenLast(NodeId node) const;
+	std::size_t TokenCount() const;
+	std::uint16_t TokenKind(std::size_t token) const;
+	TextId TokenSpellingId(std::size_t token) const;
+	const std::string& TokenSpelling(std::size_t token) const;
+	const std::string& TokenSourceFile(std::size_t token) const;
+	std::size_t TokenSourceLine(std::size_t token) const;
+	std::size_t TokenSourceColumn(std::size_t token) const;
 	const std::string& SourceFile(NodeId node) const;
 	std::size_t SourceLine(NodeId node) const;
 	std::size_t SourceColumn(NodeId node) const;
