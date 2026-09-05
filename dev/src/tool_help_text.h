@@ -7,6 +7,7 @@ inline const char * cppgm_help_text()
       "   or: cppgm++ --emit-types -o <outfile> <srcfile>...\n"
       "   or: cppgm++ --emit-semantics -o <outfile> <srcfile>...\n"
       "   or: cppgm++ --emit-lowir -o <outfile> [--witness <logfile>] [--witness-debug <logfile>] <srcfile>...\n"
+      "   or: cppgm++ --emit-llvm-ir -O0 -o <outfile> <srcfile>\n"
       "   or: cppgm++ --emit-abi-facts -o <outfile> <srcfile>...\n"
       "   or: cppgm++ -c [options] <srcfile-or-lowirfile>...\n"
       "   or: cppgm++ -E [options] <srcfile>...\n"

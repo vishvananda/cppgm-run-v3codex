@@ -1,0 +1,6 @@
+# I0 repeatability probes: scalar, class, template, exception, and hosted.
+pa15/tests/general/100-local-arith.t
+pa16/tests/general/300-static-const-member-address.t
+pa19/tests/spec/300-template-static-object-member-definition.t
+pa26/tests/general/200-source-catch-ellipsis.t
+pa35/tests/compile/500-reference-wrapper-smoke.t

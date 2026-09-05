@@ -15,6 +15,7 @@
 #include "lowir_native.h"
 #include "lowir_native_stats_report.h"
 #include "lowir_opt.h"
+#include "llvm_ir_export.h"
 #include "preprocessor.h"
 #include "tool_help_text.h"
 
@@ -46,6 +47,7 @@ enum class EmitMode
   Types,
   Semantics,
   LowIR,
+  LlvmIR,
 };
 
 enum class DriverMode
@@ -242,6 +244,7 @@ EmitMode parse_emit_mode(vector<string> & args)
   consume_emit_flag(args, "--emit-types", EmitMode::Types, mode);
   consume_emit_flag(args, "--emit-semantics", EmitMode::Semantics, mode);
   consume_emit_flag(args, "--emit-lowir", EmitMode::LowIR, mode);
+  consume_emit_flag(args, "--emit-llvm-ir", EmitMode::LlvmIR, mode);
   return mode;
 }
 
@@ -250,12 +253,16 @@ struct SourceOutputInvocation
   string output;
   vector<string> inputs;
   vector<string> include_paths;
+  vector<string> system_include_paths;
+  vector<string> forced_includes;
   vector<DriverInvocation::MacroAction> macro_actions;
+  string target;
   int optimization_level = 0;
   bool has_optimization_level = false;
   bool has_debug_info = false;
   bool line_tables = false;
   bool collect_stats = false;
+  bool hosted_system_includes = true;
 };
 
 SourceOutputInvocation parse_source_output_invocation(
@@ -301,6 +308,26 @@ SourceOutputInvocation parse_source_output_invocation(
       invocation.include_paths.push_back(args[i].substr(2));
       continue;
     }
+    if(allow_lowir_options && args[i] == "-isystem") {
+      consume_required_option_argument(args, i, "-isystem", "include path");
+      invocation.system_include_paths.push_back(args[i]);
+      continue;
+    }
+    if(allow_lowir_options && starts_with(args[i], "-isystem") &&
+       args[i].size() > string("-isystem").size()) {
+      invocation.system_include_paths.push_back(
+        args[i].substr(string("-isystem").size()));
+      continue;
+    }
+    if(allow_lowir_options && args[i] == "-include") {
+      consume_required_option_argument(args, i, "-include", "file");
+      invocation.forced_includes.push_back(args[i]);
+      continue;
+    }
+    if(allow_lowir_options && args[i] == "-nostdinc") {
+      invocation.hosted_system_includes = false;
+      continue;
+    }
     if(allow_lowir_options && (args[i] == "-D" || args[i] == "-U")) {
       const bool define = args[i] == "-D";
       consume_required_option_argument(args, i, args[i], "macro");
@@ -318,6 +345,55 @@ SourceOutputInvocation parse_source_output_invocation(
        args[i].size() > 2) {
       invocation.macro_actions.push_back(
         DriverInvocation::MacroAction(false, args[i].substr(2)));
+      continue;
+    }
+    if(allow_lowir_options && starts_with(args[i], "-std=")) {
+      const string standard = args[i].substr(5);
+      string value;
+      if(standard == "c++11" || standard == "gnu++11") value = "201103L";
+      else if(standard == "c++14" || standard == "gnu++14") value = "201402L";
+      else if(standard == "c++17" || standard == "gnu++17") value = "201703L";
+      else throw logic_error("unsupported language standard: " + standard);
+      invocation.macro_actions.push_back(
+        DriverInvocation::MacroAction(true, "__cplusplus=" + value));
+      continue;
+    }
+    if(allow_lowir_options && args[i] == "-fno-exceptions") {
+      invocation.macro_actions.push_back(
+        DriverInvocation::MacroAction(false, "__EXCEPTIONS"));
+      invocation.macro_actions.push_back(
+        DriverInvocation::MacroAction(false, "__cpp_exceptions"));
+      continue;
+    }
+    if(allow_lowir_options && args[i] == "-fno-rtti") {
+      invocation.macro_actions.push_back(
+        DriverInvocation::MacroAction(false, "__GXX_RTTI"));
+      continue;
+    }
+    if(allow_lowir_options &&
+       (args[i] == "-fexceptions" || args[i] == "-frtti" ||
+        args[i] == "-Wall" || args[i] == "-w" || args[i] == "-pipe" ||
+        args[i] == "-pedantic" || args[i] == "-pedantic-errors")) {
+      continue;
+    }
+    if(allow_lowir_options &&
+       (args[i] == "-stdlib=libstdc++" || args[i] == "-stdlib")) {
+      if(args[i] == "-stdlib") {
+        consume_required_option_argument(args, i, "-stdlib", "library");
+        if(args[i] != "libstdc++")
+          throw logic_error("--emit-llvm-ir supports only libstdc++");
+      }
+      continue;
+    }
+    if(allow_lowir_options && args[i] == "--target") {
+      consume_required_option_argument(args, i, "--target", "target");
+      if(!invocation.target.empty()) throw logic_error("multiple targets provided");
+      invocation.target = args[i];
+      continue;
+    }
+    if(allow_lowir_options && starts_with(args[i], "--target=")) {
+      if(!invocation.target.empty()) throw logic_error("multiple targets provided");
+      invocation.target = args[i].substr(string("--target=").size());
       continue;
     }
     if(args[i] == "-c" || args[i] == "-E" || is_query_driver_flag(args[i])) {
@@ -2445,6 +2521,59 @@ int run_emit_lowir_mode(const vector<string> & args)
 	return EXIT_SUCCESS;
 }
 
+int run_emit_llvm_ir_mode(const vector<string> & args)
+{
+	const SourceOutputInvocation invocation =
+		parse_source_output_invocation(args, true);
+	if(invocation.inputs.size() != 1)
+		throw logic_error("--emit-llvm-ir requires exactly one source file");
+	if(invocation.has_optimization_level && invocation.optimization_level != 0)
+		throw logic_error("--emit-llvm-ir currently supports only -O0");
+	if(!invocation.target.empty() && invocation.target != "linux" &&
+	   invocation.target != "x86_64-pc-linux-gnu" &&
+	   invocation.target != "x86_64-unknown-linux-gnu" &&
+	   invocation.target != "x86_64-linux-gnu")
+		throw logic_error("--emit-llvm-ir supports only x86-64 Linux");
+
+	const string & path = invocation.inputs[0];
+	ifstream input(path.c_str(), ios::in | ios::binary);
+	if(!input) throw runtime_error("unable to open source file: " + path);
+	const string source((istreambuf_iterator<char>(input)),
+		istreambuf_iterator<char>());
+
+	cppgm::PreprocessingOptions options = make_preprocessing_options();
+	options.include_search_paths = invocation.include_paths;
+	options.system_include_search_paths = invocation.system_include_paths;
+	cppgm::ConfigureHostedPreprocessing(&options,
+		invocation.hosted_system_includes, false);
+	for(size_t i = 0; i < invocation.macro_actions.size(); ++i)
+		options.macro_actions.push_back(
+			cppgm::PreprocessingOptions::MacroAction(
+				invocation.macro_actions[i].define,
+				invocation.macro_actions[i].argument));
+	options.forced_includes = invocation.forced_includes;
+
+	ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
+	if(!output)
+		throw runtime_error("unable to open output file: " + invocation.output);
+	cppgm::LlvmIrExportStats stats;
+	cppgm::WriteLlvmIrTranslationUnit(path, source, options, output,
+		invocation.collect_stats ? &stats : 0);
+	if(invocation.collect_stats) {
+		cerr << "llvm_ir_stats"
+			 << " semantic_nodes=" << stats.semantic.semantic_nodes
+			 << " lowered_nodes=" << stats.semantic_nodes_lowered
+			 << " globals=" << stats.globals
+			 << " functions=" << stats.functions
+			 << " blocks=" << stats.blocks
+			 << " instructions=" << stats.instructions
+			 << " lowering_ns=" << stats.lowering_nanoseconds
+			 << " serialization_ns=" << stats.serialization_nanoseconds
+			 << '\n';
+	}
+	return EXIT_SUCCESS;
+}
+
 void report_lowir_semantic_stats(const cppgm::LowIRLoweringStats & stats)
 {
 	const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
@@ -2941,6 +3070,8 @@ int run_cppgm(const vector<string> & raw_args)
     return run_emit_semantics_mode(args);
   case EmitMode::LowIR:
     return run_emit_lowir_mode(args);
+  case EmitMode::LlvmIR:
+    return run_emit_llvm_ir_mode(args);
   case EmitMode::None:
     return run_driver_mode(args);
   }

@@ -1,0 +1,21 @@
+# S15: PA29 behavior is exercised from the original C++ owners in PA15-PA28.
+# PA29's checked-in .t files are LowIR, not C++ source.
+
+# S16: driver, separate-TU, EH, and host ABI representatives.
+pa30/tests/general/100-single-source.t.1
+pa30/tests/general/100-two-source-call.t.1
+pa30/tests/general/100-two-source-call.t.2
+pa31/tests/general/100-host-eh-same-tu-throw-catch.t.1
+pa32/tests/general/100-host-main-argv.t.1
+pa33/tests/general/200-host-builtin-alloca-link-smoke.t.1
+pa34/tests/run/800-builtin-expect.t.1
+
+# S17: same-libstdc++ lightweight, object-bearing, heavy-header, and link cases.
+pa35/tests/compile/500-reference-wrapper-smoke.t
+pa35/tests/compile/600-forward-array-string-pair.t
+pa35/tests/compile/600-hosted-fstream-stream-compile.t
+pa35/tests/compile/700-hosted-unreachable-inline-callee-export-closure.t
+pa36/tests/link/600-hosted-basic-ios-disable-eh-fallback-link-smoke.t.1
+
+# PA37/PA38 optimize LowIR and MIR. Their non-driver .t files are not C++
+# sources; optimization sensitivity is analyzed from LLVM instruction shape.

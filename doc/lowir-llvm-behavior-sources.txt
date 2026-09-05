@@ -1,0 +1,17 @@
+# Self-contained PA15 cases that require no argv, stdin, files, or environment.
+pa15/tests/general/100-ret0.t
+pa15/tests/general/100-local-arith.t
+pa15/tests/general/100-if-else.t
+pa15/tests/general/100-for-loop.t
+pa15/tests/general/100-do-while-lowering.t
+pa15/tests/general/100-simple-call.t
+pa15/tests/general/100-global-variable.t
+pa15/tests/general/100-subscript-sizeof.t
+pa15/tests/general/100-function-pointer-ref-call.t
+pa15/tests/general/200-pointer-compound-assignment-scale.t
+pa15/tests/general/200-floating-return-integral-conversion.t
+pa15/tests/general/200-partial-local-array-zero-initialization.t
+
+# A line with multiple paths is one separately compiled and linked program.
+pa30/tests/general/100-two-source-call.t.1 pa30/tests/general/100-two-source-call.t.2
+pa34/tests/run/800-builtin-expect.t.1

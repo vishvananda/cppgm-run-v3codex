@@ -94,6 +94,7 @@ FRONTEND_OBJ_BASENAMES_cppgm++ += pa12_semantic_declaration_names
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa12_semantic_enum_declarations
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa12_semantic_vocabulary
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa22_lambda_presentation
+FRONTEND_OBJ_BASENAMES_cppgm++ += llvm_ir_model llvm_ir_export
 FRONTEND_OBJ_BASENAMES_lowiropt := lowir_identity lowir_parse lowir_prepare lowir_serialize lowir_function_reachability lowir_inline_analysis lowir_inline_o1 lowir_opt
 FRONTEND_OBJ_BASENAMES_lowiropt += lowir_driver_stats_report
 FRONTEND_OBJ_BASENAMES_lowiropt += lowir_function_analysis
